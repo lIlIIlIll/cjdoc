@@ -99,7 +99,8 @@ private func captureDocumentationPagesWithContext(value: public_model.Documentat
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: value.diagnostics.toArray(),
         languageOptions: value.languageOptions, pages: pages.toArray(), readingLanguage: value.readingLanguage,
         externalDocumentation: captureExternalDocumentationReferences(value, request.projectRoot, externalResolvers: externalResolvers),
-        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray())
+        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray(),
+        metadata: value.metadata)
 }
 
 private func capturePageSections(value: public_model.DocumentationSet,

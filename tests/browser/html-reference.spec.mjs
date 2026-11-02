@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -15,6 +15,105 @@ const versionFixtureRoot = process.env.CJDOC_VERSION_FIXTURE;
 const versionIndexUrl = versionFixtureRoot
   ? pathToFileURL(path.resolve(versionFixtureRoot, 'index.html')).href
   : null;
+
+function requiredFixtureParent(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required`);
+  return path.resolve(value);
+}
+
+const declarationFixtureParents = {
+  groups: requiredFixtureParent('CJDOC_DECLARATION_GROUPS_FIXTURE'),
+  tags: requiredFixtureParent('CJDOC_DECLARATION_TAGS_FIXTURE'),
+};
+const declarationLocales = ['en', 'zh-CN'];
+const pageRequests = new WeakMap();
+
+function declarationIndexUrl(kind, locale, transport) {
+  if (transport === 'file') {
+    return pathToFileURL(path.join(declarationFixtureParents[kind], locale, 'index.html')).href;
+  }
+  if (!httpOrigin) throw new Error('HTTP fixture server is not ready');
+  return `${httpOrigin}/docs/${kind}/${locale}/index.html`;
+}
+
+function observePage(page) {
+  let state = pageRequests.get(page);
+  if (!state) {
+    state = { urls: [], errors: [], allowedOrigin: null, allowFile: false };
+    pageRequests.set(page, state);
+    pageErrors.set(page, state.errors);
+    page.on('request', request => state.urls.push(request.url()));
+    page.on('pageerror', error => state.errors.push(String(error)));
+  }
+  return state;
+}
+
+function assertDeclarationPageRequests(page) {
+  const state = pageRequests.get(page);
+  const unexpected = state.urls.filter(value => {
+    if (/\/docs\.json(?:[?#]|$)/i.test(value)) return true;
+    if (value.startsWith('data:')) return false;
+    if (state.allowFile && value.startsWith('file:')) return false;
+    return !state.allowedOrigin || new URL(value).origin !== state.allowedOrigin;
+  });
+  expect(unexpected).toEqual([]);
+}
+
+async function openDeclarationPage(page, url, transport) {
+  const state = observePage(page);
+  state.allowedOrigin = transport === 'file' ? null : new URL(url).origin;
+  state.allowFile = transport === 'file';
+  await page.goto(url);
+  await expectStable(page);
+  assertDeclarationPageRequests(page);
+}
+
+async function setTheme(page, theme) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.locator('[data-cjdoc-theme-toggle]').click();
+  await page.locator(`[data-cjdoc-theme-value="${theme}"]`).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+}
+
+async function expectBadgeOwnsHitPoint(page, badge) {
+  await badge.scrollIntoViewIfNeeded();
+  const hit = await badge.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return {
+      badge: Boolean(target && target.closest('.declaration-tag-badge[data-cjdoc-tag-link]') === element),
+      primaryLink: Boolean(target && target.closest('.declaration-row-link')),
+      detailOrActions: Boolean(target && target.closest('details, .member-detail-actions')),
+      bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+    };
+  });
+  expect(hit.bounds.right).toBeGreaterThan(hit.bounds.left);
+  expect(hit.bounds.bottom).toBeGreaterThan(hit.bounds.top);
+  expect(hit.badge).toBe(true);
+  expect(hit.primaryLink).toBe(false);
+  expect(hit.detailOrActions).toBe(false);
+  return hit.bounds;
+}
+
+function queryTags(url) {
+  return new URL(url).searchParams.getAll('tag');
+}
+
+function numericCount(text) {
+  return (text.match(/\d+/g) || []).map(Number);
+}
+
+async function expectSearchRows(page, expectedCount) {
+  const rows = page.locator('[data-cjdoc-results] [role="option"]');
+  await expect(rows).toHaveCount(expectedCount);
+  return rows.evaluateAll(elements => elements.map(element => ({
+    name: element.querySelector('.search-result-name')?.textContent.trim() || '',
+    context: element.querySelector('.search-context')?.textContent.trim() || '',
+    signature: element.querySelector('.search-result-signature')?.textContent.trim() || '',
+    href: element.querySelector('a')?.getAttribute('href') || '',
+  })));
+}
 const pageErrors = new WeakMap();
 
 async function openIndex(page) {
@@ -93,24 +192,43 @@ async function expectMemberSectionCounts(page, chinese) {
 
 let httpServer;
 let httpBaseUrl;
+let httpOrigin;
 
 test.beforeAll(async () => {
-  const root = path.resolve(fixtureRoot);
+  const mounts = [{ prefix: '/docs/', root: path.resolve(fixtureRoot) }];
+  for (const [kind, parent] of Object.entries(declarationFixtureParents)) {
+    for (const locale of declarationLocales) {
+      const root = path.join(parent, locale);
+      const rootInfo = await stat(root);
+      const indexInfo = await stat(path.join(root, 'index.html'));
+      if (!rootInfo.isDirectory() || !indexInfo.isFile()) {
+        throw new Error(`${kind}/${locale} must contain an HTML index.html`);
+      }
+    }
+    mounts.push({ prefix: `/docs/${kind}/`, root: parent });
+  }
+  mounts.sort((left, right) => right.prefix.length - left.prefix.length);
   httpServer = createServer(async (request, response) => {
     try {
       const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
-      if (!requestUrl.pathname.startsWith('/docs/')) {
+      const pathname = decodeURIComponent(requestUrl.pathname);
+      if (!pathname.startsWith('/docs/')) {
         response.writeHead(404).end();
         return;
       }
-      let relative = decodeURIComponent(requestUrl.pathname.slice('/docs/'.length));
+      const mount = mounts.find(candidate => pathname.startsWith(candidate.prefix));
+      if (!mount) {
+        response.writeHead(404).end();
+        return;
+      }
+      let relative = pathname.slice(mount.prefix.length);
       if (!relative) relative = 'index.html';
       if (relative.split('/').some(segment => segment === '..')) {
         response.writeHead(400).end();
         return;
       }
-      const target = path.resolve(root, relative);
-      if (target !== root && !target.startsWith(root + path.sep)) {
+      const target = path.resolve(mount.root, relative);
+      if (target !== mount.root && !target.startsWith(mount.root + path.sep)) {
         response.writeHead(403).end();
         return;
       }
@@ -132,7 +250,8 @@ test.beforeAll(async () => {
     httpServer.listen(0, '127.0.0.1', resolve);
   });
   const address = httpServer.address();
-  httpBaseUrl = `http://127.0.0.1:${address.port}/docs/`;
+  httpOrigin = `http://127.0.0.1:${address.port}`;
+  httpBaseUrl = `${httpOrigin}/docs/`;
 });
 
 test.afterAll(async () => {
@@ -440,7 +559,7 @@ test.describe('generated HTML reference', () => {
     await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('2 overloads');
     await expect(page.locator('details[data-cjdoc-member][data-member-name="convert"]')).toHaveCount(2);
     // Filtering does not leave empty groups or falsely report that both match.
-    await memberFilter.fill('ping(value: Int64)');
+    await memberFilter.fill('ping Int64');
     await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('1 of 2 overloads');
     await expect(pingGroup.locator('details[data-cjdoc-member][data-member-name="ping"]:not([hidden])')).toHaveCount(1);
     await memberFilter.fill('doesNotExist');
@@ -540,12 +659,6 @@ test.describe('generated HTML reference', () => {
 
   test('package filter never creates an empty selectable option for conceptual entries', async ({ page }) => {
     await openIndex(page);
-    // Conceptual pages intentionally have no package; the index fixture must
-    // exercise that case or this regression would pass vacuously.
-    const emptyPackageEntries = await page.evaluate(() =>
-      (globalThis.__CJDOC_SEARCH_INDEX__?.entries || [])
-        .filter(entry => entry.packageName === '').length);
-    expect(emptyPackageEntries).toBeGreaterThan(0);
 
     await page.locator('[data-cjdoc-filter-toggle]').click();
     const packageFilter = page.locator('[data-cjdoc-package]');
@@ -1073,7 +1186,7 @@ for (const chinese of [false, true]) {
     const origin = page.locator('[data-cjdoc-member-origin]');
     const ping = page.locator('[data-cjdoc-member][data-member-name="ping"]').first();
     const anchor = await ping.getAttribute('id');
-    await filter.fill('ping(value: Int64)');
+    await filter.fill('ping Int64');
     const partial = await expectMemberSectionCounts(page, chinese);
     expect(partial.reduce((sum, group) => sum + group.matches, 0)).toBe(1);
     expect(partial.some(group => group.matches > 0 && group.matches < group.total)).toBe(true);
@@ -1095,3 +1208,600 @@ for (const chinese of [false, true]) {
     expect(cleared.every(group => group.matches === group.total)).toBe(true);
   });
 }
+test.describe('authored declaration groups', () => {
+  for (const locale of ['en', 'zh-CN']) {
+    for (const transport of ['file', 'subpath']) {
+      for (const [width, height] of [[1440, 900], [960, 900], [390, 844]]) {
+        for (const theme of ['light', 'dark']) {
+          test(`${locale} ${transport} ${width} ${theme}: real parents, anchors and filtering`,
+            async ({page}, testInfo) => {
+              await page.setViewportSize({width, height});
+              const errors = [];
+              page.on('pageerror', error => errors.push(String(error)));
+              const root = declarationIndexUrl('groups', locale, transport);
+              await openDeclarationPage(page, root, transport);
+              await setTheme(page, theme);
+              const packageUrl = new URL(
+                await page.locator('.package-index a').first().getAttribute('href'), root).href;
+              await openDeclarationPage(page, packageUrl, transport);
+              await expect(page.locator('img[src="x"], [onerror]')).toHaveCount(0);
+              const packageGroups = await page.locator('section.api-declaration-group')
+                .evaluateAll(nodes => nodes.map(node => ({
+                  id: node.dataset.cjdocDeclarationGroup,
+                  names: [...node.querySelectorAll('article[data-cjdoc-member]')]
+                    .map(row => row.dataset.memberName).sort(),
+                  kindHeadings: [...node.querySelectorAll(
+                    ':scope > .declaration-group > h3[data-cjdoc-toc-role="group"]')]
+                    .map(heading => heading.id),
+                  count: Number(node.querySelector('[data-cjdoc-group-count]')?.dataset.groupTotal),
+                  groupHeading: node.querySelector(':scope > h2')?.id || null,
+                })));
+              expect(packageGroups.map(group => group.id))
+                .toEqual(['10-application', '20-generated-spi', '30-first-party-internal',
+                  '40-text', '']);
+              expect(Object.fromEntries(packageGroups.map(group => [group.id, group.names])))
+                .toEqual({
+                  '10-application': ['Application', 'applicationFunction'],
+                  '20-generated-spi': ['Generated', 'generatedFunction'],
+                  '30-first-party-internal': ['InternalBridge'],
+                  '40-text': ['escapedTitle'],
+                  '': ['fenced', 'ungrouped'],
+                });
+              await expect(page.locator('article[data-cjdoc-member]:visible')).toHaveCount(8);
+              expect(packageGroups.map(group => group.kindHeadings.length))
+                .toEqual([2, 2, 0, 0, 0]);
+              expect(packageGroups.every(group => Boolean(group.groupHeading))).toBe(true);
+              expect(packageGroups.map(group => group.count)).toEqual([2, 2, 1, 1, 2]);
+              const packageIds = await page.locator('[id]').evaluateAll(nodes => nodes.map(node => node.id));
+              expect(new Set(packageIds).size).toBe(packageIds.length);
+              await expect(page.locator('[data-cjdoc-toc] [data-toc-target]')).not.toHaveCount(0);
+              const packageTocTargets = await page.locator(
+                '[data-cjdoc-toc] [data-toc-target]').evaluateAll(links =>
+                links.map(link => link.dataset.tocTarget));
+              for (const group of packageGroups) {
+                expect(packageTocTargets).toContain(group.groupHeading);
+                for (const kindHeading of group.kindHeadings) {
+                  expect(packageTocTargets).toContain(kindHeading);
+                }
+              }
+              for (const [groupId, kindId] of [
+                ['10-application', 'classes'], ['10-application', 'functions'],
+                ['20-generated-spi', 'classes'], ['20-generated-spi', 'functions'],
+                ['30-first-party-internal', 'classes'], ['40-text', 'functions'],
+                ['', 'functions'],
+              ]) {
+                const groupAnchor = groupId ? `api-group-${groupId}` : 'api-ungrouped';
+                const kindAnchor = groupId
+                  ? `api-kind-${groupId.length}-${groupId}-${kindId}`
+                  : `api-kind-0--${kindId}`;
+                await expect(page.locator(`[id="${groupAnchor}"]`)).toHaveCount(1);
+                await expect(page.locator(`[id="${kindAnchor}"]`)).toHaveCount(1);
+              }
+              for (const group of packageGroups.filter(item => item.kindHeadings.length === 0)) {
+                const groupId = group.id;
+                const kindId = groupId === '30-first-party-internal' ? 'classes' : 'functions';
+                const kindAnchor = groupId
+                  ? `api-kind-${groupId.length}-${groupId}-${kindId}`
+                  : `api-kind-0--${kindId}`;
+                await expect(page.locator(`[id="${kindAnchor}"]`))
+                  .toHaveClass(/section-anchor-alias/);
+                expect(packageTocTargets).not.toContain(kindAnchor);
+              }
+              expect(await page.evaluate(() => document.documentElement.scrollWidth))
+                .toBeLessThanOrEqual(width + 1);
+              if (width === 1440 && theme === 'light') {
+                const packageGeometry = await page.evaluate(() => ({
+                  viewport: {width: innerWidth, height: innerHeight},
+                  documentWidth: document.documentElement.scrollWidth,
+                  groups: [...document.querySelectorAll('section.api-declaration-group')]
+                    .map(group => ({
+                      id: group.dataset.cjdocDeclarationGroup,
+                      headings: [...group.querySelectorAll('h2, h3')]
+                        .map(heading => heading.tagName),
+                    })),
+                }));
+                expect(packageGeometry.documentWidth).toBeLessThanOrEqual(width + 1);
+                await testInfo.attach('package-group-layout', {
+                  body: JSON.stringify({locale, transport, theme, ...packageGeometry}),
+                  contentType: 'application/json',
+                });
+                await testInfo.attach('package-group-layout-screen', {
+                  body: await page.screenshot({fullPage: true}), contentType: 'image/png',
+                });
+              }
+              const classLink = page.locator(
+                '.declaration-row[data-member-name="Application"] > .declaration-row-link');
+              const classUrl = new URL(await classLink.getAttribute('href'), packageUrl).href;
+              await openDeclarationPage(page, classUrl, transport);
+              const single = page.locator('section[data-cjdoc-declaration-group="10-application"]');
+              const mixed = page.locator('section[data-cjdoc-declaration-group="20-generated-spi"]');
+              await expect(page.locator('[data-cjdoc-member]')).toHaveCount(6);
+              await expect(single.locator('.member-group-heading')).toHaveCount(0);
+              await expect(mixed.locator('.member-group-heading > h3')).toHaveCount(2);
+              await expect(single.locator('h3[data-cjdoc-toc-role="overload"]')).toHaveCount(1);
+              await expect(mixed.locator('h4[data-cjdoc-toc-role="overload"]')).toHaveCount(1);
+              const plain = page.locator('[data-cjdoc-member][data-member-name="zLast"]');
+              const plainId = await plain.getAttribute('id');
+              await expect(plain.locator('summary')).toHaveAttribute('data-cjdoc-toc-depth', '3');
+              await expect(page.locator(`[data-cjdoc-toc] [data-toc-target="${plainId}"]`)
+                .locator('xpath=..')).toHaveAttribute('data-depth', '3');
+              for (const anchor of ['functions', 'properties',
+                'api-kind-14-10-application-functions',
+                'api-kind-16-20-generated-spi-functions']) {
+                await expect(page.locator(`[id="${anchor}"]`)).toHaveCount(1);
+              }
+              await page.locator('[data-cjdoc-members-expand]').click();
+              await expect(single.locator('.member-detail-body h4').first()).toBeVisible();
+              await expect(mixed.locator('.member-detail-body h5').first()).toBeVisible();
+              const outline = await page.locator('[data-cjdoc-toc] [data-toc-target]')
+                .evaluateAll(links => links.map(link => ({
+                  target: link.dataset.tocTarget,
+                  internal: !!document.getElementById(link.dataset.tocTarget)
+                    ?.closest('.member-detail-body'),
+                })));
+              expect(outline.every(item => !item.internal)).toBe(true);
+              const filter = page.locator('[data-cjdoc-member-filter]');
+              if (!await filter.isVisible()) {
+                await page.locator('[data-cjdoc-member-filter-toggle]').click();
+              }
+              await filter.fill('zLast');
+              await expect(single).toBeVisible();
+              await expect(mixed).toBeHidden();
+              expect(numericCount(await single.locator('[data-cjdoc-group-count]').textContent()))
+                .toEqual([1, 3]);
+              const hiddenToc = await mixed.locator(
+                'h2, h3[data-cjdoc-toc-role="group"], [data-cjdoc-toc-role="overload"]')
+                .evaluateAll(headings => headings.every(heading =>
+                  [...document.querySelectorAll('[data-cjdoc-toc] [data-toc-target]')]
+                    .filter(link => link.dataset.tocTarget === heading.id)
+                    .every(link => link.closest('li').hidden)));
+              expect(hiddenToc).toBe(true);
+              await filter.fill('');
+              await page.locator('[data-cjdoc-members-collapse]').click();
+              const geometry = await page.evaluate(() => {
+                const rows = [...document.querySelectorAll('[data-cjdoc-member]')];
+                const list = document.querySelector('.member-browser');
+                const ids = [...document.querySelectorAll('[id]')].map(node => node.id);
+                return {width: innerWidth, height: innerHeight, rows: rows.length,
+                  firstY: rows[0].getBoundingClientRect().top,
+                  listHeight: list.getBoundingClientRect().height,
+                  overflow: document.documentElement.scrollWidth > innerWidth + 1,
+                  uniqueAnchors: new Set(ids).size === ids.length};
+              });
+              expect(geometry.overflow).toBe(false);
+              expect(geometry.uniqueAnchors).toBe(true);
+              expect(errors).toEqual([]);
+              await testInfo.attach('group-layout', {
+                body: JSON.stringify({locale, transport, theme, ...geometry}),
+                contentType: 'application/json',
+              });
+              await testInfo.attach('group-layout-screen', {
+                body: await page.screenshot({fullPage: true}), contentType: 'image/png',
+              });
+            });
+        }
+      }
+    }
+  }
+});
+
+test.describe('declaration tag navigation and filtering', () => {
+  for (const locale of declarationLocales) {
+    for (const transport of ['file', 'subpath']) {
+      test(`${locale} ${transport}: scoped tag links, facets and member actions`,
+        async ({page, browser}, testInfo) => {
+          await page.setViewportSize({width: 1440, height: 900});
+          const indexUrl = declarationIndexUrl('tags', locale, transport);
+          await openDeclarationPage(page, indexUrl, transport);
+          const packageUrl = new URL(
+            await page.locator('.package-index a').first().getAttribute('href'), indexUrl).href;
+          await openDeclarationPage(page, packageUrl, transport);
+
+          const streamReader = page.locator(
+            'article[data-member-name="StreamReader"][data-member-kind="class"]');
+          await expect(streamReader).toHaveCount(1);
+          await expect(streamReader.locator('a a')).toHaveCount(0);
+          const packageBadge = streamReader.locator(
+            ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+          await expect(packageBadge).toHaveCount(1);
+          await expectBadgeOwnsHitPoint(page, packageBadge);
+          await expect(packageBadge.locator('xpath=ancestor::a')).toHaveCount(0);
+          const badgeUrl = new URL(await packageBadge.getAttribute('href'), packageUrl);
+          const moduleId = badgeUrl.searchParams.get('moduleId');
+          const snapshotId = badgeUrl.searchParams.get('snapshotId');
+          expect(badgeUrl.pathname).toBe(new URL(indexUrl).pathname);
+          expect(badgeUrl.searchParams.getAll('tag')).toEqual(['stream']);
+          expect(moduleId).toBeTruthy();
+          expect(snapshotId).toBeTruthy();
+
+          // A real pointer activation restores the precise tag/module/snapshot
+          // request on the locale's search index.
+          await packageBadge.click();
+          await expect(page).toHaveURL(badgeUrl.href);
+          assertDeclarationPageRequests(page);
+          const resultRows = await expectSearchRows(page, 4);
+          await page.reload();
+          await expect(page).toHaveURL(badgeUrl.href);
+          await expectSearchRows(page, 4);
+          assertDeclarationPageRequests(page);
+          expect(resultRows.some(row => row.name === 'StreamReader' &&
+            /class\s+StreamReader/.test(row.signature))).toBe(true);
+          const streamReaderReads = resultRows.filter(row =>
+            row.name === 'read' && row.context.includes('StreamReader'));
+          const otherReaderReads = resultRows.filter(row =>
+            row.name === 'read' && row.context.includes('OtherReader'));
+          expect(streamReaderReads).toHaveLength(2);
+          expect(otherReaderReads).toHaveLength(1);
+          expect(streamReaderReads.some(row => /count.*Int64/.test(row.signature))).toBe(true);
+          expect(streamReaderReads.some(row => /text.*String/.test(row.signature))).toBe(true);
+          expect(otherReaderReads[0].signature).toMatch(/count.*Int64/);
+          expect(new Set(resultRows.map(row => row.href)).size).toBe(4);
+          expect(resultRows.some(row => row.name === 'upperCaseOnly' || row.name === 'streamingOnly'))
+            .toBe(false);
+
+          const facets = page.locator('[data-cjdoc-search-facets]');
+          await expect(facets).toBeVisible();
+          const streamFacet = facets.locator(
+            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stream"]');
+          const stableFacet = facets.locator(
+            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]');
+          await expect(streamFacet).toHaveAttribute('class', /is-selected/);
+          await expect(streamFacet).toHaveAttribute('aria-current', 'true');
+          await expect(stableFacet).not.toHaveAttribute('aria-current', 'true');
+          for (const facet of [streamFacet, stableFacet]) {
+            await expect(facet).toHaveAttribute('data-cjdoc-facet-module-id', moduleId);
+            await expect(facet).toHaveAttribute('data-cjdoc-facet-snapshot-id', snapshotId);
+          }
+          const facetCount = async facet => {
+            const text = await facet.textContent();
+            const match = text.match(/\((\d+)\)\s*$/);
+            return match ? Number(match[1]) : NaN;
+          };
+          expect(await facetCount(streamFacet)).toBe(4);
+          expect(await facetCount(stableFacet)).toBe(2);
+          const combinedHref = new URL(await stableFacet.getAttribute('href'), page.url());
+          expect(combinedHref.pathname).toBe(new URL(indexUrl).pathname);
+          expect(queryTags(combinedHref.href)).toEqual(['stable', 'stream']);
+          expect(combinedHref.searchParams.get('moduleId')).toBe(moduleId);
+          expect(combinedHref.searchParams.get('snapshotId')).toBe(snapshotId);
+
+          // Facet activation ANDs exact IDs; activating the selected link
+          // removes only that ID, then reactivating restores the two-tag case.
+          await stableFacet.click();
+          await expect(page).toHaveURL(actual => {
+            const current = new URL(actual);
+            const expected = new URL(combinedHref);
+            current.searchParams.sort();
+            expected.searchParams.sort();
+            return current.href === expected.href;
+          });
+          const bothRows = await expectSearchRows(page, 2);
+          expect(bothRows.some(row => row.name === 'StreamReader' &&
+            /class\s+StreamReader/.test(row.signature))).toBe(true);
+          expect(bothRows.some(row => row.name === 'read' &&
+            row.context.includes('StreamReader') && /count.*Int64/.test(row.signature))).toBe(true);
+          expect(bothRows.some(row => row.context.includes('OtherReader'))).toBe(false);
+          await expect(facets.locator(
+            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]'))
+            .toHaveAttribute('aria-current', 'true');
+          await facets.locator(
+            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]').click();
+          await expect(page).toHaveURL(new RegExp('[?&]tag=stream(?:&|$)'));
+          expect(queryTags(page.url())).toEqual(['stream']);
+          await expectSearchRows(page, 4);
+          await facets.locator(
+            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]').click();
+          expect(queryTags(page.url())).toEqual(['stable', 'stream']);
+          await expectSearchRows(page, 2);
+
+          // Typed and URL-backed tags form one predicate set. A facet toggle
+          // must update the visible input before another input event occurs.
+          await openDeclarationPage(page, indexUrl, transport);
+          const searchInput = page.locator('[role="combobox"]');
+          await searchInput.fill('kind:function name:read tag:stream TAG:stream');
+          await expectSearchRows(page, 3);
+          await streamFacet.click();
+          await expect(searchInput).toHaveValue('kind:function name:read');
+          expect(queryTags(page.url())).toEqual([]);
+          const withoutTag = await expectSearchRows(page, 5);
+          expect(withoutTag.some(row => /bytes.*Array/.test(row.signature))).toBe(true);
+          await searchInput.fill('kind:function name:read ');
+          await expectSearchRows(page, 5);
+          await expect(streamFacet).not.toHaveAttribute('aria-current', 'true');
+          await streamFacet.click();
+          expect(queryTags(page.url())).toEqual(['stream']);
+          await expectSearchRows(page, 3);
+          await searchInput.fill('kind:function name:read  ');
+          await expectSearchRows(page, 3);
+          await openDeclarationPage(page, badgeUrl.href, transport);
+          await stableFacet.click();
+          await expectSearchRows(page, 2);
+
+          // Locale navigation retains every repeated tag and module identity,
+          // but intentionally drops the source locale's snapshot binding.
+          const otherLocale = locale === 'en' ? 'zh-CN' : 'en';
+          const switcher = page.locator('.language-switcher');
+          await switcher.locator('.language-label').click();
+          const languageLink = switcher.locator(`a[hreflang="${otherLocale}"]`);
+          const languageUrl = new URL(await languageLink.getAttribute('href'), page.url());
+          expect(queryTags(languageUrl.href)).toEqual(['stable', 'stream']);
+          expect(languageUrl.searchParams.get('moduleId')).toBe(moduleId);
+          expect(languageUrl.searchParams.has('snapshotId')).toBe(false);
+          expect(languageUrl.pathname).toContain(`/${otherLocale}/`);
+          await languageLink.click();
+          await expect(page.locator('html')).toHaveAttribute('lang', otherLocale);
+          await expect(page).toHaveURL(languageUrl.href);
+          assertDeclarationPageRequests(page);
+          await expectSearchRows(page, 2);
+          const localizedFacet = page.locator(
+            '[data-cjdoc-search-facets] [data-cjdoc-search-facet][data-cjdoc-tag-id="stream"]');
+          await expect(localizedFacet).toHaveAttribute('aria-current', 'true');
+          expect(await localizedFacet.getAttribute('data-cjdoc-facet-module-id')).toBe(moduleId);
+          expect(await localizedFacet.getAttribute('data-cjdoc-facet-snapshot-id')).not.toBe(snapshotId);
+
+          const invalidSnapshot = new URL(page.url());
+          invalidSnapshot.searchParams.set('snapshotId', `${snapshotId}-invalid`);
+          await openDeclarationPage(page, invalidSnapshot.href, transport);
+          await expect(page.locator('[data-cjdoc-search-status]')).toContainText('snapshot_unavailable');
+          await expect(page.locator('[data-cjdoc-results] [role="option"]')).toHaveCount(0);
+
+          // Verify declaration-local AND filtering against the source fixture:
+          // two of three read overloads have `stream`, only one also has
+          // `stable`; uppercase `Stream` remains a distinct identity.
+          const localizedIndexUrl = declarationIndexUrl('tags', otherLocale, transport);
+          await openDeclarationPage(page, localizedIndexUrl, transport);
+          const localizedPackageUrl = new URL(
+            await page.locator('.package-index a').first().getAttribute('href'), localizedIndexUrl).href;
+          await openDeclarationPage(page, localizedPackageUrl, transport);
+          const readerHref = await page.locator(
+            'article[data-member-name="StreamReader"][data-member-kind="class"] > .declaration-row-link')
+            .getAttribute('href');
+          const readerUrl = new URL(readerHref, localizedPackageUrl).href;
+          await openDeclarationPage(page, readerUrl, transport);
+
+          const readMembers = page.locator(
+            'details[data-cjdoc-member][data-member-name="read"]');
+          await expect(readMembers).toHaveCount(3);
+          const originalIds = await page.locator('[id]').evaluateAll(nodes => nodes.map(node => node.id));
+          expect(new Set(originalIds).size).toBe(originalIds.length);
+          const originalReads = await readMembers.evaluateAll(nodes => nodes.map(node => {
+            const signature = node.querySelector('.declaration-signature')?.textContent.trim() || '';
+            const tags = [...node.parentElement.querySelectorAll(
+              ':scope > .declaration-classification [data-cjdoc-tag-id]')]
+              .map(tag => tag.getAttribute('data-cjdoc-tag-id')).sort();
+            const overload = node.closest('[data-cjdoc-overload-group]');
+            return { id: node.id, symbolId: node.dataset.memberSymbolId,
+              signature, tags, overloadTotal: overload?.dataset.overloadTotal || null };
+          }));
+          expect(new Set(originalReads.map(row => row.signature)).size).toBe(3);
+          const countReadIndex = originalReads.findIndex(row =>
+            /count/.test(row.signature) && /Int64/.test(row.signature));
+          const textReadIndex = originalReads.findIndex(row =>
+            /text/.test(row.signature) && /String/.test(row.signature));
+          const bytesReadIndex = originalReads.findIndex(row =>
+            /bytes/.test(row.signature) && /Array/.test(row.signature));
+          expect(countReadIndex).toBeGreaterThanOrEqual(0);
+          expect(textReadIndex).toBeGreaterThanOrEqual(0);
+          expect(bytesReadIndex).toBeGreaterThanOrEqual(0);
+          expect(originalReads[countReadIndex].tags).toEqual(['stable', 'stream']);
+          expect(originalReads[textReadIndex].tags).toEqual(['stream']);
+          expect(originalReads[bytesReadIndex].tags).toEqual(['Stream']);
+          expect(originalReads.every(row => row.overloadTotal === '3')).toBe(true);
+          const untagged = page.locator('[data-cjdoc-member][data-member-name="untagged"]');
+          await expect(untagged).toHaveCount(1);
+          expect(await untagged.locator('xpath=..')
+            .locator(':scope > .declaration-classification [data-cjdoc-tag-id]').count()).toBe(0);
+
+          const queryGroup = page.locator(
+            '[data-cjdoc-declaration-group="10-query"]');
+          const stateGroup = page.locator(
+            '[data-cjdoc-declaration-group="20-state"]');
+          const ungroupedGroup = page.locator('[data-cjdoc-declaration-group=""]');
+          await expect(ungroupedGroup).toHaveCount(1);
+          await expect(queryGroup.locator('[data-cjdoc-group-count]'))
+            .toHaveAttribute('data-group-total', '3');
+          await expect(stateGroup.locator('[data-cjdoc-group-count]'))
+            .toHaveAttribute('data-group-total', '1');
+          const queryHeadingId = await queryGroup.locator(':scope > h2').getAttribute('id');
+          const stateHeadingId = await stateGroup.locator(':scope > h2').getAttribute('id');
+          const ungroupedHeadingId = await ungroupedGroup.locator(':scope > h2').getAttribute('id');
+          const overload = page.locator('[data-cjdoc-overload-group]')
+            .filter({has: readMembers.first()});
+          await expect(overload).toHaveCount(1);
+          await expect(overload).toHaveAttribute('data-overload-total', '3');
+          const filter = page.locator('[data-cjdoc-member-filter]');
+          if (!await filter.isVisible()) {
+            await page.locator('[data-cjdoc-member-filter-toggle]').click();
+          }
+          await filter.fill('tag:stream');
+          await expect(page.locator(
+            'details[data-cjdoc-member][data-member-name="read"]:not([hidden])')).toHaveCount(2);
+          expect(numericCount(await overload.locator('[data-cjdoc-overload-count]').textContent()))
+            .toEqual([2, 3]);
+          expect(numericCount(await queryGroup.locator('[data-cjdoc-group-count]').textContent()))
+            .toEqual([2, 3]);
+          await expect(stateGroup).toBeHidden();
+          await expect(ungroupedGroup).toBeHidden();
+          const readToc = await page.locator('[data-cjdoc-toc] [data-toc-target]')
+            .evaluateAll(links => links.map(link => ({
+              target: link.dataset.tocTarget,
+              hidden: link.closest('li').hidden,
+            })));
+          expect(readToc.find(item => item.target === queryHeadingId)?.hidden).toBe(false);
+          expect(readToc.find(item => item.target === stateHeadingId)?.hidden).toBe(true);
+          expect(readToc.find(item => item.target === ungroupedHeadingId)?.hidden).toBe(true);
+          for (const row of originalReads) {
+            const item = readToc.find(link => link.target === row.id);
+            expect(item).toBeTruthy();
+            expect(item.hidden).toBe(!row.tags.includes('stream'));
+          }
+          await filter.fill('tag:stream tag:stable');
+          await expect(page.locator(
+            'details[data-cjdoc-member][data-member-name="read"]:not([hidden])')).toHaveCount(1);
+          expect(numericCount(await overload.locator('[data-cjdoc-overload-count]').textContent()))
+            .toEqual([1, 3]);
+          expect(numericCount(await queryGroup.locator('[data-cjdoc-group-count]').textContent()))
+            .toEqual([1, 3]);
+          expect(await page.locator('[id]').evaluateAll(nodes => nodes.map(node => node.id)))
+            .toEqual(originalIds);
+          await filter.fill('');
+          await expect(page.locator(
+            'details[data-cjdoc-member][data-member-name="read"]:not([hidden])')).toHaveCount(3);
+          await expect(overload).toHaveAttribute('data-overload-total', '3');
+          expect(await page.locator('[id]').evaluateAll(nodes => nodes.map(node => node.id)))
+            .toEqual(originalIds);
+
+          // A separate tag link is not inside the interactive detail summary
+          // or the overlaid actions block.
+          const countMember = readMembers.nth(countReadIndex);
+          const memberRow = countMember.locator('xpath=..');
+          const memberBadge = memberRow.locator(
+            ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+          await expect(memberBadge).toHaveCount(1);
+          await expect(memberBadge.locator('xpath=ancestor::details')).toHaveCount(0);
+          await expectBadgeOwnsHitPoint(page, memberBadge);
+          const memberStructure = await memberBadge.evaluate(element => ({
+            row: element.parentElement.parentElement === element.closest('.member-row'),
+            detailsSibling: Array.from(element.closest('.member-row').children)
+              .some(child => child.matches('details[data-cjdoc-member]')),
+            actionsSibling: Array.from(element.closest('.member-row').children)
+              .some(child => child.matches('.member-detail-actions')),
+          }));
+          expect(memberStructure).toEqual({row: true, detailsSibling: true, actionsSibling: true});
+
+          // Exercise the six requested viewport/theme combinations using the
+          // real package-row badge and the real primary declaration link.
+          for (const [width, height] of [[1440, 900], [960, 900], [390, 844]]) {
+            for (const theme of ['light', 'dark']) {
+              await page.setViewportSize({width, height});
+              await openDeclarationPage(page, packageUrl, transport);
+              await setTheme(page, theme);
+              const row = page.locator(
+                'article[data-member-name="StreamReader"][data-member-kind="class"]');
+              const badge = row.locator(
+                ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+              const bounds = await expectBadgeOwnsHitPoint(page, badge);
+              const geometry = await page.evaluate(({width, height, bounds}) => ({
+                viewport: {width, height},
+                documentWidth: document.documentElement.scrollWidth,
+                clientWidth: document.documentElement.clientWidth,
+                badge: bounds,
+              }), {width, height, bounds});
+              expect(geometry.documentWidth).toBeLessThanOrEqual(width + 1);
+              expect(geometry.badge.left).toBeGreaterThanOrEqual(0);
+              expect(geometry.badge.right).toBeLessThanOrEqual(width + 1);
+              await testInfo.attach(`tag-${transport}-${locale}-${width}-${theme}-geometry`, {
+                body: JSON.stringify(geometry), contentType: 'application/json',
+              });
+              await testInfo.attach(`tag-${transport}-${locale}-${width}-${theme}-screen`, {
+                body: await page.screenshot(), contentType: 'image/png',
+              });
+              const primaryLink = row.locator(':scope > .declaration-row-link');
+              await primaryLink.click();
+              await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'api');
+              await expect(page.locator('main h1')).toContainText('StreamReader');
+              await openDeclarationPage(page, packageUrl, transport);
+              await page.locator(
+                'article[data-member-name="StreamReader"] a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]')
+                .click();
+              const clickedUrl = new URL(page.url());
+              expect(clickedUrl.pathname).toBe(new URL(indexUrl).pathname);
+              expect(clickedUrl.searchParams.getAll('tag')).toEqual(['stream']);
+              expect(clickedUrl.searchParams.get('moduleId')).toBe(moduleId);
+              expect(clickedUrl.searchParams.get('snapshotId')).toBe(snapshotId);
+              await expectSearchRows(page, 4);
+              assertDeclarationPageRequests(page);
+            }
+          }
+
+          // Keyboard activation remains a first-class badge hit area.
+          await page.setViewportSize({width: 1440, height: 900});
+          await openDeclarationPage(page, packageUrl, transport);
+          const keyboardBadge = page.locator(
+            'article[data-member-name="StreamReader"] a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+          const keyboardTarget = new URL(await keyboardBadge.getAttribute('href'), packageUrl).href;
+          await keyboardBadge.focus();
+          await expect(keyboardBadge).toBeFocused();
+          await page.keyboard.press('Enter');
+          await expect(page).toHaveURL(keyboardTarget);
+          await expectSearchRows(page, 4);
+          assertDeclarationPageRequests(page);
+
+          // Touch the tag independently, then prove the member disclosure and
+          // its action controls still work as separate siblings.
+          const touchContext = await browser.newContext({
+            viewport: {width: 390, height: 844},
+            isMobile: true,
+            hasTouch: true,
+            colorScheme: 'dark',
+          });
+          try {
+            const touchPage = await touchContext.newPage();
+            await openDeclarationPage(touchPage, readerUrl, transport);
+            const touchReads = touchPage.locator(
+              'details[data-cjdoc-member][data-member-name="read"]');
+            const touchRead = touchReads.nth(countReadIndex);
+            const touchRow = touchRead.locator('xpath=..');
+            const touchBadge = touchRow.locator(
+              ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+            const touchTarget = new URL(await touchBadge.getAttribute('href'), readerUrl).href;
+            await expectBadgeOwnsHitPoint(touchPage, touchBadge);
+            await touchBadge.tap();
+            await expect(touchPage).toHaveURL(touchTarget);
+            expect(queryTags(touchPage.url())).toEqual(['stream']);
+            await expectSearchRows(touchPage, 4);
+            assertDeclarationPageRequests(touchPage);
+
+            await openDeclarationPage(touchPage, readerUrl, transport);
+            const actionMember = touchReads.nth(countReadIndex);
+            const actionRow = actionMember.locator('xpath=..');
+            const actions = memberActions(actionMember);
+            await actionMember.locator('summary').tap({position: {x: 8, y: 12}});
+            await expect(actionMember).toHaveAttribute('open', '');
+            const actionToggle = actions.locator('[data-cjdoc-member-actions-toggle]');
+            await actionToggle.tap();
+            await expect(actionMember).toHaveAttribute('open', '');
+            await expect(actions.locator('.member-action-list')).toBeVisible();
+            const sourceLink = actions.locator('.member-source-link');
+            await expect(sourceLink).toHaveCount(1);
+            await expect(sourceLink).toBeVisible();
+            await sourceLink.scrollIntoViewIfNeeded();
+            const sourceHit = await sourceLink.evaluate(element => {
+              const rect = element.getBoundingClientRect();
+              const target = document.elementFromPoint(rect.left + rect.width / 2,
+                rect.top + rect.height / 2);
+              return {
+                ownLink: Boolean(target && target.closest('.member-source-link') === element),
+                inBadge: Boolean(target && target.closest('.declaration-tag-badge[data-cjdoc-tag-link]')),
+                inDetails: Boolean(element.closest('details')),
+                inClassification: Boolean(element.closest('.declaration-classification')),
+              };
+            });
+            expect(sourceHit).toEqual({
+              ownLink: true, inBadge: false, inDetails: false, inClassification: false,
+            });
+            const copy = actions.locator('.member-action-copy');
+            await expect(copy).toBeVisible();
+            const beforeCopyUrl = touchPage.url();
+            await copy.tap();
+            await expect(copy).toHaveAttribute('data-copy-link-result', /^(copied|manual)$/);
+            expect(touchPage.url()).toBe(beforeCopyUrl);
+            await expect(actionMember).toHaveAttribute('open', '');
+            expect(await actionRow.locator(':scope > .declaration-classification').count()).toBe(1);
+            if (await actionToggle.getAttribute('aria-expanded') !== 'true') {
+              await actionToggle.tap();
+            }
+            await expect(actions.locator('.member-action-list')).toBeVisible();
+            const permalink = actions.locator('.member-permalink');
+            const permalinkUrl = new URL(await permalink.getAttribute('href'), readerUrl).href;
+            await permalink.tap();
+            await expect(touchPage).toHaveURL(permalinkUrl);
+            await expect(touchPage.locator('body')).toHaveAttribute('data-cjdoc-route', 'api');
+            assertDeclarationPageRequests(touchPage);
+          } finally {
+            await touchContext.close();
+          }
+        });
+    }
+  }
+});

@@ -12,7 +12,7 @@
 
 `reader-corpus.json` 保存固定源码清单、输入摘要和任务。测量前后都会验证源码；加入未登记的 `.cj`、丢失文件或修改已登记内容都会拒绝测量。不要为了改后数据变好而删除正文、改变受众、缩短 fixture、换排序或放宽应用上限。
 
-## 已采集的本地基线
+## 历史已采集的本地基线
 
 固定生成源码为 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa`，实际版本为 cjdoc 0.7.3 / `cjdoc.doc-ir/16`。本阶段不改变任何已发布 Doc IR、schema 或 golden。完整凭据摘要、原生 CPU/墙钟/RSS 和原始报告摘要见 [`reader-scale-baseline.json`](reader-scale-baseline.json)。这些是该次观测，不是其它机器或 GitHub runner 的结果。
 
@@ -99,6 +99,8 @@ python3 scripts/with_stdx.py --variant static -- python3 scripts/reader_capture.
 
 安装浏览器系统依赖/字体是环境准备，不在测量中途安装。`--corpus` 还支持 `10000`、`50000`、`external`。每次要求全新输出目录，拒绝覆盖已有证据。`reader_capture.py` 只把明确的非 1k 资源拒绝当作完成观测；任意源码/渲染/浏览器故障仍退出失败。`measured` 表示采样完成，不表示所有读者任务通过。
 
+当前采集器只消费实际发布的 `cjdoc.search-index/11`；升级搜索协议时必须同步 `reader-scale-metrics.mjs` 的输入契约。历史基线保留其源码版本对应的采集器及摘要，不能把旧协议拒绝误报为容量失败，也不能为绕过拒绝放宽预算、减少样本或生成手写索引。
+
 已有固定原生站点时可独立重跑浏览器观测，原生生成费用仍引用原来的真实凭据，不把重跑写成重新生成：
 
 ```bash
@@ -140,14 +142,18 @@ python3 scripts/reader_compare.py \
 
 RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件的高驻留内存经 fork/exec 前阶段污染子进程峰值。64 MiB 分配与 32 MiB 差值断言不放宽；单文件通过不能替代完整 Python suite 的执行结果。
 
-[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；另把固定 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 源码移到 checkout 外，使用同一认证 SDK 构建 baseline。在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天；需要长期归档时下载并保留摘要。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不能把观测已完成误写成支持该规模。每个 run 都是独立 cohort，不冒充本地快照原始文件。
+[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；固定以 `67faf0b244544a750543f049370c59479769eff4`（Doc IR/17、search-index/11）为当前 CI baseline，在 checkout 外使用同一认证 SDK 构建。该基线刷新经显式批准：此门禁仅证明后续修复相对该版本的回归，不把它表述为旧协议到新协议的完整性能比较。旧 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 的历史观测保持原样，原功能变更的成本另行披露。
+
+在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。Doc IR 与 search-index JSON/JS 的相同 payload 校验、原始任务、样本数、字体、声明下限和资源/延迟预算均不放宽；不添加旧索引兼容或跨协议跳过。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
+当前 baseline 与 candidate 使用相同展示契约，不登记旧 `0.7.3 → 0.7.7` 的 presentation 例外：字体使用、正文排版和无 JS ARIA 树直接严格相等比较。
+浏览器行为回归按当前检索契约校验：filter-only 同分结果使用 UTF-8 canonical identity 顺序，package 过滤保留 canonical-or-exposure 命中。历史恢复场景用显式 `name:` 条件选择唯一成员并核对其捕获的渲染身份，不对自由文本 discovery 的结果数量固定旧假设。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。
 
 
-## #163 的预期展示差异登记
+## 历史 #163 的预期展示差异登记
 
-固定 1k cohort 使用 [`reader-scale-presentation.json`](reader-scale-presentation.json)。
+历史改版的固定 1k cohort 使用 [`reader-scale-presentation.json`](reader-scale-presentation.json)，该例外不用于当前 CI 基线。
 基线采集完成后，`reader_register.py --presentation` 将该文件的原始摘要、规范化内容摘要及完整内容写入注册预算，随后才采集 after。
 默认不提供该参数时仍要求原来的完全相同排版。其它语料需要独立登记，不自动套用 1k 的例外。
 
@@ -164,6 +170,8 @@ build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 
 另经单独授权，产品 Doc IR 物理对象上限由 65,536 提高到 131,072。编码器与严格解码器共用该值，并覆盖新边界的接受、拒绝和生成回退；文档/字符串字节、数组项、类型/Markdown 出现次数等独立限制不变。
 这项容量调整与展示登记分别提交；先前 10k/50k 的历史观测不据此升级为支持声明。
 
+当前查询与标签模型另经授权，将累计数组项上限从 100,000 调整为 131,072。完整 self 捕获的独立物理 JSON 计数为 109,656 项，512 MiB 与原 smoke 2 GiB 配方得到相同 Doc IR；对象、字节、字符串、类型/Markdown、SDK、堆配方和声明下限不变。此处记录容量依据，不把旧的资源受限观测或性能结果重新标为通过；后续语料必须按当前源码与产物重新采集。
 
-固定 0.7.3 基线必须使用该 revision 自带的 `with_sts_o1_cjpm.sh`，以其记录的 `-O1` 规则重建。
+
+重放历史固定 0.7.3 基线时，必须使用该 revision 自带的 `with_sts_o1_cjpm.sh`，以其记录的 `-O1` 规则重建。
 当前产品继续使用当前仓库的 `-O2 --fno-chir-function-inlining` 规则。不要把当前包装器套到旧源码：旧版本的 markdown/yjson 依赖在普通 `-O2` 下有已记录的 llc 崩溃；这会在采样之前失败，不能解释成读者性能退化。两份构建日志和原生身份各自保留。

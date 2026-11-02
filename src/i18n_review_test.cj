@@ -144,7 +144,7 @@ class I18nReviewTest {
         for ((current, fileName) in [
             (schemas.API_DIFF_SCHEMA, "api-diff-v2.schema.json"),
             (schemas.VERSIONS_SCHEMA, "versions-v2.schema.json"),
-            (schemas.SEARCH_INDEX_SCHEMA, "search-index-v9.schema.json")]) {
+            (schemas.SEARCH_INDEX_SCHEMA, "search-index-v11.schema.json")]) {
             let currentId = JsonNode.parse(current).asObject()["$id"].asString()
             @Expect(currentId.endsWith("/" + fileName))
             @Expect(readTextBounded(Path("docs/schema").join(fileName), 1024 * 1024).trimAscii(), current.trimAscii())

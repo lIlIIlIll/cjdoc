@@ -316,9 +316,23 @@ class MacroInvocation {
     }
 }
 
+class SourceMetadataModuleRoot {
+    public let moduleId: String
+    public let actualRoot: String
+    public let configPath: String
+
+    public init(moduleId: String, actualRoot: String, configPath: String) {
+        this.moduleId = moduleId
+        this.actualRoot = actualRoot
+        this.configPath = configPath
+    }
+}
+
 class SourceSnapshot {
     public let projectName: String
     public let modules = ArrayList<SourceModule>()
+    public let metadataModuleRoots = ArrayList<SourceMetadataModuleRoot>()
+    public var metadataInventory = DocumentationMetadataInventory()
     public var cfgProfile = CfgProfile()
     public var manifestText: ?String = None
     public let packages = ArrayList<SourcePackage>()

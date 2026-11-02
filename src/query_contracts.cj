@@ -6,7 +6,10 @@ import std.sort.*
 import yjson.*
 import yjson_algorithms.*
 
-internal let QUERY_INPUT_BYTES: Int64 = 1024 * 1024
+private let QUERY_SEARCH_CONTRACT: JsonObject =
+    JsonNode.parse(query_schema.documentationSearchContract()).asObject()
+internal let QUERY_INPUT_BYTES: Int64 =
+    QUERY_SEARCH_CONTRACT.get("maxRequestBytes").getOrThrow().asInt64()
 internal let QUERY_DEFAULT_BYTES: Int64 = 65536
 internal let QUERY_MAX_BYTES: Int64 = 64 * 1024 * 1024
 
@@ -127,7 +130,7 @@ internal func parseDocumentationQueryRequest(text: String): JsonObject {
         let name = request.nameAt(index)
         if (!QUERY_REQUEST_FIELDS.contains(name)) {
             throw DocumentationQueryException("invalid_request", "unknown_field",
-                "Request field '${name}' is not declared by cjdoc.query-request/1.")
+                "Request field '${name}' is not declared by cjdoc.query-request/3.")
         }
     }
     let errors = QUERY_REQUEST_SCHEMA.validate(request)
@@ -138,7 +141,7 @@ internal func parseDocumentationQueryRequest(text: String): JsonObject {
                 "Request field '${field}' is not applicable to this operation or identity.")
         }
         throw DocumentationQueryException("invalid_request", "request_schema",
-            "Request does not satisfy cjdoc.query-request/1." +
+            "Request does not satisfy cjdoc.query-request/3." +
             (if (field.isEmpty()) { "" } else { " Invalid field '${field}'." }))
     }
     request
@@ -149,9 +152,9 @@ public func documentationQueryToolSchema(operation: String): String {
     query_schema.documentationQueryOperationSchema(operation)
 }
 
-/** A self-contained strict response schema, including unchanged Doc IR v16 definitions. */
+/** A self-contained strict response schema, including Doc IR v17 definitions. */
 public func documentationQueryOutputSchema(): String {
-    query_schema.completeDocumentationSchema(query_schema.DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE)
+    query_schema.documentationQueryResultSchema()
 }
 
 /**

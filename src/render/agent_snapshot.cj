@@ -46,10 +46,10 @@ public class DocumentationReadSnapshot {
         this.documentation = publicationForReading(documentation, this.locale, audience)
         for (module in this.documentation.modules) { modulesById[module.id] = module }
         dependencyStates = capturedDependencyProjection(this.documentation)
-        projection = RenderProjection(this.documentation)
         identity = SymbolInventoryIdentity(this.documentation, publicationRevision: Some(publicationRevision))
         encodedDocumentation = encodeDocIr(this.documentation)
         snapshotId = readSnapshotContentId(encodedDocumentation, publicationRevision)
+        projection = RenderProjection(this.documentation, snapshotId: snapshotId)
         markdown = DeclarationMarkdownProjection(this.documentation, projection, this.locale)
         pageMarkdown = AgentPageMarkdownProjection(this.documentation, projection, this.locale)
     }

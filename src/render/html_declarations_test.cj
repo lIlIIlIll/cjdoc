@@ -15,7 +15,8 @@ private func rowSymbol(key: String, name: String, kind: String, header: String,
         header, SemanticInfo("partial", "ast"), genericParameters: generics)
 }
 
-private func rowDocumentation(symbols: Array<SymbolDoc>, audience!: String = "external"): DocumentationSet {
+private func rowDocumentation(symbols: Array<SymbolDoc>, audience!: String = "external",
+    metadata!: DocumentationMetadata = DocumentationMetadata()): DocumentationSet {
     let ids = ArrayList<String>()
     for (symbol in symbols) { ids.add(symbol.id) }
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("package-rows"),
@@ -24,7 +25,9 @@ private func rowDocumentation(symbols: Array<SymbolDoc>, audience!: String = "ex
             SemanticCapabilities(false, false, false, true, false))],
         modules: [ModuleDoc(ROW_MODULE, "package-rows", "root", "", packageNames: ["fixture"])],
         packages: [PackageDoc("fixture", ROW_MODULE, sourceFiles: ["src/api.cj"], symbolIds: ids.toArray())],
-        files: [FileDoc("src/api.cj", ROW_MODULE, "fixture")], declarations: symbols)
+        files: [FileDoc("src/api.cj", ROW_MODULE, "fixture")], declarations: symbols,
+        metadata: metadata)
+
 }
 
 private func packageRowsHtml(documentation: DocumentationSet, locale: String): String {
@@ -108,9 +111,16 @@ class HtmlPackageDeclarationTest {
         let hidden = SymbolDoc("cjdoc:v2:cjdoc%3Amodule%3Av1%3Apackage-rows::fixture::class:Hidden#g0()",
             "class", "Hidden", "fixture.Hidden", "fixture", ROW_MODULE, "private", publicType.source,
             "private class Hidden", SemanticInfo("partial", "ast"), documentation: Some(
-                DocComment("raw", "private summary must not leak", "", MarkdownNode("document"))))
+                DocComment("raw", "private summary must not leak", "", MarkdownNode("document"),
+                    tags: [DocTag("group", "private-group", ""),
+                        DocTag("tag", "private-tag", "")])))
         let symbols = [publicType, function, special, hidden]
-        let external = declarationRowsHtml(packageRowsHtml(rowDocumentation(symbols), "zh-CN"))
+        let hiddenMetadata = DocumentationMetadata(
+            groups: [DocumentationGroupDefinition(ROW_MODULE, "fixture", "private-group",
+                "private-group-title")],
+            tags: [DocumentationTagDefinition(ROW_MODULE, "private-tag", "private-tag-title")])
+        let external = declarationRowsHtml(packageRowsHtml(
+            rowDocumentation(symbols, metadata: hiddenMetadata), "zh-CN"))
         @Expect(external.contains("类（1）"))
         @Expect(external.contains("函数（1）"))
         @Expect(external.contains("宏（1）"))
@@ -120,9 +130,14 @@ class HtmlPackageDeclarationTest {
         @Expect(external.contains("Quoted"))
         @Expect(!external.contains("Hidden"))
         @Expect(!external.contains("private summary must not leak"))
-        let all = declarationRowsHtml(packageRowsHtml(rowDocumentation(symbols, audience: "all"), "zh-CN"))
-        @Expect(all.contains("类（2）"))
+        @Expect(!external.contains("private-group-title"))
+        @Expect(!external.contains("private-tag-title"))
+        @Expect(!external.contains("private-tag"))
+        let all = declarationRowsHtml(packageRowsHtml(
+            rowDocumentation(symbols, audience: "all", metadata: hiddenMetadata), "zh-CN"))
         @Expect(all.contains("private summary must not leak"))
+        @Expect(all.contains("private-group-title"))
+        @Expect(all.contains("private-tag-title"))
     }
 
     @TestCase
@@ -146,7 +161,42 @@ class HtmlPackageDeclarationTest {
         @Expect(html.contains("public func read(value: Int64 = 42): Unit"))
         @Expect(html.contains("public func read(value: String = &quot;&lt;&gt;&amp;&quot;): Unit"))
         @Expect(!html.contains("<p class=\"declaration-description\"></p>"))
-        @Expect(!html.contains("<code class=\"declaration-signature\"></code>"))
+        @Expect(!html.contains("class=\"declaration-classification\""))
+    }
+
+    @TestCase
+    func classificationBadgesEscapeTitlesAndUseCapturedScopeLinks(): Unit {
+        let base = rowSymbol("function:classified#g0()", "classified", "function",
+            "public func classified(): Unit")
+        let classified = SymbolDoc(base.id, base.kind, base.name, base.qualifiedName,
+            base.packageName, base.moduleId, base.visibility, base.source, base.headerSpelling,
+            base.semantic, documentation: Some(DocComment("raw", "summary", "",
+                MarkdownNode("document"), tags: [
+                    DocTag("group", "unsafe", "inline title"),
+                    DocTag("tag", "stream", "")
+                ])))
+        let unusedSentinel = "secret-unused-definition-93"
+        let metadata = DocumentationMetadata(
+            groups: [
+                DocumentationGroupDefinition(ROW_MODULE, "fixture", "unsafe",
+                    "<img src=x onerror=alert(1)>"),
+                DocumentationGroupDefinition(ROW_MODULE, "fixture", "unused",
+                    unusedSentinel)
+            ],
+            tags: [
+                DocumentationTagDefinition(ROW_MODULE, "stream", "<svg onload=alert(1)>"),
+                DocumentationTagDefinition(ROW_MODULE, "unused-tag", unusedSentinel)
+            ])
+        let html = declarationRowsHtml(packageRowsHtml(
+            rowDocumentation([classified], metadata: metadata), "en"))
+        @Expect(html.contains("&lt;img src=x onerror=alert(1)&gt;"))
+        @Expect(html.contains("&lt;svg onload=alert(1)&gt;"))
+        @Expect(!html.contains("<img src=x onerror=alert(1)>"))
+        @Expect(!html.contains("<svg onload=alert(1)>"))
+        @Expect(!html.contains(unusedSentinel))
+        @Expect(html.contains("</a><div class=\"declaration-classification\">"))
+        @Expect(html.contains("data-cjdoc-tag-id=\"stream\""))
+        @Expect(html.contains("href=\"../index.html?tag=stream&amp;moduleId=cjdoc%3Amodule%3Av1%3Apackage-rows&amp;snapshotId="))
     }
 
     // Issue #112: the anchor must resolve for the far more common single-category

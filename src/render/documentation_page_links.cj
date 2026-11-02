@@ -71,56 +71,18 @@ private class CapturedPageBindingTarget {
     }
 }
 
-internal func appendSearchPageBindings(out: RenderTextBuffer, page: DocumentationPage,
-    visible: HashMap<String, SymbolDoc>): Unit {
-    out.append(",\"bindings\":[")
-    var first = true
+internal func projectSearchPageBindings(page: DocumentationPage,
+    visible: HashMap<String, SymbolDoc>, locale: String): ArrayList<SearchPageBinding> {
+    let result = ArrayList<SearchPageBinding>()
     for (binding in page.bindings) {
         let target = CapturedPageBindingTarget(binding, visible)
         if (target.hidden) { continue }
-        if (!first) { out.append(",") }; first = false
-        out.append("{\"target\":"); appendSearchJsonString(out, binding.target)
-        out.append(",\"selector\":"); appendSearchJsonString(out, binding.selector)
-        out.append(",\"provenance\":"); appendSearchJsonString(out, binding.provenance)
-        out.append(",\"version\":"); appendSearchJsonString(out, binding.version)
-        out.append(",\"sourceLine\":${binding.sourceLine},\"language\":")
-        appendSearchJsonString(out, binding.language)
-        out.append(",\"state\":"); appendSearchJsonString(out, binding.state)
-        out.append(",\"targetSymbolId\":"); appendOptionalSearchString(out, binding.targetSymbolId)
-        out.append(",\"href\":"); appendOptionalSearchString(out, target.destination("", false))
-        out.append(",\"navigationTitle\":"); appendSearchJsonString(out, target.title("en"))
-        out.append(",\"navigation\":")
-        appendSearchPageNavigation(out, target.navigation)
-        out.append("}")
+        result.add(SearchPageBinding(binding.target, binding.selector, binding.provenance,
+            binding.version, binding.sourceLine, binding.language, target.state,
+            binding.targetSymbolId, target.destination("", false), target.title(locale),
+            target.navigation))
     }
-    out.append("]")
-}
-
-private func appendSearchPageNavigation(out: RenderTextBuffer, value: ?TypeNavigation): Unit {
-    match (value) {
-        case Some(navigation) =>
-            if (contextFreeNavigationFailure(navigation)) {
-                out.append("[")
-                appendSearchJsonString(out, navigation.state)
-                out.append(",")
-                appendSearchJsonString(out, navigation.reason)
-                out.append("]")
-                return
-            }
-            out.append("{\"state\":"); appendSearchJsonString(out, navigation.state)
-            out.append(",\"matchLevel\":"); appendSearchJsonString(out, navigation.matchLevel)
-            out.append(",\"reason\":"); appendSearchJsonString(out, navigation.reason)
-            out.append(",\"dependencyInstanceId\":")
-            appendSearchJsonString(out, navigation.dependencyInstanceId)
-            out.append(",\"documentSetId\":"); appendSearchJsonString(out, navigation.documentSetId)
-            out.append(",\"indexIdentity\":"); appendSearchJsonString(out, navigation.indexIdentity)
-            out.append(",\"symbolKey\":"); appendSearchJsonString(out, navigation.symbolKey)
-            out.append(",\"url\":"); appendSearchJsonString(out, navigation.url)
-            out.append(",\"apiIdentity\":"); appendSearchJsonString(out, navigation.apiIdentity)
-            out.append(",\"language\":"); appendSearchJsonString(out, navigation.language)
-            out.append("}")
-        case None => out.append("null")
-    }
+    result
 }
 
 private func capturedSourcePath(source: String, destination: String): String {

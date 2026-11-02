@@ -16,8 +16,9 @@
 # The user's global Git ignore excludes JSON; these are project sources.
 !/AGENTS.md
 !/docs/schema/*.json
-!/tests/fixtures/golden-v16/*.json
+!/tests/fixtures/golden-v17/*.json
 !/tests/perf/*.json
+!/tests/fixtures/query-semantics/cases.json
 !/docs/maintainer/reader-scale-budgets.json
 !/docs/maintainer/reader-scale-baseline.json
 !/docs/maintainer/reader-scale-presentation.json

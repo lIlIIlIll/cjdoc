@@ -1,6 +1,7 @@
 package cjdoc
 
 import std.collection.*
+import cjdoc.model as api_model
 
 class SemanticParameter {
     public let name: String
@@ -360,6 +361,8 @@ class DocumentationSet {
     public let diagnostics = ArrayList<Diagnostic>()
     public let semanticBindings = ArrayList<SemanticBindingStats>()
     public var cfgProfile = CfgProfile()
+    public var metadata: api_model.DocumentationMetadata = api_model.DocumentationMetadata()
+    public var metadataInventory = DocumentationMetadataInventory()
 
     public init(projectName: String) { this.projectName = projectName }
 }

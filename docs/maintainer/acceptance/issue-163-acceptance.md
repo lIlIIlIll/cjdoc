@@ -141,11 +141,10 @@ reason: visual ["desktop", "light", "overload16", "en"]: body typography changed
 ```bash
 cjpm build
 cjpm test
-python3 examples/pocketkit/reproduce.py --help
-# CJDOC_READING_FIXTURE 指向真实生成的双语 HTML 根目录
-node tests/browser/node_modules/@playwright/test/cli.js test \
-  --config tests/browser/playwright.config.mjs
 ```
+
+当前源码的完整浏览器重放入口见[构建指南：浏览器回归](../build.md#浏览器回归)，
+包括真实 fixture 生成和必需环境变量；该入口更新不改变本文记录的历史结果。
 
 完整原始日志、浏览器报告、字体观测、原始失败、固定源码 archive、完整预览和原工作区备份保留在任务私有目录 `$HOME/.cache/agent-tmp/issue-163-5iXwTS32`（整理前约 1.4GiB）。主要文件：`final-identity.json`、`native-final.log`、`python-tools-serial.log`、`accepted-browser.log`、`accepted-browser-report/index.html`、`golden-final/results.json`、`final-discovery-{en,zh}/reader-discovery.json`、`density-final.json`、`reader-fixed-comparison.json`、`final-preview.log`。
 

@@ -2,7 +2,7 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/16"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/17"
 public let DOC_IR_MAX_TYPE_DEPTH: Int64 = 64
 public let DOC_IR_MAX_MARKDOWN_DEPTH: Int64 = 64
 public let DOC_IR_MAX_FENCE_LENGTH: Int64 = 1024
@@ -11,9 +11,9 @@ protected let DOC_IR_MAX_JSON_STRING_BYTES: Int64 = 24 * 1024 * 1024
 // Larger documents may require a larger runtime heap.
 protected let DOC_IR_MAX_JSON_DOCUMENT_BYTES: Int64 = 64 * 1024 * 1024
 protected let DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES: Int64 = 64 * 1024 * 1024
-// Physical JSON objects, counted equally by the encoder and strict decoder.
+// Aggregate physical JSON occurrences, counted equally by encoder and strict decoder.
 protected let DOC_IR_MAX_SCHEMA_OBJECTS: Int64 = 131072
-protected let DOC_IR_MAX_SCHEMA_ARRAY_ITEMS: Int64 = 100000
+protected let DOC_IR_MAX_SCHEMA_ARRAY_ITEMS: Int64 = 131072
 protected let DOC_IR_MAX_TYPE_OCCURRENCES: Int64 = 32768
 protected let DOC_IR_MAX_TYPE_EDGES: Int64 = 32768
 protected let DOC_IR_MAX_MARKDOWN_OCCURRENCES: Int64 = 32768

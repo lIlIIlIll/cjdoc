@@ -72,7 +72,7 @@ private func appendExternalReference(out: RenderTextBuffer, value: ExternalDocum
 
 internal func externalDocumentationHtml(documentation: DocumentationSet, symbol: SymbolDoc,
     locale: String, relatedSymbolIds!: HashSet<String> = HashSet<String>(),
-    compactUnavailable!: Bool = false): String {
+    compactUnavailable!: Bool = false, headingLevel!: Int64 = 0): String {
     let out = RenderTextBuffer()
     let failures = ArrayList<ExternalDocumentationReference>()
     let seen = HashSet<String>()
@@ -87,7 +87,9 @@ internal func externalDocumentationHtml(documentation: DocumentationSet, symbol:
         }
         if (!local) { continue }
         if (!opened) {
-            let heading = if (compactUnavailable) { "h3" } else { "h2" }
+            let level = if (headingLevel > 0) { min(6, headingLevel) }
+                else if (compactUnavailable) { 3 } else { 2 }
+            let heading = "h${level}"
             out.append("<section class=\"external-documentation\"><" + heading + ">" +
                 label(locale, "External documentation", "外部文档") + "</" + heading + "><ul>")
             opened = true

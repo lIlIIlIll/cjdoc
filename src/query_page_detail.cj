@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.model as query_model
+import cjdoc.render as query_render
 import std.collection.*
 import yjson.*
 
@@ -37,6 +38,8 @@ internal func queryFillPage(outcome: QueryOutcome, input: QuerySnapshotInput,
     let item = JsonNode.object()
     item.put("kind", JsonNode.string("concept"))
     item.put("identity", queryIdentityNode(input, Option<String>.None, Some(page.id)))
+    item.put("classification",
+        query_render.capturedDeclarationClassificationNode(input.snapshot, Option<query_model.SymbolDoc>.None))
     item.put("signature", JsonNode.nullValue)
     item.put("summary", JsonNode.string(page.title))
     let reason = JsonNode.object()

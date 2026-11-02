@@ -1,18 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v16",
+  "title": "cjdoc Doc IR v17",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
+  "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "metadata", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/16"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/17"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
     "documentationRevision": {"type": "string"},
     "project": {"$ref": "#/$defs/project"},
     "configuration": {"$ref": "#/$defs/configuration"},
+    "metadata": {"$ref": "#/$defs/documentationMetadata"},
     "dependencies": {"type": "array", "items": {"$ref": "#/$defs/dependencyInstance"}},
     "documentSets": {"type": "array", "items": {"$ref": "#/$defs/documentSetIdentity"}},
     "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}},
@@ -811,6 +812,49 @@
       "properties": {
         "provider": {"type": "string", "minLength": 1}, "display": {"type": "string"},
         "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "metadataTitleText": {
+      "type": "string", "minLength": 1, "maxLength": 256, "x-maxUtf8Bytes": 256,
+      "description": "Nonblank single-line metadata title of 1-256 UTF-8 bytes; the model enforces the byte limit and rejects controls."
+    },
+    "documentationTitle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["language", "title"],
+      "properties": {
+        "language": {"enum": ["zh-CN", "en"]},
+        "title": {"$ref": "#/$defs/metadataTitleText"}
+      }
+    },
+    "documentationGroupDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["moduleId", "packageName", "ownerId", "id", "title", "titles", "order"],
+      "properties": {
+        "moduleId": {"type": "string", "minLength": 1},
+        "packageName": {"type": "string", "minLength": 1},
+        "ownerId": {"$ref": "#/$defs/nullableSymbolId"},
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "title": {"$ref": "#/$defs/metadataTitleText"},
+        "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}},
+        "order": {"anyOf": [{"type": "integer", "minimum": 0, "maximum": 999999}, {"type": "null"}]}
+      }
+    },
+    "documentationTagDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["moduleId", "id", "title", "titles"],
+      "properties": {
+        "moduleId": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "title": {"$ref": "#/$defs/metadataTitleText"},
+        "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}}
+      }
+    },
+    "documentationMetadata": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groups", "tags"],
+      "properties": {
+        "groups": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationGroupDefinition"}},
+        "tags": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationTagDefinition"}}
       }
     },
     "diagnostic": {

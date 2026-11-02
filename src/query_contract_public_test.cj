@@ -23,15 +23,17 @@ private func contractRange(line: Int64, path!: String = "src/api.cj"): SourceRan
 }
 
 private func contractSymbol(id: String, name: String, moduleId: String,
-    packageName: String, sourcePath!: String = "src/api.cj"): api_model.SymbolDoc {
+    packageName: String, sourcePath!: String = "src/api.cj",
+    documentation!: ?api_model.DocComment = None): api_model.SymbolDoc {
     api_model.SymbolDoc(id, "class", name, packageName + "." + name, packageName, moduleId,
         "public", contractRange(1, path: sourcePath), "public class " + name,
-        SemanticInfo("partial", "ast"))
+        SemanticInfo("partial", "ast"), documentation: documentation)
 }
 
 private func contractDocumentation(projectName!: String = "query-contract-fixture"): api_model.DocumentationSet {
-    let a = contractSymbol(CONTRACT_SYMBOL_A,
-        "Catalog", CONTRACT_MODULE_A, "fixture")
+    let a = contractSymbol(CONTRACT_SYMBOL_A, "Catalog", CONTRACT_MODULE_A, "fixture",
+        documentation: Some(api_model.DocComment("", "Schema classification fixture", "",
+            MarkdownNode("document"), tags: [api_model.DocTag("tag", "contractTag", "")])))
     let b = contractSymbol("cjdoc:v2:cjdoc%3Amodule%3Av1%3Apocket-support-0.1.0::fixture::class:Label#g0()",
         "Label", CONTRACT_MODULE_B, "fixture", sourcePath: "dependencies/support/src/api.cj")
     // Captured evidence is padded so one candidate record is comfortably larger
@@ -122,6 +124,59 @@ private func contractRequestValidator(): JsonSchema {
 private func contractIsValid(validator: JsonSchema, value: JsonNode): Bool {
     validator.validate(value).isEmpty()
 }
+private func contractJsonArrayContains(values: JsonArray, expected: String): Bool {
+    for (index in 0..values.size()) {
+        if (values[index].asString() == expected) { return true }
+    }
+    false
+}
+private func contractSchemaForDefinition(schemaText: String, name: String): JsonSchema {
+    let source = JsonNode.parse(schemaText).asObject()
+    let wrapper = JsonNode.object()
+    wrapper.put("$schema", JsonNode.string("https://json-schema.org/draft/2020-12/schema"))
+    wrapper.put("$ref", JsonNode.string("#/$defs/" + name))
+    wrapper.put("$defs", source.get("$defs").getOrThrow())
+    JsonSchema.parse(wrapper.toJson())
+}
+
+private func contractSearchEntry(concept: Bool): JsonObject {
+    let entry = JsonNode.parse("""
+{
+  "id":"guide:one","canonicalId":"guide:one","snapshotId":"snapshot-one","scope":-1,
+  "concept":true,"genericArity":0,"ownerId":null,"name":"Guide","packageName":null,
+  "qualifiedName":null,"kind":"guide","ownerName":null,"ownerQualifiedName":null,
+  "symbolKey":null,"parameterTypes":[],"returnType":null,"returnCanonical":null,
+  "summary":"","summaryDisplay":"","body":"","bodyTruncated":false,"href":"guide/one.html",
+  "exposures":[],"externalDocs":[],"bindings":[],"sections":[],
+  "classification":{"group":null,"tags":[]}
+}
+""").asObject()
+    if (!concept) {
+        entry.put("concept", JsonNode.boolean(false))
+        entry.put("scope", JsonNode.int64(0))
+        entry.put("packageName", JsonNode.string("fixture"))
+        entry.put("qualifiedName", JsonNode.string("fixture.Guide"))
+    }
+    entry
+}
+private func contractQueryConceptItem(): JsonObject {
+    JsonNode.parse("""
+{
+  "kind":"concept",
+  "identity":{
+    "snapshotId":"snapshot-one","sourceSnapshotId":"source-one","documentSet":null,
+    "moduleId":null,"dependencyInstance":null,"dependencyInstanceState":"not_applicable",
+    "symbolId":null,"symbolKey":null,"pageId":"guide:one","ownerId":null
+  },
+  "signature":null,"summary":null,
+  "match":{"score":2000,"reason":"guide_text"},
+  "sections":[],
+  "representations":{"html":"guide/one.html","markdown":"guide/one.md","json":"guide/one.json"},
+  "source":null,"exposures":[],
+  "classification":{"group":null,"tags":[]}
+}
+""").asObject()
+}
 
 
 @Test
@@ -159,7 +214,7 @@ class DocumentationQueryContractPublicTest {
                 "request_schema"),
             ("{\"operation\":\"get_symbol\",\"pageId\":\"fixture:page:one\",\"relations\":{\"depth\":1}}",
                 "field_not_applicable"),
-            ("{\"operation\":\"get_symbol\",\"pageId\":\"fixture:page:one\",\"cursor\":\"cjdoc.cursor/1:0:x\"}",
+            ("{\"operation\":\"get_symbol\",\"pageId\":\"fixture:page:one\",\"cursor\":\"cjdoc.cursor/2:0:precise/full-ir:x\"}",
                 "field_not_applicable"),
             ("{\"operation\":\"get_symbol\",\"pageId\":\"fixture:page:one\",\"sections\":[\"signature\"]}",
                 "request_schema"),
@@ -372,7 +427,7 @@ class DocumentationQueryContractPublicTest {
             "{\"operation\":\"get_symbol\",\"symbolId\":\"${CONTRACT_SYMBOL_A}\",\"maxBytes\":1024}",
             "{\"operation\":\"get_symbol\",\"symbolId\":\"cjdoc:v2:absent::fixture::class:Nope#g0()\"}",
             "{\"operation\":\"search\",\"query\":\"Catalog\",\"preset\":\"summary\"}",
-            "{\"operation\":\"resolve_docs\",\"maxBytes\":1024,\"cursor\":\"cjdoc.cursor/1:0:x\"}",
+            "{\"operation\":\"resolve_docs\",\"maxBytes\":1024,\"cursor\":\"cjdoc.cursor/2:0:precise/full-ir:x\"}",
             "{\"operation\":\"resolve_docs\",\"snapshotId\":\"cjdoc:snapshot:v1:absent\"}"
         ]
         for (request in requests) {
@@ -469,5 +524,264 @@ class DocumentationQueryContractPublicTest {
         allowedOmission.put("next", JsonNode.nullValue)
         contractContent(goodOmission).get("omittedSections").getOrThrow().asArray().add(allowedOmission)
         @Expect(contractIsValid(validator, goodOmission), true)
+    }
+    @TestCase
+    func queryTagRequestSchemaAllowsDuplicatesButCapsRawInputs(): Unit {
+        let validator = contractRequestValidator()
+        @Expect(contractIsValid(validator, JsonNode.parse(
+            "{\"operation\":\"search\",\"tags\":[\"stream\",\"stream\"]}")), true)
+        @Expect(contractIsValid(validator, JsonNode.parse(
+            "{\"operation\":\"search\",\"tags\":[]}")), false)
+        @Expect(contractIsValid(validator, JsonNode.parse(
+            "{\"operation\":\"search\",\"tags\":[\"bad id\"]}")), false)
+        let tooManyTags = JsonArray()
+        for (_ in 0..65) { tooManyTags.add(JsonNode.string("stream")) }
+        let oversized = JsonNode.object()
+        oversized.put("operation", JsonNode.string("search"))
+        oversized.put("tags", tooManyTags)
+        @Expect(contractIsValid(validator, oversized), false)
+        let getSymbolValidator = JsonSchema.parse(
+            query_schema.documentationQueryOperationSchema("get_symbol"))
+        @Expect(contractIsValid(getSymbolValidator, JsonNode.parse(
+            "{\"symbolId\":\"${CONTRACT_SYMBOL_A}\",\"tags\":[\"stream\"]}")), false)
+    }
+
+    @TestCase
+    func currentSearchAndDeclarationSchemasShareStrictClassification(): Unit {
+        let searchSchemaText = query_schema.SEARCH_INDEX_SCHEMA
+        let searchSchema = JsonNode.parse(searchSchemaText).asObject()
+        @Expect(searchSchema.get("properties").getOrThrow().asObject()
+            .get("schemaVersion").getOrThrow().asObject().get("const").getOrThrow()
+            .asString(), "cjdoc.search-index/11")
+        @Expect(contractJsonArrayContains(searchSchema.get("required").getOrThrow()
+            .asArray(), "tags"), true)
+        @Expect(schemaTextForCli("search-index-v11"), searchSchemaText)
+        let aliases = schemaTextForCli("list")
+        @Expect(aliases.contains("search-index-v11"), true)
+        @Expect(aliases.contains("search-index-v10"), false)
+
+        let querySchema = JsonNode.parse(documentationQueryOutputSchema()).asObject()
+        let declarationSchema = JsonNode.parse(
+            query_schema.documentationArtifactSchema("declaration")).asObject()
+        @Expect(declarationSchema.get("properties").getOrThrow().asObject()
+            .get("schemaVersion").getOrThrow().asObject().get("const").getOrThrow()
+            .asString(), "cjdoc.declaration/2")
+        let declarationRequired = declarationSchema.get("required").getOrThrow().asArray()
+        @Expect(contractJsonArrayContains(declarationRequired, "classification"), true)
+
+        let searchDefinitions = searchSchema.get("$defs").getOrThrow().asObject()
+        let queryDefinitions = querySchema.get("$defs").getOrThrow().asObject()
+        let declarationDefinitions = declarationSchema.get("$defs").getOrThrow().asObject()
+        let classification = searchDefinitions.get("documentationClassification").getOrThrow()
+        @Expect(queryDefinitions.get("documentationClassification").getOrThrow().toJson(),
+            classification.toJson())
+        @Expect(declarationDefinitions.get("documentationClassification").getOrThrow().toJson(),
+            classification.toJson())
+        let titleDefinition = searchDefinitions.get("classificationTitle").getOrThrow().asObject()
+        @Expect(titleDefinition.get("x-maxUtf8Bytes").getOrThrow().asInt64(), 256)
+
+        let searchContractValidator = contractSchemaForDefinition(searchSchemaText, "searchContract")
+        let contract = JsonNode.parse(query_schema.documentationSearchContract())
+        @Expect(contractIsValid(searchContractValidator, contract), true)
+        let contractObject = contract.asObject()
+        @Expect(contractObject.get("version").getOrThrow().asString(),
+            "cjdoc.search-contract/2")
+        @Expect(contractObject.get("maxTags").getOrThrow().asInt64(), 64)
+        let predicates = contractObject.get("setPredicates").getOrThrow().asArray()
+        @Expect(predicates.size(), 1)
+        let predicate = predicates[0].asObject()
+        @Expect(queryString(predicate, "field"), "tags")
+        @Expect(queryString(predicate, "property"), "tagIds")
+        @Expect(queryString(predicate, "primitive"), "all_exact")
+
+        let searchTagList = searchDefinitions.get("documentationClassification")
+            .getOrThrow().asObject().get("properties").getOrThrow().asObject()
+            .get("tags").getOrThrow().asObject()
+        @Expect(searchTagList.get("maxItems").isNone(), true)
+        let dictionary = searchSchema.get("properties").getOrThrow().asObject()
+            .get("tags").getOrThrow().asObject()
+        @Expect(dictionary.get("maxItems").isNone(), true)
+        let entryProperties = searchDefinitions.get("entry").getOrThrow().asObject()
+            .get("properties").getOrThrow().asObject()
+        @Expect(entryProperties.get("tagIds").isNone(), true)
+        let dictionaryValidator = contractSchemaForDefinition(searchSchemaText,
+            "tagDictionaryEntry")
+        let dictionaryEntry = JsonNode.parse(
+            "{\"scope\":0,\"id\":\"stream\",\"title\":\"Streaming\"}")
+        @Expect(contractIsValid(dictionaryValidator, dictionaryEntry), true)
+        let dictionaryWithModule = JsonNode.parse(dictionaryEntry.toJson()).asObject()
+        dictionaryWithModule.put("moduleId", JsonNode.string(CONTRACT_MODULE_A))
+        @Expect(contractIsValid(dictionaryValidator, dictionaryWithModule), false)
+
+        let moduleValidator = contractSchemaForDefinition(searchSchemaText, "module")
+        let module = JsonNode.parse(
+            "{\"moduleId\":\"cjdoc:module:v1:fixture\",\"moduleName\":null," +
+            "\"documentSet\":null,\"dependency\":null," +
+            "\"dependencyInstanceState\":\"not_applicable\"}").asObject()
+        @Expect(contractIsValid(moduleValidator, module), true)
+        module.put("dependencyState", JsonNode.string("not_applicable"))
+        @Expect(contractIsValid(moduleValidator, module), false)
+        let facetList = queryDefinitions.get("queryFacets").getOrThrow().asObject()
+            .get("properties").getOrThrow().asObject().get("tags").getOrThrow().asObject()
+        @Expect(facetList.get("maxItems").isNone(), true)
+    }
+
+    @TestCase
+    func classificationLimitsDoNotConfusePublishedMembersWithRequestBounds(): Unit {
+        let searchSchemaText = query_schema.SEARCH_INDEX_SCHEMA
+        let classificationValidator = contractSchemaForDefinition(searchSchemaText,
+            "documentationClassification")
+        let group = JsonNode.object()
+        group.put("id", JsonNode.string("legacy"))
+        group.put("packageName", JsonNode.string("fixture"))
+        group.put("ownerId", JsonNode.nullValue)
+        group.put("title", JsonNode.string("\u{0085}"))
+        group.put("order", JsonNode.nullValue)
+        let tags = JsonArray()
+        for (index in 0..65) {
+            let tag = JsonNode.object()
+            let id = "classificationTag${index}"
+            tag.put("id", JsonNode.string(id))
+            tag.put("title", JsonNode.string(id))
+            tags.add(tag)
+        }
+        let classification = JsonNode.object()
+        classification.put("group", group)
+        classification.put("tags", tags)
+        @Expect(contractIsValid(classificationValidator, classification), true)
+
+        let missingNullable = JsonNode.parse(classification.toJson()).asObject()
+        let missingGroupOwner = missingNullable.get("group").getOrThrow().asObject()
+        let _ = missingGroupOwner.remove("ownerId")
+        @Expect(contractIsValid(classificationValidator, missingNullable), false)
+        let extraGroup = JsonNode.parse(classification.toJson()).asObject()
+            .get("group").getOrThrow().asObject()
+        extraGroup.put("unexpected", JsonNode.boolean(true))
+        @Expect(contractIsValid(classificationValidator, JsonNode.parse(
+            "{\"group\":" + extraGroup.toJson() + ",\"tags\":[]}")), false)
+        let extraTag = JsonNode.parse(
+            "{\"group\":null,\"tags\":[{\"id\":\"tag\",\"title\":\"Tag\"," +
+            "\"unexpected\":true}]}")
+        @Expect(contractIsValid(classificationValidator, extraTag), false)
+        let extraField = JsonNode.parse(classification.toJson()).asObject()
+        extraField.put("unexpected", JsonNode.boolean(true))
+        @Expect(contractIsValid(classificationValidator, extraField), false)
+        @Expect(contractIsValid(classificationValidator,
+            JsonNode.parse("{\"group\":null,\"tags\":[{\"id\":\"tag-é\",\"title\":\"Tag\"}]}")),
+            false)
+
+        let entryValidator = contractSchemaForDefinition(searchSchemaText, "entry")
+        let concept = contractSearchEntry(true)
+        @Expect(contractIsValid(entryValidator, concept), true)
+        for (href in ["", "/symbols/decl.html", "C:/symbols/decl.html", "symbols\\decl.html"]) {
+            let invalidHref = JsonNode.parse(concept.toJson()).asObject()
+            invalidHref.put("href", JsonNode.string(href))
+            @Expect(contractIsValid(entryValidator, invalidHref), false)
+        }
+        let conceptWithTag = JsonNode.parse(concept.toJson()).asObject()
+        let conceptClassification = conceptWithTag.get("classification").getOrThrow().asObject()
+        let forbiddenTags = JsonArray()
+        forbiddenTags.add(JsonNode.parse("{\"id\":\"guideTag\",\"title\":\"Guide\"}"))
+        conceptClassification.put("tags", forbiddenTags)
+        @Expect(contractIsValid(entryValidator, conceptWithTag), false)
+
+        let declaration = contractSearchEntry(false)
+        declaration.get("classification").getOrThrow().asObject().put("group", group)
+        declaration.get("classification").getOrThrow().asObject().put("tags", tags)
+        @Expect(contractIsValid(entryValidator, declaration), true)
+    }
+
+    @TestCase
+    func taggedQueryItemsAndFacetsUseCapturedStrictShapes(): Unit {
+        let session = contractSession()
+        let validator = contractOutputValidator()
+        let tagged = contractExecute(session,
+            "{\"operation\":\"search\",\"tags\":[\"contractTag\"]}")
+        @Expect(contractStatus(tagged), "ok")
+        @Expect(contractIsValid(validator, tagged), true)
+        let result = tagged.get("result").getOrThrow().asObject()
+        let items = result.get("items").getOrThrow().asArray()
+        @Expect(items.size(), 1)
+        let classification = items[0].asObject().get("classification").getOrThrow().asObject()
+        @Expect(classification.get("group").getOrThrow().isNull, true)
+        let itemTags = classification.get("tags").getOrThrow().asArray()
+        @Expect(itemTags.size(), 1)
+        @Expect(queryString(itemTags[0].asObject(), "id"), "contractTag")
+        @Expect(queryString(itemTags[0].asObject(), "title"), "contractTag")
+
+        let facets = result.get("facets").getOrThrow().asObject()
+            .get("tags").getOrThrow().asArray()
+        @Expect(facets.size(), 1)
+        let facet = facets[0].asObject()
+        @Expect(queryString(facet, "id"), "contractTag")
+        @Expect(queryString(facet, "title"), "contractTag")
+        @Expect(facet.get("count").getOrThrow().asInt64(), 1)
+        let scope = facet.get("scope").getOrThrow().asObject()
+        @Expect(scope.contains("snapshotId"), true)
+        @Expect(scope.contains("sourceSnapshotId"), true)
+        @Expect(queryString(scope, "moduleId"), CONTRACT_MODULE_A)
+        @Expect(scope.get("documentSet").isSome(), true)
+        @Expect(scope.get("dependencyInstance").isSome(), true)
+        @Expect(!queryString(scope, "dependencyInstanceState").isEmpty(), true)
+
+        let detail = contractExecute(session,
+            "{\"operation\":\"get_symbol\",\"symbolId\":\"${CONTRACT_SYMBOL_A}\"," +
+            "\"preset\":\"summary\"}")
+        @Expect(contractIsValid(validator, detail), true)
+        let detailItem = detail.get("result").getOrThrow().asObject()
+            .get("items").getOrThrow().asArray()[0].asObject()
+        @Expect(detailItem.get("classification").isSome(), true)
+        @Expect(detail.get("result").getOrThrow().asObject().get("facets").getOrThrow()
+            .asObject().get("tags").getOrThrow().asArray().size(), 0)
+
+        let notSearch = contractExecute(session,
+            "{\"operation\":\"get_symbol\",\"symbolId\":\"${CONTRACT_SYMBOL_A}\"}")
+        let notSearchTags = notSearch.get("result").getOrThrow().asObject()
+            .get("facets").getOrThrow().asObject().get("tags").getOrThrow().asArray()
+        notSearchTags.add(JsonNode.parse(facet.toJson()))
+        @Expect(contractIsValid(validator, notSearch), false)
+        let failure = contractExecute(session,
+            "{\"operation\":\"resolve_docs\",\"contextModuleId\":\"cjdoc:module:v1:absent\"}")
+        let failureTags = failure.get("result").getOrThrow().asObject()
+            .get("facets").getOrThrow().asObject().get("tags").getOrThrow().asArray()
+        failureTags.add(JsonNode.parse(facet.toJson()))
+        @Expect(contractIsValid(validator, failure), false)
+    }
+
+    @TestCase
+    func queryFacetSchemaRequiresFullNullableCapturedIdentity(): Unit {
+        let validator = contractSchemaForDefinition(documentationQueryOutputSchema(),
+            "queryTagFacet")
+        let facet = JsonNode.parse("""
+{
+  "scope":{
+    "snapshotId":"snapshot-one","sourceSnapshotId":"source-one",
+    "moduleId":"cjdoc:module:v1:fixture","documentSet":null,
+    "dependencyInstance":null,"dependencyInstanceState":"not_applicable"
+  },
+  "id":"stream","title":"Streaming","count":2
+}
+""")
+        @Expect(contractIsValid(validator, facet), true)
+        let missingState = JsonNode.parse(facet.toJson()).asObject()
+        let scope = missingState.get("scope").getOrThrow().asObject()
+        let _ = scope.remove("dependencyInstanceState")
+        @Expect(contractIsValid(validator, missingState), false)
+        let guessedIdentity = JsonNode.parse(facet.toJson()).asObject()
+        guessedIdentity.get("scope").getOrThrow().asObject()
+            .put("dependencyState", JsonNode.string("not_applicable"))
+        @Expect(contractIsValid(validator, guessedIdentity), false)
+    }
+    @TestCase
+    func queryConceptItemsMustHaveEmptyClassification(): Unit {
+        let validator = contractSchemaForDefinition(documentationQueryOutputSchema(),
+            "queryItem")
+        let concept = contractQueryConceptItem()
+        @Expect(contractIsValid(validator, concept), true)
+        let taggedConcept = JsonNode.parse(concept.toJson()).asObject()
+        let classification = taggedConcept.get("classification").getOrThrow().asObject()
+        classification.get("tags").getOrThrow().asArray()
+            .add(JsonNode.parse("{\"id\":\"guideTag\",\"title\":\"Guide\"}"))
+        @Expect(contractIsValid(validator, taggedConcept), false)
     }
 }

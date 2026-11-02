@@ -118,10 +118,10 @@ jobs:
           "${CJDOC_BROWSER_REQUIRE_ROOT}/node_modules/.bin/playwright" install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
 
-      - name: Check out the immutable pre-change generator
+      - name: Check out the immutable v11 baseline generator
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: '2ef643c5d795ab2e3dfd1035517baeec3a88b0aa'
+          ref: '67faf0b244544a750543f049370c59479769eff4'
           path: reader-scale-baseline-source
           persist-credentials: false
 
@@ -132,10 +132,10 @@ jobs:
           baseline="${RUNNER_TEMP}/reader-baseline-source"
           mv reader-scale-baseline-source "${baseline}"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          # Reproduce the immutable generator with its recorded STS policy.
-          # Its markdown dependency hits the documented llc crash at -O2.
-          . "${baseline}/scripts/with_sts_o1_cjpm.sh"
-          GITHUB_WORKSPACE="${baseline}" bash "${baseline}/scripts/check.sh" build \
+          # Baseline and candidate share the authenticated STS product policy.
+          . "${baseline}/scripts/with_sts_cjpm.sh"
+          GITHUB_WORKSPACE="${baseline}" GITHUB_SHA=67faf0b244544a750543f049370c59479769eff4 \
+            bash "${baseline}/scripts/check.sh" build \
             --repo "${baseline}" \
             --main-binary-out "${baseline}/target/release/bin/main" \
             --worker-binary-out "${baseline}/target/release/bin/chir-worker-main" \
@@ -163,13 +163,9 @@ jobs:
             --revision "${READER_REVISION}" --output "${RUNNER_TEMP}/reader-evidence/contracts"
           python scripts/with_stdx.py --variant static -- python scripts/reader_capture.py \
             --binary "${RUNNER_TEMP}/reader-baseline-source/target/release/bin/main" \
-            --revision 2ef643c5d795ab2e3dfd1035517baeec3a88b0aa --label baseline \
+            --revision 67faf0b244544a750543f049370c59479769eff4 --label baseline \
             --corpus "${READER_CORPUS}" --output "${RUNNER_TEMP}/reader-evidence/baseline"
-          presentation=()
-          if [[ "${READER_CORPUS}" == 1000 ]]; then
-            presentation=(--presentation docs/maintainer/reader-scale-presentation.json)
-          fi
-          python scripts/reader_register.py "${presentation[@]}" \
+          python scripts/reader_register.py \
             --baseline "${RUNNER_TEMP}/reader-evidence/baseline/observation" \
             --template docs/maintainer/reader-scale-budgets.json \
             --output "${RUNNER_TEMP}/reader-evidence/registered.json"

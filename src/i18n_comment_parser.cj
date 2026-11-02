@@ -104,7 +104,7 @@ internal func parseLocalizedComment(base: DocComment, defaultLanguage: ?String,
                     "invalid documentation tag @" + value.name + "; language qualifier rejected",
                     source: source, symbolId: Some(symbolId)))
                 rejected = true
-            } else if (["since", "version", "author", "group"].contains(value.name)) {
+            } else if (SHARED_METADATA_TAGS.contains(value.name)) {
                 // Shared metadata is retained by the legacy parser; it has no
                 // documentation-language scope and cannot acquire translations.
                 ()
@@ -132,7 +132,9 @@ internal func parseLocalizedComment(base: DocComment, defaultLanguage: ?String,
     result.commentSource = base.commentSource
     result.defaultLanguage = defaultLanguage
     result.since = base.since; result.version = base.version; result.authors.add(all: base.authors)
-    for (tag in base.contracts where tag.name == "group") { result.contracts.add(tag) }
+    for (tag in base.contracts where tag.name == "group" || tag.name == "tag") {
+        result.contracts.add(tag)
+    }
     if (!summary.isEmpty()) {
         result.languageItems.add(LocalizedCommentItem(DocTag("summary", "", summary),
             defaultLanguage, base.commentSource))

@@ -14,6 +14,9 @@ import yjson.*
 
 private let PUBLIC_TEST_MODULE = "cjdoc:module:v1:query-public"
 private let PUBLIC_TEST_SYMBOL_PREFIX = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aquery-public::fixture::"
+private let PUBLIC_TEST_TAG_MODULE = "cjdoc:module:v1:query-public-tags"
+private let PUBLIC_TEST_TAG_SYMBOL_PREFIX = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aquery-public-tags::peer::"
+private let PUBLIC_TEST_EMPTY_MODULE = "cjdoc:module:v1:query-empty"
 
 private func chainSymbolId(kind: String, name: String, parameters: String): String {
     "${PUBLIC_TEST_SYMBOL_PREFIX}${kind}:${name}#g0(${parameters})"
@@ -25,6 +28,9 @@ private func addStringId(): String { chainSymbolId("function", "Catalog.add", "S
 private func windowId(): String { chainSymbolId("function", "Catalog.window", "Int64,Int64") }
 private func opaqueId(): String { chainSymbolId("function", "opaque", "") }
 private func readerId(): String { chainSymbolId("class", "Reader", "") }
+private func streamPeerId(): String {
+    "${PUBLIC_TEST_TAG_SYMBOL_PREFIX}function:streamPeer#g0()"
+}
 
 private func testRange(line: Int64): SourceRange {
     SourceRange("src/catalog.cj", SourcePosition(line, 1, 0), SourcePosition(line, 60, 59))
@@ -68,14 +74,35 @@ private func addFunction(id: String, parameterType: String, header: String,
             api_model.ParameterDoc("value", testType(parameterType)),
             api_model.ParameterDoc("radix", testType("Int64"), defaultExpression: Some("10"))
         ],
-        documentation: Some(api_model.DocComment("raw", "Append a value",
-            "Append a value to the catalogue.", MarkdownNode("document",
+        documentation: Some(api_model.DocComment("raw", "Budgeted append of a value",
+            "Budgeted append of a value to the catalogue.", MarkdownNode("document",
                 children: [MarkdownNode("paragraph", children: [
-                    MarkdownNode("text", literal: "Append a value to the catalogue.")
-                ])]), tags: addContractTags())))
+                    MarkdownNode("text", literal: "Budgeted append of a value to the catalogue.")
+                ])]), tags: taggedAddTags(parameterType))))
 }
 
-private func queryDocumentation(projectName!: String = "query-fixture"): api_model.DocumentationSet {
+private func taggedAddTags(parameterType: String): Array<api_model.DocTag> {
+    let tags = ArrayList<api_model.DocTag>(addContractTags())
+    tags.add(api_model.DocTag("tag", "stream", ""))
+    if (parameterType == "Int64") { tags.add(api_model.DocTag("tag", "io", "")) }
+    tags.toArray()
+}
+
+private func streamPeer(): api_model.SymbolDoc {
+    api_model.SymbolDoc(streamPeerId(), "function", "streamPeer", "peer.streamPeer", "peer",
+        PUBLIC_TEST_TAG_MODULE, "public",
+        SourceRange("src/peer.cj", SourcePosition(1, 1, 0), SourcePosition(1, 45, 44)),
+        "public func streamPeer(): Unit", SemanticInfo("partial", "ast"),
+        documentation: Some(api_model.DocComment("", "A budgeted peer stream", "",
+            MarkdownNode("document"), tags: [
+                api_model.DocTag("tag", "stream", ""),
+                api_model.DocTag("tag", "io", ""),
+                api_model.DocTag("tag", "peerOnly", "")
+            ])))
+}
+
+private func queryDocumentation(projectName!: String = "query-fixture",
+    apiCollectionState!: ?String = None): api_model.DocumentationSet {
     let catalog = api_model.SymbolDoc(catalogId(), "class", "Catalog", "fixture.Catalog", "fixture",
         PUBLIC_TEST_MODULE, "public", testRange(1), "public class Catalog",
         SemanticInfo("partial", "ast"),
@@ -105,28 +132,59 @@ private func queryDocumentation(projectName!: String = "query-fixture"): api_mod
             ])))
     let opaque = api_model.SymbolDoc(opaqueId(), "function", "opaque", "fixture.opaque", "fixture",
         PUBLIC_TEST_MODULE, "public", testRange(70), "public func opaque(): Unit",
-        SemanticInfo("partial", "ast"))
+        SemanticInfo("partial", "ast"),
+        documentation: Some(api_model.DocComment("", "", "",
+            MarkdownNode("document"), tags: [api_model.DocTag("tag", "mainOnly", "")])))
     let hidden = api_model.SymbolDoc("${PUBLIC_TEST_SYMBOL_PREFIX}function:secret#g0()",
         "function", "secret", "fixture.secret", "fixture", PUBLIC_TEST_MODULE, "private",
         testRange(300), "private func secret(): Unit", SemanticInfo("partial", "ast"))
+    let privateOnlyId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aquery-public::privateonly::function:secret#g0()"
+    let privateOnly = api_model.SymbolDoc(privateOnlyId, "function", "secret",
+        "privateonly.secret", "privateonly", PUBLIC_TEST_MODULE, "private",
+        SourceRange("src/privateonly.cj", SourcePosition(1, 1, 0), SourcePosition(1, 42, 41)),
+        "private func secret(): Unit", SemanticInfo("partial", "ast"))
     let reader = api_model.SymbolDoc(readerId(), "class", "Reader", "fixture.Reader", "fixture",
         PUBLIC_TEST_MODULE, "public", testRange(11), "public class Reader",
         SemanticInfo("partial", "ast"))
+    let peer = streamPeer()
     let ids: Array<String> = [catalogId(), addIntId(), addStringId(), windowId(),
         opaqueId(), hidden.id, readerId()]
     api_model.DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo(projectName),
         ConfigurationSnapshot(lintProfile: "off"),
-        providers: [ProviderInfo("ast", "builtin", PUBLIC_TEST_MODULE, "partial",
-            api_model.SemanticCapabilities(false, false, false, false, false))],
-        modules: [api_model.ModuleDoc(PUBLIC_TEST_MODULE, "query-fixture", "root", "",
-            packageNames: ["fixture"])],
-        packages: [api_model.PackageDoc("fixture", PUBLIC_TEST_MODULE, sourceFiles: ["src/catalog.cj"],
-            symbolIds: ids)],
-        files: [FileDoc("src/catalog.cj", PUBLIC_TEST_MODULE, "fixture")],
-        declarations: [catalog, addInt, addString, window, opaque, hidden, reader],
+        providers: [
+            ProviderInfo("ast", "builtin", PUBLIC_TEST_MODULE, "partial",
+                api_model.SemanticCapabilities(false, false, false, false, false)),
+            ProviderInfo("ast", "builtin", PUBLIC_TEST_TAG_MODULE, "partial",
+                api_model.SemanticCapabilities(false, false, false, false, false)),
+            ProviderInfo("ast", "builtin", PUBLIC_TEST_EMPTY_MODULE, "partial",
+                api_model.SemanticCapabilities(false, false, false, false, false))
+        ],
+        modules: [
+            api_model.ModuleDoc(PUBLIC_TEST_MODULE, "query-fixture", "root", "",
+                packageNames: ["fixture", "privateonly"]),
+            api_model.ModuleDoc(PUBLIC_TEST_TAG_MODULE, "query-tag-peer", "root", "",
+                packageNames: ["peer"]),
+            api_model.ModuleDoc(PUBLIC_TEST_EMPTY_MODULE, "query-empty", "root", "",
+                packageNames: [])
+        ],
+        packages: [
+            api_model.PackageDoc("fixture", PUBLIC_TEST_MODULE, sourceFiles: ["src/catalog.cj"],
+                symbolIds: ids),
+            api_model.PackageDoc("privateonly", PUBLIC_TEST_MODULE,
+                sourceFiles: ["src/privateonly.cj"], symbolIds: [privateOnlyId]),
+            api_model.PackageDoc("peer", PUBLIC_TEST_TAG_MODULE, sourceFiles: ["src/peer.cj"],
+                symbolIds: [streamPeerId()])
+        ],
+        files: [
+            FileDoc("src/catalog.cj", PUBLIC_TEST_MODULE, "fixture"),
+            FileDoc("src/privateonly.cj", PUBLIC_TEST_MODULE, "privateonly"),
+            FileDoc("src/peer.cj", PUBLIC_TEST_TAG_MODULE, "peer")
+        ],
+        declarations: [catalog, addInt, addString, window, opaque, hidden, privateOnly, reader, peer],
         pages: [queryGuidePage()],
         diagnostics: [api_model.Diagnostic("warning", "CJDOC9001", "captured fixture warning",
-            symbolId: Some(addIntId()))])
+            symbolId: Some(addIntId()))],
+        apiCollectionState: apiCollectionState)
 }
 
 private func queryGuidePage(): DocumentationPage {
@@ -139,6 +197,28 @@ private func queryGuidePage(): DocumentationPage {
             children: [MarkdownNode("text", literal: body)])]), language: Some("en"))
 }
 
+private func queryPreviewDocumentation(summary: String, defaultValue: String): api_model.DocumentationSet {
+    let id = chainSymbolId("function", "preview", "String")
+    let expression = "\"${defaultValue}\""
+    let header = "public func preview(value!: String = ${expression}): Unit"
+    let symbol = api_model.SymbolDoc(id, "function", "preview", "fixture.preview", "fixture",
+        PUBLIC_TEST_MODULE, "public", testRange(1), header, SemanticInfo("partial", "ast"),
+        parameters: [api_model.ParameterDoc("value", testType("String"),
+            defaultExpression: Some(expression))],
+        documentation: Some(api_model.DocComment("", summary, "", MarkdownNode("document",
+            children: [MarkdownNode("paragraph", children: [MarkdownNode("text", literal: summary)])]))))
+    api_model.DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("unicode-preview"),
+        ConfigurationSnapshot(lintProfile: "off"),
+        providers: [ProviderInfo("ast", "builtin", PUBLIC_TEST_MODULE, "partial",
+            api_model.SemanticCapabilities(false, false, false, false, false))],
+        modules: [api_model.ModuleDoc(PUBLIC_TEST_MODULE, "unicode-preview", "root", "",
+            packageNames: ["fixture"])],
+        packages: [api_model.PackageDoc("fixture", PUBLIC_TEST_MODULE,
+            sourceFiles: ["src/catalog.cj"], symbolIds: [id])],
+        files: [FileDoc("src/catalog.cj", PUBLIC_TEST_MODULE, "fixture")],
+        declarations: [symbol])
+}
+
 private func session(): DocumentationQuerySession {
     DocumentationQuerySession(queryDocumentation())
 }
@@ -146,6 +226,15 @@ private func session(): DocumentationQuerySession {
 private func queryResult(session: DocumentationQuerySession, request: String): JsonObject {
     JsonNode.parse(session.execute(request)).asObject()
 }
+private func querySearchItems(result: JsonObject): JsonArray {
+    result.get("result").getOrThrow().asObject().get("items").getOrThrow().asArray()
+}
+
+private func querySearchTagFacets(result: JsonObject): JsonArray {
+    result.get("result").getOrThrow().asObject().get("facets").getOrThrow()
+        .asObject().get("tags").getOrThrow().asArray()
+}
+
 
 @Test
 class DocumentationQueryPublicTest {
@@ -180,6 +269,260 @@ class DocumentationQueryPublicTest {
     }
 
     @TestCase
+    func tagFiltersUseCanonicalModuleMembershipAndCountAllMatchesBeforePaging(): Unit {
+        let query = session()
+        let filtered = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"stream\"],\"limit\":1}")
+        @Expect(filtered.get("status").getOrThrow().asString(), "ok")
+        let filteredQuery = filtered.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        @Expect(filteredQuery.get("reason").getOrThrow().asString(), "filter_only")
+        @Expect(filteredQuery.get("total").getOrThrow().asInt64(), 3)
+        @Expect(filteredQuery.get("returned").getOrThrow().asInt64(), 1)
+        let pageItems = querySearchItems(filtered)
+        @Expect(pageItems.size(), 1)
+        @Expect(pageItems[0].asObject().get("match").getOrThrow().asObject()
+            .get("score").getOrThrow().asInt64(), 0)
+        @Expect(pageItems[0].asObject().get("match").getOrThrow().asObject()
+            .get("reason").getOrThrow().asString(), "filter_only")
+
+        let facets = querySearchTagFacets(filtered)
+        @Expect(facets.size(), 5)
+        let expectedModules = [PUBLIC_TEST_MODULE, PUBLIC_TEST_MODULE,
+            PUBLIC_TEST_TAG_MODULE, PUBLIC_TEST_TAG_MODULE, PUBLIC_TEST_TAG_MODULE]
+        let expectedTags = ["io", "stream", "io", "peerOnly", "stream"]
+        let expectedCounts: Array<Int64> = [1, 2, 1, 1, 1]
+        for (index in 0..facets.size()) {
+            let facet = facets[index].asObject()
+            @Expect(facet.get("id").getOrThrow().asString(), expectedTags[index])
+            @Expect(facet.get("title").getOrThrow().asString(), expectedTags[index])
+            @Expect(facet.get("count").getOrThrow().asInt64(), expectedCounts[index])
+            let scope = facet.get("scope").getOrThrow().asObject()
+            @Expect(scope.get("moduleId").getOrThrow().asString(), expectedModules[index])
+            for (field in ["snapshotId", "sourceSnapshotId", "moduleId", "documentSet",
+                "dependencyInstance", "dependencyInstanceState"]) {
+                @Expect(scope.get(field).isSome(), true)
+            }
+        }
+        let bounded = queryResult(query,
+            "{\"operation\":\"search\",\"profile\":\"bounded-static\"," +
+            "\"tags\":[\"stream\"],\"limit\":1}")
+        @Expect(bounded.get("status").getOrThrow().asString(), "ok")
+        let boundedQuery = bounded.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        @Expect(boundedQuery.get("total").getOrThrow().asInt64(), 3)
+        @Expect(boundedQuery.get("reason").getOrThrow().asString(), "filter_only")
+        @Expect(querySearchTagFacets(bounded).size(), 5)
+
+
+        let combined = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"stream\",\"io\"],\"limit\":1}")
+        @Expect(combined.get("status").getOrThrow().asString(), "ok")
+        let combinedQuery = combined.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        @Expect(combinedQuery.get("total").getOrThrow().asInt64(), 2)
+        @Expect(querySearchItems(combined).size(), 1)
+        let combinedFacets = querySearchTagFacets(combined)
+        @Expect(combinedFacets.size(), 5)
+        for (index in 0..combinedFacets.size()) {
+            @Expect(combinedFacets[index].asObject().get("count").getOrThrow().asInt64(), 1)
+        }
+
+        let zero = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"stream\"],\"limit\":0}")
+        @Expect(zero.get("status").getOrThrow().asString(), "ok")
+        let zeroQuery = zero.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        @Expect(zeroQuery.get("reason").getOrThrow().asString(), "zero_limit_requested")
+        @Expect(zeroQuery.get("total").getOrThrow().asInt64(), 3)
+        @Expect(querySearchItems(zero).size(), 0)
+        @Expect(querySearchTagFacets(zero).size(), 5)
+        let disjointModuleTags = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"mainOnly\",\"peerOnly\"]}")
+        @Expect(disjointModuleTags.get("status").getOrThrow().asString(), "not_found")
+        @Expect(disjointModuleTags.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject().get("total").getOrThrow().asInt64(), 0)
+        @Expect(querySearchTagFacets(disjointModuleTags).size(), 0)
+
+        let preciseLabel = queryResult(query,
+            "{\"operation\":\"search\",\"query\":\"peerOnly\"}")
+        @Expect(preciseLabel.get("status").getOrThrow().asString(), "ok")
+        let preciseLabelItems = querySearchItems(preciseLabel)
+        @Expect(preciseLabelItems.size(), 1)
+        let preciseLabelItem = preciseLabelItems[0].asObject()
+        @Expect(preciseLabelItem.get("identity").getOrThrow().asObject()
+            .get("symbolId").getOrThrow().asString(), streamPeerId())
+        @Expect(preciseLabelItem.get("match").getOrThrow().asObject()
+            .get("reason").getOrThrow().asString(), "documentation_text")
+
+        let discoveryLabel = queryResult(query,
+            "{\"operation\":\"search\",\"query\":\"peerOnly\",\"mode\":\"discovery\"}")
+        @Expect(discoveryLabel.get("status").getOrThrow().asString(), "ok")
+        let discoveryLabelItems = querySearchItems(discoveryLabel)
+        @Expect(discoveryLabelItems.size(), 1)
+        let discoveryLabelItem = discoveryLabelItems[0].asObject()
+        @Expect(discoveryLabelItem.get("identity").getOrThrow().asObject()
+            .get("symbolId").getOrThrow().asString(), streamPeerId())
+        @Expect(discoveryLabelItem.get("match").getOrThrow().asObject()
+            .get("reason").getOrThrow().asString(), "declaration_text")
+
+        let wrongCase = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"Stream\"]}")
+        @Expect(wrongCase.get("status").getOrThrow().asString(), "not_found")
+        let prefixOnly = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"streaming\"]}")
+        @Expect(prefixOnly.get("status").getOrThrow().asString(), "not_found")
+
+    }
+
+    @TestCase
+    func tagFiltersExcludeConceptsWithoutChangingTextEvidenceAndBindNormalizedCursors(): Unit {
+        let query = session()
+        let plain = queryResult(query,
+            "{\"operation\":\"search\",\"query\":\"Budgeted\",\"mode\":\"discovery\"}")
+        let tagged = queryResult(query,
+            "{\"operation\":\"search\",\"query\":\"Budgeted\",\"mode\":\"discovery\"," +
+            "\"tags\":[\"stream\"]}")
+        @Expect(tagged.get("status").getOrThrow().asString(), "ok")
+        let plainItems = querySearchItems(plain)
+        let taggedItems = querySearchItems(tagged)
+        var plainAdd: ?JsonObject = None
+        var taggedAdd: ?JsonObject = None
+        var plainHasGuide = false
+        for (index in 0..plainItems.size()) {
+            let item = plainItems[index].asObject()
+            let identity = item.get("identity").getOrThrow().asObject()
+            if (item.get("kind").getOrThrow().asString() == "concept" &&
+                identity.get("pageId").getOrThrow().asString() == "query-guide") {
+                plainHasGuide = true
+            }
+            if (item.get("kind").getOrThrow().asString() == "symbol" &&
+                identity.get("symbolId").getOrThrow().asString() == addIntId()) {
+                plainAdd = Some(item)
+            }
+        }
+        @Expect(plainHasGuide, true)
+        for (index in 0..taggedItems.size()) {
+            let item = taggedItems[index].asObject()
+            @Expect(item.get("kind").getOrThrow().asString(), "symbol")
+            if (item.get("identity").getOrThrow().asObject()
+                .get("symbolId").getOrThrow().asString() == addIntId()) {
+                taggedAdd = Some(item)
+            }
+        }
+        let plainMatch = plainAdd.getOrThrow().get("match").getOrThrow().asObject()
+        let taggedMatch = taggedAdd.getOrThrow().get("match").getOrThrow().asObject()
+        @Expect(taggedMatch.get("score").getOrThrow().asInt64(),
+            plainMatch.get("score").getOrThrow().asInt64())
+        @Expect(taggedMatch.get("reason").getOrThrow().asString(),
+            plainMatch.get("reason").getOrThrow().asString())
+
+        let first = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"stream\",\"io\",\"stream\"],\"limit\":1}")
+        let firstQuery = first.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        let cursor = firstQuery.get("next").getOrThrow().asString()
+        let firstIdentity = querySearchItems(first)[0].asObject()
+            .get("identity").getOrThrow().asObject().get("symbolId").getOrThrow().asString()
+        let second = queryResult(query, "{\"operation\":\"search\"," +
+            "\"tags\":[\"io\",\"stream\"],\"limit\":1,\"cursor\":\"${cursor}\"}")
+        @Expect(second.get("status").getOrThrow().asString(), "ok")
+        let secondQuery = second.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        @Expect(secondQuery.get("offset").getOrThrow().asInt64(), 1)
+        let secondIdentity = querySearchItems(second)[0].asObject()
+            .get("identity").getOrThrow().asObject().get("symbolId").getOrThrow().asString()
+        @Expect(secondIdentity != firstIdentity, true)
+        let changedTags = queryResult(query, "{\"operation\":\"search\"," +
+            "\"tags\":[\"stream\"],\"limit\":1,\"cursor\":\"${cursor}\"}")
+        @Expect(changedTags.get("status").getOrThrow().asString(), "stale_cursor")
+        @Expect(changedTags.get("error").getOrThrow().asObject()
+            .get("code").getOrThrow().asString(), "cursor_binding")
+    }
+
+    @TestCase
+    func tagRequestsValidateRawValuesAndRemainSearchOnly(): Unit {
+        let query = session()
+        let empty = queryResult(query, "{\"operation\":\"search\",\"tags\":[]}")
+        @Expect(empty.get("status").getOrThrow().asString(), "invalid_request")
+        @Expect(empty.get("error").getOrThrow().asObject()
+            .get("code").getOrThrow().asString(), "request_schema")
+
+        let malformed = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"bad tag\"]}")
+        @Expect(malformed.get("status").getOrThrow().asString(), "invalid_request")
+        @Expect(malformed.get("error").getOrThrow().asObject()
+            .get("code").getOrThrow().asString(), "request_schema")
+
+        let oversizedTags = JsonNode.array()
+        for (_ in 0..65) { oversizedTags.add(JsonNode.string("stream")) }
+        let oversizedRequest = JsonNode.object()
+        oversizedRequest.put("operation", JsonNode.string("search"))
+        oversizedRequest.put("tags", oversizedTags)
+        let oversized = queryResult(query, oversizedRequest.toJson())
+        @Expect(oversized.get("status").getOrThrow().asString(), "invalid_request")
+        @Expect(oversized.get("error").getOrThrow().asObject()
+            .get("code").getOrThrow().asString(), "request_schema")
+
+        let notSearch = queryResult(query,
+            "{\"operation\":\"get_symbol\",\"symbolId\":\"${addIntId()}\"," +
+            "\"tags\":[\"stream\"]}")
+        @Expect(notSearch.get("status").getOrThrow().asString(), "invalid_request")
+        @Expect(notSearch.get("error").getOrThrow().asObject()
+            .get("code").getOrThrow().asString(), "field_not_applicable")
+        @Expect(querySearchTagFacets(notSearch).size(), 0)
+    }
+
+    @TestCase
+    func tagFacetsKeepSnapshotAndModuleNamespacesAtZeroLimit(): Unit {
+        let first = queryDocumentation()
+        let second = queryDocumentation(projectName: "query-fixture-second")
+        let firstSnapshot = api_render.documentationSnapshotId(first)
+        let secondSnapshot = api_render.documentationSnapshotId(second)
+        let lowSnapshot = if (firstSnapshot < secondSnapshot) { firstSnapshot } else { secondSnapshot }
+        let highSnapshot = if (firstSnapshot < secondSnapshot) { secondSnapshot } else { firstSnapshot }
+        let query = DocumentationQuerySession([first, second])
+        let result = queryResult(query,
+            "{\"operation\":\"search\",\"tags\":[\"stream\"],\"limit\":0}")
+        let completeness = result.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        @Expect(completeness.get("total").getOrThrow().asInt64(), 6)
+        @Expect(completeness.get("returned").getOrThrow().asInt64(), 0)
+        @Expect(completeness.get("reason").getOrThrow().asString(), "zero_limit_requested")
+        let facets = querySearchTagFacets(result)
+        @Expect(facets.size(), 10)
+        let expectedModules = [PUBLIC_TEST_MODULE, PUBLIC_TEST_MODULE,
+            PUBLIC_TEST_TAG_MODULE, PUBLIC_TEST_TAG_MODULE, PUBLIC_TEST_TAG_MODULE]
+        let expectedTags = ["io", "stream", "io", "peerOnly", "stream"]
+        let expectedCounts: Array<Int64> = [1, 2, 1, 1, 1]
+        for (index in 0..facets.size()) {
+            let facet = facets[index].asObject()
+            let scope = facet.get("scope").getOrThrow().asObject()
+            @Expect(scope.get("snapshotId").getOrThrow().asString(),
+                if (index < 5) { lowSnapshot } else { highSnapshot })
+            let withinSnapshot = index % 5
+            @Expect(scope.get("moduleId").getOrThrow().asString(), expectedModules[withinSnapshot])
+            @Expect(facet.get("id").getOrThrow().asString(), expectedTags[withinSnapshot])
+            @Expect(facet.get("count").getOrThrow().asInt64(), expectedCounts[withinSnapshot])
+        }
+    }
+
+    @TestCase
+    func taggedAbsencePreservesIncompleteCollectionReason(): Unit {
+        let incomplete = DocumentationQuerySession([
+            queryDocumentation(apiCollectionState: Some("partial"))
+        ])
+        let result = queryResult(incomplete,
+            "{\"operation\":\"search\",\"tags\":[\"absentTag\"]}")
+        @Expect(result.get("status").getOrThrow().asString(), "source_incomplete")
+        let query = result.get("completeness").getOrThrow().asObject()
+            .get("query").getOrThrow().asObject()
+        @Expect(query.get("reason").getOrThrow().asString(),
+            "no_match_with_incomplete_api_collection")
+        @Expect(querySearchTagFacets(result).size(), 0)
+    }
+
+    @TestCase
     func searchNeverWidensTheAudienceAndSeparatesAbsenceFromIncompleteness(): Unit {
         let query = session()
         let hidden = queryResult(query, "{\"operation\":\"search\",\"name\":\"secret\"}")
@@ -190,6 +533,40 @@ class DocumentationQueryPublicTest {
         let direct = queryResult(query,
             "{\"operation\":\"search\",\"symbolId\":\"${PUBLIC_TEST_SYMBOL_PREFIX}function:secret#g0()\"}")
         @Expect(direct.get("status").getOrThrow().asString(), "not_found")
+    }
+
+    @TestCase
+    func capturedEmptyModulesAndPackageFiltersPreserveNativeAbsenceSemantics(): Unit {
+        let query = session()
+        for (mode in ["precise", "discovery"]) {
+            let positive = queryResult(query, "{\"operation\":\"search\",\"mode\":\"${mode}\"," +
+                "\"moduleId\":\"${PUBLIC_TEST_MODULE}\",\"packageName\":\"fixture\"," +
+                "\"symbolId\":\"${catalogId()}\"}")
+            @Expect(positive.get("status").getOrThrow().asString(), "ok")
+            @Expect(querySearchItems(positive).size(), 1)
+            for (packageName in ["privateonly", "missing", "peer"]) {
+                let absent = queryResult(query, "{\"operation\":\"search\",\"mode\":\"${mode}\"," +
+                    "\"moduleId\":\"${PUBLIC_TEST_MODULE}\",\"packageName\":\"${packageName}\"," +
+                    "\"query\":\"secret\"}")
+                @Expect(absent.get("status").getOrThrow().asString(), "not_found")
+                @Expect(querySearchItems(absent).size(), 0)
+                @Expect(absent.get("completeness").getOrThrow().asObject()
+                    .get("query").getOrThrow().asObject().get("reason").getOrThrow().asString(),
+                    "no_match_in_scope")
+            }
+            let empty = queryResult(query,
+                "{\"operation\":\"search\",\"mode\":\"${mode}\"," +
+                "\"moduleId\":\"${PUBLIC_TEST_EMPTY_MODULE}\",\"query\":\"secret\"}")
+            @Expect(empty.get("status").getOrThrow().asString(), "not_found")
+            @Expect(querySearchItems(empty).size(), 0)
+        }
+        let incomplete = DocumentationQuerySession([
+            queryDocumentation(apiCollectionState: Some("partial"))
+        ])
+        let absence = queryResult(incomplete,
+            "{\"operation\":\"search\",\"moduleId\":\"${PUBLIC_TEST_EMPTY_MODULE}\"}")
+        @Expect(absence.get("status").getOrThrow().asString(), "source_incomplete")
+        @Expect(querySearchItems(absence).size(), 0)
     }
 
     @TestCase
@@ -384,7 +761,7 @@ class DocumentationQueryPublicTest {
             "unknown_field")
         @Expect(documentationQueryExitCode(invalid.toJson()), 2)
         @Expect(documentationQueryExitCode(
-            "{\"schemaVersion\":\"cjdoc.query-result/1\",\"status\":\"ambiguous\"}"), 0)
+            "{\"schemaVersion\":\"cjdoc.query-result/3\",\"status\":\"ambiguous\"}"), 0)
         let broken = queryResult(query, "{not json")
         @Expect(broken.get("status").getOrThrow().asString(), "invalid_request")
         // Continuation is bound to the exact request and the frozen content.
@@ -467,6 +844,60 @@ class DocumentationQueryPublicTest {
     }
 
     @TestCase
+    func searchPaginatesSnapshotIdentitiesGloballyWithoutMergingCanonicalIds(): Unit {
+        let first = queryDocumentation()
+        let second = queryDocumentation(projectName: "query-fixture-second")
+        let firstSnapshot = api_render.documentationSnapshotId(first)
+        let secondSnapshot = api_render.documentationSnapshotId(second)
+        let low = if (firstSnapshot < secondSnapshot) { firstSnapshot } else { secondSnapshot }
+        let high = if (firstSnapshot < secondSnapshot) { secondSnapshot } else { firstSnapshot }
+        let expected = [
+            (low, addIntId()), (low, addStringId()),
+            (high, addIntId()), (high, addStringId())
+        ]
+        let query = DocumentationQuerySession([first, second])
+        for ((profile, selection) in [
+            ("full-ir", "\"mode\":\"discovery\",\"query\":\"add\""),
+            ("bounded-static", "\"filters\":[{\"field\":\"name\",\"op\":\"eq\",\"value\":\"add\"}]")
+        ]) {
+            let request = JsonNode.parse("{\"operation\":\"search\",\"limit\":1," +
+                "\"profile\":\"${profile}\",${selection}}").asObject()
+            let seen = HashSet<String>()
+            for (page in 0..expected.size) {
+                let response = queryResult(query, request.toJson())
+                @Expect(response.get("status").getOrThrow().asString(), "ok")
+                let completeness = response.get("completeness").getOrThrow().asObject()
+                    .get("query").getOrThrow().asObject()
+                @Expect(completeness.get("offset").getOrThrow().asInt64(), page)
+                @Expect(completeness.get("total").getOrThrow().asInt64(), 4)
+                @Expect(completeness.get("returned").getOrThrow().asInt64(), 1)
+                @Expect(completeness.get("complete").getOrThrow().asBool(), page == 3)
+                let coverage = completeness.get("coverage").getOrThrow().asObject()
+                @Expect(coverage.get("profile").getOrThrow().asString(), profile)
+                @Expect(coverage.get("bodyComplete").getOrThrow().asBool(), profile == "full-ir")
+                @Expect(coverage.get("truncatedEntries").getOrThrow().asInt64(),
+                    if (profile == "full-ir") { 0 } else { 2 })
+                let items = response.get("result").getOrThrow().asObject()
+                    .get("items").getOrThrow().asArray()
+                @Expect(items.size(), 1)
+                let identity = items[0].asObject().get("identity").getOrThrow().asObject()
+                let snapshotId = identity.get("snapshotId").getOrThrow().asString()
+                let symbolId = identity.get("symbolId").getOrThrow().asString()
+                @Expect(snapshotId, expected[page][0])
+                @Expect(symbolId, expected[page][1])
+                @Expect(seen.add(snapshotId + "\n" + symbolId), true)
+                let next = completeness.get("next").getOrThrow()
+                if (page < 3) {
+                    request.put("cursor", JsonNode.string(next.asString()))
+                } else {
+                    @Expect(next.kind(), JsonKind.Null)
+                }
+            }
+            @Expect(seen.size, 4)
+        }
+    }
+
+    @TestCase
     func conceptsCarryPageIdentityOnlyAndRelationsStayBounded(): Unit {
         let query = session()
         let missingPage = queryResult(query,
@@ -531,7 +962,7 @@ class DocumentationQueryPublicTest {
     func exitCodeAcceptsResultsAboveTheGenericJsonBufferDefault(): Unit {
         let payload = String.fromUtf8(Array<Byte>(9 * 1024 * 1024, repeat: b'x'))
         let result = JsonNode.object()
-        result.put("schemaVersion", JsonNode.string("cjdoc.query-result/1"))
+        result.put("schemaVersion", JsonNode.string("cjdoc.query-result/3"))
         result.put("status", JsonNode.string("ok"))
         result.put("text", JsonNode.string(payload))
         @Expect(documentationQueryExitCode(result.toJson()), 0)
@@ -550,6 +981,34 @@ class DocumentationQueryPublicTest {
         let snapshots = scope.get("snapshots").getOrThrow().asArray()
         @Expect(snapshots.size(), 1)
         @Expect(snapshots[0].asObject().get("sourceKind").getOrThrow().asString(), "public-model")
-        @Expect(result.get("schemaVersion").getOrThrow().asString(), "cjdoc.query-result/1")
+        @Expect(result.get("schemaVersion").getOrThrow().asString(), "cjdoc.query-result/3")
+    }
+
+    @TestCase
+    func searchPreviewBoundsCountUnicodeScalarsInsteadOfUtf8Bytes(): Unit {
+        let defaultValue = StringBuilder()
+        for (_ in 0..200) { defaultValue.append("汉") }
+        for (glyph in ["汉", "😀"]) {
+            for (count in [100, 240, 241]) {
+                let summary = StringBuilder()
+                for (_ in 0..count) { summary.append(glyph) }
+                let expected = StringBuilder()
+                for (_ in 0..(if (count <= 240) { count } else { 239 })) {
+                    expected.append(glyph)
+                }
+                if (count > 240) { expected.append("…") }
+                let documentation = queryPreviewDocumentation(summary.toString(), defaultValue.toString())
+                let query = DocumentationQuerySession(documentation)
+                let response = queryResult(query,
+                    "{\"operation\":\"search\",\"name\":\"preview\",\"profile\":\"bounded-static\"}")
+                @Expect(response.get("status").getOrThrow().asString(), "ok")
+                let items = querySearchItems(response)
+                @Expect(items.size(), 1)
+                let item = items[0].asObject()
+                @Expect(item.get("summary").getOrThrow().asString(), expected.toString())
+                @Expect(item.get("signature").getOrThrow().asString(),
+                    documentation.declarations[0].headerSpelling)
+            }
+        }
     }
 }

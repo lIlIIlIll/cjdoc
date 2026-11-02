@@ -32,7 +32,7 @@ class SourcePipelineSuite3 {
             let cachePath = entries[0].path
             let bytes = File.readFrom(cachePath)
             let reader = SourceCacheReader(bytes)
-            @Expect(reader.next(), "cjdoc-source-cache-v18")
+            @Expect(reader.next(), SOURCE_CACHE_FORMAT)
             let key = reader.next()
             let legacyKey = SourceCacheWriter()
             for (value in ["cjdoc-source-cache-v17", fingerprint, "src/api.cj",
@@ -54,7 +54,7 @@ class SourcePipelineSuite3 {
             }
             // Even an older source-cache payload placed under the new cache filename
             // is rejected before decoding declarations, then rebuilt from AST.
-            let legacy = String.fromUtf8(bytes).replace("cjdoc-source-cache-v18", "cjdoc-source-cache-v17")
+            let legacy = String.fromUtf8(bytes).replace(SOURCE_CACHE_FORMAT, "cjdoc-source-cache-v18")
             File.writeTo(cachePath, legacy.toArray())
             let reparsed = provider.collect(project.toString())
             @Expect(provider.cacheStats.hits, 0)

@@ -34,7 +34,7 @@ private let MCP_SERVER_VERSION: String = "0.7.7"
 private let MCP_SERVER_INSTRUCTIONS: String =
     "Read-only documentation queries over captured cjdoc snapshots. " +
     "Call resolve_docs, search or get_symbol; every tool result is one JSON object " +
-    "with schemaVersion cjdoc.query-result/1 and an explicit status."
+    "with schemaVersion cjdoc.query-result/3 and an explicit status."
 
 // A single JSON-RPC message is one line. 1 MiB is far above any request the
 // three tools accept (snapshot paths are command-line arguments, not request
@@ -55,7 +55,7 @@ private let MCP_JSONRPC_METHOD_NOT_FOUND: Int64 = -32601
 private let MCP_JSONRPC_INVALID_PARAMS: Int64 = -32602
 private let MCP_JSONRPC_INTERNAL_ERROR: Int64 = -32603
 
-private let MCP_QUERY_RESULT_SCHEMA: String = "cjdoc.query-result/1"
+private let MCP_QUERY_RESULT_SCHEMA: String = "cjdoc.query-result/3"
 
 private func mcpReadOptions(maxBytes: Int64, maxDepth: Int64): JsonReadOptions {
     JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,

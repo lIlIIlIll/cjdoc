@@ -115,7 +115,13 @@ class SyntaxSourceProvider <: SourceProvider {
             dependencySources,
             includeCachedDependencies, cjpmCacheRoot,
             sourceSnapshot.diagnostics, auxiliaryBudget)
-        for (module in moduleRoots) { sourceSnapshot.modules.add(module.documentation) }
+        for (module in moduleRoots) {
+            sourceSnapshot.modules.add(module.documentation)
+            let configPath = if (module.logicalPrefix.isEmpty()) { "cjdoc.toml" }
+                else { "${module.logicalPrefix}/cjdoc.toml" }
+            sourceSnapshot.metadataModuleRoots.add(
+                SourceMetadataModuleRoot(module.documentation.id, module.actualRoot, configPath))
+        }
         if (sourceSnapshot.modules.isEmpty()) {
             sourceSnapshot.modules.add(SourceModule(moduleId("root", projectName, ""),
                 projectName, "root", ""))

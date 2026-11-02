@@ -2,6 +2,7 @@ package cjdoc
 
 import cjdoc.model as api_model
 import cjdoc.render as api_render
+import std.collection.*
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -63,9 +64,16 @@ class DeclarationGroupingContracts {
         }
         for (artifact in artifacts where artifact.path.startsWith("markdown/packages/")) {
             @Expect(artifact.content.contains("\n### 应用 API\n\n"))
-            @Expect(artifact.content.contains("\n#### `declaration_groups.applicationFunction`\n"))
+            // A group with several visible kinds keeps a kind heading one level
+            // below the group and puts each declaration below that heading.
+            @Expect(artifact.content.contains("\n#### 类\n\n"))
+            @Expect(artifact.content.contains("\n#### 函数\n\n"))
+            @Expect(artifact.content.contains("\n##### `declaration_groups.applicationFunction`\n"))
             @Expect(artifact.content.contains("\n### 生成代码 SPI\n\n"))
-            @Expect(artifact.content.contains("\n#### `declaration_groups.generatedFunction`\n"))
+            @Expect(artifact.content.contains("\n##### `declaration_groups.generatedFunction`\n"))
+            // A group with exactly one visible kind omits the redundant kind
+            // heading, so its declaration sits directly under the group.
+            @Expect(artifact.content.contains("\n### 第一方内部接口\n\n"))
         }
         var sawMarkdownMember = false
         for (artifact in artifacts where artifact.path.startsWith("markdown/symbols/")) {
@@ -94,15 +102,52 @@ class DeclarationGroupingContracts {
     }
 
     @TestCase
+    func groupedMarkdownKeepsContainerNavigationAndDeepAuthoredFragments(): Unit {
+        let project = i18nTestProject(
+            "/**\n * [jump](#details) [natural](#details-1) [duplicate](#details-2) [missing](#absent)\n" +
+            " *\n * # Overview\n * ## Details\n * ## Details-1\n * ## Details\n" +
+            " * @param left [parameter](#details)\n *\n * ## Details\n" +
+            " * @param right Right value.\n * @group shared API\n */",
+            extra: "/** Container.\n * @group shared API\n */\npublic class Container {}")
+        try {
+            let doc = DocumentationEngine().generate(GenerationRequest(project.toString(),
+                lintProfile: "off", astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
+            let artifacts = api_render.renderDocumentationFormatsWithOptions(doc, ["markdown"],
+                locale: "zh-CN")
+            var packages: Int64 = 0
+            for (artifact in artifacts where artifact.path.startsWith("markdown/packages/")) {
+                packages++
+                let markdown = artifact.content
+                @Expect(markdown.contains("##### [`language_fixture.Container`](../symbols/"))
+                @Expect(markdown.contains("\n###### Overview\n"))
+                @Expect(!markdown.contains("\n####### "))
+                let targets = HashSet<String>()
+                for (name in ["jump", "natural", "duplicate", "parameter"]) {
+                    let destination = markdown.split("[${name}](", 2)[1].split(")", 2)[0]
+                    @Expect(destination.startsWith("#"))
+                    @Expect(targets.add(destination))
+                    @Expect(markdown.split("id=\"${destination[1..]}\"",
+                        removeEmpty: false).size, 2)
+                }
+                @Expect(markdown.contains("[missing](#absent)"))
+                @Expect(!markdown.contains("id=\"absent\""))
+            }
+            @Expect(packages, 1)
+        } finally { let _ = removeIfExists(project, recursive: true) }
+    }
+
+    @TestCase
     func invalidOrDuplicateGroupsDiagnoseWithoutDroppingDeclarations(): Unit {
-        for (line in ["@group", "@group missing-title", "@group ../bad Bad",
-            "@group one First\n * @group one First", "@group one First\n * @group two Second"]) {
+        for ((line, diagnostic) in [("@group", "CJDOC3130"),
+            ("@group missing-title", "CJDOC3137"), ("@group ../bad Bad", "CJDOC3130"),
+            ("@group one First\n * @group one First", "CJDOC3130"),
+            ("@group one First\n * @group two Second", "CJDOC3130")]) {
             let project = i18nTestProject("/**\n * 中文摘要。\n * " + line + "\n */")
             try {
                 let doc = DocumentationEngine().generate(GenerationRequest(project.toString(),
                     lintProfile: "off", astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
                 @Expect(doc.declarations.size, 1)
-                @Expect(publicHasDiagnostic(doc, "CJDOC3130"))
+                @Expect(publicHasDiagnostic(doc, diagnostic))
                 let html = renderedHtmlContent(api_render.HtmlDocumentationRenderer().render(doc))
                 @Expect(!html.contains("class=\"api-declaration-group\""))
             } finally { let _ = removeIfExists(project, recursive: true) }

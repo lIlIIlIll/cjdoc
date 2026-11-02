@@ -4,24 +4,46 @@ import cjdoc.model.*
 import std.collection.*
 import std.sort.*
 
+// Reading order of member kind partitions. This is exactly the order the page
+// rendered before the layout decision existed; "Macros" is intentionally absent
+// because macros are never members of a declaration.
+internal let MEMBER_SECTION_TITLES = ["Constructors", "Properties", "Variables", "Functions",
+    "Enum cases", "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
+    "Nested extensions", "Other members"]
+
 internal class HtmlMemberEntry {
     let symbol: SymbolDoc
     let origin: String
     let declaredBy: ?SymbolDoc
+    private let groupId: String
 
-    init(symbol: SymbolDoc, origin: String, declaredBy: ?SymbolDoc) {
+    init(symbol: SymbolDoc, origin: String, declaredBy: ?SymbolDoc, groupId: String) {
         this.symbol = symbol
         this.origin = origin
         this.declaredBy = declaredBy
+        this.groupId = groupId
     }
 
+    // Tags deliberately do not participate in the overload family key.
     prop groupKey: String { get() {
         let owner = match (declaredBy) {
             case Some(value) => value.id
             case None => ""
         }
-        "${declarationGroupKey(symbol)}:${origin}:${owner}:${memberSectionTitle(symbol)}"
+        "${groupId}:${origin}:${owner}:${memberSectionTitle(symbol)}"
     } }
+}
+
+private func memberGroupId(catalog: DeclarationGroupCatalog, symbol: SymbolDoc): String {
+    match (catalog.groupFor(symbol)) {
+        case Some(value) => value.id
+        case None => ""
+    }
+}
+
+private func memberEntry(symbol: SymbolDoc, origin: String, declaredBy: ?SymbolDoc,
+    catalog: DeclarationGroupCatalog): HtmlMemberEntry {
+    HtmlMemberEntry(symbol, origin, declaredBy, memberGroupId(catalog, symbol))
 }
 
 // Render only relationships explicitly present in Doc IR. A similarly named
@@ -50,7 +72,7 @@ internal class HtmlMemberBrowser {
                     case Some(ownerId) => projection.visibleIndex.get(ownerId)
                     case None => None
                 }
-                add(target, "inherited", declaredBy)
+                add(target, "inherited", declaredBy, projection)
             }
         }
         sort(entries, lessThan: { left, right =>
@@ -60,16 +82,17 @@ internal class HtmlMemberBrowser {
         }, stable: true)
     }
 
-    private func add(symbol: SymbolDoc, origin: String, declaredBy: ?SymbolDoc): Unit {
+    private func add(symbol: SymbolDoc, origin: String, declaredBy: ?SymbolDoc,
+        projection: RenderProjection): Unit {
         if (seen.add(symbol.id)) {
-            entries.add(HtmlMemberEntry(symbol, origin, declaredBy))
+            entries.add(memberEntry(symbol, origin, declaredBy, projection.catalog))
         }
     }
 
     private func addOwner(owner: SymbolDoc, origin: String, projection: RenderProjection): Unit {
         match (projection.membersByOwner.get(owner.id)) {
             case Some(values) =>
-                for (symbol in values) { add(symbol, origin, Some(owner)) }
+                for (symbol in values) { add(symbol, origin, Some(owner), projection) }
             case None => ()
         }
     }
@@ -80,25 +103,51 @@ internal class HtmlMemberBrowser {
 internal class HtmlMemberSections {
     let roles: ArrayList<DeclarationGroup>
     private let byRoleAndKind = HashMap<String, ArrayList<HtmlMemberEntry>>()
+    private let kindTitles = HashMap<String, ArrayList<String>>()
 
-    init(entries: ArrayList<HtmlMemberEntry>) {
+    init(entries: ArrayList<HtmlMemberEntry>, catalog: DeclarationGroupCatalog) {
         let symbols = ArrayList<SymbolDoc>()
+        let entriesById = HashMap<String, HtmlMemberEntry>()
         for (entry in entries) {
             symbols.add(entry.symbol)
-            let key = "${declarationGroupKey(entry.symbol)}:${memberSectionTitle(entry.symbol)}"
-            match (byRoleAndKind.get(key)) {
-                case Some(values) => values.add(entry)
-                case None => byRoleAndKind[key] = ArrayList<HtmlMemberEntry>([entry])
-            }
+            entriesById[entry.symbol.id] = entry
         }
-        roles = declarationGroups(symbols)
+        roles = partitionDeclarationGroups(symbols, catalog)
+        for (role in roles) {
+            let present = ArrayList<String>()
+            for (symbol in role.symbols) {
+                let title = memberSectionTitle(symbol)
+                let key = "${role.partitionKey}:${title}"
+                let entry = entriesById[symbol.id]
+                match (byRoleAndKind.get(key)) {
+                    case Some(values) => values.add(entry)
+                    case None => byRoleAndKind[key] = ArrayList<HtmlMemberEntry>([entry])
+                }
+                if (!present.contains(title)) { present.add(title) }
+            }
+            kindTitles[role.partitionKey] = present
+        }
     }
 
-    func entries(role: String, title: String): ArrayList<HtmlMemberEntry> {
-        match (byRoleAndKind.get("${role}:${title}")) {
+    func entries(role: DeclarationGroup, title: String): ArrayList<HtmlMemberEntry> {
+        match (byRoleAndKind.get("${role.partitionKey}:${title}")) {
             case Some(values) => values
             case None => ArrayList<HtmlMemberEntry>()
         }
+    }
+
+    /**
+     * Non-empty member-kind partitions of one group, in reading order. The
+     * count decides whether the redundant kind heading is rendered.
+     */
+    func kinds(role: DeclarationGroup): ArrayList<String> {
+        let present = match (kindTitles.get(role.partitionKey)) {
+            case Some(values) => values
+            case None => return ArrayList<String>()
+        }
+        let ordered = ArrayList<String>()
+        for (title in MEMBER_SECTION_TITLES where present.contains(title)) { ordered.add(title) }
+        ordered
     }
 }
 

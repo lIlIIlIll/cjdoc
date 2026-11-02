@@ -380,14 +380,18 @@ internal func assetReference(assetLookup: HashMap<String, String>, destination: 
     }
 }
 
-internal func markdownHeadingLevel(node: MarkdownNode, base: Int64): Int64 {
+internal func markdownRequestedHeadingLevel(node: MarkdownNode, base: Int64): Int64 {
     let sourceLevel = match (node.metadata) {
         case Some(metadata) => if (metadata.kind == "heading") {
             metadata.headingLevel.getOrThrow()
         } else { 1 }
         case None => 1
     }
-    min(6, base + sourceLevel - 1)
+    base + sourceLevel - 1
+}
+
+internal func markdownHeadingLevel(node: MarkdownNode, base: Int64): Int64 {
+    min(6, markdownRequestedHeadingLevel(node, base))
 }
 
 internal func appendMarkdownMarks(out: RenderTextBuffer, marker: String, count: Int64): Unit {

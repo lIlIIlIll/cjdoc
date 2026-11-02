@@ -54,8 +54,8 @@ public class DocumentationQuerySession {
     }
 
     /**
-     * Execute one strict `cjdoc.query-request/1` request and return exactly one
-     * `cjdoc.query-result/1` object.
+     * Execute one strict `cjdoc.query-request/3` request and return exactly one
+     * `cjdoc.query-result/3` object.
      *
      * Domain outcomes (ambiguity, scoped absence, incomplete source) are ordinary
      * results; a malformed request is reported through the same envelope so a
@@ -276,8 +276,13 @@ internal class QueryDocument {
     let pages = ArrayList<query_model.DocumentationPage>()
     let aliases = HashMap<String, ArrayList<String>>()
     let exposures = HashMap<String, JsonArray>()
-    let searchText = HashMap<String, String>()
-    let pageText = HashMap<String, String>()
+    // Cache only the two contract profiles, built on first use. Identity-only
+    // operations never allocate search facts, and concurrent searches share
+    // one immutable raw projection and prepared matching view for each profile.
+    private let searchLock = ReentrantMutex()
+    private let searchProjections = HashMap<String, query_render.DocumentationSearchProjection>()
+    private let searchPreparedProjections =
+        HashMap<String, query_render.PreparedDocumentationSearchProjection>()
     let outgoing = HashMap<String, ArrayList<QueryEdge>>()
     let incoming = HashMap<String, ArrayList<QueryEdge>>()
 
@@ -290,15 +295,52 @@ internal class QueryDocument {
             visibleSymbols.add(symbol)
             bySymbolId[symbol.id] = symbol
             let _ = visibleIds.add(symbol.id)
-            searchText[symbol.id] = querySearchableSymbolText(symbol)
         }
-        for ((_, page) in input.pages) {
-            pages.add(page)
-            pageText[page.id] = (page.title + "\n" + page.text).toAsciiLower()
-        }
+        for ((_, page) in input.pages) { pages.add(page) }
         sort(pages, lessThan: { left, right => left.id < right.id }, stable: true)
         queryBuildExposureIndex(this)
         queryBuildRelationshipIndex(this)
+    }
+
+    func searchProjectionFor(profile: String): query_render.DocumentationSearchProjection {
+        if (!query_render.searchContractProfileIsKnown(profile)) {
+            throw IllegalArgumentException("unknown search profile")
+        }
+        synchronized(searchLock) {
+            match (searchProjections.get(profile)) {
+                case Some(value) => value
+                case None =>
+                    let value = query_render.buildDocumentationSearchProjection(input.snapshot,
+                        profile, sourceSnapshotId: input.sourceSnapshotId)
+                    searchProjections[profile] = value
+                    value
+            }
+        }
+    }
+
+    func searchExecutionProjectionFor(profile: String):
+        query_render.PreparedDocumentationSearchProjection {
+        if (!query_render.searchContractProfileIsKnown(profile)) {
+            throw IllegalArgumentException("unknown search profile")
+        }
+        synchronized(searchLock) {
+            match (searchPreparedProjections.get(profile)) {
+                case Some(value) => value
+                case None =>
+                    let rawProjection = match (searchProjections.get(profile)) {
+                        case Some(value) => value
+                        case None =>
+                            let value = query_render.buildDocumentationSearchProjection(input.snapshot,
+                                profile, sourceSnapshotId: input.sourceSnapshotId)
+                            searchProjections[profile] = value
+                            value
+                    }
+                    let prepared =
+                        query_render.prepareDocumentationSearchProjection(rawProjection)
+                    searchPreparedProjections[profile] = prepared
+                    prepared
+            }
+        }
     }
 }
 
@@ -308,28 +350,6 @@ internal func queryAppendEdge(index: HashMap<String, ArrayList<QueryEdge>>, key:
         case Some(values) => values.add(edge)
         case None => index[key] = ArrayList<QueryEdge>([edge])
     }
-}
-
-// Literal author text only: summary, description and tag text. No type inference
-// and no HTML parsing feed ranking.
-internal func querySearchableSymbolText(symbol: query_model.SymbolDoc): String {
-    let out = StringBuilder()
-    match (symbol.documentation) {
-        case Some(comment) =>
-            out.append(comment.summary)
-            out.append("\n")
-            out.append(comment.description)
-            for (tag in comment.tags) {
-                out.append("\n")
-                out.append(tag.name)
-                out.append("\n")
-                out.append(tag.subject)
-                out.append("\n")
-                out.append(tag.description)
-            }
-        case None => ()
-    }
-    out.toString().toAsciiLower()
 }
 
 private func queryNavigationTarget(document: QueryDocument,
@@ -470,23 +490,31 @@ internal func queryFailureResult(request: JsonObject, inputs: ArrayList<QuerySna
 internal func queryReadCursor(request: JsonObject, catalogId: String): Int64 {
     let cursor = queryString(request, "cursor")
     if (cursor.isEmpty()) { return 0 }
-    let binding = queryCursorBinding(request, catalogId)
-    let prefix = "cjdoc.cursor/1:"
+    let profile = querySearchMode(request) + "/" + query_render.searchRequestProfile(queryString(request, "profile"))
+    let binding = queryCursorBinding(request, catalogId, profile)
+    let prefix = "cjdoc.cursor/2:"
     if (!cursor.startsWith(prefix)) {
         throw DocumentationQueryException("stale_cursor", "cursor_format",
             "Continuation cursor is not a cjdoc continuation cursor.")
     }
     let body = cursor[prefix.size..]
-    let separator = body.indexOf(":")
-    if (separator.isNone()) {
-        throw DocumentationQueryException("stale_cursor", "cursor_format",
+    let offsetSeparator = match (body.indexOf(":")) {
+        case Some(value) => value
+        case None => throw DocumentationQueryException("stale_cursor", "cursor_format",
             "Continuation cursor is not a cjdoc continuation cursor.")
     }
-    let offsetText = body[..separator.getOrThrow()]
-    let digest = body[separator.getOrThrow() + 1..]
-    if (digest != binding) {
+    let offsetText = body[..offsetSeparator]
+    let remainder = body[offsetSeparator + 1..]
+    let profileSeparator = match (remainder.indexOf(":")) {
+        case Some(value) => value
+        case None => throw DocumentationQueryException("stale_cursor", "cursor_format",
+            "Continuation cursor is not a cjdoc continuation cursor.")
+    }
+    let claimedProfile = remainder[..profileSeparator]
+    let digest = remainder[profileSeparator + 1..]
+    if (claimedProfile != profile || digest != binding) {
         throw DocumentationQueryException("stale_cursor", "cursor_binding",
-            "Continuation cursor no longer matches this snapshot, filters, ordering or budget.")
+            "Continuation cursor no longer matches this snapshot, mode, filters, ordering or budget.")
     }
     let value = try {
         Int64.parse(offsetText)
@@ -503,15 +531,188 @@ internal func queryReadCursor(request: JsonObject, catalogId: String): Int64 {
 
 /** Build the continuation cursor for the next stable page of the same request. */
 internal func queryNextCursor(request: JsonObject, catalogId: String, offset: Int64): String {
-    "cjdoc.cursor/1:" + offset.toString() + ":" + queryCursorBinding(request, catalogId)
+    let profile = querySearchMode(request) + "/" + query_render.searchRequestProfile(queryString(request, "profile"))
+    "cjdoc.cursor/2:" + offset.toString() + ":" + profile + ":" +
+        queryCursorBinding(request, catalogId, profile)
 }
 
-private func queryCursorBinding(request: JsonObject, catalogId: String): String {
+private func queryCursorBinding(request: JsonObject, catalogId: String,
+    profile: String): String {
     let canonical = JsonNode.object()
     for (index in 0..request.size()) {
         let key = request.nameAt(index)
         if (key == "cursor") { continue }
+        if (key == "filters") {
+            // Repeated and reordered predicates denote the same query, so the
+            // binding sees the normalized set instead of the request spelling.
+            let normalized = JsonNode.array()
+            for (filter in querySearchFilters(request)) {
+                let item = JsonNode.object()
+                item.put("field", JsonNode.string(filter.field))
+                item.put("op", JsonNode.string(filter.op))
+                item.put("value", JsonNode.string(filter.value))
+                normalized.add(item)
+            }
+            canonical.put(key, normalized)
+            continue
+        }
         canonical.put(key, request.valueAt(index))
     }
-    "cjdoc.cursor-binding/1:" + query_model.contractFingerprint(catalogId + "\n" + queryCanonical(canonical))
+    "cjdoc.cursor-binding/2:" + query_model.contractFingerprint(catalogId + "\n" + profile +
+        "\n" + queryCanonical(canonical))
+}
+private func querySearchScopeValue(inputs: ArrayList<QuerySnapshotInput>,
+    field: String): JsonNode {
+    let ordered = ArrayList<QuerySnapshotInput>()
+    for (input in inputs) { ordered.add(input) }
+    sort(ordered, lessThan: { left, right =>
+        query_render.searchUtf8ByteLess(left.snapshot.snapshotId, right.snapshot.snapshotId)
+    }, stable: true)
+    let values = ArrayList<String>()
+    for (input in ordered) {
+        values.add(match (field) {
+            case "snapshotId" => input.snapshot.snapshotId
+            case "language" => input.snapshot.locale
+            case "audience" => input.documentation.configuration.audience
+            case "cfgProfile" => input.documentation.configuration.cfgProfile
+            case _ => ""
+        })
+    }
+    if (values.isEmpty()) { return JsonNode.nullValue }
+    var allSame = true
+    for (value in values) {
+        if (value != values[0]) { allSame = false; break }
+    }
+    if (allSame) { return JsonNode.string(values[0]) }
+    let array = JsonArray()
+    for (value in values) { array.add(JsonNode.string(value)) }
+    array
+}
+
+/** Canonical request retains every condition while filling effective scope defaults. */
+private func queryCanonicalSearchRequest(request: JsonObject,
+    selectedInputs: ArrayList<QuerySnapshotInput>): JsonObject {
+    let canonical = JsonObject()
+    for (index in 0..request.size()) {
+        let key = request.nameAt(index)
+        if (["cursor", "filters", "tags", "mode", "profile", "limit", "query", "schemaVersion",
+            "operation", "snapshotId", "language", "audience", "cfgProfile",
+            "languageFallback", "latest"].contains(key)) { continue }
+        canonical.put(key, request.valueAt(index))
+    }
+    canonical.put("schemaVersion", JsonNode.string(query_render.searchContractRequestVersion()))
+    canonical.put("operation", JsonNode.string("search"))
+    canonical.put("query", JsonNode.string(queryString(request, "query")))
+    canonical.put("_filterOnlyEligible", JsonNode.boolean(query_render.searchRequestIsFilterOnly(request)))
+    canonical.put("snapshotId", querySearchScopeValue(selectedInputs, "snapshotId"))
+    for (field in ["language", "audience", "cfgProfile"]) {
+        match (request.get(field)) {
+            case Some(value) => canonical.put(field, value)
+            case None => canonical.put(field, querySearchScopeValue(selectedInputs, field))
+        }
+    }
+    canonical.put("languageFallback", JsonNode.boolean(queryBool(request, "languageFallback")))
+    canonical.put("latest", JsonNode.boolean(queryBool(request, "latest")))
+    canonical.put("mode", JsonNode.string(querySearchMode(request)))
+    canonical.put("profile", JsonNode.string(querySearchProfile(request)))
+    canonical.put("limit", JsonNode.int64(if (request.get("limit").isSome()) {
+        queryInt(request, "limit")
+    } else { query_render.searchContractInteger("defaultLimit") }))
+    let filters = JsonArray()
+    for (filter in querySearchFilters(request)) {
+        let item = JsonObject()
+        item.put("field", JsonNode.string(filter.field))
+        item.put("op", JsonNode.string(filter.op))
+        item.put("value", JsonNode.string(filter.value))
+        filters.add(item)
+    }
+    canonical.put("filters", filters)
+    let tags = JsonArray()
+    for (tag in query_render.searchNormalizeSetPredicateValues(request, "tags")) {
+        tags.add(JsonNode.string(tag))
+    }
+    canonical.put("tags", tags)
+    canonical
+}
+
+private func querySearchCursorDigest(request: JsonObject, contentIdentity: String,
+    projectionId: String, profile: String,
+    selectedInputs: ArrayList<QuerySnapshotInput>): String {
+    let contentBinding = contentIdentity + "\n" + projectionId
+    let canonicalRequest = queryCanonical(queryCanonicalSearchRequest(request, selectedInputs))
+    query_model.contractFingerprint("cjdoc.cursor-binding/2:" + contentBinding + "\n" +
+        profile + "\n" + canonicalRequest)
+}
+
+private func querySearchCursorFormatFailure(message: String): Nothing {
+    throw DocumentationQueryException("stale_cursor", "cursor_format", message)
+}
+
+private func querySearchCursorBindingFailure(): Nothing {
+    throw DocumentationQueryException("stale_cursor", "cursor_binding",
+        "Continuation cursor no longer matches this catalog, profile or canonical request.")
+}
+
+private func querySearchCursorDigestIsValid(value: String): Bool {
+    if (value.size != 64) { return false }
+    for (rune in value.runes()) {
+        let code = UInt32(rune)
+        if (!((code >= 0x30u32 && code <= 0x39u32) ||
+            (code >= 0x61u32 && code <= 0x66u32))) { return false }
+    }
+    true
+}
+
+/** Search cursor: `cjdoc.cursor/2:<offset>:<profile>:<digest>`. */
+internal func queryReadSearchCursor(request: JsonObject, contentIdentity: String,
+    profile: String, projectionId: String,
+    selectedInputs: ArrayList<QuerySnapshotInput>): Int64 {
+    let cursor = queryString(request, "cursor")
+    if (cursor.isEmpty()) { return 0 }
+    let prefix = "cjdoc.cursor/2:"
+    if (!cursor.startsWith(prefix)) {
+        querySearchCursorFormatFailure("Continuation cursor is not a cjdoc search cursor.")
+    }
+    let body = cursor[prefix.size..]
+    let offsetSeparator = match (body.indexOf(":")) {
+        case Some(value) => value
+        case None => querySearchCursorFormatFailure("Continuation cursor has an invalid format.")
+    }
+    let offsetText = body[..offsetSeparator]
+    let remainder = body[offsetSeparator + 1..]
+    let profileSeparator = match (remainder.indexOf(":")) {
+        case Some(value) => value
+        case None => querySearchCursorFormatFailure("Continuation cursor has an invalid format.")
+    }
+    let claimedProfile = remainder[..profileSeparator]
+    let digest = remainder[profileSeparator + 1..]
+    if (digest.contains(":") || offsetText.isEmpty() ||
+        !query_render.searchContractProfileIsKnown(claimedProfile) ||
+        !querySearchCursorDigestIsValid(digest)) {
+        querySearchCursorFormatFailure("Continuation cursor has an invalid format.")
+    }
+    for (rune in offsetText.runes()) {
+        let code = UInt32(rune)
+        if (code < 0x30u32 || code > 0x39u32) {
+            querySearchCursorFormatFailure("Continuation cursor offset is not a nonnegative integer.")
+        }
+    }
+    let offset = try {
+        Int64.parse(offsetText)
+    } catch (_: Exception) {
+        querySearchCursorFormatFailure("Continuation cursor offset is outside the supported range.")
+    }
+    if (claimedProfile != profile || digest != querySearchCursorDigest(
+        request, contentIdentity, projectionId, profile, selectedInputs)) {
+        querySearchCursorBindingFailure()
+    }
+    offset
+}
+
+/** Create a host-local opaque search continuation token. */
+internal func queryNextSearchCursor(request: JsonObject, contentIdentity: String,
+    projectionId: String, profile: String, offset: Int64,
+    selectedInputs: ArrayList<QuerySnapshotInput>): String {
+    "cjdoc.cursor/2:" + offset.toString() + ":" + profile + ":" +
+        querySearchCursorDigest(request, contentIdentity, projectionId, profile, selectedInputs)
 }

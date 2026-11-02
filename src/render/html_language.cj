@@ -71,13 +71,28 @@ internal let LANGUAGE_NAVIGATION_SCRIPT = """
   const update = () => {
     let anchor = location.hash.slice(1);
     try { anchor = decodeURIComponent(anchor); } catch (_) {}
+    let current = null;
+    try { current = new URL(location.href); } catch (_) {}
     for (const link of links) {
       if (!link.dataset.languageBase) link.dataset.languageBase = link.getAttribute('href');
       let routes = {};
       try { routes = JSON.parse(link.dataset.languageRoutes || '{}'); } catch (_) {}
       const candidate = Object.prototype.hasOwnProperty.call(routes, anchor) ? routes[anchor] : null;
       const target = Array.isArray(candidate) && typeof candidate[0] === 'string' ? candidate : null;
-      link.href = target ? target[0] : link.dataset.languageBase;
+      const destination = target ? target[0] : link.dataset.languageBase;
+      try {
+        const url = new URL(destination, location.href);
+        url.searchParams.delete('tag');
+        url.searchParams.delete('moduleId');
+        url.searchParams.delete('snapshotId');
+        if (current) {
+          for (const tag of current.searchParams.getAll('tag')) url.searchParams.append('tag', tag);
+          for (const moduleId of current.searchParams.getAll('moduleId')) {
+            url.searchParams.append('moduleId', moduleId);
+          }
+        }
+        link.href = url.href;
+      } catch (_) { link.href = destination; }
       link.dataset.positionState = anchor && !target ? 'page-start' : 'mapped';
       if (anchor && !target && link.dataset.switchState !== 'language-home') {
         link.title = document.documentElement.lang === 'zh-CN'
@@ -87,6 +102,12 @@ internal let LANGUAGE_NAVIGATION_SCRIPT = """
     }
   };
   update();
+  if (switcher) {
+    // pushState changes search tags without a navigation event; resolve links when used.
+    switcher.addEventListener('click', update, true);
+    switcher.addEventListener('focusin', update);
+  }
+  window.addEventListener('popstate', update);
   window.addEventListener('hashchange', update);
   window.addEventListener('pageshow', update);
 })();

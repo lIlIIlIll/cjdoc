@@ -83,7 +83,7 @@ HTML/Markdown 概念索引保留作者链接，不作为 cjdoc 手册改写。
 
 | 产物 | 可读视图必须保留的含义 |
 | --- | --- |
-| Doc IR v16 | 源码声明、注释、来源位置、显式 partial 与诊断 |
+| Doc IR v17 | source declarations, comments, source positions, explicit partial status, diagnostics, and captured group/tag metadata |
 | coverage / quality | 指标分母、audience、规则和具体缺失位置；比例不代表契约正确 |
 | `--check-examples` | `must-pass`、`must-fail`、`run` 等作者指令的真实 CLI 验证；结果由诊断和退出码表达 |
 | API diff | 同库两个版本、原生分类、匹配状态、不确定性及前后声明链接 |
@@ -159,14 +159,15 @@ PYTHONPATH=scripts python -m showcase_contract verify \
   到预期结果可见或完整详情展开的断言结束。展开前滚入视野不计入展开延迟，仍进入滚动统计；
   耗时包含事件之后的浏览器与验收调度开销，不是独立的渲染器微基准。
 
-预算固定在 `scripts/showcase_contract/scenarios.py`。参考界面改版后的本地受控样本为
-78,414,054 bytes 站点、10,354,602 bytes 离线 ZIP。站点上限调整为 100,000,000 bytes，
-为该样本留出约 27.5% 的增长空间；这些测量值不代表远端部署大小。浏览器运行和最终证据
-校验共用这份预算，调整后须重新生成浏览器收据，旧预算快照不能作为新预算的验收证据。
+预算固定在 `scripts/showcase_contract/scenarios.py`。历史界面改版样本与旧预算保留在
+既有发布记录中。PR #178 的完整远端产物测得 121,243,446 bytes 站点、17,929,008 bytes
+离线 ZIP；据此经显式批准，仅更新下表中的站点/离线包预算，其他约束不变。这是产物增长
+的承认，不是性能无回归声明。浏览器运行与最终证据校验共用预算，必须重新生成收据，
+旧预算快照不能作为新预算验收证据。
 
 | 受控指标 | 回归预算 |
 | --- | --- |
-| 最终站点 / 离线 ZIP | 100,000,000 / 16,000,000 bytes |
+| 最终站点 / 离线 ZIP | 130,000,000 / 20,000,000 bytes |
 | 成员列表高度 / 收起行最大高度 | 6,000 / 220 px |
 | 分屏正文起始位置 | 距文档顶部最多 260 px |
 | 查询 / 展开可见结果延迟 | 1,500 / 1,000 ms |

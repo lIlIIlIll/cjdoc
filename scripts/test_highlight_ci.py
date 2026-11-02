@@ -78,6 +78,45 @@ class HighlightCiContractTest(unittest.TestCase):
             for forbidden in ["example-user", "workspace", "secret", "stdout", "highlight_acceptance"]:
                 self.assertNotIn(forbidden, published)
 
+
+    def test_public_host_build_receipt_is_allowlisted_and_discriminating(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "sts-invocations.jsonl"
+            self.assertEqual(highlight_ci.public_cancel_host_receipt(path),
+                             {"status": "absent"})
+            record = {
+                "schemaVersion": "cjdoc.sts-invocation/1",
+                "package": "highlight_host_fixture",
+                "phase": "product-build",
+                "reason": "sts-1.2-doc-ir-gc-no-chir-function-inlining",
+                "option": "-O2 --fno-chir-function-inlining",
+                "exitCode": 1,
+                "argv": ["private argument"],
+                "workspace": r"C:\Users\example-user\workspace",
+            }
+            path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+            expected = {
+                "status": "recorded",
+                "package": "highlight_host_fixture",
+                "phaseMatches": True,
+                "reasonMatches": True,
+                "optionMatches": True,
+                "exitCode": 1,
+            }
+            self.assertEqual(highlight_ci.public_cancel_host_receipt(path), expected)
+            record["option"] = "private option"
+            path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+            expected["optionMatches"] = False
+            self.assertEqual(highlight_ci.public_cancel_host_receipt(path), expected)
+            published = json.dumps(expected)
+            for forbidden in ["private", "example-user", "workspace", "argv"]:
+                self.assertNotIn(forbidden, published)
+            encoded = json.dumps(record).encode("utf-8")
+            path.write_bytes(encoded + b" " * (8192 - len(encoded)))
+            self.assertEqual(highlight_ci.public_cancel_host_receipt(path), expected)
+            path.write_bytes(encoded + b" " * (8193 - len(encoded)))
+            self.assertEqual(highlight_ci.public_cancel_host_receipt(path), {"status": "invalid"})
+
     def test_timeout_artifacts_and_console_exclude_private_error_text(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

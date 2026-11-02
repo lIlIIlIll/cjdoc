@@ -48,5 +48,6 @@ internal func withTranslationDiagnostics(value: public_model.DocumentationSet,
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: diagnostics.toArray(),
         languageOptions: value.languageOptions, pages: value.pages.toArray(),
         externalDocumentation: value.externalDocumentation.toArray(),
-        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray())
+        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray(),
+        metadata: value.metadata)
 }

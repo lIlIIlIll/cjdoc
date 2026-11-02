@@ -5,7 +5,12 @@ import std.collection.*
 
 internal let LOCALIZED_TAG_NAMES = ["summary", "description", "param", "return", "throws", "see",
     "deprecated", "example", "precondition", "postcondition", "invariant", "performance", "state",
-    "concurrency", "platform", "compatibility", "error", "since", "version", "author", "group"]
+    "concurrency", "platform", "compatibility", "error", "since", "version", "author", "group",
+    "tag"]
+
+// Tags whose meaning belongs to the declaration, not to one documentation
+// language, so a language qualifier is rejected with CJDOC3112.
+internal let SHARED_METADATA_TAGS = ["since", "version", "author", "group", "tag"]
 
 internal class LocalizedTagHead {
     let name: String
@@ -138,7 +143,9 @@ internal func localizedTagHead(line: String): ?LocalizedTagHead {
             return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101"))
         }
         end = stop + 1
-        if (["since", "version", "author", "group"].contains(name)) {
+        // Shared, language-independent metadata rejects any qualifier: a
+        // qualifier cannot narrow which declarations carry a group or a tag.
+        if (SHARED_METADATA_TAGS.contains(name)) {
             return Some(LocalizedTagHead(name, language, "", error: "CJDOC3112"))
         }
     }

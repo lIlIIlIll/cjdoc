@@ -43,6 +43,8 @@ CLI_CONTRACT_FIXTURES = {
     # Independently compiled public GenerationRequest caller and complete CLI/IR
     # parity are owned by scripts/accept_dependency_public_api.py.
     "dependency_public_api",
+    # Shared query cases, scoped tag badges and source-free Agent artifacts.
+    "declaration-tags",
 }
 
 
@@ -70,7 +72,12 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/16")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/17")
+        metadata = document.get("metadata")
+        self.assertIsInstance(metadata, dict)
+        self.assertEqual(set(metadata), {"groups", "tags"})
+        self.assertIsInstance(metadata["groups"], list)
+        self.assertIsInstance(metadata["tags"], list)
         self.assertEqual(document.get("generator"), {
             "name": "cjdoc", "version": self.package_version, "toolchain": "",
         })

@@ -17,6 +17,7 @@ internal class GeneratedDocumentation {
 internal func generateDocumentationWithSource(request: GenerationRequest,
     semanticProvider: SemanticProvider): GeneratedDocumentation {
     let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
+    prepareDocumentationMetadata(documentation, request)
     prepareDocumentationLanguages(documentation, request)
     let qualityConfig = loadDocumentationQualityConfig(request.projectRoot)
     match (request.lintProfile) {
@@ -49,6 +50,7 @@ public class DocumentationEngine {
             }
         }
         let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
+        prepareDocumentationMetadata(documentation, request)
         prepareDocumentationLanguages(documentation, request)
         let qualityConfig = loadDocumentationQualityConfig(request.projectRoot)
         match (request.lintProfile) {

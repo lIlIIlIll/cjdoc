@@ -152,10 +152,11 @@ def search(journey: Journey):
     field.fill("unrecognized:TextCatalog")
     expect(results).to_have_count(0)
     expect(page.locator("[data-cjdoc-search-status]")).to_be_visible()
-    require_text(page.locator("[data-cjdoc-search-status]"), "name:", "return:")
+    expect(page.locator("[data-cjdoc-search-status]")).to_contain_text("unknown_filter_field")
     field.fill("cjdoc_no_such_symbol_58b0e6")
     expect(results).to_have_count(0)
     expect(page.locator("[data-cjdoc-search-status]")).to_be_visible()
+    expect(page.locator("[data-cjdoc-search-status]")).not_to_contain_text("unknown_filter_field")
     field.fill("name:openText")
     origin = page.url
     page.keyboard.press("ArrowDown")
@@ -320,7 +321,7 @@ def authoring(journey: Journey):
 
 def machine(journey: Journey):
     target = journey.target
-    ir = journey.raw('[data-machine-format="json"]', "cjdoc.doc-ir/16")
+    ir = journey.raw('[data-machine-format="json"]', "cjdoc.doc-ir/17")
     selected = [item for item in ir["declarations"] if item["id"] == target["resolved"]["symbolId"]]
     if len(selected) != 1 or selected[0]["headerSpelling"] != target["signature"]:
         raise AssertionError("HTML and machine Doc IR disagree on the selected native declaration")

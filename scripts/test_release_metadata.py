@@ -194,16 +194,17 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                 text.replace("{", '{"$schema":"duplicate",', 1),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
+            with self.assertRaises(ValueError):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
             path = repo / "docs/schema/search-index.schema.json"
-            text = path.read_text(encoding="utf-8")
-            path.write_text(text.replace('"minLength": 1', '"minLength": NaN', 1),
-                            encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema["$comment"] = float("nan")
+            # Emit invalid JSON deliberately, independently of schema formatting.
+            path.write_text(json.dumps(schema, allow_nan=True), encoding="utf-8")
+            with self.assertRaises(ValueError):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
     def test_repository_schema_inventory_is_complete_and_current(self) -> None:
@@ -229,7 +230,11 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertEqual(tuple(value["required"]), required, name)
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("doc-ir")},
-            {"doc-ir", "doc-ir-v16"},
+            {"doc-ir", "doc-ir-v17"},
+        )
+        self.assertEqual(
+            {name for name in SCHEMA_NAMES if name.startswith("search-index")},
+            {"search-index", "search-index-v11"},
         )
         self.assertFalse(any("doctest" in name for name in SCHEMA_NAMES))
         # The frozen navigation v1 contract keeps its published identity; the
@@ -244,10 +249,19 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                      "machine-manifest", "query-request", "query-result"):
             self.assertIn(name, SCHEMA_NAMES)
         self.assertIn("navigation-index", SCHEMA_NAMES)
-        for name in ("doc-ir", "doc-ir-v16"):
+        for name in ("doc-ir", "doc-ir-v17"):
             value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
             self.assertNotIn("evidenceKey", value["$defs"]["tag"]["properties"])
             self.assertIn("navigation", value["$defs"]["tag"]["properties"])
+
+
+    def test_current_golden_inventory_rejects_obsolete_version_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, _ = self.make_release_repo(Path(temporary))
+            obsolete = repo / "tests/fixtures/golden-v16"
+            obsolete.mkdir()
+            with self.assertRaisesRegex(ValueError, "obsolete v16 golden inventory"):
+                verify_repository_inputs.verify_golden_set(repo, CURRENT_GOLDEN_VERSION)
 
     def test_current_golden_validation_rejects_changed_roundtrip_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

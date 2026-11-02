@@ -1,18 +1,23 @@
+package cjdoc.schema_data
+
+// Current distribution-time schema contracts; docs/schema copies are emitted by cjdoc schema.
+public let DOC_IR_V17_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v16.schema.json",
-  "title": "cjdoc Doc IR v16",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v17.schema.json",
+  "title": "cjdoc Doc IR v17",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
+  "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "metadata", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/16"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/17"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
     "documentationRevision": {"type": "string"},
     "project": {"$ref": "#/$defs/project"},
     "configuration": {"$ref": "#/$defs/configuration"},
+    "metadata": {"$ref": "#/$defs/documentationMetadata"},
     "dependencies": {"type": "array", "items": {"$ref": "#/$defs/dependencyInstance"}},
     "documentSets": {"type": "array", "items": {"$ref": "#/$defs/documentSetIdentity"}},
     "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}},
@@ -429,7 +434,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["name", "version", "moduleId", "state", "capabilities"],
       "properties": {
-        "name": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "\\S"}, "version": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "\\S"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "\\\\S"}, "version": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "\\\\S"},
         "moduleId": {"$ref": "#/$defs/moduleId"},
         "state": {"$ref": "#/$defs/semanticState"}, "capabilities": {"$ref": "#/$defs/capabilities"}
       }
@@ -505,7 +510,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["state", "canonical", "provider"],
       "properties": {
-        "state": {"$ref": "#/$defs/semanticState"}, "canonical": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\S"}]},
+        "state": {"$ref": "#/$defs/semanticState"}, "canonical": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\\\S"}]},
         "provider": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1}]}
       },
       "allOf": [
@@ -523,7 +528,7 @@
         "kind": {"type": "string", "minLength": 1}, "spelling": {"type": "string"},
         "nullable": {"type": "boolean"}, "arguments": {"type": "array", "items": {"$ref": "#/$defs/typeRef"}},
         "semanticState": {"$ref": "#/$defs/semanticState"},
-        "semanticCanonical": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\S"}]},
+        "semanticCanonical": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\\\S"}]},
         "semanticProvider": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
         "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
       },
@@ -592,7 +597,7 @@
         "codeKind": {"enum": ["indented", "fenced"]},
         "fenceCharacter": {"type": ["string", "null"], "enum": ["`", "~", null]},
         "fenceLength": {"type": "integer", "minimum": 0, "maximum": 1024},
-        "infoRaw": {"type": "string", "not": {"pattern": "[\\r\\n]"}}, "language": {"type": "string"},
+        "infoRaw": {"type": "string", "not": {"pattern": "[\\\\r\\\\n]"}}, "language": {"type": "string"},
         "attributesRaw": {"type": "string"},
         "codeHighlight": {
           "type": "object", "additionalProperties": false,
@@ -685,7 +690,7 @@
       "required": ["state", "provider", "canonicalSignature"],
       "properties": {
         "state": {"$ref": "#/$defs/semanticState"}, "provider": {"type": "string", "minLength": 1},
-        "canonicalSignature": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\S"}]}
+        "canonicalSignature": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\\\S"}]}
       }
     },
     "sourceApiSignature": {
@@ -813,6 +818,49 @@
         "reason": {"type": "string", "minLength": 1}
       }
     },
+    "metadataTitleText": {
+      "type": "string", "minLength": 1, "maxLength": 256, "x-maxUtf8Bytes": 256,
+      "description": "Nonblank single-line metadata title of 1-256 UTF-8 bytes; the model enforces the byte limit and rejects controls."
+    },
+    "documentationTitle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["language", "title"],
+      "properties": {
+        "language": {"enum": ["zh-CN", "en"]},
+        "title": {"$ref": "#/$defs/metadataTitleText"}
+      }
+    },
+    "documentationGroupDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["moduleId", "packageName", "ownerId", "id", "title", "titles", "order"],
+      "properties": {
+        "moduleId": {"type": "string", "minLength": 1},
+        "packageName": {"type": "string", "minLength": 1},
+        "ownerId": {"$ref": "#/$defs/nullableSymbolId"},
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "title": {"$ref": "#/$defs/metadataTitleText"},
+        "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}},
+        "order": {"anyOf": [{"type": "integer", "minimum": 0, "maximum": 999999}, {"type": "null"}]}
+      }
+    },
+    "documentationTagDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["moduleId", "id", "title", "titles"],
+      "properties": {
+        "moduleId": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "title": {"$ref": "#/$defs/metadataTitleText"},
+        "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}}
+      }
+    },
+    "documentationMetadata": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groups", "tags"],
+      "properties": {
+        "groups": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationGroupDefinition"}},
+        "tags": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationTagDefinition"}}
+      }
+    },
     "diagnostic": {
       "type": "object", "additionalProperties": false,
       "required": ["severity", "code", "message", "source", "symbolId"],
@@ -825,3 +873,6 @@
     }
   }
 }
+"""
+
+public let DOC_IR_SCHEMA = DOC_IR_V17_SCHEMA.replace("doc-ir-v17.schema.json", "doc-ir.schema.json")

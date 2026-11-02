@@ -1,6 +1,6 @@
 # 逐声明读取、查询与 MCP
 
-cjdoc 的机器读取以选定语言、audience、cfg 边界内的 Doc IR 为输入。静态发布、CLI、公开查询核心和本地 MCP 共用声明投影；不会从 HTML 回抓正文，不调用模型补写契约，也不重新运行示例。
+cjdoc 的机器读取与静态站搜索都使用捕获的声明投影。CLI、公开查询核心和本地 MCP 支持 `precise`/`discovery` 两种模式及 `full-ir`/`bounded-static` 两种检索文本范围；HTML 静态搜索使用 discovery + bounded-static。renderer 只读取 Doc IR 和已发布索引，不回抓 HTML 正文、不调用模型、不重新编译源码或重跑示例。
 
 ## 生成与部署
 
@@ -26,11 +26,12 @@ HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-
 |---|---|
 | `llms.txt` | 精简发现入口，链接导航、表示 manifest 和已启用的全文索引；不是全站正文。 |
 | `navigation-index.json` | `cjdoc.navigation-index/2` 第一片；读取 `pagination.next` 直至结束。 |
-| `agent/manifest.json` | `cjdoc.machine-manifest/1`；明确区分 symbol、concept、package、project 映射。 |
-| `agent/docs.json`、`symbol-index.json` | 与 manifest 快照一致的自包含模型及唯一库存；Doc IR 使用无损紧凑 JSON。 |
+| `agent/manifest.json` | `cjdoc.machine-manifest/1`；区分 symbol、concept、package、project 映射。 |
+| `agent/docs.json`、`symbol-index.json` | 与 manifest 快照一致的自包含 Doc IR/唯一库存；Doc IR 当前为 `cjdoc.doc-ir/17`。 |
+| `agent/symbols/` 中的 JSON | `cjdoc.declaration/2`；每条声明带有同形 `classification` 元数据。 |
+| `search-index.json`、`search-index.js` | `cjdoc.search-index/11` 与内嵌 `cjdoc.search-contract/2`；HTML 搜索执行 discovery/bounded-static。 |
 | manifest 的 `representations` | 每条记录给出实际 HTML、Markdown、JSON 相对路径；不要拼接 slug 或替换扩展名。 |
 | `agent-full-index.json` | 仅 `--agent-full`：全文各片的顺序、SHA-256、单元数及完整性。 |
-| `llms-full.txt` | 已有入口保留；较大全文通过索引继续读取后续完整单元。 |
 
 路径基准是**当前文档根**，不是服务器根或其他格式的兄弟目录。部署整个 `html/`，不要只复制 HTML 文件。HTML head 的 `alternate` 指向随站点发布的逐页/逐声明 Markdown，`describedby` 指向同一根的 `llms.txt` 和 manifest。内容协商不是前提；普通静态托管、项目子路径和 `file://` 均使用这些文件。
 
@@ -55,7 +56,7 @@ python3 - <<'PY'
 import json
 from pathlib import Path
 Path('request.json').write_text(json.dumps({
-    'schemaVersion': 'cjdoc.query-request/1',
+    'schemaVersion': 'cjdoc.query-request/3',
     'operation': 'search',
     'query': 'pocketkit.TextCatalog.add',
     'apiVersion': '0.2.0',
@@ -66,17 +67,82 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
   --request request.json > result.json
 ```
 
-`--request -` 从 stdin 读取一个 JSON 对象。stdout 只包含一个 `cjdoc.query-result/1` 对象；诊断不混入 stdout。输入源在会话创建时严格装载，随后继续读取相同捕获内容，不按 PATH 里的 SDK 或当前工作区重新选版本。
+`--request -` 从 stdin 读取一个 JSON 对象。stdout 只包含一个 `cjdoc.query-result/3` 对象；诊断不混入 stdout。输入源在会话创建时严格装载，随后继续读取同一捕获内容，不按 PATH 里的 SDK 或当前工作区重新选版本。
 
 ### 三个操作
 
 | 操作 | 核心输入 | 返回范围 |
 |---|---|---|
 | `resolve_docs` | library、模块/包范围、捕获的 dependency/context、API 版本和显式策略；`query` 只匹配库/模块/包名，符号名使用 `search` | 选中项、可区分候选、matchLevel、原因与原始依赖证据。 |
-| `search` | Symbol ID/key、限定名、名称/别名、参数类型/泛型数量或用途文字 | 精确身份/重载特征优先，随后名称及正文；短摘要、完整源码签名、详情身份与规范路由。 |
-| `get_symbol` | `symbolId`、`symbolKey`、`pageId` 恰好一个；固定快照/文档集 | 所选完整章节、关系、来源与附带报告；概念页没有伪造的 Symbol ID。 |
+| `search` | Symbol ID/key、限定名、名称/别名、参数类型/泛型数量、结构化字段筛选或用途文字 | 精确身份/重载特征优先，随后名称及正文；摘要与签名预览、详情身份、分类和规范路由。 |
+| `get_symbol` | `symbolId`、`symbolKey`、`pageId` 恰好一个；固定快照/文档集 | 所选完整章节、关系、来源、分类与附带报告；概念页没有伪造的 Symbol ID。 |
 
-完整字段、操作适用性和取值以 `cjdoc schema query-request` 为准。未知字段、身份选择冲突、`sections` 与 `preset` 同时出现、不适用的操作选项都会被拒绝。名称命中不证明重载适用性；同名、重载及同优先级文档候选不会按遍历顺序选第一条。
+完整字段、操作适用性和取值以 `cjdoc schema query-request` 为准；请求为 `cjdoc.query-request/3`，结果为 `cjdoc.query-result/3`。未知字段、身份选择冲突、`sections` 与 `preset` 同时出现、不适用的操作选项都会被拒绝。`mode`、`profile`、`filters` 和 `tags` 只适用于 search，其他操作收到这些字段会返回 `invalid_request/field_not_applicable`。未填写 `mode`/`profile` 时原生查询默认 `precise`/`full-ir`。显式提供旧 query-request/query-result 版本会被拒绝。
+
+### Search 与固定查询
+
+#### 模式、profile 与排名
+
+`precise` 是原生查询的默认模式。它优先使用精确 `symbolId`/`symbolKey`、qualified name、名称、owner-member、重导出短别名，再匹配声明标识符或文档文本的 token；参数和返回类型不会额外扩大 precise 的自由文本范围，但仍可用显式字段条件筛选。最高证据等级并列时返回 `ambiguous`，不会按遍历顺序猜一个重载。`discovery` 用于浏览和渐进发现：多个正常候选可同时返回，按共享契约的分数从高到低排序。
+顶层 `name`、`qualifiedName`、`symbolId`、`symbolKey` 是声明选择器，不以 concept 标题命中页面；检索 concept 标题使用自由 `query`。
+
+| discovery 分数 | 证据 |
+|---:|---|
+| 12000 | 精确 `symbolId` 或 `symbolKey` |
+| 11000 | 精确 qualified name |
+| 10000 | 精确声明名、owner-member 或可见 alias |
+| 9000 / 8000 / 7000 | ASCII 折叠名称 / 名称前缀 / qualified-name 前缀 |
+| 6000 / 5000 | 所有 token 的词前缀 / acronym |
+| 4000 / 3000 | 结构化声明文本 / 一次编辑距离 |
+| 2000 | 文档正文或 concept 正文 |
+| 0 | 仅使用 scope/filters/tags 枚举（`filter_only`） |
+
+`full-ir` 检索捕获的完整正文；`bounded-static` 每条记录只索引正文前 2,000 个 Unicode 码点，结构化身份、参数、返回值及分类不截断。摘要预览最多 240 个码点，签名预览最多 512 个码点，截短时的省略号计入上限；不按 UTF-8 字节数截短，匹配仍使用完整摘要与结构化声明。原生查询支持两个 profile；原生与浏览器执行器都支持 `precise` / `discovery` 两种模式。发布的静态索引只提供 `bounded-static`，页面输入适配显式使用 `discovery` + `bounded-static`。
+静态站只提供 `search` 操作：其他 operation 返回 `invalid_request/operation_unavailable`，请求 `full-ir` 返回 `unavailable/search_profile_unavailable`，不会伪装成空结果。
+
+搜索结果使用 canonical 声明去重，key 为 `(snapshotId, symbolId)`，concept 使用 `(snapshotId, pageId)`；不同 snapshot、module、owner 或 origin 不合并。排序按 score 降序，再按 snapshot ID、canonical ID、reason 的 UTF-8 字节升序，结果顺序不依赖哈希表或语言环境。`total` 是当前 scope 和全部过滤条件下的去重候选数，不是当前页条数；`limit: 0` 返回空页但保留真实总数，且不发出无进展游标。精确最高分并列仍保留 `ambiguous` 语义。
+标签或分类标题不会改变标签成员关系。一个 group ID 在多个 module/package/declared-owner scope 中出现时，每个 scope 独立选择标题和分组；分类标题与 group order 只影响展示，不参与 SymbolId 或 API fingerprint。
+
+每个 search 结果还可包含 `coverage`：profile、projectionId、bodyTextLimit、bodyComplete 和 truncatedEntries。`bounded-static` 的 `bodyTextLimit` 为 2000；`full-ir` 为 null。已建立投影的零命中也带真实 coverage；非 search 结果或建投影前失败时为 null。若源采集本身不完整，仍会报告 `source_incomplete`，不能把索引覆盖不完整当作完整未命中。
+
+#### 字段过滤与精确标签
+
+`filters` 是最多 64 个 `{field, op, value}` 条件，所有条件 AND：field 是 `name`、`qualifiedName`、`owner`、`param`、`return`、`package` 或 `kind`；op 是 `eq` 或 `contains`；value 是 1–16384 个字符的非空字符串。`eq` 大小写敏感；`contains` 只折叠 ASCII `A`–`Z`，不做 Unicode normalization 或 locale 折叠。`name`、`qualifiedName`、`symbolId`、`symbolKey` 作为顶层字段时保留其既有精确选择语义，`filters` 是额外收窄条件。多个名称/限定名/包条件必须同时在同一个 canonical/exposure 上下文成立；参数按单个参数值匹配，不会把两个参数拼起来。
+
+`tags` 是 1–64 个 ID 的数组，接受 1–64 个 ASCII 字母、数字、`-`、`_`，大小写敏感、精确相等；重复项会去重并按 UTF-8 字节排序，多个 ID 是 AND 交集；空数组会被拒绝，不筛标签时省略该字段。定义标题、正文提及或 ID 前缀都不等同于标签成员关系。concept 页没有 tag 集合，因此带 tags 的搜索不会返回 concept。
+
+例如，在具有这些分类的文档中，下面的请求只返回 package 为 `pocketkit` 且同时具有 `streaming`、`extension-point` 的可见声明：
+
+```json
+{
+  "schemaVersion": "cjdoc.query-request/3",
+  "operation": "search",
+  "query": "",
+  "profile": "full-ir",
+  "mode": "discovery",
+  "filters": [
+    {"field": "package", "op": "eq", "value": "pocketkit"}
+  ],
+  "tags": ["streaming", "extension-point"],
+  "limit": 20
+}
+```
+
+没有文字 query、但提供有效 scope、filters、overload selector 或 tags 时，查询枚举通过条件的集合，score 为 0、reason 为 `filter_only`。完全没有 query 或有效过滤条件时返回空结果。仅提供 mode、profile、limit、cursor、languageFallback 或 `latest: false` 不会触发枚举；执行器补齐的默认 scope 也不算用户筛选。游标同时绑定这一语义区别，不能在续页时移除唯一的显式 scope。
+
+#### 搜索文本规则
+
+搜索仅 ASCII 大小写折叠；不做 NFC/NFKC、locale 或非 ASCII 大小写折叠。token 由 ASCII 字母、数字、下划线及所有 U+0080 以上码点组成，其他码点分隔 token。discovery 的 camelCase 与 acronym 拆分只识别 ASCII 大小写边界。一次编辑距离只允许对 4–128 码点的单 token 执行一次插入、删除或替换，不包含转置。HTML 输入保留 `name:`、`owner:`、`param:`、`return:`、`package:`、`kind:` 六种字段；package/kind 下拉选项是精确过滤。重复 `tag:<id>` 使用相同 ID 集合规则；未知字段或空值会显示结构化错误，不会被忽略。其余文本作为自由 query。
+纯标点 query 不产生 token，但仍可按名称折叠或前缀匹配 concept 标题，例如 `++`；依赖 token 的规则不会把空 token 集合解释成匹配所有声明。
+
+HTML 的搜索链接将每个 `tag`、`moduleId` 和 `snapshotId` 写入当前 locale 的站点 index URL。链接保留标签来源，不把不同 module 或 dependency 的同名标签合并；HTTP 子路径和 `file://` 页面都能由这些 query 参数恢复搜索状态。
+点击 facet 时，已有 tag 条件统一写入 URL，输入框保留其他自由文本与字段条件；取消某个 tag 后再次编辑输入，不会恢复已取消的谓词。
+
+`result.facets.tags` 是当前搜索条件（包括所有 tags）筛选后的可见 canonical 声明计数，按 snapshot/module/tag 分域，不计算 exposure 或隐藏声明。facet 项为 `{scope, id, title, count}`；scope 保留 `snapshotId`、`sourceSnapshotId`、`moduleId`、`documentSet`、`dependencyInstance` 及 `dependencyInstanceState`。非 search 结果的 `facets.tags` 为空数组。结果 item 的 `classification` 形状为 `{group: null | {id, packageName, ownerId, title, order}, tags: [{id, title}]}`；未分组时 group 为 null，ownerId/order 可以是 null；`get_symbol` 也返回 classification，concept 固定为 `{group: null, tags: []}`。tag title 可本地化显示，但过滤始终使用 ID。
+
+#### 游标绑定与翻页
+
+查询游标使用 `cjdoc.cursor/2` 格式，是会话局部 opaque token，不手工构造。它绑定捕获内容/projection、profile 和除 `cursor` 外的规范化完整请求（包括 scope、mode、filters、tags、排序相关条件和 limit）；条件顺序、重复 tags/filters 会规范化。续取时只把响应里的 cursor 加回原请求。改变输入、模式、profile 或任何查询字段后，必须从第一页重查。
 
 `resolve_docs` 复用依赖文档选择规则。`contextSnapshotId`、`contextModuleId`、`dependencyInstanceId` 指向**已捕获**上下文；不会重新解依赖或观察 SDK。`compatible` 和 `languageFallback` 是显式策略。`latest` 只有输入版本 catalog 已声明对应别名时才有意义，解析后回显固定快照；它不能替代明确请求的 API 版本。
 
@@ -214,9 +280,14 @@ cjdoc schema page
 cjdoc schema machine-manifest
 cjdoc schema query-request
 cjdoc schema query-result
+cjdoc schema doc-ir-v17
+cjdoc schema search-index-v11
 ```
 
-`schema navigation-index` 指向当前 v2；`schema navigation-index-v1` 和已发布的旧 schema 保持冻结。v1 没有整体完整性/续取证据，不能据其语法合法认定全站枚举完整。当前 decoder/query 接受 Doc IR v16；旧版本输入不会被补造为当前证据，须保留对应历史工具或从真实来源重新生成。
+`schema navigation-index` 指向当前 v2；`schema navigation-index-v1` 和已发布的旧 navigation schema 仍保持冻结。v1 没有整体完整性/续取证据，不能据其语法合法认定全站枚举完整。当前 decoder/query 接受 Doc IR v17；Doc IR v16 和更早版本不迁移。当前机器协议为 query-request/3、query-result/3、search-index/11、declaration/2；显式旧协议版本不会被当作当前输入接受。需要使用旧快照时，应在真实源码上重新生成当前 Doc IR/站点，而不是把旧 JSON 改写版本字段。
+
+当前 search static index 是 `cjdoc.search-index/11`，以共享 `cjdoc.search-contract/2` 执行器提供 bounded-static 语义；`cjdoc.declaration/2` 在每条声明中带 classification。静态索引的旧版本或不支持的 profile 会给出明确能力错误，不会静默显示零命中。
+静态索引的 modules 表对应捕获的模块，而不是只列出有可见搜索结果的模块。使用 snapshot、module、document-set 与 dependency identity 联合选择捕获范围；`packageName` 是候选筛选条件。范围有效、源码收集完整但没有可见候选时返回 `not_found/no_match_in_scope`，不是 scope mismatch；收集不完整时仍保留 `source_incomplete`。
 
 公开仓颉入口为 `cjdoc.DocumentationQuerySession`，可从显式路径、一个 `cjdoc.model.DocumentationSet` 或其数组创建；`execute(String)` 返回同一版本化 JSON，`catalogIdentity` 暴露捕获内容身份。静态投影由 `cjdoc.render.DocumentationReadSnapshot` 及现有 renderer 提供。运行可重现模型对照、消费者编译与行为验收见维护者的 [Agent 评测流程](maintainer/agent-evaluation.md)；普通静态使用不要求模型或网络。
 

@@ -66,7 +66,7 @@ private func frozenPageSearchBinding(artifacts: Array<RenderArtifact>, index!: I
     let entries = root.get("entries").getOrThrow().asArray()
     for (position in 0..entries.size()) {
         let object = entries.get(position).getOrThrow().asObject()
-        if (object.get("id").getOrThrow().asString() == "cjdoc:concept:guide") {
+        if (object.get("canonicalId").getOrThrow().asString() == "guide") {
             return object.get("bindings").getOrThrow().asArray().get(index).getOrThrow().asObject()
         }
     }

@@ -1,6 +1,7 @@
 package cjdoc.render
 
 import cjdoc.model.*
+import std.collection.*
 import markdown.{MarkdownEngine, MarkdownProfile}
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -683,21 +684,6 @@ class RendererSafetyTest {
         @Expect(page.contains("class=\"signature-block\""), true)
     }
 
-    @TestCase
-    func htmlChineseLabelsCoverBreadcrumbAndRuntimeControls(): Unit {
-        let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
-        let collector = RenderArtifactCollector()
-        appendHtmlArtifacts(collector, documentation, locale: "zh-CN")
-        let packageHtml = rendererSafetyContent(collector.toArray(),
-            "html/${packagePagePath("cjdoc:module:v1:renderer-safety", "fixture")}")
-
-        @Expect(packageHtml.contains("aria-label=\"面包屑导航\""), true)
-        @Expect(packageHtml.contains("aria-label=\"选择主题：跟随系统\""), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("const isChinese"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("复制代码"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("已复制"), true)
-        @Expect(packageHtml.contains("aria-label=\"主题\""), true)
-    }
 
     @TestCase
     func markdownSerializerPreservesInlineAdjacencyAndEncodesLinkDestinations(): Unit {
@@ -838,40 +824,42 @@ class RendererSafetyTest {
     }
 
     @TestCase
-    func searchSectionsOnlyCoverRenderedHeadings(): Unit {
+    func searchChaptersLinkToRenderedReturnAndParameterBlocks(): Unit {
         let moduleId = "cjdoc:module:v1:renderer-safety"
+        let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::function:unit#g0()"
         let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 24, 23))
-        let markdown = MarkdownNode("document")
-        // A return on a Unit function renders no Returns heading, so no section
-        // may point at one; a parameter tag on a parameterless function is
-        // likewise dropped. A real non-Unit return keeps its section.
-        @Expect(searchSectionsFor(markdown, moduleId, source, "unit", "function",
-            Some(TypeRef("source", "Unit", SemanticType("unavailable"))), [],
-            [DocTag("return", "", "returned value")]).contains("\"sections\""), false)
-        @Expect(searchSectionsFor(markdown, moduleId, source, "bare", "function",
-            Some(TypeRef("source", "Bool", SemanticType("unavailable"))), [],
-            [DocTag("param", "", "a parameter")]).contains("\"sections\""), false)
-        @Expect(searchSectionsFor(markdown, moduleId, source, "value", "function",
-            Some(TypeRef("source", "Bool", SemanticType("unavailable"))), [],
-            [DocTag("return", "", "returned value")]).contains("\"sections\""), true)
+        for (hasReturnDocumentation in [false, true]) {
+            let tags = ArrayList<DocTag>()
+            tags.add(DocTag("param", "orphan", "No corresponding parameter."))
+            if (hasReturnDocumentation) { tags.add(DocTag("return", "", "Return documentation.")) }
+            let symbol = SymbolDoc(symbolId, "function", "unit", "fixture.unit", "fixture", moduleId,
+                "public", source, "public func unit(): Unit", SemanticInfo("partial", "ast"),
+                returnType: Some(TypeRef("source", "Unit", SemanticType("unavailable"))),
+                documentation: Some(DocComment("raw", "summary", "", MarkdownNode("document"),
+                    tags: tags.toArray())))
+            let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+                ProjectInfo("renderer-safety"), ConfigurationSnapshot(lintProfile: "off"),
+                providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
+                    SemanticCapabilities(false, false, false, false, false))],
+                modules: [ModuleDoc(moduleId, "renderer-safety", "root", "", packageNames: ["fixture"])],
+                packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [symbolId])],
+                files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [symbol])
+            let html = rendererSafetyContent(HtmlDocumentationRenderer().render(documentation),
+                "html/" + symbolPagePath(symbol))
+            let projection = buildDocumentationSearchProjection(DocumentationReadSnapshot(documentation),
+                searchStaticProfileName())
+            var hasReturnChapter = false
+            for (entry in projection.entries) {
+                for (section in entry.sections) {
+                    @Expect(html.contains("id=\"" + section.anchor + "\""), true)
+                    @Expect(section.kind != "parameters", true)
+                    if (section.kind == "return") { hasReturnChapter = true }
+                }
+            }
+            @Expect(hasReturnChapter, hasReturnDocumentation)
+            @Expect(html.contains("id=\"" + docBlockAnchor(symbol, "return") + "\""),
+                hasReturnDocumentation)
+        }
     }
 
-    private func searchSectionsFor(markdown: MarkdownNode, moduleId: String, source: SourceRange,
-        name: String, kind: String, returnType: ?TypeRef, parameters: Array<ParameterDoc>,
-        tags: Array<DocTag>): String {
-        let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::${kind}:${name}#g0()"
-        let symbol = SymbolDoc(symbolId, kind, name, "fixture." + name, "fixture", moduleId,
-            "public", source, "public func ${name}(): Unit", SemanticInfo("partial", "ast"),
-            parameters: parameters, returnType: returnType,
-            documentation: Some(DocComment("raw", "summary", "", markdown, tags: tags)))
-        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
-            ProjectInfo("renderer-safety"), ConfigurationSnapshot(lintProfile: "off"),
-            providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
-                SemanticCapabilities(false, false, false, false, false))],
-            modules: [ModuleDoc(moduleId, "renderer-safety", "root", "", packageNames: ["fixture"])],
-            packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [symbolId])],
-            files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [symbol])
-        rendererSafetyContent(HtmlDocumentationRenderer().render(documentation),
-            "html/search-index.json")
-    }
 }

@@ -1,0 +1,11 @@
+[i18n]
+default-language = "zh-CN"
+languages = ["zh-CN", "en"]
+missing-translation = "warn"
+
+[[docs.pages]]
+source = "README.md"
+route = "concepts/guides/tag-walkthrough"
+title = "Tag walkthrough"
+id = "tag-walkthrough"
+kind = "guide"

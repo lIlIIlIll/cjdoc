@@ -320,7 +320,9 @@ private func behaviorContractHeading(name: String, locale: String): String {
 
 internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
     locale: String, anchor: String, assetLookup!: HashMap<String, String> = HashMap<String, String>(),
-    rootPrefix!: String = "", markdownContext!: HtmlMarkdownContext = HtmlMarkdownContext(2)): Unit {
+    rootPrefix!: String = "", markdownContext!: HtmlMarkdownContext = HtmlMarkdownContext(2),
+    headingLevel!: Int64 = 3): Unit {
+    let heading = "h${min(6, headingLevel)}"
     var contractCount: Int64 = 0
     var soleContract: ?DocTag = None
     for (tag in comment.tags) {
@@ -337,9 +339,9 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
     if (contractCount == 1) {
         match (soleContract) {
             case Some(tag) =>
-                out.append("<h3 id=\"${headingId}\">" +
+                out.append("<${heading} id=\"${headingId}\">" +
                     escapeHtml(behaviorContractHeading(tag.name, locale)) +
-                    "</h3><div class=\"behavior-contract-single\">")
+                    "</${heading}><div class=\"behavior-contract-single\">")
                 if (!tag.subject.isEmpty()) {
                     out.append("<p class=\"behavior-contract-subject\"><code>" +
                         escapeHtml(tag.subject) + "</code></p>")
@@ -356,8 +358,8 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
         return
     }
 
-    out.append("<h3 id=\"${headingId}\">" +
-        label(locale, "Behavioral constraints", "行为约束") + "</h3><dl>\n")
+    out.append("<${heading} id=\"${headingId}\">" +
+        label(locale, "Behavioral constraints", "行为约束") + "</${heading}><dl>\n")
     for (tag in comment.tags) {
         if (!isBehaviorContractTag(tag.name)) { continue }
         out.append("<dt><code>" + escapeHtml(behaviorContractLabel(tag.name, locale)) + "</code>")
@@ -467,16 +469,8 @@ internal class HtmlMarkdownContext {
 internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
     counts: HashMap<String, Int64>, context: HtmlMarkdownContext): Unit {
     if (node.kind == "heading") {
-        let base = markdownFragmentSlug(markdownNodeText(node))
-        var occurrence = match (counts.get(base)) { case Some(value) => value case None => 0 }
-        var slug = if (occurrence == 0) { base } else { "${base}-${occurrence}" }
-        while (context.usedHeadingSlugs.contains("${anchorPrefix}--doc-${slug}")) {
-            occurrence++
-            slug = "${base}-${occurrence}"
-        }
-        counts[base] = occurrence + 1
-        let target = "${anchorPrefix}--doc-${slug}"
-        let _ = context.usedHeadingSlugs.add(target)
+        let (slug, target) = allocateMarkdownHeadingTarget(markdownNodeText(node), anchorPrefix,
+            counts, context.usedHeadingSlugs)
         context.headingIds.add(target)
         context.fragmentTargets["#${slug}"] = target
     }

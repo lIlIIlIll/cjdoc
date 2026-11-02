@@ -260,6 +260,6 @@ python3 scripts/accept_dependency_public_api.py \
 
 ## 相关文档
 
-- [doc-ir.md](doc-ir.md)：Doc IR v16、导航 wire 的紧凑表示与 schema/golden 同步。
+- [doc-ir.md](doc-ir.md)：Doc IR v17、导航 wire 的紧凑表示与 schema/golden 同步。
 - [build.md](build.md)：CHIR worker 的构建与 `--semantic chir` 参数。
 - [release-process.md](release-process.md)：证据层级与发布 checklist。
