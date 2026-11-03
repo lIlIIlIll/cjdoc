@@ -292,9 +292,9 @@ internal class SourceRepositoryRegistry {
                 addBudgetDiagnostic("source metadata or provenance evidence exceeded the configured aggregate byte/work safety budget")
             }
             let registration = SourceRepositoryRegistration(root, rootIsFile, input, load)
-            let group = registrationsByRoot.get(root).getOrDefault({ => ArrayList<SourceRepositoryRegistration>() })
+            let group = registrationsByRoot.get(registration.root).getOrDefault({ => ArrayList<SourceRepositoryRegistration>() })
             group.add(registration)
-            registrationsByRoot[root] = group
+            registrationsByRoot[registration.root] = group
         }
         let roots = ArrayList<String>()
         for ((root, _) in registrationsByRoot) { roots.add(root) }

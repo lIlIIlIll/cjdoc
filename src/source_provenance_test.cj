@@ -127,6 +127,42 @@ class SourceProvenanceCaptureTest {
     }
 
     @TestCase
+    func fileRegistrationsMatchCanonicalPathsWithoutCapturingSiblings(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = temporary.join("project")
+            let source = sourceProvenanceTestSource("registered")
+            let sibling = sourceProvenanceTestSource("unregistered")
+            sourceProvenanceWriteProject(root, ["src/api.cj", "src/api.cj.more.cj"], [source, sibling])
+            let digest = Sha256Digest.digestBytes(source.toArray())
+            let receipt = sourceProvenanceReceiptText(SOURCE_PROVENANCE_TEST_URL,
+                SOURCE_PROVENANCE_TEST_REVISION, ["upstream/exact.cj"], [digest])
+            File.writeTo(root.join("evidence/source.json"), receipt.toArray())
+            let pin = Sha256Digest.digestBytes(receipt.toArray())
+            let repository = api_model.RepositoryInfo(SOURCE_PROVENANCE_TEST_URL,
+                SOURCE_PROVENANCE_TEST_REVISION)
+            let absoluteRoot = canonicalize(root.join("src/api.cj")).toString()
+            let documentation = sourceProvenanceGenerate(root, [
+                sourceProvenanceInput("src/api.cj", "upstream/exact.cj", repository, pin),
+                sourceProvenanceInput(absoluteRoot, "upstream/exact.cj", repository, pin)
+            ])
+            let matched = sourceProvenanceFixtureFile(documentation).provenance
+            @Expect(matched.state, "verified")
+            @Expect(matched.reason, "receipt_matched")
+            @Expect(matched.repositoryPath, Some("upstream/exact.cj"))
+            @Expect(matched.sourceDigest, Some("sha256:" + digest))
+            @Expect(matched.evidenceIdentity, Some("sha256:" + pin))
+            let unmatched = sourceProvenanceFixtureFile(documentation, path: "src/api.cj.more.cj").provenance
+            @Expect(unmatched.state, "unavailable")
+            @Expect(unmatched.reason, "no_registration")
+            @Expect(unmatched.repository.isNone(), true)
+            @Expect(unmatched.sourceDigest.isNone(), true)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+    @TestCase
     func explicitEmptyOverrideEnablesStrictNoFallbackMode(): Unit {
         let documentation = DocumentationEngine().generate(
             sourceProvenanceFixtureRequest(sourceRepositories: Some([])))
