@@ -130,6 +130,45 @@ class ExampleMarkdownReviewTest {
     }
 
     @TestCase
+    func promptOnlyScopePreservesExampleMarkdownAndSemanticDiagnostics(): Unit {
+        for (prompt in ["", " * @note Authored note.\n"]) {
+            let documentation = exampleReviewDocumentation(" *\n * {@link MissingBody}.\n *\n" + prompt +
+                " * @example Retained\n * **Formatted example** with {@link SomeType} and {@link MissingType}.\n" +
+                " *\n * ```cangjie\n * let n = 1\n * ```")
+            let comment = exampleReviewSymbol(documentation).documentation.getOrThrow()
+            @Expect(comment.localizationScope, if (prompt.isEmpty()) { "all" } else { "admonitions" })
+            var examples: Int64 = 0
+            for (tag in comment.tags where tag.name == "example") {
+                let tree = tag.exampleMarkdown.getOrThrow()
+                @Expect(tree.children[1].kind, "code_block")
+                @Expect(tree.children[1].literal, "let n = 1\n")
+                @Expect(tree.children[1].metadata.getOrThrow().codeHighlight.isSome())
+                let nodes = ArrayList<api_model.MarkdownNode>()
+                exampleReviewSemanticNodes(tree, nodes)
+                @Assert(nodes.size, 2)
+                @Expect(nodes[0].metadata.getOrThrow().semanticState, Some("resolved"))
+                @Expect(nodes[1].metadata.getOrThrow().semanticState, Some("unresolved"))
+                examples++
+            }
+            @Expect(examples, 1)
+            var missingLinks: Int64 = 0
+            for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC2032") {
+                missingLinks++
+            }
+            @Expect(missingLinks, 2)
+            let decoded = api_render.decodeDocIr(api_render.encodeDocIr(documentation))
+            for (locale in ["en", "zh-CN"]) {
+                let selected = api_render.projectDocumentationLanguage(decoded, locale)
+                let html = renderedContent(api_render.HtmlDocumentationRenderer().render(selected))
+                @Expect(html.contains("<strong>Formatted example</strong>"))
+                @Expect(html.contains("data-language=\"cangjie\""))
+                @Expect(html.contains(">SomeType</a>"))
+                @Expect(html.contains("MissingType"))
+            }
+        }
+    }
+
+    @TestCase
     func excessiveExampleNestingFallsBackWithoutCollectingAssets(): Unit {
         let prefix = String.fromUtf8(Array<Byte>(60, repeat: b'>')) + " "
         let documentation = exampleReviewDocumentation(" * @example Deep\n * " + prefix +

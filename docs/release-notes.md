@@ -69,3 +69,5 @@ Doc IR 仍为 v16。生成器版本改为 `0.7.6`，需要重新生成 current g
 - 来源登记索引与查询统一使用 registration 对象已有的规范化 host root，修复 Windows canonical `\` 路径不能匹配 `/` 查询 key、进而错误报告 `no_registration` 的问题；不改变 POSIX 文件名、containment、receipt 信任或资源预算。增加相对/绝对单文件登记去重、精确文件映射与相似前缀 sibling 不捕获的真实生成回归；Linux focused capture 12/12 通过，773 项因 filter 未运行。Windows 是否通过以对应 HEAD 的远端 CI 为准。
 - `@example` 后的受支持顶层 `@deprecated`、`@author`、`@version` 元数据不再被吞入示例正文；围栏中的同名文字仍保留为示例内容。
 - 提示正文只有 Markdown 引用定义、解析后没有正文节点时，使用既有 `CJDOC3117` 空提示诊断并保留作者原文，不构造违反严格 Doc IR 契约的空提示框。已配对空译保留身份并使用原回退规则，冲突条目不重新配对。指南中的无正文 marker 保留普通引用，诊断绑定源文件而不写入空的符号 ID。
+- 提示专用范围中的普通示例继续捕获 Markdown AST、代码高亮及语义链接；普通正文和示例仍执行语义链接诊断。增加有/无提示的对照回归，覆盖格式化正文、已解析/未解析链接、双语投影与严格 JSON 回放。
+- Reader 合成 search script fixture 用显式 UTF-8 字节写入生产者的 LF wrapper，避免 Windows 文本写入将其改成 CRLF 后被严格身份校验拒绝。只修正 fixture，保留实际 script grammar、digest、注入拒绝和性能预算。

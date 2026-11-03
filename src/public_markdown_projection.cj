@@ -625,7 +625,7 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
         }
         for (tag in value.examples) {
             var tree: ?public_model.MarkdownNode = None
-            if (localized.isEmpty()) {
+            if (value.localizationScope == "admonitions" || localized.isEmpty()) {
                 tree = publicExampleMarkdown(tag.description, assetCollector, sourcePath,
                     declarationSource, symbolId, context)
             } else {

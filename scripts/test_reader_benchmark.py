@@ -188,7 +188,7 @@ def write_search_site(site, doc_ir, locale="en", *, body="Searchable body",
         ";\n" + script_suffix
     )
     (site / "search-index.json").write_text(encoded_index, encoding="utf-8")
-    (site / "search-index.js").write_text(encoded_script, encoding="utf-8")
+    (site / "search-index.js").write_bytes(encoded_script.encode("utf-8"))
     doc_ir_sha = hashlib.sha256(doc_ir_bytes).hexdigest()
     manifest = {
         "projection": "cjdoc.read/1", "pathBase": "document-root",
@@ -829,7 +829,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 ";\n"
             )
             (stale_site / "search-index.json").write_text(encoded_index, encoding="utf-8")
-            (stale_site / "search-index.js").write_text(encoded_script, encoding="utf-8")
+            (stale_site / "search-index.js").write_bytes(encoded_script.encode("utf-8"))
             with self.assertRaises(ValueError):
                 verify_search_identity(stale_site, search_resource_receipts(stale_site))
 
@@ -862,7 +862,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 ";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = " +
                 json.dumps(signatures, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + ";\n"
             )
-            (split_script_site / "search-index.js").write_text(encoded_script, encoding="utf-8")
+            (split_script_site / "search-index.js").write_bytes(encoded_script.encode("utf-8"))
             with self.assertRaises(ValueError):
                 verify_search_identity(split_script_site, search_resource_receipts(split_script_site))
 
