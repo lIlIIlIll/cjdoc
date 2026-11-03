@@ -565,6 +565,8 @@ tokens are excluded. Its package field identifies the build context, not
 necessarily the dependency that failed. Unrecognized output adds no diagnosis.
 This projection does not preserve original bitcode or publish private host logs,
 and does not change compiler inputs, child exit status, deadlines or retry policy.
+Line-prefix indentation accepts only spaces and tabs; blank lines cannot be
+consumed as part of a diagnostic prefix.
 
 Observer cleanup retains each acquired process handle or queue after signalling.
 Its native exit wait is limited to three seconds per process before checking the

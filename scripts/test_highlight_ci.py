@@ -126,6 +126,21 @@ class HighlightCiContractTest(unittest.TestCase):
             self.assertEqual(result["classifications"], ["native-exception"])
             self.assertEqual(result["exceptionCodes"], ["0xC0000005"])
 
+    def test_whitespace_only_log_finishes_without_diagnosis(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            log = Path(temporary) / "compiler.log"
+            log.write_bytes(b"\n" * (1024 * 1024))
+            code = (
+                "import json,sys; from pathlib import Path; "
+                "from compiler_failure_evidence import compiler_failure_evidence; "
+                "print(json.dumps(compiler_failure_evidence("
+                "'provider', [('stage-log', Path(sys.argv[1]))])))"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", code, str(log)], capture_output=True, text=True,
+                env=dict(os.environ, PYTHONPATH=str(REPO / "scripts")), timeout=10, check=True)
+            self.assertIsNone(json.loads(result.stdout))
+
 
     def test_public_host_build_receipt_is_allowlisted_and_discriminating(self):
         with tempfile.TemporaryDirectory() as temporary:

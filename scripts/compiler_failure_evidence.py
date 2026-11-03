@@ -41,7 +41,7 @@ _KNOWN_LLVM_SYMBOLS = frozenset({
     "llvm::legacy::PassManagerImpl::run",
 })
 _EXCEPTION_CODE = re.compile(
-    r"^\s*Exception Code:\s*0x([0-9a-f]{8})\b", re.IGNORECASE | re.MULTILINE)
+    r"^[ \t]*Exception Code:[ \t]*0x([0-9a-f]{8})\b", re.IGNORECASE | re.MULTILINE)
 _EXCEPTION_CODES = {
     "c0000005": "0xC0000005",  # access violation
     "c00000fd": "0xC00000FD",  # stack overflow
@@ -55,7 +55,7 @@ _SIGNATURES = (
      "LLVM emitted its crash-report banner."),
     ("llvm-internal-error", re.compile(r"\bLLVM ERROR\s*:", re.IGNORECASE),
      "LLVM reported an internal compiler error."),
-    ("llvm-stack-dump", re.compile(r"^\s*Stack dump:", re.IGNORECASE | re.MULTILINE),
+    ("llvm-stack-dump", re.compile(r"^[ \t]*Stack dump:", re.IGNORECASE | re.MULTILINE),
      "LLVM emitted a compiler stack dump."),
     ("compiler-backend-error", re.compile(r"\berror in backend\s*:", re.IGNORECASE),
      "The compiler backend reported an error."),
