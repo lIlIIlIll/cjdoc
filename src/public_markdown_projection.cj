@@ -112,9 +112,10 @@ internal class MarkdownGenerationContext {
                 "documentation Markdown was replaced by a bounded fallback after parsing or resource-limit failure",
                 source: Some(source), symbolId: Some(symbolId)))
     }
-    func admonitionWithoutBody(symbolId: String): Unit {
+    func admonitionWithoutBody(symbolId: String, source!: ?public_model.SourceRange = None): Unit {
         diagnosticsStorage.add(public_model.Diagnostic("error", "CJDOC3117",
-            "Markdown admonition marker has no body", symbolId: Some(symbolId)))
+            "Markdown admonition marker has no body", source: source,
+            symbolId: if (symbolId.isEmpty()) { None } else { Some(symbolId) }))
     }
 
     func retainHighlightFailures(diagnostics: Array<public_model.Diagnostic>): Unit {
@@ -301,7 +302,7 @@ internal func publicMarkdownNode(node: NodeRef, source: SourceBuffer, assetColle
                     if (markerLayout && source.text(markerNode) == markerText) {
                         let hasBody = paragraphChildren.size > removeCount || quoteChildren.size > 1
                         if (!hasBody) {
-                            context.admonitionWithoutBody(symbolId)
+                            context.admonitionWithoutBody(symbolId, source: Some(declarationSource))
                         } else {
                             let blocks = ArrayList<public_model.MarkdownNode>()
                             if (paragraphChildren.size > removeCount) {
@@ -479,6 +480,10 @@ internal func publicAdmonitionMarkdown(level: String, body: String,
         children.add(publicMarkdownNode(sourceChildren[index], parsed.source, assetCollector, sourcePath,
             declarationSource, symbolId, context, 2, allowBindingMarkers: false))
         index++
+    }
+    if (children.isEmpty()) {
+        context.consumeNode(0)
+        return public_model.MarkdownNode("document")
     }
     context.consumeNode(1)
     context.consumeNode(0)

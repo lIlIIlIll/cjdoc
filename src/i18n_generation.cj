@@ -140,19 +140,20 @@ internal func publicLocalizedTexts(value: DocComment, assetCollector: LocalAsset
     let result = ArrayList<public_model.DocumentationText>()
     for (item in value.languageItems) {
         let tag = publicTagForAudience(item.tag, renderableIds)
+        let admonition = isAdmonitionKind(tag.name)
         // Invalid/unconfigured/duplicate language fields are retained as author
         // input, but never contribute backend calls, metadata or visible budgets.
         let itemContext = if (item.highlightEligible && (item.state == "valid" || item.state == "unpaired")) { context }
             else { MarkdownGenerationContext(highlightMode: "off") }
         itemContext.consumeText(tag.description)
-        if (isAdmonitionKind(tag.name)) {
+        if (admonition) {
             if (let Some(id) <- item.entryId) { itemContext.consumeText(id) }
         }
         let source: ?public_model.SourceRange = match (item.source) {
             case Some(location) => sourceMapper.capturedRange(moduleId, location)
             case None => None
         }
-        let tree = if (isAdmonitionKind(tag.name)) {
+        let tree = if (admonition) {
             if ((item.state == "valid" || item.state == "unpaired") && !tag.description.trimAscii().isEmpty()) {
                 publicAdmonitionMarkdown(tag.name, tag.description, assetCollector, sourcePath,
                     source.getOrDefault({ => declarationSource }), symbolId, itemContext)
@@ -163,10 +164,17 @@ internal func publicLocalizedTexts(value: DocComment, assetCollector: LocalAsset
             publicMarkdown(tag.description, assetCollector, sourcePath,
                 source.getOrDefault({ => declarationSource }), symbolId, itemContext)
         }
+        let projectionState = if (admonition && (item.state == "valid" || item.state == "unpaired") &&
+            tree.children.isEmpty()) {
+            context.admonitionWithoutBody(symbolId, source: source)
+            if (item.fieldId.isEmpty()) { "invalid" } else { "empty" }
+        } else {
+            item.state
+        }
         result.add(public_model.DocumentationText(item.fieldId, tag.name, tag.subject, item.language,
-            tag.description, tree, source: source, state: item.state,
+            tag.description, tree, source: source, state: projectionState,
             referenceState: tag.referenceState, targetSymbolId: tag.targetSymbolId, directives: tag.directives,
-            entryId: if (isAdmonitionKind(tag.name)) { item.entryId } else { None }))
+            entryId: if (admonition) { item.entryId } else { None }))
     }
     result.toArray()
 }

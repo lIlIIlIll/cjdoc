@@ -138,6 +138,8 @@ private func isStructuredDocTag(tagText: String): Bool {
         tagText.startsWith("@throws ") ||
         tagText == "@see" || tagText.startsWith("@see ") ||
         tagText.startsWith("@since ") ||
+        tagText == "@deprecated" || tagText.startsWith("@deprecated ") ||
+        tagText.startsWith("@author ") || tagText.startsWith("@version ") ||
         tagText == "@example" || tagText.startsWith("@example ") ||
         behaviorContractName(tagText).isSome() || admonitionTagHead(tagText).isSome()
 }

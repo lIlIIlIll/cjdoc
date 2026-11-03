@@ -116,6 +116,8 @@ kind = "guide"
 
 识别的 marker 只有 `[!NOTE]`、`[!WARNING]` 和 `[!CAUTION]`，分别成为 `note`、`warning` 和 `danger`。同一行附加正文（例如 `> [!WARNING] 正文`）不匹配独占 marker 规则；`[!DANGER]`、`[!TIP]`、`[!IMPORTANT]`、拼写错误的 marker，以及列表或嵌套引用内的 marker 都保留为普通引用。Marker-only 引用没有正文时也保留为引用，并报告 `CJDOC3117`。
 
+Marker 后只有 Markdown 引用定义、没有正文节点时同样保留普通引用并报告 `CJDOC3117`。诊断指向指南源文件，不虚构 API 符号身份；页面其他内容继续生成。
+
 HTML 把已捕获的提示渲染为静态 `<aside>`，显示本地化等级标题和装饰性图标。作者 Markdown 内容仍由安全的 Markdown 节点 renderer 处理，不能借 marker 注入 HTML 属性、样式或脚本；提示不使用 `role="alert"`、`aria-live`、弹窗或 JavaScript。Markdown 输出保留引用形式，`danger` 写作 `[!CAUTION]`。API 注释中的 `@note`、`@warning`、`@danger` 标签语法与语言配对见[使用手册](usage.md#写提示)和[多语言文档](i18n.md#为提示正文配对语言)。
 
 需要把同一页面发布成多种语言时，给两个 `[[docs.pages]]` 写相同的 `id`、不同的 `language`，见 [多语言文档](i18n.md)。

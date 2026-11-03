@@ -135,6 +135,146 @@ class I18nAdmonitionTest {
     }
 
     @TestCase
+    func referenceOnlyPromptsRetainAuthorTextWithoutInvalidWrappers(): Unit {
+        let raw = StringBuilder("/**\n * Summary.\n")
+        for (level in ["note", "warning", "danger"]) {
+            raw.append(" * @${level} [ref-${level}]: https://example.test/${level}\n")
+        }
+        raw.append(" * @note [visible]: https://example.test/visible\n * Visible authored note.\n */")
+        let project = i18nTestProject(raw.toString(),
+            extra: "\n/** Survivor summary. */\npublic func survivor(): Unit {}\n")
+        File.writeTo(project.join("cjdoc.toml"), "".toArray())
+        try {
+            let documentation = i18nTestGenerate(project)
+            @Expect(documentation.status, "partial")
+            @Expect(documentation.declarations.size, 2)
+            let comment = documentation.declarations[0].documentation.getOrThrow()
+            @Expect(comment.summary, "Summary.")
+            var invalid: Int64 = 0
+            for (text in comment.localizedTexts where text.text.startsWith("[ref-")) {
+                @Expect(text.state, "invalid")
+                @Expect(text.fieldId, "")
+                @Expect(text.markdown.kind, "document")
+                @Expect(text.markdown.children.size, 0)
+                @Expect(comment.rawText.contains(text.text), true)
+                invalid++
+            }
+            @Expect(invalid, 3)
+            @Expect(admonitionTagCount(comment, "note"), 1)
+            @Expect(admonitionTagCount(comment, "warning"), 0)
+            @Expect(admonitionTagCount(comment, "danger"), 0)
+            var diagnosed: Int64 = 0
+            for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC3117") {
+                @Expect(diagnostic.severity, "error")
+                @Expect(diagnostic.source.isSome(), true)
+                @Expect(diagnostic.source.getOrThrow().path, "src/api.cj")
+                @Expect(diagnostic.symbolId, Some(documentation.declarations[0].id))
+                diagnosed++
+            }
+            @Expect(diagnosed, 3)
+            @Expect(!publicHasDiagnostic(documentation, "CJDOC3026"))
+            let encoded = api_render.encodeDocIr(documentation)
+            let decoded = api_render.decodeDocIr(encoded)
+            @Expect(api_render.encodeDocIr(decoded), encoded)
+            let html = renderedHtmlContent(api_render.renderDocumentationFormatsWithOptions(
+                decoded, ["html"], locale: "en"))
+            @Expect(html.contains("Visible authored note."), true)
+            @Expect(html.contains("Survivor summary."), true)
+            @Expect(html.contains("data-admonition-level=\"warning\""), false)
+            @Expect(html.contains("data-admonition-level=\"danger\""), false)
+        } finally {
+            let _ = removeIfExists(project, recursive: true)
+        }
+    }
+
+    @TestCase
+    func referenceOnlyTranslationsUseExistingEmptyFallbackState(): Unit {
+        let raw = StringBuilder("/**\n * Summary.\n")
+        for (level in ["note", "warning", "danger"]) {
+            raw.append(" * @${level}[lang=en,id=${level}] Visible ${level}.\n")
+            raw.append(" * @${level}[lang=zh-CN,id=${level}] [ref-${level}]: https://example.test/${level}\n")
+        }
+        raw.append(" */")
+        let project = i18nTestProject(raw.toString())
+        try {
+            let documentation = i18nTestGenerate(project)
+            let comment = documentation.declarations[0].documentation.getOrThrow()
+            var empty: Int64 = 0
+            for (text in comment.localizedTexts where text.language == Some("zh-CN") &&
+                text.text.startsWith("[ref-")) {
+                @Expect(text.state, "empty")
+                @Expect(text.fieldId.isEmpty(), false)
+                @Expect(text.entryId, Some(text.kind))
+                @Expect(text.markdown.children.size, 0)
+                @Expect(comment.rawText.contains(text.text), true)
+                empty++
+            }
+            @Expect(empty, 3)
+            let decoded = api_render.decodeDocIr(api_render.encodeDocIr(documentation))
+            let selected = api_render.projectDocumentationLanguage(decoded, "zh-CN")
+            let selectedComment = selected.declarations[0].documentation.getOrThrow()
+            var fallbacks: Int64 = 0
+            for (tag in selectedComment.tags where ["note", "warning", "danger"].contains(tag.name)) {
+                @Expect(tag.description, "Visible ${tag.name}.")
+                @Expect(tag.contentLanguage, Some("en"))
+                @Expect(tag.translationState, "empty-fallback")
+                fallbacks++
+            }
+            @Expect(fallbacks, 3)
+            var coverage: Int64 = 0
+            for (entry in api_render.translationCoverageFor(decoded, "zh-CN").entries where
+                ["note", "warning", "danger"].contains(entry.kind)) {
+                @Expect(entry.state, "empty-fallback")
+                @Expect(entry.actualLanguage, Some("en"))
+                coverage++
+            }
+            @Expect(coverage, 3)
+        } finally {
+            let _ = removeIfExists(project, recursive: true)
+        }
+    }
+
+    @TestCase
+    func referenceOnlyConflictedPromptCannotRecreatePairedIdentity(): Unit {
+        let project = admonitionOnlyProject("/**\n * Summary.\n" +
+            " * @warning[lang=en,id=repeated] [ref]: https://example.test/reference\n" +
+            " * @warning[lang=en,id=repeated] Visible independent warning.\n */")
+        try {
+            let documentation = i18nTestGenerate(project)
+            @Expect(publicHasDiagnostic(documentation, "CJDOC3117"))
+            @Expect(publicHasDiagnostic(documentation, "CJDOC3118"))
+            let comment = documentation.declarations[0].documentation.getOrThrow()
+            var invalid: Int64 = 0
+            var unpaired: Int64 = 0
+            for (text in comment.localizedTexts where text.kind == "warning") {
+                @Expect(text.fieldId, "")
+                @Expect(text.entryId, Some("repeated"))
+                if (text.text.startsWith("[ref]")) {
+                    @Expect(text.state, "invalid")
+                    @Expect(text.markdown.children.size, 0)
+                    invalid++
+                } else {
+                    @Expect(text.state, "unpaired")
+                    unpaired++
+                }
+            }
+            @Expect(invalid, 1)
+            @Expect(unpaired, 1)
+            let decoded = api_render.decodeDocIr(api_render.encodeDocIr(documentation))
+            let selected = api_render.projectDocumentationLanguage(decoded, "en")
+            let selectedComment = selected.declarations[0].documentation.getOrThrow()
+            @Expect(admonitionTagCount(selectedComment, "warning"), 1)
+            for (tag in selectedComment.tags where tag.name == "warning") {
+                @Expect(tag.description, "Visible independent warning.")
+                @Expect(tag.fieldId, "")
+                @Expect(tag.translationState, "unpaired")
+            }
+        } finally {
+            let _ = removeIfExists(project, recursive: true)
+        }
+    }
+
+    @TestCase
     func emptyTranslationsFallbackWithoutPairingUnidentifiedOrConflictedPrompts(): Unit {
         let project = admonitionOnlyProject("/**\n" +
             " * Summary.\n" +

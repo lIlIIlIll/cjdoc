@@ -113,6 +113,8 @@ public func loadResponse(): Response { ... }
 
 `id` 是 1–64 个 ASCII 字节，必须以小写 `a-z` 开头，其余只能是小写字母、数字、`_` 或 `-`。例如 `id=stale-cache` 合法，`id=Stale-cache`、`id=1st-cache` 和 `id=` 非法。属性顺序反过来（`[id=stale-cache,lang=en]`）、未知/重复属性、带引号或带空格的属性也非法。`@Warning`、`@noteish`、代码、引用和列表中的相似文字保留为普通正文；无效提示头及其文字也会保留为正文并给出诊断。提示正文为空会报 `CJDOC3117`。
 
+仅含 Markdown 引用定义（如 `[ref]: https://example.test/reference`）、解析后没有正文节点的提示也视为空提示：报告 `CJDOC3117`，保留作者原文，但不输出空提示框。请在引用定义之外补充可见正文。
+
 这些级别由作者明确选择，cjdoc 不根据文字推断风险。HTML 使用静态、带可见本地化等级标题的提示块；正文继续走安全 Markdown renderer，不把作者内容作为 HTML 插入，也不创建弹窗、`role="alert"` 或 live region。折叠成员的 warning/danger 会显示紧凑等级徽标，note 不加风险徽标。多语言 ID 配对与仅提示本地化见[多语言文档](i18n.md#为提示正文配对语言)。
 
 诊断码：`CJDOC3115` 表示提示属性结构或语法错误（语言值格式/支持性错误使用 `CJDOC3102`/`CJDOC3103`），`CJDOC3116` 表示 ID 错误，`CJDOC3117` 表示空提示；相同 ID 在同一语言重复，或跨提示等级复用，会报 `CJDOC3118`。
@@ -229,7 +231,7 @@ public func add(left: Int64, right: Int64): Int64 {
 
 - `@example` 后面可以直接写标题，标题可省略。
 - 一个 `@example` 里可以有多个 `cangjie` 代码块，会按顺序拼成一段代码。
-- 示例内容持续到下一个顶层标签；`@param`、`@return` 等标签会结束上一个示例。
+- 示例内容持续到下一个受支持的顶层标签；`@param`、`@return`、`@deprecated`、`@author 名称` 和 `@version 版本` 等标签会结束上一个示例。代码围栏中的相同文字仍属于示例内容。
 - HTML 和 Markdown 输出都会渲染示例；默认**不编译、不运行**示例。
 
 ### 示例指令
