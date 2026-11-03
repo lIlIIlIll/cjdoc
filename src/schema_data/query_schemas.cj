@@ -551,10 +551,11 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
           {"properties":{"kind":{"enum":["summary","description","note","warning","danger"]}}}]}}
     }},
     "queryImportContext":{"type":"object","additionalProperties":false,
-      "required":["moduleId","packageName","documentSet","reExport"],"properties":{
+      "required":["moduleId","packageName","documentSet","reExport","source"],"properties":{
         "moduleId":{"$ref":"#/$defs/moduleId"},"packageName":{"type":"string"},
         "documentSet":{"anyOf":[{"$ref":"#/$defs/documentSetIdentity"},{"type":"null"}]},
-        "reExport":{"$ref":"#/$defs/reExport"}
+        "reExport":{"$ref":"#/$defs/reExport"},
+        "source":{"$ref":"#/$defs/sourceReference"}
     }},
     "queryRelationsValue":{"type":"object","additionalProperties":false,
       "required":["ownerId","typeRelationships","symbolRelationships","packageImportContext","documentationReferences"],"properties":{

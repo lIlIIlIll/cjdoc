@@ -87,6 +87,8 @@ bash scripts/update_goldens.sh
 
 `ReExportDoc.source` 指向暴露声明的文件与位置，按 exposing module 投影为单独的 `source` 记录；它与重导出目标声明自己的 `SymbolDoc.source` 是两个事实。re-export 行的来源链接标为“暴露位置”，目标声明的来源仍表示该声明的定义位置。
 
+`query-result/4` 的 `relations.packageImportContext[]` 始终包含 `source`，并复用严格的 `sourceReference` 定义。即使 import 的绑定状态为 `unavailable` 或 `ambiguous`，来源仍是保留范围与明确状态的对象，不能缺失或写为 `null`；绑定状态不等于源码来源验证状态。
+
 ## Doc IR/18 的提示 AST 与本地化 scope
 
 捕获的提示节点为 `kind="admonition"`，`literal=""`，`metadata` 恰为 `{"level":"note|warning|danger"}`，并包含非空 block children。它只能作为 `document` 的直接子节点，正文仍是节点 children；未知 metadata、inline/空/嵌套提示和其它深度的提示都不符合 current schema。Markdown/HTML/Agent/query 投影读取捕获 AST，不重新解释作者字符串。提示 marker 产生的等级只表示作者文本，不是 cjdoc 对代码风险的判定。
