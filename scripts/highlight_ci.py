@@ -20,6 +20,9 @@ import tarfile
 import time
 
 sys.dont_write_bytecode = True
+
+from compiler_failure_evidence import compiler_failure_evidence
+
 NODE_VERSION = "v26.11.1"
 HIGHLIGHT_VERSION = "11.11.1"
 PLATFORMS = {("linux", "x86_64"): "linux-x64", ("darwin", "arm64"): "macos-arm64",
@@ -211,6 +214,11 @@ def main() -> int:
             if name == "public-cancel-host" and step["status"] == "failed":
                 step["wrapperReceipt"] = public_cancel_host_receipt(
                     work / "sts-invocations.jsonl")
+                if args.platform == "windows-x64":
+                    compiler_failure = compiler_failure_evidence(
+                        "public-cancel-host", [("stdout", raw), ("stderr", raw_stderr)])
+                    if compiler_failure is not None:
+                        step["compilerFailure"] = compiler_failure
             # Raw stdout/stderr remains private; public artifacts contain fixed facts only.
             step["wallMs"] = round((time.monotonic() - started) * 1000)
             identity["steps"].append(step)

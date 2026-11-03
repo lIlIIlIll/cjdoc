@@ -556,6 +556,16 @@ These locations diagnose a failure; they do not turn it into acceptance.
 Filesystem aliases are canonicalized before the exact allowlist comparison;
 published records still contain only fixed repository-relative names and lines.
 
+Failed Windows `public-cancel-host` and provider stages may also publish
+`compilerFailure` (`cjdoc.compiler-failure/1`). The collector examines at most
+the final 1 MiB of each host stdout/stderr log, or the existing bounded provider
+log. It publishes fixed diagnostic categories, recognized exception codes and
+an exact allowlist of LLVM stack symbols; arbitrary text and namespace-shaped
+tokens are excluded. Its package field identifies the build context, not
+necessarily the dependency that failed. Unrecognized output adds no diagnosis.
+This projection does not preserve original bitcode or publish private host logs,
+and does not change compiler inputs, child exit status, deadlines or retry policy.
+
 Observer cleanup retains each acquired process handle or queue after signalling.
 Its native exit wait is limited to three seconds per process before checking the
 unchanged stopped predicate; existing identity-query deadlines still apply. A live

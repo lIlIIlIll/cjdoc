@@ -35,9 +35,10 @@ import time
 
 try:
     from .sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
+    from .compiler_failure_evidence import compiler_failure_evidence
 except ImportError:
     from sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
-
+    from compiler_failure_evidence import compiler_failure_evidence
 STAGE_SCHEMA = "cjdoc.ci-stage/1"
 WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/2"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
@@ -445,6 +446,11 @@ def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
         "endedAt": utc_now(),
         "environment": environment,
     })
+    if sys.platform == "win32" and kind == "provider" and exit_code != 0:
+        compiler_failure = compiler_failure_evidence(
+            "provider", [("stage-log", evidence_dir / f"{stage_id}.log")])
+        if compiler_failure is not None:
+            handle.record_value["compilerFailure"] = compiler_failure
     write_stage_evidence(evidence_dir / STAGES_FILE, [handle.record_value])
     return exit_code
 
