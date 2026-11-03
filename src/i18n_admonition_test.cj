@@ -22,6 +22,41 @@ private func admonitionTagCount(comment: api_model.DocComment, kind: String): In
 @Test
 class I18nAdmonitionTest {
     @TestCase
+    func promptOnlyContainersRetainOrdinaryOverviewAnchors(): Unit {
+        let project = i18nTestProject("/** Retained API summary. */", extra:
+            "\n/** Plain summary.\n *\n * Ordinary container description.\n */\n" +
+            "public class Plain { public func run(): Unit {} }\n" +
+            "/** Prompt summary.\n *\n * Ordinary container description.\n * @note Authored note.\n */\n" +
+            "public class Prompt { public func run(): Unit {} }\n" +
+            "/** Summary only.\n * @note Summary-only note.\n */\n" +
+            "public class SummaryOnly { public func run(): Unit {} }\n")
+        File.writeTo(project.join("cjdoc.toml"), "".toArray())
+        try {
+            let documentation = i18nTestGenerate(project)
+            let decoded = api_render.decodeDocIr(api_render.encodeDocIr(documentation))
+            for (locale in ["en", "zh-CN"]) {
+                var descriptions: Int64 = 0
+                var summaries: Int64 = 0
+                let artifacts = api_render.renderDocumentationFormatsWithOptions(decoded, ["html"], locale: locale)
+                for (artifact in artifacts where artifact.path.startsWith("html/symbols/")) {
+                    if (artifact.content.contains("Ordinary container description.")) {
+                        @Expect(artifact.content.contains("id=\"overview\""), true)
+                        descriptions++
+                    }
+                    if (artifact.content.contains("Summary-only note.")) {
+                        @Expect(artifact.content.contains("id=\"overview\""), false)
+                        summaries++
+                    }
+                }
+                @Expect(descriptions, 2)
+                @Expect(summaries, 1)
+            }
+        } finally {
+            let _ = removeIfExists(project, recursive: true)
+        }
+    }
+
+    @TestCase
     func promptOnlyScopePreservesOrdinaryDocumentationAndUsesCapturedSources(): Unit {
         let project = admonitionOnlyProject("/**\n" +
             " * Original summary.\n" +

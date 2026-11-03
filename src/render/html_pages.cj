@@ -468,7 +468,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
         var hasIntroduction = false
         match (symbol.documentation) {
             case Some(comment) =>
-                if (!comment.localizedTexts.isEmpty()) {
+                if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
                     hasIntroduction = findTag(comment, "description").isSome()
                 } else {
                     let summaryIndex = topLevelParagraphIndex(comment)
