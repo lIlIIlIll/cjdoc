@@ -520,4 +520,50 @@ class SourceProvenanceCaptureTest {
             let _ = removeIfExists(temporary, recursive: true)
         }
     }
+
+    @TestCase
+    func receiptByteAndWorkLimitsRetainTheCompleteDiscoveredSourceSet(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = temporary.join("project")
+            let registered = sourceProvenanceTestSource("registeredApi")
+            let unrelated = sourceProvenanceTestSource("unrelatedApi")
+            sourceProvenanceWriteProject(root, ["src/api.cj", "src/unrelated.cj"],
+                [registered, unrelated])
+            let repository = api_model.RepositoryInfo(SOURCE_PROVENANCE_TEST_URL,
+                SOURCE_PROVENANCE_TEST_REVISION)
+            let receipt = sourceProvenanceReceiptText(repository.url, repository.revision,
+                ["src/api.cj"], [Sha256Digest.digestBytes(registered.toArray())]) +
+                String.fromUtf8(Array<Byte>(32768, repeat: b' '))
+            File.writeTo(root.join("evidence/source.json"), receipt.toArray())
+            sourceProvenanceWriteConfig(root, [sourceProvenanceInput("src/api.cj", "src/api.cj",
+                repository, Sha256Digest.digestBytes(receipt.toArray()))])
+            for (byteLimited in [true, false]) {
+                let provider = SyntaxSourceProvider(astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT,
+                    sourceAuxiliaryByteLimit: if (byteLimited) { 16384 } else { MAX_SOURCE_AUXILIARY_BYTES },
+                    sourceAuxiliaryWorkLimit: if (byteLimited) { MAX_SOURCE_AUXILIARY_WORK } else { 16384 })
+                let snapshot = provider.collect(root.toString())
+                let names = HashSet<String>()
+                for (declaration in snapshot.declarations) { names.add(declaration.name) }
+                @Expect(names.size, 2)
+                @Expect(names.contains("registeredApi"), true)
+                @Expect(names.contains("unrelatedApi"), true)
+                var limits: Int64 = 0
+                for (diagnostic in snapshot.diagnostics where diagnostic.code == "CJDOC1028") { limits++ }
+                @Expect(limits, 1)
+                @Expect(snapshot.sourceFileOrigins.size, 2)
+                for (origin in snapshot.sourceFileOrigins) {
+                    let provenance = origin.provenance.getOrThrow()
+                    @Expect(provenance.state, "unavailable")
+                    @Expect(provenance.reason, if (origin.logicalPath == "src/api.cj") {
+                        "resource_limit"
+                    } else { "no_registration" })
+                    @Expect(provenance.repository.isNone(), true)
+                    @Expect(provenance.evidenceIdentity.isNone(), true)
+                }
+            }
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
 }

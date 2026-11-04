@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -53,6 +54,81 @@ def find_agent_declaration(site: Path, name: str) -> dict:
     return found[0]
 
 
+def write_record_limit_receipt(project: Path, name: str, count: int) -> str:
+    source = (project / f"src/{name}/api.cj").read_bytes()
+    records = [{
+        "path": f"{name}/api.cj",
+        "sha256": hashlib.sha256(source).hexdigest(),
+    }]
+    records.extend({"path": f"unused/{index}.cj", "sha256": "0" * 64}
+                   for index in range(count - 1))
+    receipt = json.dumps({
+        "schemaVersion": "cjdoc.source-provenance/1",
+        "repository": {"url": "https://github.com/example/receipt-record-limits",
+                       "revision": EXPECTED_REVISION},
+        "files": records,
+    }, separators=(",", ":")).encode()
+    (project / f"evidence/{name}.json").write_bytes(receipt)
+    return hashlib.sha256(receipt).hexdigest()
+
+
+def exercise_receipt_record_limits(binary: Path, output: Path) -> None:
+    project = output / "record-limits-project"
+    (project / "evidence").mkdir(parents=True)
+    (project / "cjpm.toml").write_text('[package]\nname = "receipt_record_limits"\n')
+    for name in ("first", "second", "unrelated"):
+        source = project / f"src/{name}/api.cj"
+        source.parent.mkdir(parents=True)
+        source.write_text(f"package receipt_record_limits\npublic func {name}Api(): Unit {{}}\n")
+    first_pin = write_record_limit_receipt(project, "first", 60000)
+    for second_count in (40000, 40001):
+        second_pin = write_record_limit_receipt(project, "second", second_count)
+        configuration = ""
+        # A canonical-root alias must not consume the pinned receipt twice.
+        for root, name, pin in (("src/first", "first", first_pin),
+                                ("./src/first", "first", first_pin),
+                                ("src/second", "second", second_pin)):
+            configuration += (
+                f'[[source.repositories]]\nroot = "{root}"\n'
+                f'url = "https://github.com/example/receipt-record-limits"\n'
+                f'revision = "{EXPECTED_REVISION}"\nrepository-path = "{name}"\n'
+                f'receipt = "evidence/{name}.json"\nreceipt-sha256 = "{pin}"\n'
+            )
+        (project / "cjdoc.toml").write_text(configuration)
+        result = subprocess.run(
+            [str(binary), "generate", "--project", str(project), "--format", "json",
+             "--stdout", "--no-cache", "--lint-profile", "off"],
+            capture_output=True, check=False, timeout=180,
+        )
+        limited = second_count == 40001
+        assert result.returncode == int(limited), result.stderr.decode(errors="replace")
+        snapshot = output / f"record-limits-{second_count}.json"
+        snapshot.write_bytes(result.stdout)
+        document = json.loads(result.stdout)
+        assert sorted(row["name"] for row in document["declarations"]) == [
+            "firstApi", "secondApi", "unrelatedApi",
+        ], "receipt rejection must not truncate source API collection"
+        errors = [row["code"] for row in document["diagnostics"] if row["severity"] == "error"]
+        assert errors == (["CJDOC1028"] if limited else [])
+        origins = {row["path"]: row["provenance"] for row in document["files"]}
+        assert origins["src/first/api.cj"]["state"] == "verified"
+        assert origins["src/unrelated/api.cj"]["reason"] == "no_registration"
+        origin = origins["src/second/api.cj"]
+        assert origin["state"] == ("unavailable" if limited else "verified")
+        assert origin["reason"] == ("resource_limit" if limited else "receipt_matched")
+        symbol = find_declaration(document, "secondApi")
+        queried = query_cli(binary, snapshot, {
+            "operation": "get_symbol", "symbolId": symbol["id"], "sections": ["source"],
+        })
+        source = queried["result"]["items"][0]["source"]
+        assert source["state"] == origin["state"] and source["reason"] == origin["reason"]
+        expected_url = None if limited else (
+            "https://github.com/example/receipt-record-limits/blob/"
+            f"{EXPECTED_REVISION}/second/api.cj#L2"
+        )
+        assert source["url"] == expected_url
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -60,7 +136,8 @@ def main() -> None:
     args = parser.parse_args()
     binary, output = args.binary.resolve(), args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for name in ("captured", "replay", "mismatch", "mismatch-project", "source-free-project"):
+    for name in ("captured", "replay", "mismatch", "mismatch-project", "source-free-project",
+                 "record-limits-project"):
         assert not (output / name).exists(), f"output child already exists: {name}"
 
     captured = output / "captured"
@@ -157,6 +234,7 @@ def main() -> None:
     mismatch_markdown = (mismatch / "markdown" / markdown_route).read_text(encoding="utf-8")
     assert EXPECTED_URL not in mismatch_markdown
     assert "unavailable/digest_mismatch" in mismatch_markdown
+    exercise_receipt_record_limits(binary, output)
     print("PASS: pinned source capture, source-free replay, and digest-mismatch link denial")
 
 

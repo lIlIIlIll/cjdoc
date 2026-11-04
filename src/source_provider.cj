@@ -137,15 +137,15 @@ class SyntaxSourceProvider <: SourceProvider {
             sourceSnapshot.modules.add(SourceModule(moduleId("root", projectName, ""),
                 projectName, "root", ""))
         }
+        // Discovery limits truncate the source set; receipt limits only make
+        // optional provenance unavailable after discovery has completed.
+        if (auxiliaryBudget.limitReached() ||
+            hasSourceLimitDiagnostic(sourceSnapshot.diagnostics)) { return sourceSnapshot }
         let provenanceRegistry = SourceRepositoryRegistry(root,
             configured: configuredSourceRepositories.toArray(),
             override: sourceRepositories, legacyRepository: legacyRepository,
             legacyRoot: legacyRepositoryRoot, budget: auxiliaryBudget,
             diagnostics: sourceSnapshot.diagnostics)
-        if (auxiliaryBudget.limitReached()) {
-            return sourceSnapshot
-        }
-        if (hasSourceLimitDiagnostic(sourceSnapshot.diagnostics)) { return sourceSnapshot }
         if (hasFatalSourceDiagnostics(sourceSnapshot)) { return sourceSnapshot }
         let files = ArrayList<SourceInputFile>()
         let logicalPaths = HashSet<String>()

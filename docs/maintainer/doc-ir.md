@@ -85,6 +85,8 @@ bash scripts/update_goldens.sh
 
 旧 `ProjectInfo.repository` 映射生成 `declared/legacy_project_repository`：它可产生带有效源码范围的 URL，但没有文件摘要或 receipt evidence，不能标为 verified。没有登记、来源歧义、回执或文件不匹配等失败状态仍被保留；`unavailable`/`ambiguous` 不提供仓库 URL。`SourceReference` 同样要求完整字段集，并区分 `revisionKind` 的 `exact`、`ref`、`unavailable`。普通 render、Agent、Markdown 与 query replay 只投影已捕获的 `FileDoc.provenance`，不会重读源码、Git 或回执；decoder 验证 wire 结构及内部状态一致性，不重新认证调用方的信任决定。多仓登记和回执格式见[跨文档链接维护](document-links.md)。
 
+来源回执是可选证据。模块发现完成后，回执超过单份 16 MiB、单份或累计 100,000 条文件记录，或耗尽共享辅助字节/工作预算时，受影响的 provenance 降级为 `unavailable/resource_limit`，但继续收集源码 API，包括无关文件；不提高预算，也不继续被预算拒绝的证据或 cache 工作。同一路径与 pin 的 receipt cache hit 不重复计入记录数。`CJDOC1028` 错误与有界的 `CJDOC1032` 来源警告仍保留，CLI 不把有错误的生成标为成功。模块/依赖发现或源码扫描本身超限时仍 fail closed，不能把任意截断的源码集合当作完整捕获。
+
 `ReExportDoc.source` 指向暴露声明的文件与位置，按 exposing module 投影为单独的 `source` 记录；它与重导出目标声明自己的 `SymbolDoc.source` 是两个事实。re-export 行的来源链接标为“暴露位置”，目标声明的来源仍表示该声明的定义位置。
 
 `query-result/4` 的 `relations.packageImportContext[]` 始终包含 `source`，并复用严格的 `sourceReference` 定义。即使 import 的绑定状态为 `unavailable` 或 `ambiguous`，来源仍是保留范围与明确状态的对象，不能缺失或写为 `null`；绑定状态不等于源码来源验证状态。
