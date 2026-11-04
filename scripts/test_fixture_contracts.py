@@ -149,12 +149,13 @@ class FixtureContractTest(unittest.TestCase):
                            "operation": "get_symbol", "symbolId": symbol["id"],
                            "sections": ["relations"]}
                 with tempfile.TemporaryDirectory() as temporary:
-                    snapshot = Path(temporary) / "docs.json"
+                    # Snapshot readers reject symlink ancestors, including temporary-root aliases.
+                    snapshot = Path(temporary).resolve() / "docs.json"
                     snapshot.write_text(json.dumps(document), encoding="utf-8")
                     result = subprocess.run(
                         [str(self.binary), "query", "--snapshot", str(snapshot), "--request", "-"],
                         input=json.dumps(request), text=True, capture_output=True, check=False)
-                self.assertEqual(result.returncode, 0, msg=result.stderr)
+                self.assertEqual(result.returncode, 0, msg=f"{result.stderr}\n{result.stdout}")
                 response = json.loads(result.stdout)
                 self.assertEqual(response["status"], "ok")
                 check_schema(response, schema, "re-export query result")
@@ -165,22 +166,22 @@ class FixtureContractTest(unittest.TestCase):
                 self.assertEqual(states, {"resolved", "ambiguous", "unavailable"}
                                  if include_dependencies else {"unavailable"})
 
-        for invalid in ("missing", "null", "unknown-field", "unproved-verified"):
-            with self.subTest(invalid_source=invalid):
-                changed = copy.deepcopy(response)
-                section = next(item for item in changed["result"]["items"][0]["sections"]
-                               if item["name"] == "relations")
-                context = section["value"]["packageImportContext"][0]
-                if invalid == "missing":
-                    context.pop("source")
-                elif invalid == "null":
-                    context["source"] = None
-                elif invalid == "unknown-field":
-                    context["source"]["unexpected"] = True
-                else:
-                    context["source"]["state"] = "verified"
-                with self.assertRaises(ContractError):
-                    check_schema(changed, schema, "invalid import source")
+                for invalid in ("missing", "null", "unknown-field", "unproved-verified"):
+                    with self.subTest(invalid_source=invalid):
+                        changed = copy.deepcopy(response)
+                        section = next(item for item in changed["result"]["items"][0]["sections"]
+                                       if item["name"] == "relations")
+                        context = section["value"]["packageImportContext"][0]
+                        if invalid == "missing":
+                            context.pop("source")
+                        elif invalid == "null":
+                            context["source"] = None
+                        elif invalid == "unknown-field":
+                            context["source"]["unexpected"] = True
+                        else:
+                            context["source"]["state"] = "verified"
+                        with self.assertRaises(ContractError):
+                            check_schema(changed, schema, "invalid import source")
 
     def test_public_imports_emit_canonical_reexport_bindings(self) -> None:
         document, _ = self.generate(

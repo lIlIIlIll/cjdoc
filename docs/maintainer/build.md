@@ -90,6 +90,8 @@ cjpm -v
 
 要求：已准备 SDK 与 sidecar、Bash、Python 标准库（`CJDOC_PYTHON` 可覆盖解释器）。SDK 1.2.0 上调用前先 source `scripts/with_sts_cjpm.sh`（见上）。门禁会拒绝覆盖已存在的构建输出：`tests/fixtures/**/target` 或 `tools/chir-worker/target` 已存在时先报错退出，需要自己清理。`preflight`/`build` 还要求仓库输入都已提交且可跟踪；干净 checkout 上运行最省事。
 
+维护 query/离线读取 fixture 时，输入路径及祖先仍禁止符号链接。测试创建自己的临时目录后，应先用 `Path(...).resolve()` 得到 canonical 路径再写入并传递 snapshot，避免平台临时目录别名触发正常的输入拒绝；不能为测试放松产品的路径安全检查。CLI 失败断言同时保留 stdout 的结构化错误与 stderr；只有对应正例已生成响应后才执行该响应的非法输入变体，避免级联的未绑定变量错误。
+
 不带参数运行完整门禁：
 
 ```bash
