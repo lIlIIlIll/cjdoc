@@ -32,7 +32,6 @@ class ReadingNavigationTest {
             ArrayList<VersionSite>([current, old]), chinese: true)
         @Expect(selector.contains("data-cjdoc-version-routes="))
         @Expect(selector.contains("data-cjdoc-version-state=\"exact\""))
-        @Expect(selector.contains("data-cjdoc-version-messages="))
         @Expect(selector.contains(versionSymbolAnchor("overload-one")))
         @Expect(selector.contains(versionSymbolAnchor("overload-two")))
         @Expect(selector.contains("../../old/symbols/old-one.html"))

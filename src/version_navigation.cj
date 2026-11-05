@@ -30,17 +30,16 @@ internal class VersionNavigationTarget {
 // Only validated symbol-index routes are serialized into escaped attributes.
 // Update real hrefs, so copy-link, middle-click and keyboard navigation agree.
 internal let VERSION_NAVIGATION_SCRIPT = #"
-(function () {
+(function (localizedMessages) {
   'use strict';
+  var language = document.documentElement.lang;
+  var messages = localizedMessages[language === 'zh' || language === 'zh-CN' ? 'zh-CN' : 'en'];
   var links = Array.from(document.querySelectorAll('[data-cjdoc-version-link]')).map(function (link) {
     var routes = {};
-    var messages = {};
     try { routes = JSON.parse(link.getAttribute('data-cjdoc-version-routes') || '{}'); } catch (_) {}
-    try { messages = JSON.parse(link.getAttribute('data-cjdoc-version-messages') || '{}'); } catch (_) {}
     return {
       link: link,
       routes: routes,
-      messages: messages,
       href: link.getAttribute('href'),
       text: link.textContent,
       state: link.getAttribute('data-cjdoc-version-state')
@@ -57,7 +56,7 @@ internal let VERSION_NAVIGATION_SCRIPT = #"
       var value = Object.prototype.hasOwnProperty.call(entry.routes, anchor) ? entry.routes[anchor] : null;
       if (value) {
         var state = value[1];
-        var message = Object.prototype.hasOwnProperty.call(entry.messages, state) ? entry.messages[state] : '';
+        var message = Object.prototype.hasOwnProperty.call(messages, state) ? messages[state] : '';
         entry.link.setAttribute('href', value[0]);
         entry.link.textContent = entry.link.getAttribute('data-cjdoc-version-label') + message;
         entry.link.setAttribute('data-cjdoc-version-state', state);
@@ -71,5 +70,5 @@ internal let VERSION_NAVIGATION_SCRIPT = #"
   update();
   addEventListener('hashchange', update);
   addEventListener('pageshow', update);
-}());
+})
 "#;

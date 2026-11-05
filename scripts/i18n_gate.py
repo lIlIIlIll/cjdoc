@@ -44,7 +44,6 @@ class VersionRoutes(HTMLParser):
             self.links.append({
                 "label": values.get("data-cjdoc-version-label"),
                 "state": values.get("data-cjdoc-version-state"),
-                "messages": json.loads(values.get("data-cjdoc-version-messages") or "{}"),
                 "routes": json.loads(routes or "{}"),
             })
 

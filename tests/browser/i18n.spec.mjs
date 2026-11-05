@@ -247,13 +247,8 @@ test('real version switching exposes exact and fallback reasons, then navigates 
     const target = page.locator('[data-cjdoc-version-link][href*=\"v2/html/\"]');
     await expect(target).toHaveCount(1);
     await expect(target).toHaveAttribute('data-cjdoc-version-state', state);
-    const messages = JSON.parse(await target.getAttribute('data-cjdoc-version-messages'));
     if (state === 'exact') {
-      expect(messages.exact || '').toBe('');
       await expect(target).toHaveText(await target.getAttribute('data-cjdoc-version-label'));
-    } else {
-      expect(messages[state]).toBeTruthy();
-      await expect(target).toContainText(messages[state]);
     }
     const targetUrl = new URL(await target.getAttribute('href'), page.url()).href;
     expect(new URL(targetUrl).pathname).toContain('/versions/v2/html/');

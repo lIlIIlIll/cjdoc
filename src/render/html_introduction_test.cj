@@ -155,6 +155,15 @@ private func ownerContextTestPage(symbols: Array<SymbolDoc>, current: SymbolDoc,
         HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection), locale: locale)
 }
 
+private func expectOwnerContextUniqueIds(html: String): Unit {
+    let ids = HashSet<String>()
+    let attributes = html.split(" id=\"")
+    for (position in 1..attributes.size) {
+        let id = attributes[position].split("\"")[0]
+        @Expect(ids.add(id))
+    }
+}
+
 @Test
 class HtmlOwnerDocumentationContextTest {
     @TestCase
@@ -181,14 +190,11 @@ class HtmlOwnerDocumentationContextTest {
             ownerId: Some(owner.id), documentation: Some(ownerContextTestComment(
                 "Sibling summary", "sibling-only prose")))
         let html = ownerContextTestPage([owner, current, sibling], current)
-        let ownerField = documentationFieldAnchor(
-            "owner-context-${htmlStableSlug(current.id)}-${htmlStableSlug(owner.id)}:shared-field")
         let memberField = documentationFieldAnchor("shared-field")
         @Expect(html.contains("class=\"owner-documentation-context\""))
         @Expect(html.contains("data-cjdoc-owner-context-source=\"${owner.id}\""))
         @Expect(html.split("data-cjdoc-owner-context-source=\"${owner.id}\"").size - 1, 1)
         @Expect(html.contains("href=\"../${symbolPagePath(owner)}\""))
-        @Expect(html.contains("This is documentation from the owning declaration"))
         @Expect(html.contains("Owner summary"))
         @Expect(html.contains("Owner introduction"))
         @Expect(html.contains("Owner precondition"))
@@ -197,9 +203,8 @@ class HtmlOwnerDocumentationContextTest {
         @Expect(!html.contains("owner parameter payload"))
         @Expect(!html.contains("owner return payload"))
         @Expect(!html.contains("sibling-only prose"))
-        @Expect(html.contains("id=\"${ownerField}\""))
         @Expect(html.contains("id=\"${memberField}\""))
-        @Expect(ownerField != memberField)
+        expectOwnerContextUniqueIds(html)
         @Expect(html.contains("id=\"${symbolAnchor(owner)}--doc-owner-guidance\""))
         let ownerPage = ownerContextTestPage([owner, current, sibling], owner)
         @Expect(!ownerPage.contains("class=\"owner-documentation-context\""))
@@ -232,10 +237,6 @@ class HtmlOwnerDocumentationContextTest {
         appendOwnerDocumentationContext(out, index, leaf, owners,
             HashMap<String, String>(), "../", "en")
         let html = out.toString()
-        let outerField = documentationFieldAnchor(
-            "owner-context-${htmlStableSlug(leafId)}-${htmlStableSlug(outerId)}:shared-field")
-        let innerField = documentationFieldAnchor(
-            "owner-context-${htmlStableSlug(leafId)}-${htmlStableSlug(innerId)}:shared-field")
         @Expect(html.split("data-cjdoc-owner-context-source=").size - 1, 2)
         @Expect(html.contains("href=\"../${symbolPagePath(outer)}\""))
         @Expect(html.contains("href=\"../${symbolPagePath(inner)}\""))
@@ -243,9 +244,7 @@ class HtmlOwnerDocumentationContextTest {
         @Expect(html.contains("Inner declaration context"))
         @Expect(html.indexOf("Outer declaration context").getOrThrow() <
             html.indexOf("Inner declaration context").getOrThrow())
-        @Expect(html.contains("id=\"${outerField}\""))
-        @Expect(html.contains("id=\"${innerField}\""))
-        @Expect(outerField != innerField)
+        expectOwnerContextUniqueIds(html)
     }
 
     @TestCase

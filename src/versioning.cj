@@ -634,7 +634,6 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
     chinese!: Bool = false): String {
     let out = VersionTextBuffer(limit)
     let versionLabel = if (chinese) { "文档版本" } else { "Documentation version" }
-    let messages = versionNavigationMessages(chinese)
     out.append("<nav class=\"cjdoc-version-selector\" aria-label=\"${versionLabel}\"><span>${versionLabel}</span>")
     for (target in sites) {
         let route = versionTargetRoute(current, relative, target)
@@ -678,7 +677,7 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
             }
             routes.append("}")
         }
-        out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-state=\"${state}\" data-cjdoc-version-messages=\"${public_render.escapeStandaloneHtml(messages)}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
+        out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-state=\"${state}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
         match (target.spec.apiDiffSource) {
             case Some(_) =>
                 let diffPath = versionOutputPath(target, "api-diff.json")
@@ -849,8 +848,10 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
             }
         }
     }
-    budget.reserveArtifact("version-navigation.js", VERSION_NAVIGATION_SCRIPT.size)
-    artifacts.add(public_render.RenderArtifact("version-navigation.js", "text/javascript; charset=utf-8", VERSION_NAVIGATION_SCRIPT))
+    let navigationScript = VERSION_NAVIGATION_SCRIPT +
+        "({\"en\":${versionNavigationMessages(false)},\"zh-CN\":${versionNavigationMessages(true)}});\n"
+    budget.reserveArtifact("version-navigation.js", navigationScript.size)
+    artifacts.add(public_render.RenderArtifact("version-navigation.js", "text/javascript; charset=utf-8", navigationScript))
     let manifest = versionManifest(sites, latest, latestPolicy)
     budget.reserveArtifact("versions.json", manifest.size)
     artifacts.add(public_render.RenderArtifact("versions.json", "application/json", manifest))

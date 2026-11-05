@@ -444,10 +444,10 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
 
 
 private func appendOwnerContextSource(out: RenderTextBuffer,
-    index: HashMap<String, SymbolDoc>, current: SymbolDoc, source: SymbolDoc,
+    index: HashMap<String, SymbolDoc>, source: SymbolDoc,
     assetLookup: HashMap<String, String>, rootPrefix: String, locale: String,
     contextRole: String): Unit {
-    let sourcePrefix = "owner-context-${htmlStableSlug(current.id)}-${htmlStableSlug(source.id)}"
+    let sourcePrefix = "owner-context-${contractFingerprint(source.id)}"
     let sourceFieldNamespace = sourcePrefix + ":"
     let headingId = "${sourcePrefix}-heading"
     let targetContext = contextRole == "extension-target"
@@ -504,7 +504,7 @@ internal func appendOwnerDocumentationContext(out: RenderTextBuffer,
     assetLookup: HashMap<String, String>, rootPrefix: String, locale: String): Unit {
     if (owners.isEmpty()) { return }
     out.append("<section class=\"owner-documentation-context\" data-cjdoc-owner-context>")
-    out.append("<h2 id=\"owner-context-${htmlStableSlug(symbol.id)}-heading\">" +
+    out.append("<h2 id=\"owner-context-heading\">" +
         label(locale, "Documentation context from owning declarations",
             "所属声明的文档上下文") + "</h2><ol>")
     let sourceIds = HashSet<String>()
@@ -515,7 +515,7 @@ internal func appendOwnerDocumentationContext(out: RenderTextBuffer,
         let owner = owners[position]
         if (!sourceIds.add(owner.id)) { continue }
         out.append("<li>")
-        appendOwnerContextSource(out, index, symbol, owner, assetLookup,
+        appendOwnerContextSource(out, index, owner, assetLookup,
             rootPrefix, locale, "owner")
         if (owner.kind == "extend") {
             for (relationship in owner.symbolRelationships) {
@@ -527,7 +527,7 @@ internal func appendOwnerDocumentationContext(out: RenderTextBuffer,
                         match (index.get(targetId)) {
                             case Some(target) =>
                                 if (sourceIds.add(target.id)) {
-                                    appendOwnerContextSource(out, index, symbol, target,
+                                    appendOwnerContextSource(out, index, target,
                                         assetLookup, rootPrefix, locale, "extension-target")
                                 }
                             case None => ()
