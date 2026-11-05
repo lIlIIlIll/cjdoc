@@ -374,6 +374,8 @@ class CoordinatorSignalCleanupTests(unittest.TestCase):
             import signal, subprocess, sys, time
             sys.path.insert(0, sys.argv[1])
             from showcase_build.parallel import BranchRunner
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
             runner = BranchRunner()
             child = subprocess.Popen(["/bin/bash", "-c", "exec -a marker-%d sleep 30" % __import__("os").getpid()],
                                      start_new_session=True)
@@ -396,6 +398,7 @@ class CoordinatorSignalCleanupTests(unittest.TestCase):
             if coordinator.poll() is None:
                 coordinator.kill()
                 coordinator.wait(timeout=10)
+            coordinator.stdout.close()
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_an_ignored_signal_is_not_turned_into_a_fatal_one(self) -> None:

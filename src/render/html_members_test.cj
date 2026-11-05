@@ -343,7 +343,7 @@ class HtmlParameterAndReturnDescriptionTest {
         let documentedHtml = memberDescriptionPage(documented)
         @Expect(documentedHtml.contains("Documented declaration"))
         @Expect(documentedHtml.split("data-documentation-state=\"missing\"").size - 1, 2)
-        @Expect(documentedHtml.split("<div class=\"return-value\">")[1].split("</div>")[0].contains("Int64"))
+        @Expect(documentedHtml.split("class=\"return-value\"")[1].split("</div>")[0].contains("Int64"))
 
         let undocumented = SymbolDoc("description-undocumented", "function", "undocumented",
             "fixture.undocumented", "fixture", "description-tests", "public",
@@ -353,7 +353,7 @@ class HtmlParameterAndReturnDescriptionTest {
         let undocumentedHtml = memberDescriptionPage(undocumented)
         @Expect(undocumentedHtml.contains("No documentation is available for this declaration."))
         @Expect(undocumentedHtml.split("data-documentation-state=\"missing\"").size - 1, 2)
-        @Expect(undocumentedHtml.split("<div class=\"return-value\">")[1].split("</div>")[0].contains("Int64"))
+        @Expect(undocumentedHtml.split("class=\"return-value\"")[1].split("</div>")[0].contains("Int64"))
     }
 
     @TestCase
@@ -405,7 +405,7 @@ class HtmlParameterAndReturnDescriptionTest {
         @Expect(html.contains("Captured text fallback"))
         @Expect(html.split("data-documentation-state=\"missing\"").size - 1, 1)
         @Expect(html.split("data-documentation-state=\"empty\"").size - 1, 5)
-        @Expect(html.split("<div class=\"return-value\">")[1].split("</div>")[0].contains("Int64"))
+        @Expect(html.split("class=\"return-value\"")[1].split("</div>")[0].contains("Int64"))
         let localized = memberDescriptionPage(symbol, locale: "zh-CN")
         @Expect(localized.contains("尚未提供说明。"))
         @Expect(localized.contains("说明为空。"))

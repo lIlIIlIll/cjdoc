@@ -179,15 +179,9 @@ private func tagHasDescriptionContent(tag: DocTag, assets: HashMap<String, Strin
     }
 }
 
-private func appendDescriptionNoticeHtml(out: RenderTextBuffer, locale: String,
-    state: String): Unit {
-    let text = if (state == "empty") {
-        label(locale, "Description is empty.", "说明为空。")
-    } else {
-        label(locale, "No description has been provided.", "尚未提供说明。")
-    }
-    out.append("<span class=\"documentation-note\" data-documentation-state=\"" +
-        state + "\">" + escapeHtml(text) + "</span>")
+private func appendEmptyDescriptionNoticeHtml(out: RenderTextBuffer, locale: String): Unit {
+    out.append("<span class=\"documentation-note\" data-documentation-state=\"empty\">" +
+        escapeHtml(label(locale, "Description is empty.", "说明为空。")) + "</span>")
 }
 
 private func appendParameterDescriptionHtml(out: RenderTextBuffer, parameter: ParameterDoc,
@@ -198,10 +192,15 @@ private func appendParameterDescriptionHtml(out: RenderTextBuffer, parameter: Pa
         case Some(value) => tag = findTag(value, "param", subject: Some(parameter.name))
         case None => ()
     }
+    out.append("<dd class=\"parameter-description\"")
+    if (tag.isNone() && parameter.documentation.isNone()) {
+        out.append(" data-documentation-state=\"missing\"")
+    }
+    out.append(">")
     match (tag) {
         case Some(value) =>
             if (value.translationState.isEmpty() && !tagHasDescriptionContent(value, assets)) {
-                appendDescriptionNoticeHtml(out, locale, "empty")
+                appendEmptyDescriptionNoticeHtml(out, locale)
             } else {
                 appendDocumentationTagHtml(out, value, locale, assets,
                     rootPrefix, markdownContext.getOrThrow())
@@ -210,13 +209,15 @@ private func appendParameterDescriptionHtml(out: RenderTextBuffer, parameter: Pa
             match (parameter.documentation) {
                 case Some(value) =>
                     if (value.trimAscii().isEmpty()) {
-                        appendDescriptionNoticeHtml(out, locale, "empty")
+                        appendEmptyDescriptionNoticeHtml(out, locale)
                     } else {
                         appendStructuredTextHtml(out, value)
                     }
-                case None => appendDescriptionNoticeHtml(out, locale, "missing")
+                case None => out.append(escapeHtml(label(locale,
+                    "No description has been provided.", "尚未提供说明。")))
             }
     }
+    out.append("</dd>")
 }
 
 private func appendParameterDocumentationHtml(out: RenderTextBuffer, symbol: SymbolDoc,
@@ -236,10 +237,10 @@ private func appendParameterDocumentationHtml(out: RenderTextBuffer, symbol: Sym
                 escapeHtml(defaultExpression) + "</code></span>")
             case None => ()
         }
-        out.append("</span></dt><dd class=\"parameter-description\">")
+        out.append("</span></dt>")
         appendParameterDescriptionHtml(out, parameter, comment, locale, assets, rootPrefix,
             markdownContext)
-        out.append("</dd></div>\n")
+        out.append("</div>\n")
     }
     out.append("</dl>\n")
 }
@@ -261,15 +262,16 @@ private func appendReturnDocumentationHtml(out: RenderTextBuffer, symbol: Symbol
     if (!showReturnType && !hasReturnDocumentation) { return }
 
     out.append("<${sectionHeading} id=\"${docBlockAnchor(symbol, "return")}\">" +
-        "${label(locale, "Returns", "返回值")}</${sectionHeading}><div class=\"return-value\">")
+        "${label(locale, "Returns", "返回值")}</${sectionHeading}><div class=\"return-value\"")
+    if (!hasReturnDocumentation) { out.append(" data-documentation-state=\"missing\"") }
+    out.append(">")
     if (showReturnType) {
         appendTypeRefCodeHtml(out, symbol.returnType.getOrThrow(), typeLinkIndex, rootPrefix, locale,
             className: "return-type")
     }
     if (!hasReturnDocumentation) {
-        out.append("<div class=\"return-description\">")
-        appendDescriptionNoticeHtml(out, locale, "missing")
-        out.append("</div>")
+        out.append(" " + escapeHtml(label(locale,
+            "No description has been provided.", "尚未提供说明。")))
     } else {
         match (comment) {
             case Some(value) =>
@@ -277,7 +279,7 @@ private func appendReturnDocumentationHtml(out: RenderTextBuffer, symbol: Symbol
                     if (tag.name != "return" && tag.name != "returns") { continue }
                     out.append("<div class=\"return-description\">")
                     if (tag.translationState.isEmpty() && !tagHasDescriptionContent(tag, assets)) {
-                        appendDescriptionNoticeHtml(out, locale, "empty")
+                        appendEmptyDescriptionNoticeHtml(out, locale)
                     } else {
                         appendDocumentationTagHtml(out, tag, locale, assets,
                             rootPrefix, markdownContext.getOrThrow())
