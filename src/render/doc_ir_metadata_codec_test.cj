@@ -108,7 +108,7 @@ class DocIrMetadataCodecTest {
         let documentation = metadataCodecFixture()
         let encoded = encodeDocIr(documentation)
         let decoded = decodeDocIr(encoded)
-        @Expect(decoded.schemaVersion, "cjdoc.doc-ir/17")
+        @Expect(decoded.schemaVersion, "cjdoc.doc-ir/18")
         @Expect(encodeDocIr(decoded), encoded)
         @Expect(decoded.metadata.groups[0].id, "20-query")
         @Expect(decoded.metadata.groups[1].id, "private-group")
@@ -135,7 +135,7 @@ class DocIrMetadataCodecTest {
         unknownMetadata.get("metadata").getOrThrow().asObject().put("unexpected", JsonNode.boolean(true))
         @ExpectThrows[IllegalArgumentException](decodeDocIr(unknownMetadata.toJson()))
 
-        let oldVersion = encoded.replace("cjdoc.doc-ir/17", "cjdoc.doc-ir/16")
+        let oldVersion = encoded.replace("cjdoc.doc-ir/18", "cjdoc.doc-ir/17")
         @ExpectThrows[IllegalArgumentException](decodeDocIr(oldVersion))
     }
     @TestCase

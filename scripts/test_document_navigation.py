@@ -58,7 +58,7 @@ class DocumentNavigationWireTest(unittest.TestCase):
         def reference(semantic, children=()):
             return {'kind': 'generic', 'spelling': '类型', 'nullable': True,
                     'arguments': list(children), 'semantic': semantic, 'navigation': None}
-        model = {'schemaVersion': 'cjdoc.doc-ir/17', 'types': [
+        model = {'schemaVersion': 'cjdoc.doc-ir/18', 'types': [
             reference(semantics[0], [reference(value) for value in semantics[1:]])]}
         wire = encode_document_navigation(model)
         self.assertNotIn('semantic', wire['types'][0])
@@ -66,7 +66,8 @@ class DocumentNavigationWireTest(unittest.TestCase):
         self.assertIsNone(wire['types'][0]['arguments'][0]['semanticProvider'])
         self.assertEqual(decode_document_navigation(wire), model)
         for version in ('cjdoc.doc-ir/6', 'cjdoc.doc-ir/14', 'cjdoc.doc-ir/15',
-                        'cjdoc.symbol-index/1', 'provider-spi/1', 'cjdoc.api-surface/1'):
+                        'cjdoc.doc-ir/17', 'cjdoc.symbol-index/1', 'provider-spi/1',
+                        'cjdoc.api-surface/1'):
             with self.subTest(version=version):
                 legacy = {**model, 'schemaVersion': version}
                 self.assertEqual(encode_document_navigation(legacy), legacy)
@@ -75,7 +76,7 @@ class DocumentNavigationWireTest(unittest.TestCase):
                 self.assertEqual(decode_document_navigation(legacy_wire), legacy_wire)
 
     def test_current_nested_mixed_and_incomplete_semantics_are_not_repaired(self):
-        nested = {'schemaVersion': 'cjdoc.doc-ir/17', 'types': [{
+        nested = {'schemaVersion': 'cjdoc.doc-ir/18', 'types': [{
             'kind': 'named', 'spelling': 'Token', 'nullable': False, 'arguments': [],
             'semantic': {'state': 'partial', 'canonical': None, 'provider': None},
             'navigation': None}]}

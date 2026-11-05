@@ -616,7 +616,7 @@ stage_cli() {
     # Published file stem to CLI schema name: the v1 navigation contract stays
     # frozen while the `navigation-index` alias now answers v2.
     for entry in \
-        doc-ir=doc-ir doc-ir-v17=doc-ir-v17 diagnostics=diagnostics cfg-matrix=cfg-matrix \
+        doc-ir=doc-ir doc-ir-v18=doc-ir-v18 diagnostics=diagnostics cfg-matrix=cfg-matrix \
         search-index=search-index search-index-v11=search-index-v11 symbol-index=symbol-index \
         navigation-index=navigation-index-v1 navigation-index-v2=navigation-index \
         api-surface=api-surface api-surface-v3=api-surface-v3 \
@@ -625,7 +625,8 @@ stage_cli() {
         versions=versions versions-v2=versions-v2 translation-coverage=translation-coverage \
         site-manifest=site-manifest \
         agent-full-index=agent-full-index declaration=declaration page=page \
-        machine-manifest=machine-manifest query-request=query-request query-result=query-result; do
+        machine-manifest=machine-manifest query-request=query-request query-result=query-result \
+        source-provenance=source-provenance; do
         published="${entry%%=*}"
         schema_name="${entry#*=}"
         "${binary}" schema "${schema_name}" | tr -d '\r' \
@@ -633,17 +634,17 @@ stage_cli() {
         cmp "docs/schema/${published}.schema.json" "${check_dir}/schemas/${published}.schema.json"
     done
 
-    run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v17/basic.docs.json
-    run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v17/functions.docs.json
-    run_golden types tests/fixtures/projects/types tests/fixtures/golden-v17/types.docs.json
-    run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v17/extend.docs.json
-    run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v17/source-edges.docs.json
-    run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v17/unsupported.docs.json
-    run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v17/workspace.docs.json
+    run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v18/basic.docs.json
+    run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v18/functions.docs.json
+    run_golden types tests/fixtures/projects/types tests/fixtures/golden-v18/types.docs.json
+    run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v18/extend.docs.json
+    run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v18/source-edges.docs.json
+    run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v18/unsupported.docs.json
+    run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v18/workspace.docs.json
     run_golden conditional-linux tests/fixtures/projects/conditional \
-        tests/fixtures/golden-v17/conditional-linux.docs.json --cfg os=Linux
+        tests/fixtures/golden-v18/conditional-linux.docs.json --cfg os=Linux
     run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-        tests/fixtures/golden-v17/path-dependencies.docs.json --include-path-dependencies
+        tests/fixtures/golden-v18/path-dependencies.docs.json --include-path-dependencies
 
     "${binary}" generate --project tests/fixtures/projects/basic \
         --format json --format markdown --format html --output "${check_dir}/all/first" \
@@ -698,6 +699,10 @@ stage_cli() {
     done
     "${python_cmd}" scripts/test_declaration_metadata.py --binary "${binary}" \
         --output-root "${check_dir}/metadata-replay"
+    "${python_cmd}" scripts/test_admonitions.py --binary "${binary}" \
+        --output "${check_dir}/admonitions"
+    "${python_cmd}" scripts/test_source_provenance.py --binary "${binary}" \
+        --output "${check_dir}/source-provenance"
     "${python_cmd}" scripts/test_doc_ir_gc.py --binary "${binary}" \
         --snapshot "${check_dir}/all/first/docs.json"
     "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; nav=json.load(open(root+"/navigation-index.json", encoding="utf-8")); assert nav["schemaVersion"]=="cjdoc.navigation-index/2" and nav["project"]["version"]=="1.3.0" and any(page["kind"]=="symbol" for page in nav["pages"]); assert "1.3.0" in open(root+"/llms.txt", encoding="utf-8").read() and len(open(root+"/llms-full.txt", encoding="utf-8").read().encode()) <= 16*1024*1024' "${check_dir}/agent/html"
@@ -754,7 +759,7 @@ PY
     test -s "${check_dir}/versions-bad.stderr"
     "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
         --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-    "${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/17" and len(value["declarations"]) == 25' \
+    "${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/18" and len(value["declarations"]) == 25' \
         "${check_dir}/stdout.json"
 
     set +e

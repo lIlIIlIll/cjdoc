@@ -55,7 +55,7 @@ public class DocumentationQuerySession {
 
     /**
      * Execute one strict `cjdoc.query-request/3` request and return exactly one
-     * `cjdoc.query-result/3` object.
+     * `cjdoc.query-result/4` object.
      *
      * Domain outcomes (ambiguity, scoped absence, incomplete source) are ordinary
      * results; a malformed request is reported through the same envelope so a

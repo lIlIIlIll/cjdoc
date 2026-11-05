@@ -58,12 +58,15 @@ const document = {
   },
 };
 const window = {location: {hash: ''}};
-const context = vm.createContext({document, window});
+const sidebar = {dataset: {cjdocCurrentPage: 'index.html'}};
+const context = vm.createContext({document, window, sidebar});
 vm.runInContext(SOURCE + '\nsyncRouteState();', context);
 function assertOnly(expected) {
   for (const [key, link] of [['overview', overview], ['quick', quick], ['api', api]]) {
-    assert.equal(link.classList.contains('is-current'), key === expected, key);
-    assert.equal(link.getAttribute('aria-current'), key === expected ? 'page' : undefined, key);
+    const page = key === 'overview' && sidebar.dataset.cjdocCurrentPage === 'index.html';
+    assert.equal(link.classList.contains('is-current'), page, key);
+    assert.equal(link.classList.contains('is-ancestor'), !page && key === expected, key);
+    assert.equal(link.getAttribute('aria-current'), page ? 'page' : undefined, key);
   }
 }
 assertOnly('overview');
@@ -77,6 +80,7 @@ window.location.hash = '';
 vm.runInContext('syncRouteState();', context);
 assertOnly('overview');
 document.body.dataset.cjdocRoute = 'api';
+sidebar.dataset.cjdocCurrentPage = 'symbols/member.html';
 vm.runInContext('syncRouteState();', context);
 assertOnly('api');
 """
@@ -107,8 +111,8 @@ const sidebar = {
   getBoundingClientRect: () => ({top: 100}),
   querySelector(selector) {
     if(selector === ".sidebar-context") return context;
-    if(selector === ".sidebar-symbol.is-current") return selected;
-    if(selector === ".sidebar-package.is-current") return packageLink;
+    if(selector === ".sidebar-symbol.is-current, .sidebar-symbol.is-ancestor") return selected;
+    if(selector === ".sidebar-package.is-current, .sidebar-package.is-ancestor") return packageLink;
     throw Error("Unknown selector " + selector);
   },
 };

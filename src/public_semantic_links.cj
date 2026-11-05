@@ -284,7 +284,7 @@ internal func resolvePublicSemanticLinks(declarations: Array<public_model.Symbol
     for (symbol in declarations) {
         match (symbol.documentation) {
             case Some(comment) =>
-                if (comment.localizedTexts.isEmpty()) {
+                if (comment.localizationScope == "admonitions" || comment.localizedTexts.isEmpty()) {
                     resolveSemanticLinkNode(comment.markdown, symbol, declarations, index,
                         audience, resolvers, config, diagnostics)
                 }
@@ -300,7 +300,7 @@ internal func resolvePublicSemanticLinks(declarations: Array<public_model.Symbol
                     }
                 }
                 for (tag in comment.tags) {
-                    if (!comment.localizedTexts.isEmpty()) { break }
+                    if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) { break }
                     if (let Some(tree) <- tag.exampleMarkdown) {
                         resolveSemanticLinkNode(tree, symbol, declarations, index,
                             audience, resolvers, config, diagnostics)

@@ -75,6 +75,74 @@ public class DocumentInventoryPin {
     }
 }
 
+/** One explicitly registered local source root and its caller-pinned evidence. */
+public class SourceRepositoryInput {
+    public let root: String
+    public let repository: public_model.RepositoryInfo
+    public let repositoryPath: String
+    public let receipt: ?String
+    public let receiptSha256: ?String
+
+    public init(root: String, repository: public_model.RepositoryInfo,
+        repositoryPath!: String = "", receipt!: ?String = None,
+        receiptSha256!: ?String = None) {
+        if (root.trimAscii().isEmpty() || root.contains("\u{0}") ||
+            !validSourceRepositoryInputPath(repositoryPath, true)) {
+            throw IllegalArgumentException("source repository root or repository path is invalid")
+        }
+        if (let Some(path) <- receipt) {
+            if (path.trimAscii().isEmpty() || path.contains("\u{0}")) {
+                throw IllegalArgumentException("source provenance receipt path is invalid")
+            }
+        }
+        if (let Some(pin) <- receiptSha256) {
+            if (!sourceRepositoryInputSha256(pin)) {
+                throw IllegalArgumentException("source provenance receipt pin must be a lowercase SHA-256")
+            }
+        }
+        if (!sourceRepositoryInputFullSha(repository.revision)) {
+            throw IllegalArgumentException("source repository registration requires a full lowercase Git SHA")
+        }
+        this.root = root
+        this.repository = repository
+        this.repositoryPath = repositoryPath
+        this.receipt = receipt
+        this.receiptSha256 = receiptSha256
+    }
+}
+
+private func sourceRepositoryInputSha256(value: String): Bool {
+    if (value.size != 64) { return false }
+    for (byte in value.toArray()) {
+        if (!((byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'f'))) { return false }
+    }
+    true
+}
+private func sourceRepositoryInputFullSha(value: String): Bool {
+    if (value.size != 40) { return false }
+    for (byte in value.toArray()) {
+        if (!((byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'f'))) { return false }
+    }
+    true
+}
+
+private func validSourceRepositoryInputPath(value: String, allowEmpty: Bool): Bool {
+    if (value.isEmpty()) { return allowEmpty }
+    if (value.startsWith("/") || value.contains("\\") || value.contains("\u{0}")) { return false }
+    for (byte in value.toArray()) {
+        if (byte < 0x20u8 || byte == 0x7Fu8) { return false }
+    }
+    let first = value.split("/")[0]
+    if (first.size >= 2 && first[1] == b':' &&
+        ((first[0] >= b'a' && first[0] <= b'z') ||
+        (first[0] >= b'A' && first[0] <= b'Z'))) { return false }
+    for (segment in value.split("/")) {
+        if (segment.isEmpty() || segment == "." || segment == "..") { return false }
+    }
+    true
+}
+
+
 
 public class GenerationRequest {
     /** Effective Doc IR budget in UTF-8 bytes; CLI/request overrides [limits]. */
@@ -108,6 +176,8 @@ public class GenerationRequest {
     public let standardLibraryDocsVersion: ?String
     /** Optional HTTPS std-library docs root, used when the release has a different host or route prefix. */
     public let standardLibraryDocsBaseUrl: ?String
+    /** `Some`, including an empty array, selects strict source-registration mode. */
+    private let sourceRepositoriesStorage: ?ArrayList<SourceRepositoryInput>
     private let documentSourcesStorage: ArrayList<String>
     private let documentInventoryPinsStorage: ArrayList<DocumentInventoryPin>
     private let requiredLanguagesStorage: ArrayList<String>
@@ -129,7 +199,8 @@ public class GenerationRequest {
         linkLanguageFallback!: Bool = false, linkCompatible!: Bool = false,
         documentInventoryPins!: Array<DocumentInventoryPin> = [], documentationRevision!: String = "",
         standardLibraryDocsVersion!: ?String = None,
-        standardLibraryDocsBaseUrl!: ?String = None, maxDocIrMiB!: ?Int64 = None) {
+        standardLibraryDocsBaseUrl!: ?String = None, sourceRepositories!: ?Array<SourceRepositoryInput> = None,
+        maxDocIrMiB!: ?Int64 = None) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -191,6 +262,14 @@ public class GenerationRequest {
             if (path.trimAscii().isEmpty()) { throw IllegalArgumentException("document source cannot be empty") }
         }
         this.buildContext = buildContext
+        if (let Some(inputs) <- sourceRepositories) {
+            if (inputs.size > 4096) {
+                throw IllegalArgumentException("source repository registration limit exceeded")
+            }
+            this.sourceRepositoriesStorage = Some(ArrayList<SourceRepositoryInput>(inputs))
+        } else {
+            this.sourceRepositoriesStorage = None
+        }
         this.documentSourcesStorage = ArrayList<String>(documentSources)
         if (documentInventoryPins.size > 256) { throw IllegalArgumentException("inventory pin budget exceeded") }
         this.documentInventoryPinsStorage = ArrayList<DocumentInventoryPin>(documentInventoryPins)
@@ -227,6 +306,14 @@ public class GenerationRequest {
     public prop providerFactories: ReadOnlyList<public_provider.SemanticProviderFactory> {
         get() {
             providerFactoriesStorage
+        }
+    }
+    public prop sourceRepositories: ?ReadOnlyList<SourceRepositoryInput> {
+        get() {
+            match (sourceRepositoriesStorage) {
+                case Some(values) => Some(values)
+                case None => None
+            }
         }
     }
 }
@@ -346,50 +433,117 @@ internal class ProviderBatchBudget {
 }
 
 internal class PublicSourceMapper {
-    private let indexes = HashMap<String, CapturedSourceIndex>()
-    private let unavailable = HashSet<String>()
+    private let indexesByModulePath = HashMap<String, CapturedSourceIndex>()
+    private let unavailableModulePaths = HashSet<String>()
+    private let ambiguousModulePaths = HashSet<String>()
+    private let indexesByPath = HashMap<String, CapturedSourceIndex>()
+    private let unavailablePaths = HashSet<String>()
+    private let ambiguousPaths = HashSet<String>()
+    private let seenPaths = HashSet<String>()
 
     init(origins!: Array<SourceFileOrigin> = []) {
         for (origin in origins) {
-            if (let Some(index) <- origin.capturedSourceIndex) {
-                indexes[origin.logicalPath] = index
+            let path = origin.logicalPath
+            let key = "${origin.moduleId}\n${path}"
+            if (indexesByModulePath.contains(key) || unavailableModulePaths.contains(key) ||
+                ambiguousModulePaths.contains(key)) {
+                let _ = indexesByModulePath.remove(key)
+                let _ = unavailableModulePaths.add(key)
+                let _ = ambiguousModulePaths.add(key)
             } else {
-                let _ = unavailable.add(origin.logicalPath)
+                match (origin.capturedFacts) {
+                    case Some(facts) =>
+                        if (facts.index.available) { indexesByModulePath[key] = facts.index }
+                        else { let _ = unavailableModulePaths.add(key) }
+                    case None => let _ = unavailableModulePaths.add(key)
+                }
+            }
+            if (!seenPaths.add(path)) {
+                let _ = indexesByPath.remove(path)
+                let _ = unavailablePaths.add(path)
+                let _ = ambiguousPaths.add(path)
+            } else {
+                match (origin.capturedFacts) {
+                    case Some(facts) =>
+                        if (facts.index.available) { indexesByPath[path] = facts.index }
+                        else { let _ = unavailablePaths.add(path) }
+                    case None => let _ = unavailablePaths.add(path)
+                }
             }
         }
     }
 
     private func sourceIndex(path: String): ?CapturedSourceIndex {
-        if (unavailable.contains(path)) {
-            return None
+        if (unavailablePaths.contains(path) || ambiguousPaths.contains(path)) { return None }
+        indexesByPath.get(path)
+    }
+
+    private func sourceIndex(moduleId: String, path: String): ?CapturedSourceIndex {
+        let key = "${moduleId}\n${path}"
+        if (unavailableModulePaths.contains(key) || ambiguousModulePaths.contains(key)) { return None }
+        indexesByModulePath.get(key)
+    }
+
+    private func capturedRange(index: CapturedSourceIndex, location: SourceLocation):
+        ?public_model.SourceRange {
+        let start = index.byteOffset(location.startLine, location.startColumn)
+        let end = index.byteOffset(location.endLine, location.endColumn)
+        match ((start, end)) {
+            case (Some(startOffset), Some(endOffset)) =>
+                if (endOffset < startOffset) { return None }
+                Some(public_model.SourceRange(location.path,
+                    public_model.SourcePosition(location.startLine, location.startColumn, startOffset),
+                    public_model.SourcePosition(location.endLine, location.endColumn, endOffset)))
+            case _ => None
         }
-        indexes.get(path)
+    }
+
+    func capturedRange(location: SourceLocation): ?public_model.SourceRange {
+        match (sourceIndex(location.path)) {
+            case Some(index) => capturedRange(index, location)
+            case None => None
+        }
+    }
+
+    func capturedRange(moduleId: String, location: SourceLocation): ?public_model.SourceRange {
+        match (sourceIndex(moduleId, location.path)) {
+            case Some(index) => capturedRange(index, location)
+            case None => None
+        }
     }
 
     func range(location: SourceLocation): public_model.SourceRange {
-        var startOffset: Int64 = 0
-        var endOffset: Int64 = 0
-        if (let Some(index) <- sourceIndex(location.path)) {
-            if (let Some(start) <- index.byteOffset(location.startLine, location.startColumn)) {
-                if (let Some(end) <- index.byteOffset(location.endLine, location.endColumn)) {
-                    if (end >= start) {
-                        startOffset = start
-                        endOffset = end
-                    }
-                }
-            }
+        match (capturedRange(location)) {
+            case Some(value) => value
+            case None => fallbackRange(location)
         }
+    }
+
+    func range(moduleId: String, location: SourceLocation): public_model.SourceRange {
+        match (capturedRange(moduleId, location)) {
+            case Some(value) => value
+            case None => fallbackRange(location)
+        }
+    }
+
+    private func fallbackRange(location: SourceLocation): public_model.SourceRange {
         public_model.SourceRange(location.path,
-            public_model.SourcePosition(location.startLine, location.startColumn, startOffset),
-            public_model.SourcePosition(location.endLine, location.endColumn, endOffset))
+            public_model.SourcePosition(location.startLine, location.startColumn, 0),
+            public_model.SourcePosition(location.endLine, location.endColumn, 0))
     }
 
     func contains(range: public_model.SourceRange): Bool {
         match (sourceIndex(range.path)) {
-            case Some(index) => index.positionMatches(range.start.line, range.start.column, range.start.byteOffset) &&
-                index.positionMatches(range.end.line, range.end.column, range.end.byteOffset)
+            case Some(index) => contains(index, range)
             case None => false
         }
+    }
+
+
+    private func contains(index: CapturedSourceIndex, range: public_model.SourceRange): Bool {
+        index.positionMatches(range.start.line, range.start.column, range.start.byteOffset) &&
+            index.positionMatches(range.end.line, range.end.column, range.end.byteOffset) &&
+            range.end.byteOffset >= range.start.byteOffset
     }
 }
 

@@ -10,7 +10,7 @@ import yjson.*
 // identity objects and completeness dimensions, so a client never has to learn a
 // second result shape per operation.
 
-internal let QUERY_RESULT_SCHEMA_VERSION: String = "cjdoc.query-result/3"
+internal let QUERY_RESULT_SCHEMA_VERSION: String = "cjdoc.query-result/4"
 internal let QUERY_GET_DEFAULT_LIMIT: Int64 = 10
 internal let QUERY_SUMMARY_SECTIONS: Array<String> = ["signature", "description"]
 // Published chapter order for every selected-section projection.

@@ -35,3 +35,40 @@ Doc IR 仍为 v16。生成器版本改为 `0.7.6`，需要重新生成 current g
 - 静态搜索的 ASCII 折叠不再逐码点累积拼接字符串，保留非 ASCII 文本与不规范化规则。Reader 浏览器回归按当前 UTF-8 canonical identity 顺序校验续页，保留 package 的 canonical-or-exposure 匹配；历史恢复用显式名称过滤验证目标成员，不把 discovery 的模糊匹配误当作唯一结果。
 - 可选高亮宿主构建失败时，公开证据仅增加有界、白名单化的 STS 包装器调用状态；不发布原始编译输出、路径或参数，不增加超时，也不把诊断记录视为构建成功。
 - 这是 current-only wire cutover：Doc IR/16、旧 query-request/query-result、旧 search-index 与 declaration 版本不会被当前 decoder/消费者迁移。使用旧输入前，须从真实源码重新生成当前 Doc IR 或静态站点。
+
+## 未发布：#173–#177 文档行为与消费者契约
+
+- HTML「使用于 / Used by」按关系 kind 标示反向使用位置；正向关系、去重、计数和目标链接不变。内置双语文案如下：
+
+| kind | English | 简体中文 |
+|---|---|---|
+| `parameter` | Uses this type in a parameter | 在参数类型中使用此类型 |
+| `field` | Uses this type in a field or property | 在字段或属性类型中使用此类型 |
+| `return` | Uses this type in a return type | 在返回类型中使用此类型 |
+| `superType` | Uses this type in a parent-type clause | 在父类型声明中使用此类型 |
+| `extensionTarget` | Uses this type in an extension target | 在扩展目标中使用此类型 |
+| `genericConstraint` | Uses this type in a generic constraint | 在泛型约束中使用此类型 |
+
+未知 provider kind 保留为安全转义的中性关系说明，文案形如 `References this type (relationship: ${kind})` / `引用此类型（关系：${kind}）`。
+
+- 本地 STS 1.2.0 产品构建及中英文 reference fixture 生成已运行；实际 Chromium 中展开 Token 的反向使用区域，显示成员链接和参数使用位置。此记录不代表正式 source-bound 门禁或远端 CI 通过。
+
+- 侧栏仅对无 fragment 的 HTML 路由与实际 `currentPagePath` 精确相等时设置 `aria-current="page"`。只有真实 `index.html` 路由让 Overview 成为当前页；`#packages` 等片段只影响章节高亮，API Reference 不冒充当前页。包页、声明页只在实际链接指向当前文档时为 current，包/owner 的上下文链接仅作 ancestor；侧栏没有对应成员链接时可没有 current 项。
+- 已运行双语各 94 页静态路由检查、Chromium 的 file 及 HTTP 子路径代表场景、4 项导航脚本测试和 14 项 HTML validator 测试。后续完整 canonical 浏览器回归通过 56/56，Admonition 专项矩阵通过 63/63，均未重试或跳过。
+- 实际使用 Orca 51.1 与 Chromium 153 检验固定双仓库 yjson 的中英文 backend 类型、`parseFloat64` 独立成员、包页和首页，以及双语 extension fixture：精确页面链接产生 current-page 语音，成员页的 owner 只读作链接、不产生 current-page 语音。证据来自真实 Orca 生成并交给 Speech Dispatcher/eSpeak 合成的输出，不仅是 ARIA tree；不将其表述为真人听测、完整人类可用性实验或 Windows/NVDA 验收。
+- 嵌套 owner 链沿同模块、同包的可见容器解析到既有顶层侧栏祖先，不把祖先冒充当前页。严格合法的公开 Doc IR `Outer → Inner → render` fixture 通过双语、启用/禁用 JavaScript 的 8 项真实浏览器检查与 byte-identical JSON round-trip；4 项实际 Orca 场景确认两种嵌套页面只播报 Outer 链接、不播报 current page。该 fixture 检验公开模型的 renderer 契约，不声称当前 SDK 支持源码嵌套 class。
+
+- 成员工具栏以最终投影后的 `HtmlMemberBrowser.entries` 数量为准：零或一个成员不生成筛选、来源选择和批量展开/收起；两个及以上成员显示筛选与展开/收起。来源选择器只在实际成员含两个及以上来源时出现，选项只列实际存在的 declared、inherited、extension 来源。单成员仍保留原生 `details`、签名、契约、操作和深链。
+- 本批产品重建通过；HTML 原生测试实际选中并通过 61 项、跳过 94 项。Chromium 实测单成员原生展开、单来源多成员无来源选择器、混合来源筛选、名称查询及批量展开；已失效的 session 来源值恢复为 All。实际 94 页站点及 48 条搜索条目通过 HTML validator。
+- Showcase reading 消费者按真实投影来源集合断言 Origin 控件有无及选项，不再对已省略的单来源控件调用选择。使用首次失败 CI 的同一 sealed site、Playwright 1.57.0 与 Chromium 143.0.7499.4 完成双语 × root/subpath/file × desktop/mobile 的 12 项实际回归，站点 digest 前后相等；205 项 Showcase tooling tests 通过，未加重试或超时。
+
+- 当前 Doc IR 为 `cjdoc.doc-ir/18`，严格 decoder 只接受 v18。逐文件 `FileDoc.provenance` 及其完整状态/原因/仓库路径/raw digest/normalized digest/receipt identity/evidence kind 字段都是必需的；无值以 `null` 表示，构造默认是 `unavailable/no_registration`。`declaration/3`、`page/2`、`query-result/4` 切换为新 consumer shapes；query-request/3、search-index/11、search-contract/2 保持不变。旧 JSON 必须从保存的源码重新生成，不能迁移或只改版本号。
+- `verified` 只表示 caller 独立 pin 的 `cjdoc.source-provenance/1` receipt 与本次捕获文件字节匹配，`evidenceKind` 为 `caller_pinned_receipt`；它不是 Git commit/tree/blob、远端仓库、构建成功或工作树状态的独立认证。旧项目仓库映射仍为 `declared/legacy_project_repository`，没有 pin 或文件 digest。严格登记的缺失/不匹配来源不回退到项目仓库并且没有 source URL。decoder replay 只验证保存的 wire 与状态组合，不重读 source、Git 或 receipt，也不重新认证调用方信任。`ReExportDoc.source` 表示 exposing module 的暴露位置，目标 declaration source 仍表示目标定义位置。
+- v18 的提示以 `note`、`warning`、`danger` 的捕获 Markdown AST 表示；只有直接位于 document 下的非空 block admonition 节点有效。`localizationScope` wire 字段必需，模型默认 `all`；`admonitions` scope 要求 `defaultLanguage=null` 且 localized texts 只含提示等级，同时保留普通摘要、正文和其他 tags。`DocTag.entryId/source` 与 `DocumentationText.entryId` wire 字段始终存在，构造默认 `None`。HTML、Markdown、Agent 和 query/search 复用同一捕获内容；full-ir 检索完整 AST/提示 tag 正文，bounded-static 仍限前 2,000 个 Unicode 码点。风险等级是作者文字，不是实现风险验证结论。
+- PR #179 首个发布 HEAD `ec5ba7a3b6575f209529490ffbaee2922da749de` 的 [远端 Reader 配对](https://github.com/lIlIIlIll/cjdoc/actions/runs/41505400887)通过全部 248 项严格比较，0 failure；实际 registration digest 与 comparison 绑定已核对，测试合并提交为 `ed765bdc9232951613c37ec61619f37c0d7b9572`。该结果不抹除本地两次全量配对的 13/14 项 timing failures，也不把未确定根因写成环境噪声；后续 HEAD 仍须重新取得对应 CI 证据，原预算与任务集合不变。
+- 来源登记索引与查询统一使用 registration 对象已有的规范化 host root，修复 Windows canonical `\` 路径不能匹配 `/` 查询 key、进而错误报告 `no_registration` 的问题；不改变 POSIX 文件名、containment、receipt 信任或资源预算。增加相对/绝对单文件登记去重、精确文件映射与相似前缀 sibling 不捕获的真实生成回归；Linux focused capture 12/12 通过，773 项因 filter 未运行。Windows 是否通过以对应 HEAD 的远端 CI 为准。
+- `@example` 后的受支持顶层 `@deprecated`、`@author`、`@version` 元数据不再被吞入示例正文；围栏中的同名文字仍保留为示例内容。
+- 提示正文只有 Markdown 引用定义、解析后没有正文节点时，使用既有 `CJDOC3117` 空提示诊断并保留作者原文，不构造违反严格 Doc IR 契约的空提示框。已配对空译保留身份并使用原回退规则，冲突条目不重新配对。指南中的无正文 marker 保留普通引用，诊断绑定源文件而不写入空的符号 ID。
+- 提示专用范围中的普通示例继续捕获 Markdown AST、代码高亮及语义链接；普通正文和示例仍执行语义链接诊断。增加有/无提示的对照回归，覆盖格式化正文、已解析/未解析链接、双语投影与严格 JSON 回放。
+- Reader 合成 search script fixture 用显式 UTF-8 字节写入生产者的 LF wrapper，避免 Windows 文本写入将其改成 CRLF 后被严格身份校验拒绝。只修正 fixture，保留实际 script grammar、digest、注入拒绝和性能预算。
+- 提示专用范围中的容器按普通正文结构判断 Overview，保留已有描述的 `#overview` 深链；仅摘要的容器继续省略该区域。有/无提示及仅摘要的双语严格回放回归覆盖这个边界。

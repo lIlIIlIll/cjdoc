@@ -40,7 +40,7 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SCHEMA_FILES = (
     "doc-ir.schema.json",
-    "doc-ir-v17.schema.json",
+    "doc-ir-v18.schema.json",
     "api-surface-v3.schema.json",
     "api-diff-v2.schema.json",
     "search-index-v11.schema.json",
@@ -64,6 +64,7 @@ SCHEMA_FILES = (
     "machine-manifest.schema.json",
     "query-request.schema.json",
     "query-result.schema.json",
+    "source-provenance.schema.json",
 )
 
 

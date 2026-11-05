@@ -2,9 +2,18 @@ package cjdoc.render
 
 import cjdoc.model.*
 import std.collection.*
+private func appendReExportSourceLink(out: RenderTextBuffer,
+    sourceReferences: SourceReferenceProjection, moduleId: String,
+    source: SourceRange, locale: String): Unit {
+    match (sourceReferences.project(moduleId, source).url) {
+        case Some(url) => out.append(" <a class=\"reexport-source\" href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "Exposure source", "暴露位置")}</a>")
+        case None => ()
+    }
+}
 
 internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage,
-    index: HashMap<String, SymbolDoc>, locale: String): Unit {
+    index: HashMap<String, SymbolDoc>, locale: String,
+    sourceReferences: SourceReferenceProjection): Unit {
     let packageDoc = pkg.source
     if (!packageDoc.reExports.isEmpty()) {
         out.append("<details class=\"reexports\"><summary id=\"re-exports\">${label(locale, "Re-exports", "公开重导出")} (${packageDoc.reExports.size} ${label(locale, "imports", "条导入")})</summary><ul class=\"record-list\">\n")
@@ -12,11 +21,17 @@ internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage
             if (reExport.kind == "packageAlias") {
                 out.append("<li><code>${escapeHtml(reExport.alias.getOrThrow())}</code>")
                 if (reExport.state == "resolved") { out.append(" → ${label(locale, "package", "包")}") }
-                out.append(" <code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(htmlKindLabel(reExport.kind, locale))}</span> <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span></li>\n")
+                out.append(" <code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(htmlKindLabel(reExport.kind, locale))}</span> <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span>")
+                appendReExportSourceLink(out, sourceReferences, packageDoc.moduleId,
+                    reExport.source, locale)
+                out.append("</li>\n")
                 continue
             }
             if (reExport.bindings.isEmpty()) {
-                out.append("<li><code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(htmlKindLabel(reExport.kind, locale))}</span> <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span></li>\n")
+                out.append("<li><code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(htmlKindLabel(reExport.kind, locale))}</span> <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span>")
+                appendReExportSourceLink(out, sourceReferences, packageDoc.moduleId,
+                    reExport.source, locale)
+                out.append("</li>\n")
                 continue
             }
             for (binding in reExport.bindings) {
@@ -31,7 +46,10 @@ internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage
                             "目标未包含在当前文档中"))
                     }
                 }
-                out.append(" <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span></li>\n")
+                out.append(" <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span>")
+                appendReExportSourceLink(out, sourceReferences, packageDoc.moduleId,
+                    reExport.source, locale)
+                out.append("</li>\n")
             }
         }
         out.append("</ul></details>\n")

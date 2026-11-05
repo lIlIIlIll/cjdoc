@@ -64,6 +64,11 @@ public class DocumentationReadSnapshot {
         identity.byModule.get(moduleId)
     }
 
+    /** Resolve captured file evidence without consulting source files or receipts. */
+    public func sourceReference(moduleId: String, range: SourceRange): SourceReference {
+        projection.sourceReferences.project(moduleId, range)
+    }
+
     protected func moduleFor(moduleId: String): ?ModuleDoc {
         modulesById.get(moduleId)
     }

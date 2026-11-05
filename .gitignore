@@ -16,12 +16,15 @@
 # The user's global Git ignore excludes JSON; these are project sources.
 !/AGENTS.md
 !/docs/schema/*.json
-!/tests/fixtures/golden-v17/*.json
+!/tests/fixtures/golden-v18/*.json
 !/tests/perf/*.json
 !/tests/fixtures/query-semantics/cases.json
+!/tests/fixtures/projects/source_provenance/evidence/source.json
 !/docs/maintainer/reader-scale-budgets.json
 !/docs/maintainer/reader-scale-baseline.json
 !/docs/maintainer/reader-scale-presentation.json
+!/docs/maintainer/reader-scale-docs-173-177.json
+!/docs/maintainer/reader-scale-docs-173-177/*.aria.txt
 !/tests/fixtures/reader-presentation/*.aria.txt
 !/docs/maintainer/acceptance/issue-163/evidence.json
 !/.impeccable/design.json

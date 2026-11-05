@@ -154,6 +154,11 @@ internal func consumeTypeEncoding(value: TypeRef, path: String, depth: Int64,
 
 internal func consumeMarkdownMetadataEncoding(value: MarkdownNodeMetadata, path: String,
     jsonDepth: Int64, budget: DocIrEncodingBudget): Unit {
+    if (value.kind == "admonition") {
+        budget.consumeObject(path, depth: jsonDepth, fields: 1)
+        budget.consumeOptionalString(value.admonitionLevel, "${path}.level")
+        return
+    }
     budget.consumeObject(path, depth: jsonDepth, fields: 12)
     budget.consumeOptionalString(value.listKind, "${path}.listKind")
     budget.consumeOptionalString(value.listDelimiter, "${path}.delimiter")
@@ -217,6 +222,11 @@ internal func consumeTagEncoding(value: DocTag, path: String,
     budget.consumeString(value.description, "${path}.description")
     budget.consumeString(value.referenceState, "${path}.referenceState")
     budget.consumeOptionalString(value.targetSymbolId, "${path}.targetSymbolId")
+    budget.consumeOptionalString(value.entryId, "${path}.entryId")
+    match (value.source) {
+        case Some(source) => consumeRangeEncoding(source, "${path}.source", budget)
+        case None => budget.consumeBytes(4, "${path}.source")
+    }
     if (!value.directives.isEmpty()) {
         budget.consumeString(value.directives, "${path}.directives")
     }
@@ -240,7 +250,8 @@ internal func consumeTagEncoding(value: DocTag, path: String,
 
 internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth: Int64,
     budget: DocIrEncodingBudget): Unit {
-    budget.consumeObject(path, depth: jsonDepth, fields: 5)
+    budget.consumeObject(path, depth: jsonDepth, fields: 6)
+    budget.consumeString(value.localizationScope, "${path}.localizationScope")
     budget.consumeString(value.rawText, "${path}.rawText")
     budget.consumeString(value.summary, "${path}.summary")
     budget.consumeString(value.description, "${path}.description")
@@ -460,7 +471,6 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
         budget.consumeString(module.role, "${path}.role")
         budget.consumeString(module.sourcePrefix, "${path}.sourcePrefix")
         budget.consumeOptionalString(module.organization, "${path}.organization")
-        budget.consumeOptionalString(module.repositoryPath, "${path}.repositoryPath")
         budget.consumeCollection(module.packageNames.size, "${path}.packageNames")
         var itemIndex: Int64 = 0
         for (name in module.packageNames) {
@@ -531,6 +541,7 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
         budget.consumeString(file.path, "${path}.path")
         budget.consumeString(file.moduleId, "${path}.moduleId")
         budget.consumeString(file.packageName, "${path}.packageName")
+        consumeSourceProvenanceEncoding(file.provenance, "${path}.provenance", budget)
         index++
     }
     budget.consumeCollection(documentation.declarations.size, "$.declarations")

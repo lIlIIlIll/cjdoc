@@ -349,9 +349,28 @@ private func cachedImportMetadataMatchesSource(input: SourceInputFile,
         sourceCacheStringListsMatch(cached.packageImports, sourceDerived.packageImports)
 }
 
+private func capturedFactsForSource(snapshot: BoundedFileRead, rawText: String,
+    normalizedText: String, index: CapturedSourceIndex, input: SourceInputFile,
+    registry: SourceRepositoryRegistry, budget: SourceAuxiliaryBudget): CapturedSourceFacts {
+    if (!registry.needsSourceDigests(input.actualPath)) {
+        return CapturedSourceFacts(index)
+    }
+    let normalizedBytes = normalizedText.toArray()
+    let sameBytes = rawText == normalizedText && snapshot.size == normalizedBytes.size
+    let work = snapshot.size + if (sameBytes) { 0 } else { normalizedBytes.size }
+    if (budget.limitReached() || !budget.consumeWork(work)) {
+        return CapturedSourceFacts(index, resourceLimit: true)
+    }
+    let rawDigest = Sha256Digest.digestBytes(snapshot.bytes)
+    let normalizedDigest = if (sameBytes) { rawDigest } else { Sha256Digest.digestBytes(normalizedBytes) }
+    CapturedSourceFacts(index, rawDigest: Some(rawDigest),
+        normalizedDigest: Some(normalizedDigest))
+}
+
 internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: String,
     cacheDirectory: ?String, cacheFingerprint: String,
-    astPreflightExecutable: ?String, auxiliaryBudget: SourceAuxiliaryBudget): ParsedSourceFile {
+    astPreflightExecutable: ?String, auxiliaryBudget: SourceAuxiliaryBudget,
+    registry: SourceRepositoryRegistry): ParsedSourceFile {
     try {
         let inputInfo = FileInfo(input.actualPath)
         if (inputInfo.isRegular() && !inputInfo.isSymbolicLink() &&
@@ -371,10 +390,10 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
             return result
         }
     } catch (_: Exception) {
-        // The normal read path below reports inaccessible or disappearing files.
+        // The bounded snapshot below reports inaccessible or disappearing files.
     }
-    let source = try {
-        normalizeSourceNewlines(readTextBounded(Path(input.actualPath), MAX_SOURCE_FILE_BYTES))
+    let snapshot = try {
+        readFileBoundedSnapshot(Path(input.actualPath), MAX_SOURCE_FILE_BYTES)
     } catch (_: Exception) {
         let result = ParsedSourceFile(input)
         result.diagnostics.add(Diagnostic("error", "CJDOC1011",
@@ -382,18 +401,30 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
             source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
         return result
     }
+    let rawText = try {
+        String.fromUtf8(snapshot.bytes)
+    } catch (_: Exception) {
+        let result = ParsedSourceFile(input)
+        result.diagnostics.add(Diagnostic("error", "CJDOC1011",
+            "failed to parse '${input.logicalPath}'",
+            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
+        return result
+    }
+    let source = normalizeSourceNewlines(rawText)
     let capturedSourceIndex = CapturedSourceIndex(source)
+    let facts = capturedFactsForSource(snapshot, rawText, source,
+        capturedSourceIndex, input, registry, auxiliaryBudget)
     if (!capturedSourceIndex.available) {
         let result = ParsedSourceFile(input)
         result.diagnostics.add(Diagnostic("error", "CJDOC1028",
             "source exceeds the ${MAX_CAPTURED_SOURCE_LINES}-line indexing limit; file skipped",
             source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-        return result
+        return withCapturedSourceFacts(result, facts)
     }
     match (cacheDirectory) {
-        case None => return withCapturedSourceIndex(
+        case None => return withCapturedSourceFacts(
             parseSourceFrontend(input, fallbackPackageName, source, astPreflightExecutable),
-            capturedSourceIndex)
+            facts)
         case Some(directory) =>
             if (auxiliaryBudget.limitReached() || !auxiliaryBudget.consumeWork(source.size)) {
                 let parsed = parseSourceFrontend(input, fallbackPackageName, source,
@@ -401,14 +432,14 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                 parsed.diagnostics.add(Diagnostic("error", "CJDOC1028",
                     "source metadata or cache exceeded the configured aggregate byte/work safety budget; remaining cache work skipped"))
                 parsed.cacheStatus = "miss-write-failed"
-                return withCapturedSourceIndex(parsed, capturedSourceIndex)
+                return withCapturedSourceFacts(parsed, facts)
             }
             let cacheKeyValue = makeSourceCacheKey(input, fallbackPackageName, source, cacheFingerprint)
             if (cacheKeyValue.isNone()) {
                 let parsed = parseSourceFrontend(input, fallbackPackageName, source,
                     astPreflightExecutable)
                 parsed.cacheStatus = "miss-write-failed"
-                return withCapturedSourceIndex(parsed, capturedSourceIndex)
+                return withCapturedSourceFacts(parsed, facts)
             }
             let cacheKey = cacheKeyValue.getOrThrow()
             let path = sourceCachePath(directory, input, cacheKey)
@@ -422,7 +453,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                     }
                     if (cachedImportMetadataMatchesSource(input, fallbackPackageName, source,
                         cached, astPreflightExecutable, auxiliaryBudget)) {
-                        return withCapturedSourceIndex(cached, capturedSourceIndex)
+                        return withCapturedSourceFacts(cached, facts)
                     }
                     if (!auxiliaryBudget.consumeWork(source.size)) {
                         throw IllegalArgumentException("source cache fallback parse exceeded work budget")
@@ -430,7 +461,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                     let sourceDerived = parseSourceFrontend(input, fallbackPackageName, source,
                         astPreflightExecutable)
                     if (sourceDerived.packageName.isNone()) {
-                        return withCapturedSourceIndex(sourceDerived, capturedSourceIndex)
+                        return withCapturedSourceFacts(sourceDerived, facts)
                     }
                     sourceDerived.cacheStatus = if (encodeAndWriteSourceCache(path, cacheKey,
                         sourceDerived, capturedSourceIndex, source, auxiliaryBudget)) {
@@ -442,7 +473,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                         sourceDerived.diagnostics.add(Diagnostic("error", "CJDOC1028",
                             "source metadata or cache exceeded the configured aggregate byte/work safety budget; remaining cache work skipped"))
                     }
-                    return withCapturedSourceIndex(sourceDerived, capturedSourceIndex)
+                    return withCapturedSourceFacts(sourceDerived, facts)
                 } catch (_: Exception) {
                     let parsed = parseSourceFrontend(input, fallbackPackageName, source,
                         astPreflightExecutable)
@@ -450,7 +481,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                         parsed.diagnostics.add(Diagnostic("error", "CJDOC1028",
                             "source metadata or cache exceeded the configured aggregate byte/work safety budget; remaining cache work skipped"))
                         parsed.cacheStatus = "miss-write-failed"
-                        return withCapturedSourceIndex(parsed, capturedSourceIndex)
+                        return withCapturedSourceFacts(parsed, facts)
                     }
                     parsed.cacheStatus = if (encodeAndWriteSourceCache(path, cacheKey, parsed,
                         capturedSourceIndex, source, auxiliaryBudget)) {
@@ -458,7 +489,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                     } else {
                         "corrupt-write-failed"
                     }
-                    return withCapturedSourceIndex(parsed, capturedSourceIndex)
+                    return withCapturedSourceFacts(parsed, facts)
                 }
             }
             let parsed = parseSourceFrontend(input, fallbackPackageName, source,
@@ -473,21 +504,25 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                 parsed.diagnostics.add(Diagnostic("error", "CJDOC1028",
                     "source metadata or cache exceeded the configured aggregate byte/work safety budget; remaining cache work skipped"))
             }
-            return withCapturedSourceIndex(parsed, capturedSourceIndex)
+            return withCapturedSourceFacts(parsed, facts)
     }
 }
 
-internal func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSourceFile,
-    cacheStats: SourceCacheStats, aggregation: SourceAggregationIndex): Unit {
+private func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSourceFile,
+    cacheStats: SourceCacheStats, aggregation: SourceAggregationIndex,
+    registry: SourceRepositoryRegistry): Unit {
     let packageName = match (parsed.packageName) {
         case Some(value) => value
         case None => parsed.input.module.name
     }
+    let provenance = registry.provenance(parsed.input.actualPath,
+        parsed.input.logicalPath, parsed.capturedSourceFacts)
     sourceSnapshot.sourceFileOrigins.add(SourceFileOrigin(parsed.input.logicalPath,
         parsed.input.actualPath, parsed.input.actualRoot, parsed.input.module.sourcePrefix,
-        parsed.input.module.id, capturedSourceIndex: parsed.capturedSourceIndex,
-        packageName: packageName, imports: parsed.imports.toArray(),
-        packageImports: parsed.packageImports.toArray(), capturedSource: parsed.capturedSource))
+        parsed.input.module.id, capturedFacts: parsed.capturedSourceFacts,
+        provenance: Some(provenance), packageName: packageName,
+        imports: parsed.imports.toArray(), packageImports: parsed.packageImports.toArray(),
+        capturedSource: parsed.capturedSource))
     match (parsed.cacheStatus) {
         case "hit" => cacheStats.hits++
         case "miss-written" =>
@@ -526,14 +561,14 @@ internal func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSo
 internal func parseAllSourceFiles(sourceSnapshot: SourceSnapshot, files: ArrayList<SourceInputFile>,
     jobs: Int64, cacheDirectory: ?String, cacheFingerprint: String,
     cacheStats: SourceCacheStats, astPreflightExecutable: ?String,
-    auxiliaryBudget: SourceAuxiliaryBudget): Unit {
+    auxiliaryBudget: SourceAuxiliaryBudget, registry: SourceRepositoryRegistry): Unit {
     let aggregation = SourceAggregationIndex()
     if (jobs <= 1 || files.size <= 1) {
         for (input in files) {
             mergeParsedSource(sourceSnapshot,
                 parseSourceInput(input, input.module.name, cacheDirectory, cacheFingerprint,
-                    astPreflightExecutable, auxiliaryBudget),
-                cacheStats, aggregation)
+                    astPreflightExecutable, auxiliaryBudget, registry),
+                cacheStats, aggregation, registry)
         }
         return
     }
@@ -547,12 +582,12 @@ internal func parseAllSourceFiles(sourceSnapshot: SourceSnapshot, files: ArrayLi
             let fallbackPackageName = input.module.name
             futures.add(spawn {
                 parseSourceInput(input, fallbackPackageName, cacheDirectory, cacheFingerprint,
-                    astPreflightExecutable, auxiliaryBudget)
+                    astPreflightExecutable, auxiliaryBudget, registry)
             })
             index++
         }
         for (future in futures) {
-            mergeParsedSource(sourceSnapshot, future.get(), cacheStats, aggregation)
+            mergeParsedSource(sourceSnapshot, future.get(), cacheStats, aggregation, registry)
         }
         start = end
     }

@@ -135,11 +135,14 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
         out.append(",\"descriptionMarkdown\":"); appendMarkdown(out, markdown)
     }
     out.append(",\"navigation\":"); appendTypeNavigation(out, value.navigation)
+    out.append(",\"entryId\":${nullableString(value.entryId)},\"source\":")
+    match (value.source) { case Some(range) => appendRange(out, range); case None => out.append("null") }
     out.append("}")
 }
 
 private func appendMarkdownMetadata(out: StringBuilder, value: MarkdownNodeMetadata): Unit {
     match (value.kind) {
+        case "admonition" => out.append("{\"level\":${escapeJsonString(value.admonitionLevel.getOrThrow())}}")
         case "heading" => out.append("{\"level\":${value.headingLevel.getOrThrow()}}")
         case "list" =>
             out.append("{\"listKind\":${escapeJsonString(value.listKind.getOrThrow())},")
@@ -207,6 +210,7 @@ private func appendComment(out: StringBuilder, value: DocComment): Unit {
         appendTag(out, tag)
     }
     out.append("]")
+    out.append(",\"localizationScope\":${escapeJsonString(value.localizationScope)}")
     if (value.defaultLanguage.isSome() || !value.localizedTexts.isEmpty()) {
         out.append(",\"defaultLanguage\":${nullableString(value.defaultLanguage)},\"localizedTexts\":")
         appendDocumentationTexts(out, value.localizedTexts)
@@ -306,7 +310,6 @@ private func appendModule(out: StringBuilder, value: ModuleDoc): Unit {
     out.append("{\"id\":${escapeJsonString(value.id)},\"name\":${escapeJsonString(value.name)},")
     out.append("\"role\":${escapeJsonString(value.role)},\"sourcePrefix\":${escapeJsonString(value.sourcePrefix)},")
     out.append("\"organization\":${nullableString(value.organization)},")
-    out.append("\"repositoryPath\":${nullableString(value.repositoryPath)},")
     out.append("\"packageNames\":")
     appendStrings(out, value.packageNames)
     out.append(",\"dependencyIds\":")
@@ -411,7 +414,9 @@ internal func compactDocIr(documentation: DocumentationSet, capacity: Int64): St
     for (file in documentation.files) {
         if (!first) { out.append(",") }; first = false
         out.append("{\"path\":${escapeJsonString(file.path)},\"moduleId\":${escapeJsonString(file.moduleId)},")
-        out.append("\"packageName\":${escapeJsonString(file.packageName)}}")
+        out.append("\"packageName\":${escapeJsonString(file.packageName)},\"provenance\":")
+        appendSourceProvenance(out, file.provenance)
+        out.append("}")
     }
     out.append("],\"declarations\":[")
     first = true

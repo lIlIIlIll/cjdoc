@@ -95,7 +95,8 @@ internal func capturedPageBodyHtml(documentation: DocumentationSet, page: Docume
     }
     var body = renderStandaloneMarkdownHtmlWithAssets(page.markdown, assetLookup,
         pageRootPrefix(outputPath), sourceLinks: links, pageTitle: Some(page.title),
-        bindingSource: page.source, bindingChips: Some(chips), headingBase: 1, afterFirstCode: afterFirstCode)
+        bindingSource: page.source, bindingChips: Some(chips), headingBase: 1,
+        afterFirstCode: afterFirstCode, locale: locale)
     for (section in page.sections) {
         if (let Some(anchor) <- documentationSectionAnchor(page.markdown, section.anchor)) {
             body = body.replace("id=\"" + anchor + "\"", "id=\"" + anchor +

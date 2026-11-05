@@ -83,6 +83,36 @@ class StageRecordTest(unittest.TestCase):
             self.assertEqual(environment["compileOptions"], ["--jobs 1", "-O1"])
             self.assertEqual(environment["productCompileOptions"], ["--jobs 1", "-O2", "--fno-chir-function-inlining"])
 
+    def test_windows_provider_failure_adds_only_sanitized_compiler_facts(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary)
+            code = """import sys
+print(r'LLVM ERROR: failure at C:\\Users\\example-user\\source.cj')
+print('Stack dump:', file=sys.stderr)
+print(' #0 0x00007ff123456789 llvm::sys::PrintStackTrace()', file=sys.stderr)
+print(' #1 0x00007ff123456790 project::privateFunction()', file=sys.stderr)
+print('Exception Code: 0xC0000005', file=sys.stderr)
+print('runner.example.test 192.0.2.11', file=sys.stderr)
+raise SystemExit(7)
+"""
+            with patch.object(ci_stage.sys, "platform", "win32"):
+                result = ci_stage.run_stage(
+                    "provider", "provider", [sys.executable, "-c", code], evidence)
+            self.assertEqual(result, 7)
+            record = ci_stage.load_records(evidence)[0]
+            diagnostic = record["compilerFailure"]
+            self.assertEqual(diagnostic["package"], "provider_plugin_fixture")
+            self.assertEqual(diagnostic["wrapper"], "cjpm")
+            self.assertIn("llvm-internal-error", diagnostic["classifications"])
+            self.assertEqual(diagnostic["stackSymbols"], ["llvm::sys::PrintStackTrace"])
+            self.assertEqual(diagnostic["exceptionCodes"], ["0xC0000005"])
+            published = json.dumps(diagnostic)
+            for forbidden in ["example-user", "source.cj", "privateFunction",
+                              "runner.example.test", "192.0.2.11",
+                              "0x00007ff123456789", "LLVM ERROR:"]:
+                self.assertNotIn(forbidden, published)
+
 
 class ReportedIdentityTest(unittest.TestCase):
     """The browser/font axis must be recorded by the stage that actually rendered.

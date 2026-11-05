@@ -260,7 +260,7 @@ def cli_query(request: dict) -> tuple[int, dict]:
 
 
 def assert_query_result(test: unittest.TestCase, structured: dict) -> None:
-    test.assertEqual(structured.get("schemaVersion"), "cjdoc.query-result/3")
+    test.assertEqual(structured.get("schemaVersion"), "cjdoc.query-result/4")
     status = structured.get("status")
     test.assertIn(status, ALL_STATUSES, f"undeclared status: {status!r}")
     test.assertIsInstance(structured.get("text"), str)
@@ -415,7 +415,7 @@ class ToolsCallTests(unittest.TestCase):
             "schemaVersion": "cjdoc.query-request/3", "query": "cjdoc", "limit": 1})
         assert_query_result(self, structured)
         self.assertIn(structured["status"], ALL_STATUSES)
-        self.assertEqual(structured["schemaVersion"], "cjdoc.query-result/3")
+        self.assertEqual(structured["schemaVersion"], "cjdoc.query-result/4")
 
 
 class MalformedRequestTests(unittest.TestCase):

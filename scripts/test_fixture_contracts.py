@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 import subprocess
 import tomllib
+import tempfile
 import unittest
+
+from scripts.test_agent_artifacts import ContractError, check_schema
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -22,6 +26,8 @@ CANGJIE_CONTRACT_FIXTURES = {
     # Shared group metadata, source-free replay and mixed member groups are
     # exercised by DeclarationGroupingContracts through the public facade.
     "declaration-groups",
+    # Per-file caller-pinned source evidence and replay coverage (#175).
+    "source_provenance",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",
@@ -45,6 +51,8 @@ CLI_CONTRACT_FIXTURES = {
     "dependency_public_api",
     # Shared query cases, scoped tag badges and source-free Agent artifacts.
     "declaration-tags",
+    # Captured API/guide admonitions through the CLI consumer contracts (#177).
+    "admonitions",
 }
 
 
@@ -72,7 +80,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/17")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/18")
         metadata = document.get("metadata")
         self.assertIsInstance(metadata, dict)
         self.assertEqual(set(metadata), {"groups", "tags"})
@@ -128,6 +136,52 @@ class FixtureContractTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(result.stdout, f"cjdoc {self.package_version}\n")
+
+    def test_import_context_sources_match_the_published_query_schema(self) -> None:
+        schema = json.loads((REPO / "docs/schema/query-result.schema.json").read_text())
+        for include_dependencies in (False, True):
+            with self.subTest(include_dependencies=include_dependencies):
+                options = ("--include-path-dependencies",) if include_dependencies else ()
+                document, _ = self.generate("reexports", *options, expected_exit=0)
+                symbol = next(item for item in document["declarations"]
+                              if item["qualifiedName"] == "reexport_root.collision")
+                request = {"schemaVersion": "cjdoc.query-request/3",
+                           "operation": "get_symbol", "symbolId": symbol["id"],
+                           "sections": ["relations"]}
+                with tempfile.TemporaryDirectory() as temporary:
+                    # Snapshot readers reject symlink ancestors, including temporary-root aliases.
+                    snapshot = Path(temporary).resolve() / "docs.json"
+                    snapshot.write_text(json.dumps(document), encoding="utf-8")
+                    result = subprocess.run(
+                        [str(self.binary), "query", "--snapshot", str(snapshot), "--request", "-"],
+                        input=json.dumps(request), text=True, capture_output=True, check=False)
+                self.assertEqual(result.returncode, 0, msg=f"{result.stderr}\n{result.stdout}")
+                response = json.loads(result.stdout)
+                self.assertEqual(response["status"], "ok")
+                check_schema(response, schema, "re-export query result")
+                section = next(item for item in response["result"]["items"][0]["sections"]
+                               if item["name"] == "relations")
+                states = {item["reExport"]["state"]
+                          for item in section["value"]["packageImportContext"]}
+                self.assertEqual(states, {"resolved", "ambiguous", "unavailable"}
+                                 if include_dependencies else {"unavailable"})
+
+                for invalid in ("missing", "null", "unknown-field", "unproved-verified"):
+                    with self.subTest(invalid_source=invalid):
+                        changed = copy.deepcopy(response)
+                        section = next(item for item in changed["result"]["items"][0]["sections"]
+                                       if item["name"] == "relations")
+                        context = section["value"]["packageImportContext"][0]
+                        if invalid == "missing":
+                            context.pop("source")
+                        elif invalid == "null":
+                            context["source"] = None
+                        elif invalid == "unknown-field":
+                            context["source"]["unexpected"] = True
+                        else:
+                            context["source"]["state"] = "verified"
+                        with self.assertRaises(ContractError):
+                            check_schema(changed, schema, "invalid import source")
 
     def test_public_imports_emit_canonical_reexport_bindings(self) -> None:
         document, _ = self.generate(

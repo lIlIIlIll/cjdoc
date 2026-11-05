@@ -1,0 +1,9 @@
+[docs]
+index = "docs/index.md"
+
+[[docs.pages]]
+id = "admonition-guide"
+source = "docs/admonitions.md"
+route = "concepts/guides/admonitions"
+title = "Admonition guidance"
+kind = "guide"

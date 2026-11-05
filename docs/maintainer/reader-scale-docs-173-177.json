@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "cjdoc.reader-aria-transition/1",
+  "recipe": "rdr-scale-v1",
+  "sourceSha256": "ade4b8ef804bdadad567d0df4109ac29fb1832e0a3b74ec85d233aea93bc1a83",
+  "taskManifestSha256": "b9c412ec7553501667f42205764843d968f826a296bf801c5dba36c17c8ddbb2",
+  "locales": {
+    "en": {
+      "baseline": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/baseline-en.aria.txt",
+        "sha256": "420bb3b74079f9466b157fb460df5124e747279dac835e1ec30f5524a6549acb"
+      },
+      "after": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/after-en.aria.txt",
+        "sha256": "663999326ef5ad0dc47d706c718910b7434be1991f17f595786cfd0bdd6f5bfd"
+      }
+    },
+    "zh-CN": {
+      "baseline": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/baseline-zh-CN.aria.txt",
+        "sha256": "51ff0ed50b131ee238e62516932b14ce3a3b12b031c305b67d8010ca3ea42a34"
+      },
+      "after": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/after-zh-CN.aria.txt",
+        "sha256": "65b1f36e81bc56691178a7c56ff1460749b1686d7b213042dfeddf73f55f1214"
+      }
+    }
+  }
+}

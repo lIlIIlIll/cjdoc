@@ -111,6 +111,9 @@ class SourcePipelineSuite1 {
             * ```cangjie
             * let result = add(1, 2)
             * @param insideCode remains code
+            * @deprecated insideCode remains code
+            * @author insideCode remains code
+            * @version insideCode remains code
             *
             * ```
             *
@@ -139,6 +142,9 @@ class SourcePipelineSuite1 {
         @Expect(comment.examples.size, 3)
         @Expect(comment.examples[0].subject, "Basic addition")
         @Expect(comment.examples[0].description.contains("@param insideCode remains code"), true)
+        for (tag in ["deprecated", "author", "version"]) {
+            @Expect(comment.examples[0].description.contains("@" + tag + " insideCode remains code"), true)
+        }
         @Expect(comment.examples[0].description.contains("\n\n"), true)
         @Expect(comment.examples[0].description.contains("Explain the input above."), true)
         @Expect(comment.examples[1].subject, "Invalid input")
@@ -149,6 +155,40 @@ class SourcePipelineSuite1 {
         @Expect(comment.params[0].subject, "left")
         @Expect(comment.returns.isSome(), true)
         @Expect(comment.returns.getOrThrow().description, "sum")
+    }
+
+    @TestCase
+    func metadataTagsTerminateExamplesWithoutSwallowingSupportedFields(): Unit {
+        for ((name, value) in [
+            ("deprecated", "Use replacement."),
+            ("author", "Example Author"),
+            ("version", "2.4")
+        ]) {
+            let comment = parseDocComment("/**\n * @example Sample\n * Example body.\n * @" +
+                name + " " + value + "\n * @param input Parameter documentation.\n */")
+            @Expect(comment.examples.size, 1)
+            @Expect(comment.examples[0].description, "Example body.")
+            @Expect(comment.params.size, 1)
+            @Expect(comment.params[0].description, "Parameter documentation.")
+            match (name) {
+                case "deprecated" => @Expect(comment.deprecated, Some(value))
+                case "author" =>
+                    @Expect(comment.authors.size, 1)
+                    @Expect(comment.authors[0], value)
+                case "version" => @Expect(comment.version, Some(value))
+                case _ => ()
+            }
+        }
+        let bare = parseDocComment("/**\n * @example Sample\n * Example body.\n * @deprecated\n */")
+        @Expect(bare.examples[0].description, "Example body.")
+        @Expect(bare.deprecated, Some(""))
+        let literal = parseDocComment("/**\n * @example Sample\n * Example body.\n * @author\n" +
+            " * @version\n * @deprecated\tliteral\n * @param input Parameter documentation.\n */")
+        @Expect(literal.examples[0].description, "Example body.\n@author\n@version\n@deprecated\tliteral")
+        @Expect(literal.deprecated.isNone(), true)
+        @Expect(literal.authors.size, 0)
+        @Expect(literal.version.isNone(), true)
+        @Expect(literal.params[0].description, "Parameter documentation.")
     }
 
     @TestCase

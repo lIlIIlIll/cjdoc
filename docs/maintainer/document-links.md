@@ -249,6 +249,47 @@ python3 scripts/accept_dependency_public_api.py \
 
 `--https-base` 可指向实际 HTTPS 测试部署根（依赖站分别位于其 `v1`、`v2` 子目录）；默认示例域名只检查路由，不声称联网点击成功。HTTP、HTTPS 与 `file://` 浏览器点击须另外记录。Markdown 中的相对外链以生成站点的 `html/` 文档根为基准；独立 symbol-index 自动增加 `html/` 前缀，HTML 内置索引不重复增加。
 
+## 逐文件源码来源证明
+
+多仓源码链接只描述本次捕获的文件来源，不参与依赖版本选择、`build-context/1` 或跨文档 API 匹配。配置位于 `cjdoc.toml` 的 `[[source.repositories]]` 表；表根和 receipt 路径相对项目配置目录。`root` 可以是源码目录或单个文件；目录登记的 `repository-path` 是仓内前缀，文件登记的 `repository-path` 是该文件的完整仓内路径。
+
+```toml
+[[source.repositories]]
+root = "packages/main/src"
+url = "https://github.com/example/main"
+revision = "1111111111111111111111111111111111111111"
+repository-path = "src"
+receipt = "evidence/main-source.json"
+receipt-sha256 = "<independently trusted 64 lowercase hex>"
+```
+
+`root`、`url`、`revision` 是必需值；`repository-path`、`receipt`、`receipt-sha256` 可省略，但只有 receipt 和独立 pin 都有效时才可能产生 `verified` 来源。revision 必须是完整的小写 40 位 SHA。仓颉 API 的 `GenerationRequest.sourceRepositories` 使用 `None` 读取配置，`Some(...)` 整体覆盖配置；`Some([])` 表示严格来源模式但没有登记，不回退到 `ProjectInfo.repository`。没有 `module-id` 配置项；捕获后的来源按 `(moduleId, FileDoc.path)` 与声明实际 `SourceRange.path` 对应。
+
+每份 receipt 使用 `cjdoc.source-provenance/1`，结构只包含 schema version、仓库 URL/revision 与仓内文件路径/摘要：
+
+```json
+{
+  "schemaVersion": "cjdoc.source-provenance/1",
+  "repository": {
+    "url": "https://github.com/example/main",
+    "revision": "1111111111111111111111111111111111111111"
+  },
+  "files": [
+    {"path": "src/api.cj", "sha256": "<64 lowercase hex>"}
+  ]
+}
+```
+
+Receipt 拒绝未知或重复字段、缺失字段、重复/不安全路径、错误 URL/revision 或摘要。receipt 内不包含自报 trust pin；`receipt-sha256` 必须由调用方独立信任，且 pin 覆盖 receipt 的完整原始字节。`verified/receipt_matched` 表示登记仓库 URL、完整 revision、仓内路径和调用方 pin 的 receipt 相符，并且 receipt 中该文件摘要与本次 frontend 捕获的 raw bytes 相等。它不证明 Git commit/tree/blob 存在、仓库服务返回了该内容、构建成功或工作树干净；`evidenceKind` 明确写 `caller_pinned_receipt`。`sourceDigest` 是 raw bytes 摘要，`normalizedDigest` 是 CR/CRLF 换行归一后的捕获内容摘要，`evidenceIdentity` 是 pin 对应 receipt 原始字节的 SHA-256。
+
+状态由每个 `FileDoc.provenance` 保存，v18 wire 始终包含 `state`、`reason`、`repository`、`repositoryPath`、两个 source digest、`evidenceIdentity` 与 `evidenceKind`；所有无值字段都显式写 `null`，不得省略。`FileDoc` 的构造默认是 `unavailable/no_registration`。`declared/legacy_project_repository` 表示旧项目级仓库映射，保留链接但没有文件 digest、receipt identity 或 caller pin，永不升为 verified。未启用严格多仓登记且没有可用旧项目仓库映射时，状态为 `unavailable/no_project_repository`；严格模式下未登记文件为 `unavailable/no_registration`，缺少回执或文件校验失败也保持 `unavailable` 且不回退到 `ProjectInfo.repository`；互相冲突的非等价登记为 `ambiguous`。`unavailable`/`ambiguous` 不生成源码 URL，且不报告确定仓库。缺文件/未捕获内容的 digest 为 null；有实际观察的失败文件可保留对应 digest。
+
+声明的 `SourceReference` 从 `(moduleId, range.path)` 找唯一的 `FileDoc.provenance`，并附加 source range、`url`、`recordedRevision` 和 `revisionKind`。只有有效安全路径/范围且来源为 `verified` 或 `declared` 时才有 URL；其他状态保留范围、原因和可用 digest 但 URL 为 null。verified revision 的类型为 `exact`，旧分支/tag/ref 为 `ref`，无来源为 `unavailable`。Root 的主机路径不进入 wire。不存在或重复的文件映射不能靠 module 名、声明名或遍历顺序推断。
+
+重导出暴露位置与目标声明来源是两个来源事实：`ReExportDoc.source` 属于暴露 module/file，按该位置输出标为“暴露位置”的链接；目标 `SymbolDoc.source` 仍指向声明定义。query exposure 的 `source` 使用暴露位置，canonical declaration 的 `source` 使用目标声明位置。
+
+`render --input`、Agent、Markdown、查询和 MCP 只消费已捕获的 provenance，不读取源文件、Git 或 receipt。解码器严格验证当前 wire 形状与状态组合，但不会重新取回/验证 receipt，也不会独立核实调用方信任的 pin；回放得到的是已保存的来源声明，不是新的 Git 认证。旧 Doc IR 和旧声明/query-result JSON 不迁移，必须从保存的源码重新生成当前格式。schema 可用 `cjdoc schema source-provenance` 导出，当前 Doc IR/source consumer 契约见 [doc-ir.md](doc-ir.md)。
+
 ## 诊断、URL 策略与预算
 
 - 文档源逐 inventory 隔离损坏项：`CJDOC2312` 报告不可用源，具体引用的 `CJDOC2310`/`CJDOC2311` 解释拒绝原因。无关坏源保持 warning，不阻断其他确定匹配；严格 lint 下失败引用为 error。
@@ -260,6 +301,6 @@ python3 scripts/accept_dependency_public_api.py \
 
 ## 相关文档
 
-- [doc-ir.md](doc-ir.md)：Doc IR v17、导航 wire 的紧凑表示与 schema/golden 同步。
+- [doc-ir.md](doc-ir.md)：Doc IR v18、当前 source-provenance/1 回执与文件来源 wire、导航 wire 的紧凑表示及 schema/golden 同步。
 - [build.md](build.md)：CHIR worker 的构建与 `--semantic chir` 参数。
 - [release-process.md](release-process.md)：证据层级与发布 checklist。

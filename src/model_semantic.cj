@@ -164,16 +164,21 @@ class DocTag {
     public let name: String
     public let subject: String
     public var description: String
+    public var entryId: ?String
+    public var source: ?SourceLocation
     // Populated for @see tags by the declaration-index resolution pass.
     public var referenceState: String = "unresolved"
     public var targetSymbolId: ?String = None
     // Verbatim trailing `{...}` directive block for @example tags; empty when absent.
     public var directives: String = ""
 
-    public init(name: String, subject: String, description: String) {
+    public init(name: String, subject: String, description: String,
+        entryId!: ?String = None, source!: ?SourceLocation = None) {
         this.name = name
         this.subject = subject
         this.description = description
+        this.entryId = entryId
+        this.source = source
     }
 }
 
@@ -183,6 +188,7 @@ class DocComment {
     public let descriptionMarkdown: String
     public let params = ArrayList<DocTag>()
     public let examples = ArrayList<DocTag>()
+    public let admonitions = ArrayList<DocTag>()
     public var returns: ?DocTag = None
     public var returnTagCount: Int64 = 0
     public let throwsTags = ArrayList<DocTag>()
@@ -194,6 +200,7 @@ class DocComment {
     public var version: ?String = None
     public var commentSource: ?SourceLocation = None
     public var defaultLanguage: ?String = None
+    public var localizationScope: String = "all"
     public let languageItems = ArrayList<LocalizedCommentItem>()
 
     public init(raw: String, summaryMarkdown: String, descriptionMarkdown: String) {

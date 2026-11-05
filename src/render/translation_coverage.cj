@@ -22,7 +22,7 @@ public class TranslationCoverageReport {
         entriesStorage.add(entry); total++
         match (entry.state) {
             case "complete" => translated++
-            case "fallback" => fallback++
+            case "fallback" | "empty-fallback" | "conflict-fallback" => fallback++
             case "empty" => empty++
             case "unknown" => unknown++
             case "conflict" => conflict++
@@ -48,6 +48,36 @@ public class TranslationCoverageEntry {
     }
 }
 
+private func requestedAdmonitionCoverageState(comment: DocComment, fieldId: String,
+    locale: String): (String, ?String, ?SourceRange) {
+    for (text in comment.localizedTexts where text.fieldId == fieldId &&
+        isAdmonitionLevel(text.kind) && text.language == Some(locale)) {
+        if (text.state == "empty") { return ("empty", text.language, text.source) }
+        if (text.state == "invalid" || text.state == "conflict") {
+            return ("conflict", text.language, text.source)
+        }
+    }
+    ("missing", None, None)
+}
+
+private func admonitionCoverageFieldEntry(symbol: SymbolDoc, comment: DocComment,
+    fieldId: String, kind: String, subject: String, locale: String): TranslationCoverageEntry {
+    let (requestedState, requestedLanguage, requestedSource) =
+        requestedAdmonitionCoverageState(comment, fieldId, locale)
+    if (let Some(text) <- selectedDocumentationText(comment, fieldId, locale)) {
+        let state = if (text.state == "unpaired") { "unpaired" }
+            else if (text.language.isNone()) { "unknown" }
+            else if (text.language == Some(locale)) { "complete" }
+            else if (requestedState == "empty") { "empty-fallback" }
+            else if (requestedState == "conflict") { "conflict-fallback" }
+            else { "fallback" }
+        return TranslationCoverageEntry(symbol.id, fieldId, kind, subject, state, text.language, text.source)
+    }
+    let source = if (requestedSource.isSome()) { requestedSource } else { Some(symbol.source) }
+    TranslationCoverageEntry(symbol.id, fieldId, kind, subject, requestedState,
+        requestedLanguage, source)
+}
+
 private func translationFieldEntry(symbol: SymbolDoc, fieldId: String, kind: String,
     subject: String, locale: String): TranslationCoverageEntry {
     let comment = symbol.documentation
@@ -55,6 +85,12 @@ private func translationFieldEntry(symbol: SymbolDoc, fieldId: String, kind: Str
     var state = "missing"
     var actual: ?String = None
     if (let Some(value) <- comment) {
+        if (isAdmonitionOnlyLocalization(value) && !isAdmonitionLevel(kind)) {
+            return TranslationCoverageEntry(symbol.id, fieldId, kind, subject, "unknown", None, Some(symbol.source))
+        }
+        if (isAdmonitionLevel(kind)) {
+            return admonitionCoverageFieldEntry(symbol, value, fieldId, kind, subject, locale)
+        }
         for (text in value.localizedTexts) {
             if (text.fieldId != fieldId) { continue }
             if (text.source.isSome()) { source = text.source }
@@ -108,8 +144,16 @@ public func translationCoverageFor(documentation: DocumentationSet, language: St
             let seen = HashSet<String>()
             for (text in comment.localizedTexts) {
                 if (["summary", "param", "return"].contains(text.kind)) { continue }
+                if (isAdmonitionLevel(text.kind) && text.fieldId.isEmpty() &&
+                    text.state == "invalid") {
+                    report.add(TranslationCoverageEntry(symbol.id, "", text.kind, text.subject,
+                        "conflict", text.language, text.source))
+                    continue
+                }
                 if (text.state == "unpaired") {
-                    let originalComplete = text.language == Some(locale) && text.language == comment.defaultLanguage && !text.text.trimAscii().isEmpty()
+                    let originalComplete = text.language == Some(locale) &&
+                        text.language == comment.defaultLanguage && !text.text.trimAscii().isEmpty() &&
+                        (!isAdmonitionLevel(text.kind) || text.entryId.isNone())
                     report.add(TranslationCoverageEntry(symbol.id, "", text.kind, text.subject,
                         if (originalComplete) { "complete" } else { "unpaired" }, text.language, text.source))
                 } else if (seen.add(text.fieldId)) {

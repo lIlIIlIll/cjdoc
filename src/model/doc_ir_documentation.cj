@@ -75,6 +75,11 @@ public class CodeHighlight {
     }
 }
 
+/** Whether a captured admonition has a supported author risk level. */
+public func isAdmonitionLevel(value: String): Bool {
+    value == "note" || value == "warning" || value == "danger"
+}
+
 public class MarkdownNodeMetadata {
     public let kind: String
     public let headingLevel: ?Int64
@@ -97,6 +102,8 @@ public class MarkdownNodeMetadata {
     public var semanticTargetSymbolId: ?String
     public var semanticExternalUrl: ?String
     public var semanticNavigation: ?TypeNavigation
+    /** Captured `note`, `warning`, or `danger` level, only on admonition metadata. */
+    public let admonitionLevel: ?String
     private let tableAlignmentsStorage: ArrayList<String>
 
     private init(kind: String, headingLevel!: ?Int64 = None, listKind!: ?String = None,
@@ -108,7 +115,7 @@ public class MarkdownNodeMetadata {
         tableAlignment!: ?String = None, semanticTarget!: ?String = None,
         semanticState!: ?String = None, semanticTargetSymbolId!: ?String = None,
         semanticExternalUrl!: ?String = None, codeHighlight!: ?CodeHighlight = None,
-        semanticNavigation!: ?TypeNavigation = None) {
+        semanticNavigation!: ?TypeNavigation = None, admonitionLevel!: ?String = None) {
         this.kind = kind
         this.headingLevel = headingLevel
         this.listKind = listKind
@@ -131,6 +138,13 @@ public class MarkdownNodeMetadata {
         this.semanticTargetSymbolId = semanticTargetSymbolId
         this.semanticExternalUrl = semanticExternalUrl
         this.semanticNavigation = semanticNavigation
+        this.admonitionLevel = admonitionLevel
+    }
+
+    /** Metadata for a document-level admonition block. */
+    public static func forAdmonition(level: String): MarkdownNodeMetadata {
+        if (!isAdmonitionLevel(level)) { throw IllegalArgumentException("invalid admonition level") }
+        MarkdownNodeMetadata("admonition", admonitionLevel: Some(level))
     }
 
     public static func forHeading(level: Int64): MarkdownNodeMetadata {
@@ -218,11 +232,13 @@ public class DocComment {
     public let markdown: MarkdownNode
     private let tagsStorage: ArrayList<DocTag>
     public let defaultLanguage: ?String
+    /** `all` manages the whole comment; `admonitions` leaves ordinary author fields unchanged. */
+    public let localizationScope: String
     private let localizedTextsStorage: ArrayList<DocumentationText>
 
     public init(rawText: String, summary: String, description: String, markdown: MarkdownNode,
         tags!: Array<DocTag> = [], defaultLanguage!: ?String = None,
-        localizedTexts!: Array<DocumentationText> = []) {
+        localizedTexts!: Array<DocumentationText> = [], localizationScope!: String = "all") {
         this.rawText = rawText
         this.summary = summary
         this.description = description
@@ -232,6 +248,10 @@ public class DocComment {
             if (documentationLanguage(language) != language) { throw IllegalArgumentException("default documentation language must be normalized") }
         }
         this.defaultLanguage = defaultLanguage
+        if (localizationScope != "all" && localizationScope != "admonitions") {
+            throw IllegalArgumentException("invalid documentation localization scope")
+        }
+        this.localizationScope = localizationScope
         this.localizedTextsStorage = ArrayList<DocumentationText>(localizedTexts)
     }
 

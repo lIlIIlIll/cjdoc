@@ -34,7 +34,7 @@ class NativeRouteTests(unittest.TestCase):
         self.declaration = {"id": f.page["symbolId"], "ownerId": "owner-id", "name": "add",
                             "qualifiedName": "Bag.add", "packageName": "demo.collections",
                             "moduleId": "demo-module", "headerSpelling": "public func add(value: Int64): Unit"}
-        self.ir = {"schemaVersion": "cjdoc.doc-ir/17", "project": {"name": "synthetic_showcase"},
+        self.ir = {"schemaVersion": "cjdoc.doc-ir/18", "project": {"name": "synthetic_showcase"},
                    "generator": {"name": "cjdoc"}, "configuration": {"audience": "external"},
                    "metadata": {"groups": [], "tags": []},
                    "declarations": [self.declaration, {**self.declaration, "id": "other-id",
@@ -86,7 +86,7 @@ class NativeRouteTests(unittest.TestCase):
     def test_wrong_ir_schema_fails(self):
         expected = self.resolved()
         current = self.ir["schemaVersion"]
-        self.ir["schemaVersion"] = "cjdoc.doc-ir/16"
+        self.ir["schemaVersion"] = "cjdoc.doc-ir/17"
         self.save_ir()
         with self.assertRaises(ContractError):
             self.resolved()

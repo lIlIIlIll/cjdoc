@@ -41,7 +41,9 @@ func generateDocumentation(request: GenerationRequest,
             cacheDirectory: request.cacheDirectory, cacheFingerprint: request.cacheFingerprint,
             astPreflightExecutable: request.astPreflightExecutable,
             includeCachedDependencies: request.includeCachedDependencies,
-            cjpmCacheRoot: request.cjpmCacheRoot),
+            cjpmCacheRoot: request.cjpmCacheRoot,
+            sourceRepositories: request.sourceRepositories,
+            legacyRepository: request.repository, legacyRepositoryRoot: request.repositoryRoot),
         semanticProvider,
         cfgProfile: profile
     ).generate(request.projectRoot)

@@ -193,14 +193,15 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v17\ndiagnostics\ncfg-matrix\nsearch-index\n" +
+        case "list" => "doc-ir\ndoc-ir-v18\ndiagnostics\ncfg-matrix\nsearch-index\n" +
             "search-index-v11\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v3\n" +
             "api-diff\napi-diff-v2\ndocumentation-coverage\ndocumentation-quality\n" +
             "versions\nversions-v2\ntranslation-coverage\nsite-manifest\nnavigation-index-v1\n" +
-            "navigation-index-v2\nagent-full-index\ndeclaration\npage\nmachine-manifest\nquery-request\nquery-result\n"
-            + "search-contract\n"
+            "navigation-index-v2\nagent-full-index\ndeclaration\npage\nmachine-manifest\nquery-request\nquery-result\n" +
+            "search-contract\nsource-provenance\n"
         case "doc-ir" => DOC_IR_SCHEMA
-        case "doc-ir-v17" => DOC_IR_V17_SCHEMA
+        case "doc-ir-v18" => DOC_IR_V18_SCHEMA
+        case "source-provenance" => sourceProvenanceReceiptSchema()
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA

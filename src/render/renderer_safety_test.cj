@@ -439,7 +439,6 @@ class RendererSafetyTest {
         let containerArtifacts = HtmlDocumentationRenderer().render(containerDocumentation)
         let symbolHtml = rendererSafetyContent(containerArtifacts,
             "html/${symbolPagePath(containerDocumentation.declarations[0])}")
-        @Expect(symbolHtml.contains("<a class=\"sidebar-package is-current\""), true)
         @Expect(symbolHtml.contains("class=\"symbol-kind\">class"), true)
         // The editable API reference layout must use real projected symbols,
         // never a hardcoded PocketKit demonstration or repeated public badges.
@@ -558,8 +557,6 @@ class RendererSafetyTest {
         @Expect(mainHtml.split("A compact type summary.").size, 2)
         @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
         @Expect(html.contains("id=\"cjdoc-main\""), true)
-        @Expect(mainHtml.contains("data-cjdoc-members-expand"), true)
-        @Expect(mainHtml.contains("data-cjdoc-members-collapse"), true)
     }
 
     @TestCase

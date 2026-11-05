@@ -116,11 +116,30 @@ private func queryCapturedDescription(raw: JsonObject): (String, JsonNode) {
     let texts = captured.get("localizedTexts").getOrDefault({ => JsonNode.array() }).asArray()
     for (index in 0..texts.size()) {
         let kind = queryString(texts[index].asObject(), "kind")
-        if (kind == "summary" || kind == "description") { localized.add(texts[index]) }
+        if (kind == "summary" || kind == "description" ||
+            query_model.isAdmonitionLevel(kind)) { localized.add(texts[index]) }
     }
     node.put("localizedTexts", localized)
+    let documentationTags = JsonNode.array()
+    var hasAdmonitionBody = false
+    let tags = captured.get("tags").getOrDefault({ => JsonNode.array() }).asArray()
+    for (index in 0..tags.size()) {
+        let tag = tags[index].asObject()
+        let name = queryString(tag, "name")
+        if (!query_model.isAdmonitionLevel(name)) { continue }
+        documentationTags.add(tags[index])
+        if (!queryString(tag, "description").trimAscii().isEmpty()) {
+            hasAdmonitionBody = true
+        }
+        let markdown = tag.get("descriptionMarkdown").getOrDefault({ => JsonNode.nullValue })
+        if (!markdown.isNull) {
+            let children = markdown.asObject().get("children").getOrDefault({ => JsonNode.array() })
+            if (children.asArray().size() > 0) { hasAdmonitionBody = true }
+        }
+    }
+    node.put("documentationTags", documentationTags)
     var available = !queryString(captured, "summary").trimAscii().isEmpty() ||
-        !queryString(captured, "description").trimAscii().isEmpty()
+        !queryString(captured, "description").trimAscii().isEmpty() || hasAdmonitionBody
     if (let Some(markdown) <- captured.get("markdown")) {
         if (!markdown.isNull) {
             let children = markdown.asObject().get("children")

@@ -8,10 +8,10 @@ import yjson.*
 // regular-expression lookaround so the native linear-regex validator can
 // evaluate it.
 //
-// Doc IR v17 stays the single definition of a declaration, a documentation page,
+// Doc IR v18 stays the single definition of a declaration, a documentation page,
 // a package and a document-set identity. The declaration, page and manifest
 // templates below reference those definition names, and
-// `completeDocumentationSchema` merges the frozen v17 `$defs` in rather than
+// `completeDocumentationSchema` merges the frozen v18 `$defs` in rather than
 // cloning a second model.
 
 /**
@@ -215,7 +215,7 @@ public let DECLARATION_SCHEMA_TEMPLATE = ##"{
   "additionalProperties": false,
   "required": ["schemaVersion", "scope", "symbolKey", "dependencyInstanceId", "symbol", "representations", "source", "diagnostics", "documentationState", "exampleEvidence", "markdown", "classification"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.declaration/2"},
+    "schemaVersion": {"const": "cjdoc.declaration/3"},
     "scope": {"$ref": "#/$defs/declarationScope"},
     "symbolKey": {"type": "string", "minLength": 1},
     "dependencyInstanceId": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
@@ -273,16 +273,7 @@ public let DECLARATION_SCHEMA_TEMPLATE = ##"{
         "json": {"$ref": "#/$defs/safePath"}
       }
     },
-    "declarationSource": {
-      "type": "object", "additionalProperties": false,
-      "required": ["url", "range", "recordedRevision", "revisionKind"],
-      "properties": {
-        "url": {"$ref": "#/$defs/nullableString"},
-        "range": {"$ref": "#/$defs/sourceRange"},
-        "recordedRevision": {"$ref": "#/$defs/nullableString"},
-        "revisionKind": {"enum": ["recorded", "unavailable"]}
-      }
-    }
+    "declarationSource": {"$ref": "#/$defs/sourceReference"}
   }
 }"##
 
@@ -300,7 +291,7 @@ public let PAGE_SCHEMA_TEMPLATE = ##"{
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "kind", "scope", "page", "package", "representations", "markdown"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.page/1"},
+    "schemaVersion": {"const": "cjdoc.page/2"},
     "id": {"type": "string", "minLength": 1},
     "kind": {"enum": ["concept", "package", "project"]},
     "scope": {"$ref": "#/$defs/pageScope"},
@@ -481,11 +472,11 @@ public let MACHINE_MANIFEST_SCHEMA_TEMPLATE = ##"{
 }"##
 
 /**
- * Return a template with the current Doc IR v17 `$defs` merged in.
+ * Return a template with the current Doc IR v18 `$defs` merged in.
  *
  * The merge is a copy of the existing definition objects, so the published
  * artifact schema stays self-contained and `$ref: "#/$defs/declaration"` still
- * means the single Doc IR declaration model. A template may not shadow a v17
+ * means the single Doc IR declaration model. A template may not shadow a v18
  * definition: that would fork the model rather than reuse it.
  */
 public func completeDocumentationSchema(template: String): String {
@@ -494,7 +485,7 @@ public func completeDocumentationSchema(template: String): String {
         case Some(node) => node.asObject()
         case None => throw IllegalArgumentException("artifact schema template has no $defs")
     }
-    let frozen = JsonNode.parse(DOC_IR_V17_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
+    let frozen = JsonNode.parse(DOC_IR_V18_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
     for (index in 0..frozen.size()) {
         let name = frozen.nameAt(index)
         if (definitions.contains(name)) {

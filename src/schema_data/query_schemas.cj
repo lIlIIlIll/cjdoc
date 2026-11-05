@@ -415,7 +415,7 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
   "type":"object","additionalProperties":false,
   "required":["schemaVersion","status","operation","scope","selection","result","completeness","sources","text","error"],
   "properties":{
-    "schemaVersion":{"const":"cjdoc.query-result/3"},
+    "schemaVersion":{"const":"cjdoc.query-result/4"},
     "status":{"enum":["ok","ambiguous","not_found","source_incomplete","budget_exceeded","stale_cursor","invalid_request","scope_mismatch","resource_limit","unavailable"]},
     "operation":{"type":"string"},
     "scope":{"type":"object","additionalProperties":false,"required":["requested","catalogId","snapshots"],"properties":{
@@ -542,17 +542,20 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
       "documentationTags":{"type":"array","items":{"$ref":"#/$defs/tag"}}
     }},
     "queryDescriptionValue":{"type":"object","additionalProperties":false,
-      "required":["summary","description","markdown","defaultLanguage","localizedTexts"],"properties":{
-        "summary":{"type":"string"},"description":{"type":"string"},"markdown":{"$ref":"#/$defs/markdownNode"},
+      "required":["summary","description","markdown","defaultLanguage","localizedTexts","documentationTags"],"properties":{
+        "summary":{"type":"string"},"description":{"type":"string"},"markdown":{"$ref":"#/$defs/markdownDocument"},
+        "documentationTags":{"type":"array","items":{"allOf":[{"$ref":"#/$defs/tag"},
+          {"properties":{"name":{"enum":["note","warning","danger"]}}}]}},
         "defaultLanguage":{"enum":["zh-CN","en",null]},
         "localizedTexts":{"type":"array","items":{"allOf":[{"$ref":"#/$defs/documentationText"},
-          {"properties":{"kind":{"enum":["summary","description"]}}}]}}
+          {"properties":{"kind":{"enum":["summary","description","note","warning","danger"]}}}]}}
     }},
     "queryImportContext":{"type":"object","additionalProperties":false,
-      "required":["moduleId","packageName","documentSet","reExport"],"properties":{
+      "required":["moduleId","packageName","documentSet","reExport","source"],"properties":{
         "moduleId":{"$ref":"#/$defs/moduleId"},"packageName":{"type":"string"},
         "documentSet":{"anyOf":[{"$ref":"#/$defs/documentSetIdentity"},{"type":"null"}]},
-        "reExport":{"$ref":"#/$defs/reExport"}
+        "reExport":{"$ref":"#/$defs/reExport"},
+        "source":{"$ref":"#/$defs/sourceReference"}
     }},
     "queryRelationsValue":{"type":"object","additionalProperties":false,
       "required":["ownerId","typeRelationships","symbolRelationships","packageImportContext","documentationReferences"],"properties":{
@@ -659,23 +662,19 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
       "next":{"anyOf":[{"$ref":"#/$defs/queryRetry"},{"type":"null"}]}
     }},
     "querySource":{"type":"object","additionalProperties":false,"required":["snapshotId","kind","path","url","state"],"properties":{
-      "snapshotId":{"type":"string"},"kind":{"enum":["html","markdown","json","source","validation","api-diff"]},"path":{"type":["string","null"]},"url":{"type":["string","null"]},"state":{"enum":["packaged","logical_path","recorded","unavailable"]}
+      "snapshotId":{"type":"string"},"kind":{"enum":["html","markdown","json","source","validation","api-diff"]},"path":{"type":["string","null"]},"url":{"type":["string","null"]},"state":{"enum":["packaged","logical_path","recorded","verified","declared","ambiguous","unavailable"]}
     }},
-    "querySymbolSource":{"type":"object","additionalProperties":false,"required":["url","range","recordedRevision","revisionKind"],"properties":{
-      "url":{"type":["string","null"]},
-      "range":{"$ref":"#/$defs/sourceRange"},
-      "recordedRevision":{"type":["string","null"]},
-      "revisionKind":{"enum":["recorded","unavailable"]}
-    }},
+    "querySymbolSource":{"$ref":"#/$defs/sourceReference"},
     "queryPageSource":{"type":"object","additionalProperties":false,"required":["url","path","revisionKind"],"properties":{
       "url":{"type":"null"},"path":{"type":"string"},"revisionKind":{"const":"unavailable"}
     }},
-    "queryExposure":{"type":"object","additionalProperties":false,"required":["kind","alias","exposedName","symbolId","snapshotId","state","declaringModuleId","declaringPackage","documentSet","reExport"],"properties":{
+    "queryExposure":{"type":"object","additionalProperties":false,"required":["kind","alias","exposedName","symbolId","snapshotId","state","declaringModuleId","declaringPackage","documentSet","reExport","source"],"properties":{
       "kind":{"const":"reexport"},"alias":{"type":"string"},"exposedName":{"type":"string"},
       "symbolId":{"type":"string"},"snapshotId":{"type":"string"},"state":{"type":"string"},
       "declaringModuleId":{"type":"string"},"declaringPackage":{"type":"string"},
       "documentSet":{"anyOf":[{"$ref":"#/$defs/documentSetIdentity"},{"type":"null"}]},
-      "reExport":{"$ref":"#/$defs/reExport"}
+      "reExport":{"$ref":"#/$defs/reExport"},
+      "source":{"anyOf":[{"$ref":"#/$defs/sourceReference"},{"type":"null"}]}
     }},
     "queryReport":{"type":"object","additionalProperties":false,"required":["kind","state","snapshotId","sha256","path","binding","report"],"properties":{
       "kind":{"enum":["validation","api-diff"]},"state":{"enum":["attached","not_attached","binding_unavailable","binding_mismatch","invalid"]},"snapshotId":{"type":"string"},"sha256":{"type":["string","null"]},"path":{"type":["string","null"]},"binding":{"type":"object"},"report":{"type":["object","null"]}

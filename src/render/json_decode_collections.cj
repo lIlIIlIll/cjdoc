@@ -68,13 +68,12 @@ internal func decodeModules(root: JsonObject): Array<ModuleDoc> {
     for (node in jsonArrayValues(arrayAt(root, "modules", "$"))) {
         let path = "$.modules[${index}]"
         let value = strictObject(node, path, ["id", "name", "role", "sourcePrefix", "organization",
-            "repositoryPath", "packageNames", "dependencyIds"])
+            "packageNames", "dependencyIds"])
         result.add(ModuleDoc(stringAt(value, "id", path), stringAt(value, "name", path),
             stringAt(value, "role", path), stringAt(value, "sourcePrefix", path),
             packageNames: stringsAt(value, "packageNames", path),
             dependencyIds: stringsAt(value, "dependencyIds", path),
-            organization: nullableStringAt(value, "organization", path),
-            repositoryPath: nullableStringAt(value, "repositoryPath", path)))
+            organization: nullableStringAt(value, "organization", path)))
         index++
     }
     result.toArray()
@@ -127,9 +126,10 @@ internal func decodeFiles(root: JsonObject): Array<FileDoc> {
     var index: Int64 = 0
     for (node in jsonArrayValues(arrayAt(root, "files", "$" ))) {
         let path = "$.files[${index}]"
-        let value = strictObject(node, path, ["path", "moduleId", "packageName"])
+        let value = strictObject(node, path, ["path", "moduleId", "packageName", "provenance"])
         result.add(FileDoc(stringAt(value, "path", path), stringAt(value, "moduleId", path),
-            stringAt(value, "packageName", path)))
+            stringAt(value, "packageName", path),
+            provenance: decodeSourceProvenance(required(value, "provenance", path), path + ".provenance")))
         index++
     }
     result.toArray()

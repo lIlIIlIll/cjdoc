@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/17",
+  "schemaVersion": "cjdoc.doc-ir/18",
   "generator": {
     "name": "cjdoc",
     "version": "0.7.7",
@@ -111,7 +111,6 @@
       "role": "root",
       "sourcePrefix": "",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "functions_fixture"
       ],
@@ -143,7 +142,17 @@
     {
       "path": "src/fixture.cj",
       "moduleId": "cjdoc:module:v1:root",
-      "packageName": "functions_fixture"
+      "packageName": "functions_fixture",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     }
   ],
   "declarations": [
@@ -235,7 +244,9 @@
             "description": "input",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -243,9 +254,12 @@
             "description": "input",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -479,7 +493,9 @@
             "description": "input",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "param",
@@ -487,7 +503,9 @@
             "description": "mode",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -495,9 +513,12 @@
             "description": "text",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -741,7 +762,9 @@
             "description": "input bytes",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -749,9 +772,12 @@
             "description": "length",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -972,7 +998,9 @@
             "description": "input text",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -980,9 +1008,12 @@
             "description": "length",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -1185,7 +1216,9 @@
             "description": "输入文本。",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -1193,9 +1226,12 @@
             "description": "输入文本。",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",

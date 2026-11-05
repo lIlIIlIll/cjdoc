@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.model as public_model
 import std.collection.*
 import std.fs.*
 import std.sort.*
@@ -13,6 +14,9 @@ class SyntaxSourceProvider <: SourceProvider {
     private let astPreflightExecutable: ?String
     private let includeCachedDependencies: Bool
     private let cjpmCacheRoot: ?String
+    private let sourceRepositories: ?ReadOnlyList<SourceRepositoryInput>
+    private let legacyRepository: ?public_model.RepositoryInfo
+    private let legacyRepositoryRoot: ?String
     private let sourceDirectoryEntryLimit: Int64
     private let sourceAuxiliaryByteLimit: Int64
     private let sourceAuxiliaryWorkLimit: Int64
@@ -23,6 +27,9 @@ class SyntaxSourceProvider <: SourceProvider {
         cacheDirectory!: ?String = None, cacheFingerprint!: ?String = None,
         astPreflightExecutable!: ?String = None,
         includeCachedDependencies!: Bool = false, cjpmCacheRoot!: ?String = None,
+        sourceRepositories!: ?ReadOnlyList<SourceRepositoryInput> = None,
+        legacyRepository!: ?public_model.RepositoryInfo = None,
+        legacyRepositoryRoot!: ?String = None,
         sourceDirectoryEntryLimit!: Int64 = MAX_SOURCE_DIRECTORY_ENTRIES,
         sourceAuxiliaryByteLimit!: Int64 = MAX_SOURCE_AUXILIARY_BYTES,
         sourceAuxiliaryWorkLimit!: Int64 = MAX_SOURCE_AUXILIARY_WORK) {
@@ -41,6 +48,9 @@ class SyntaxSourceProvider <: SourceProvider {
         this.astPreflightExecutable = astPreflightExecutable
         this.includeCachedDependencies = includeCachedDependencies
         this.cjpmCacheRoot = cjpmCacheRoot
+        this.sourceRepositories = sourceRepositories
+        this.legacyRepository = legacyRepository
+        this.legacyRepositoryRoot = legacyRepositoryRoot
         this.sourceDirectoryEntryLimit = sourceDirectoryEntryLimit
         this.sourceAuxiliaryByteLimit = sourceAuxiliaryByteLimit
         this.sourceAuxiliaryWorkLimit = sourceAuxiliaryWorkLimit
@@ -96,6 +106,7 @@ class SyntaxSourceProvider <: SourceProvider {
             case None => if (requestedName.isEmpty()) { "project" } else { requestedName }
         }
         let sourceSnapshot = SourceSnapshot(projectName)
+        let configuredSourceRepositories = loadSourceRepositoryConfig(root, auxiliaryBudget)
         sourceSnapshot.manifestText = Some(manifest)
         if (packageView.limitReached) {
             sourceSnapshot.modules.add(SourceModule(moduleId("root", projectName, ""),
@@ -126,10 +137,15 @@ class SyntaxSourceProvider <: SourceProvider {
             sourceSnapshot.modules.add(SourceModule(moduleId("root", projectName, ""),
                 projectName, "root", ""))
         }
-        if (auxiliaryBudget.limitReached()) {
-            return sourceSnapshot
-        }
-        if (hasSourceLimitDiagnostic(sourceSnapshot.diagnostics)) { return sourceSnapshot }
+        // Discovery limits truncate the source set; receipt limits only make
+        // optional provenance unavailable after discovery has completed.
+        if (auxiliaryBudget.limitReached() ||
+            hasSourceLimitDiagnostic(sourceSnapshot.diagnostics)) { return sourceSnapshot }
+        let provenanceRegistry = SourceRepositoryRegistry(root,
+            configured: configuredSourceRepositories.toArray(),
+            override: sourceRepositories, legacyRepository: legacyRepository,
+            legacyRoot: legacyRepositoryRoot, budget: auxiliaryBudget,
+            diagnostics: sourceSnapshot.diagnostics)
         if (hasFatalSourceDiagnostics(sourceSnapshot)) { return sourceSnapshot }
         let files = ArrayList<SourceInputFile>()
         let logicalPaths = HashSet<String>()
@@ -218,7 +234,8 @@ class SyntaxSourceProvider <: SourceProvider {
             }
         }
         parseAllSourceFiles(sourceSnapshot, files, jobs, usableCacheDirectory,
-            cacheFingerprint, cacheStats, astPreflightExecutable, auxiliaryBudget)
+            cacheFingerprint, cacheStats, astPreflightExecutable, auxiliaryBudget,
+            provenanceRegistry)
         return sourceSnapshot
     }
 }

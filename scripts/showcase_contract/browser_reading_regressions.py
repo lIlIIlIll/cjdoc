@@ -168,7 +168,16 @@ def check_member_filters_and_actions(page):
     _toc_matches_content(page)
     field.fill("")
     origins = page.locator("[data-cjdoc-member-origin]")
-    for value in origins.locator("option").evaluate_all("nodes => nodes.map(node => node.value)"):
+    projected_origins = set(page.locator("[data-cjdoc-member]").evaluate_all(
+        "nodes => nodes.map(node => node.getAttribute('data-member-origin'))"))
+    expect(origins).to_have_count(int(len(projected_origins) > 1))
+    if len(projected_origins) <= 1:
+        _toc_matches_content(page)
+        return
+    option_values = origins.locator("option").evaluate_all("nodes => nodes.map(node => node.value)")
+    if set(option_values) != projected_origins | {""}:
+        raise AssertionError("origin choices do not match projected member origins")
+    for value in option_values:
         origins.select_option(value)
         _toc_matches_content(page)
     origins.select_option("")

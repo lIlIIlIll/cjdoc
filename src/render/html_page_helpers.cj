@@ -55,7 +55,7 @@ internal func topLevelParagraphIndex(comment: DocComment): Int64 {
 }
 
 internal func summaryPlainText(comment: DocComment): String {
-    if (!comment.localizedTexts.isEmpty()) {
+    if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
         for (tag in comment.tags where tag.name == "summary") {
             if (let Some(tree) <- tag.descriptionMarkdown) { return markdownNodeText(tree).trimAscii() }
         }
@@ -72,17 +72,18 @@ internal func summaryPlainText(comment: DocComment): String {
 
 internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
     symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String, locale!: String = "en"): Unit {
-    if (!comment.localizedTexts.isEmpty()) {
+    if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
         if (let Some(tag) <- findTag(comment, "summary")) {
             out.append("<div class=\"symbol-summary\">")
-            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownHtmlContext(comment, symbol, 2))
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix,
+                markdownHtmlContext(comment, symbol, 2, locale: locale))
             out.append("</div>")
         }
         return
     }
     match (summaryParagraph(comment)) {
         case Some(paragraph) =>
-            let context = markdownHtmlContext(comment, symbol, 2)
+            let context = markdownHtmlContext(comment, symbol, 2, locale: locale)
             out.append("<div class=\"symbol-summary\">")
             appendMarkdownNodeHtml(out, paragraph, assetLookup, rootPrefix, context)
             out.append("</div>\n")
@@ -111,17 +112,28 @@ internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol:
         case Some(value) => value
         case None => return
     }
+    let markdownContext = match (context) {
+        case Some(value) => value
+        case None => markdownHtmlContext(comment, symbol, headingBase, locale: locale)
+    }
+    appendDocumentationIntroductionBodyHtml(out, comment, rootPrefix, assetLookup, locale, markdownContext)
+    appendDocumentationAdmonitionsHtml(out, comment, locale, assetLookup, rootPrefix, markdownContext)
+}
+
+private func appendDocumentationIntroductionBodyHtml(out: RenderTextBuffer, comment: DocComment,
+    rootPrefix: String, assetLookup: HashMap<String, String>, locale: String,
+    context: HtmlMarkdownContext): Unit {
     match (findTag(comment, "deprecated")) {
         case Some(tag) =>
             out.append("<aside class=\"callout\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
-            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownHtmlContext(comment, symbol, headingBase))
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, context)
             out.append("</aside>\n")
         case None => ()
     }
-    if (!comment.localizedTexts.isEmpty()) {
+    if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
         if (let Some(tag) <- findTag(comment, "description")) {
             out.append("<div class=\"description\">")
-            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownHtmlContext(comment, symbol, headingBase))
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, context)
             out.append("</div>")
         }
         return
@@ -131,14 +143,10 @@ internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol:
     if (comment.markdown.children.isEmpty() ||
         (comment.markdown.children.size == 1 && summaryIndex == 0)) { return }
     out.append("<div class=\"description\">")
-    let markdownContext = match (context) {
-        case Some(value) => value
-        case None => markdownHtmlContext(comment, symbol, headingBase)
-    }
     var childIndex: Int64 = 0
     for (child in comment.markdown.children) {
         if (childIndex != summaryIndex) {
-            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, markdownContext)
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
         }
         childIndex++
     }
@@ -154,7 +162,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
     let blockHeading = "h${min(6, sectionHeadingLevel)}"
     match (symbol.documentation) {
         case Some(comment) =>
-            let markdownContext = markdownHtmlContext(comment, symbol, headingBase)
+            let markdownContext = markdownHtmlContext(comment, symbol, headingBase, locale: locale)
             if (includeIntroduction) {
                 appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale,
                     context: Some(markdownContext))

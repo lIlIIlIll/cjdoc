@@ -27,11 +27,14 @@ HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-
 | `llms.txt` | 精简发现入口，链接导航、表示 manifest 和已启用的全文索引；不是全站正文。 |
 | `navigation-index.json` | `cjdoc.navigation-index/2` 第一片；读取 `pagination.next` 直至结束。 |
 | `agent/manifest.json` | `cjdoc.machine-manifest/1`；区分 symbol、concept、package、project 映射。 |
-| `agent/docs.json`、`symbol-index.json` | 与 manifest 快照一致的自包含 Doc IR/唯一库存；Doc IR 当前为 `cjdoc.doc-ir/17`。 |
-| `agent/symbols/` 中的 JSON | `cjdoc.declaration/2`；每条声明带有同形 `classification` 元数据。 |
+| `agent/docs.json`、`symbol-index.json` | 与 manifest 快照一致的自包含 Doc IR/唯一库存；Doc IR 当前为 `cjdoc.doc-ir/18`。 |
+| `agent/symbols/` 中的 JSON | `cjdoc.declaration/3`；每条声明带有 `classification` 和来源投影。 |
+| `agent/pages/` 中的 JSON | `cjdoc.page/2`；表示 concept、package 或 project 页面。 |
 | `search-index.json`、`search-index.js` | `cjdoc.search-index/11` 与内嵌 `cjdoc.search-contract/2`；HTML 搜索执行 discovery/bounded-static。 |
 | manifest 的 `representations` | 每条记录给出实际 HTML、Markdown、JSON 相对路径；不要拼接 slug 或替换扩展名。 |
 | `agent-full-index.json` | 仅 `--agent-full`：全文各片的顺序、SHA-256、单元数及完整性。 |
+
+`cjdoc.source-provenance/1` 是显式来源回执格式，不是文档根中的 Agent 产物。调用方 pin 和来源证明边界见[跨文档链接维护](maintainer/document-links.md)。
 
 路径基准是**当前文档根**，不是服务器根或其他格式的兄弟目录。部署整个 `html/`，不要只复制 HTML 文件。HTML head 的 `alternate` 指向随站点发布的逐页/逐声明 Markdown，`describedby` 指向同一根的 `llms.txt` 和 manifest。内容协商不是前提；普通静态托管、项目子路径和 `file://` 均使用这些文件。
 
@@ -67,7 +70,7 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
   --request request.json > result.json
 ```
 
-`--request -` 从 stdin 读取一个 JSON 对象。stdout 只包含一个 `cjdoc.query-result/3` 对象；诊断不混入 stdout。输入源在会话创建时严格装载，随后继续读取同一捕获内容，不按 PATH 里的 SDK 或当前工作区重新选版本。
+`--request -` 从 stdin 读取一个 JSON 对象。stdout 只包含一个 `cjdoc.query-result/4` 对象；诊断不混入 stdout。输入源在会话创建时严格装载，随后继续读取同一捕获内容，不按 PATH 里的 SDK 或当前工作区重新选版本。
 
 ### 三个操作
 
@@ -77,7 +80,7 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 | `search` | Symbol ID/key、限定名、名称/别名、参数类型/泛型数量、结构化字段筛选或用途文字 | 精确身份/重载特征优先，随后名称及正文；摘要与签名预览、详情身份、分类和规范路由。 |
 | `get_symbol` | `symbolId`、`symbolKey`、`pageId` 恰好一个；固定快照/文档集 | 所选完整章节、关系、来源、分类与附带报告；概念页没有伪造的 Symbol ID。 |
 
-完整字段、操作适用性和取值以 `cjdoc schema query-request` 为准；请求为 `cjdoc.query-request/3`，结果为 `cjdoc.query-result/3`。未知字段、身份选择冲突、`sections` 与 `preset` 同时出现、不适用的操作选项都会被拒绝。`mode`、`profile`、`filters` 和 `tags` 只适用于 search，其他操作收到这些字段会返回 `invalid_request/field_not_applicable`。未填写 `mode`/`profile` 时原生查询默认 `precise`/`full-ir`。显式提供旧 query-request/query-result 版本会被拒绝。
+完整字段、操作适用性和取值以 `cjdoc schema query-request` 为准；请求为 `cjdoc.query-request/3`，结果为 `cjdoc.query-result/4`。未知字段、身份选择冲突、`sections` 与 `preset` 同时出现、不适用的操作选项都会被拒绝。`mode`、`profile`、`filters` 和 `tags` 只适用于 search，其他操作收到这些字段会返回 `invalid_request/field_not_applicable`。未填写 `mode`/`profile` 时原生查询默认 `precise`/`full-ir`。显式提供旧 query-request/query-result 版本会被拒绝。
 
 ### Search 与固定查询
 
@@ -104,6 +107,10 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 标签或分类标题不会改变标签成员关系。一个 group ID 在多个 module/package/declared-owner scope 中出现时，每个 scope 独立选择标题和分组；分类标题与 group order 只影响展示，不参与 SymbolId 或 API fingerprint。
 
 每个 search 结果还可包含 `coverage`：profile、projectionId、bodyTextLimit、bodyComplete 和 truncatedEntries。`bounded-static` 的 `bodyTextLimit` 为 2000；`full-ir` 为 null。已建立投影的零命中也带真实 coverage；非 search 结果或建投影前失败时为 null。若源采集本身不完整，仍会报告 `source_incomplete`，不能把索引覆盖不完整当作完整未命中。
+
+Doc IR/18 将已捕获的提示正文保留为 Markdown AST：`kind="admonition"`，空 `literal`，metadata 仅含 `level=note|warning|danger`，正文是非空 block children；节点只能直接位于 `document` 下。HTML 和 Markdown 使用这个捕获树；Markdown 将三个等级写成 NOTE、WARNING、CAUTION 标记。查询 description 保留三种提示 tag，`localizedTexts` 只选择 summary、description 和提示正文。搜索正文也读取 AST 与提示 tag：`full-ir` 保留完整捕获正文，`bounded-static` 仍只索引前 2,000 个 Unicode 码点；两者都不重新解析源码或已生成的 HTML。
+
+`localizationScope` 明确标记 `all` 或 `admonitions`，不能从 `localizedTexts` 是否为空推断；`all` 保持整份注释的既有本地化行为。仅提示 scope 要求 `defaultLanguage: null`，本地化项只能是 `note`、`warning`、`danger`；选择语言时保留普通摘要、正文和非提示 tags 的捕获内容。Node metadata 和 scope 都由严格 Doc IR/18 validator 验证，嵌套或不完整提示不是有效 wire。
 
 #### 字段过滤与精确标签
 
@@ -185,7 +192,15 @@ cursor 绑定内容、查询条件、排序、语言/回退、受众和字节预
 
 `resolve_docs` 的目标 `snapshotId` 与消费者 `contextSnapshotId` 可以不同。显式消费者只提供已捕获的依赖上下文，不扩大目标候选的快照范围。
 
-仅装载 Doc IR 时，`scope.snapshots[].packagedRepresentations` 为 false：结果中的规范路由不是文件已随输入打包的证明，完整正文仍可通过 `get_symbol` 取得。装载机器 manifest 才校验已打包资源的 hash、快照、库存及完整表示映射。外部源码 URL 是捕获的出处，不要求随离线包复制源码。
+仅装载 Doc IR 时，`scope.snapshots[].packagedRepresentations` 为 false：结果中的规范路由不是文件已随输入打包的证明，完整正文仍可通过 `get_symbol` 取得。装载机器 manifest 才校验已打包资源的 hash、快照、库存及完整表示映射。外部源码 URL 是按已捕获文件来源与声明范围投影的出处，不要求随离线包复制源码。
+
+### 源码来源与离线回放
+
+Doc IR/18 每个 file 都包含必需的 `provenance` 对象，且对象中的 `state`、`reason`、`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity`、`evidenceKind` 全部必需；没有值写 `null`。普通模型构造的 `FileDoc` 默认是 `unavailable/no_registration`。source reference 也带有必需的 URL、range、状态、原因、仓库、`recordedRevision`、`revisionKind` 与摘要/证据字段。`declaration/3` 和 query 的 symbol/exposure source 使用同一来源投影；URL 只对有效 source range 和 `verified` 或旧映射 `declared` 来源生成。`unavailable` 与 `ambiguous` 都没有 URL。
+
+`verified` 只说明仓库登记及调用方独立 pin 的回执与本次捕获的源码字节匹配，证据种类标为 `caller_pinned_receipt`。它不独立认证 Git commit/tree、仓库远端、构建成功或工作树状态。旧 `ProjectInfo.repository` 映射为 `declared/legacy_project_repository`，没有文件摘要和回执 pin，不能升级为 verified。解码与 replay 只验证保存的 provenance 结构和其内部约束，不重读源码、Git 或回执，也不重新证明调用方为何信任该 pin；离线消费者应保留 wire 中的原始 state/reason/evidence 字段。
+
+重导出的 source 是 exposing module 中 `ReExportDoc.source` 所指的暴露位置；它不同于目标 declaration 的定义来源。Agent/query 中重导出 exposure 的 `source` 按暴露文件投影，canonical declaration 的 `source` 仍指向目标声明。旧文档格式不能通过只改版本号来适配，使用旧 JSON 时须从保存的源码重新生成当前 Doc IR 与站点。
 
 ## 章节、状态和预算
 
@@ -280,13 +295,14 @@ cjdoc schema page
 cjdoc schema machine-manifest
 cjdoc schema query-request
 cjdoc schema query-result
-cjdoc schema doc-ir-v17
+cjdoc schema doc-ir-v18
 cjdoc schema search-index-v11
+cjdoc schema source-provenance
 ```
 
-`schema navigation-index` 指向当前 v2；`schema navigation-index-v1` 和已发布的旧 navigation schema 仍保持冻结。v1 没有整体完整性/续取证据，不能据其语法合法认定全站枚举完整。当前 decoder/query 接受 Doc IR v17；Doc IR v16 和更早版本不迁移。当前机器协议为 query-request/3、query-result/3、search-index/11、declaration/2；显式旧协议版本不会被当作当前输入接受。需要使用旧快照时，应在真实源码上重新生成当前 Doc IR/站点，而不是把旧 JSON 改写版本字段。
+`schema navigation-index` 指向当前 v2；`schema navigation-index-v1` 和已发布的旧 navigation schema 仍保持冻结。v1 没有整体完整性/续取证据，不能据其语法合法认定全站枚举完整。当前 Doc IR decoder/query 接受 `cjdoc.doc-ir/18`；Doc IR/17 及更早版本不迁移。机器协议为 query-request/3、query-result/4、declaration/3、page/2 和 search-index/11，search-contract/2 保持不变；显式旧格式版本不会被当前消费者接受。需要使用旧快照时，应从保存的源码重新生成当前 Doc IR、声明和页面产物，而不是迁移旧 JSON。
 
-当前 search static index 是 `cjdoc.search-index/11`，以共享 `cjdoc.search-contract/2` 执行器提供 bounded-static 语义；`cjdoc.declaration/2` 在每条声明中带 classification。静态索引的旧版本或不支持的 profile 会给出明确能力错误，不会静默显示零命中。
+当前静态索引为 `cjdoc.search-index/11`，使用共享 `cjdoc.search-contract/2` 执行器提供 bounded-static 语义；`cjdoc.declaration/3` 保留每条声明的 classification 和 source。DocComment wire 必需包含 `localizationScope`（构造默认 `all`）；DocTag 的 `entryId`、`source` 和 DocumentationText 的 `entryId` 均始终存在，构造默认 `None`、缺值写 `null`。source evidence 的细分与 admonition AST/scope 约束见[Doc IR 维护说明](maintainer/doc-ir.md)。
 静态索引的 modules 表对应捕获的模块，而不是只列出有可见搜索结果的模块。使用 snapshot、module、document-set 与 dependency identity 联合选择捕获范围；`packageName` 是候选筛选条件。范围有效、源码收集完整但没有可见候选时返回 `not_found/no_match_in_scope`，不是 scope mismatch；收集不完整时仍保留 `source_incomplete`。
 
 公开仓颉入口为 `cjdoc.DocumentationQuerySession`，可从显式路径、一个 `cjdoc.model.DocumentationSet` 或其数组创建；`execute(String)` 返回同一版本化 JSON，`catalogIdentity` 暴露捕获内容身份。静态投影由 `cjdoc.render.DocumentationReadSnapshot` 及现有 renderer 提供。运行可重现模型对照、消费者编译与行为验收见维护者的 [Agent 评测流程](maintainer/agent-evaluation.md)；普通静态使用不要求模型或网络。

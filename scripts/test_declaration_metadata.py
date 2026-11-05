@@ -270,7 +270,7 @@ class Acceptance:
     def inspect_site(self, site: Path, language: str, label: str, environment=None) -> dict:
         manifest = load_json(site / "agent/manifest.json")
         document = load_json(site / manifest["docIr"]["path"])
-        require(document["schemaVersion"] == "cjdoc.doc-ir/17", "replay did not preserve current Doc IR")
+        require(document["schemaVersion"] == "cjdoc.doc-ir/18", "replay did not preserve current Doc IR")
         require(len(document["metadata"]["groups"]) == 6, "unused group definition leaked or used group disappeared")
         require({item["id"] for item in document["metadata"]["tags"]} == {"stable", "stream"},
                 "hidden-only tag definition leaked or a visible tag definition disappeared")
@@ -280,7 +280,7 @@ class Acceptance:
         for ref, classification in expected.items():
             representation = representations[refs[ref]["id"]]
             artifact = load_json(site / representation["json"])
-            require(artifact["schemaVersion"] == "cjdoc.declaration/2", "declaration artifact is not current")
+            require(artifact["schemaVersion"] == "cjdoc.declaration/3", "declaration artifact is not current")
             require(artifact["classification"] == classification, f"{language}/{ref}: wrong captured classification")
             require_markdown_metadata((site / representation["markdown"]).read_text(encoding="utf-8"),
                                       classification, f"{language}/{ref}/Markdown")

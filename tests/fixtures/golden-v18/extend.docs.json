@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/17",
+  "schemaVersion": "cjdoc.doc-ir/18",
   "generator": {
     "name": "cjdoc",
     "version": "0.7.7",
@@ -111,7 +111,6 @@
       "role": "root",
       "sourcePrefix": "",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "extend_visibility_fixture"
       ],
@@ -150,7 +149,17 @@
     {
       "path": "src/fixture.cj",
       "moduleId": "cjdoc:module:v1:root",
-      "packageName": "extend_visibility_fixture"
+      "packageName": "extend_visibility_fixture",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     }
   ],
   "declarations": [
@@ -231,9 +240,12 @@
             "description": "stored value",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -460,7 +472,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -686,7 +699,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -803,7 +817,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -909,7 +924,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -1086,7 +1102,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -1231,7 +1248,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",
@@ -1435,7 +1453,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/fixture.cj",

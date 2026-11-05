@@ -49,6 +49,37 @@ private func declarationRowsHtml(html: String): String {
 @Test
 class HtmlPackageDeclarationTest {
     @TestCase
+    func reverseUsagesDescribePositionsWithoutChangingTargetsOrMultiplicity(): Unit {
+        let target = rowSymbol("class:Entry#g0()", "Entry", "class", "public class Entry")
+        let reference = TypeRef("named", "Entry", SemanticType("resolved",
+            canonical: Some("fixture.Entry"), provider: Some("ast")))
+        let symbols = ArrayList<SymbolDoc>([target])
+        let kinds = ["parameter", "field", "return", "superType", "extensionTarget",
+            "genericConstraint", "provider<&>"]
+        for (kind in kinds) {
+            let base = rowSymbol("function:${kind}#g0()", kind, "function", "")
+            symbols.add(SymbolDoc(base.id, base.kind, base.name, base.qualifiedName,
+                base.packageName, base.moduleId, base.visibility, base.source, "", base.semantic,
+                typeRelationships: [TypeRelationship(kind, reference), TypeRelationship(kind, reference)]))
+        }
+        let documentation = rowDocumentation(symbols.toArray())
+        let projection = RenderProjection(documentation)
+        let links = HtmlTypeLinkIndex(documentation, projection)
+        @Expect(links.reverseUsages(target.id).size, kinds.size)
+        for (locale in ["en", "zh-CN"]) {
+            let out = RenderTextBuffer()
+            appendReverseTypeUsages(out, projection.visibleIndex, links, target, "../", locale)
+            let html = out.toString()
+            @Expect(html.split("<li>").size - 1, kinds.size)
+            @Expect(!html.contains("provider<&>"))
+            @Expect(html.contains("provider&lt;&amp;&gt;"))
+            for (usage in links.reverseUsages(target.id)) {
+                @Expect(html.contains("../" + escapeHtml(symbolUrl(projection.visibleIndex, usage.source))))
+            }
+        }
+    }
+
+    @TestCase
     func genericIdentityComesFromModelAndDoesNotRewriteSourceOrRoutes(): Unit {
         let documentation = rowDocumentation([
             rowSymbol("class:Entry#g1()", "Entry", "class", "public class Entry<T>", generics: ["T"]),

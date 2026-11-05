@@ -263,6 +263,10 @@ internal func appendMarkdownPlainText(out: RenderTextBuffer, node: MarkdownNode)
             out.append(node.literal)
         case "soft_break" | "hard_break" => out.append("\n")
         case "thematic_break" => out.append("\n")
+        case "admonition" =>
+            out.append("\n")
+            for (child in node.children) { appendMarkdownPlainText(out, child) }
+            out.append("\n")
         case _ =>
             var first = true
             for (child in node.children) {

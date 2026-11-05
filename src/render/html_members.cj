@@ -50,6 +50,7 @@ private func memberEntry(symbol: SymbolDoc, origin: String, declaredBy: ?SymbolD
 // member on a base or extension type is not enough evidence to classify it.
 internal class HtmlMemberBrowser {
     let entries = ArrayList<HtmlMemberEntry>()
+    let origins = ArrayList<String>()
     private let seen = HashSet<String>()
 
     init(owner: SymbolDoc, projection: RenderProjection) {
@@ -80,6 +81,11 @@ internal class HtmlMemberBrowser {
             let rightKey = "${right.groupKey}:${right.symbol.name}:${right.symbol.headerSpelling}:${right.symbol.id}"
             leftKey < rightKey
         }, stable: true)
+        for (origin in ["declared", "inherited", "extension"]) {
+            for (entry in entries) {
+                if (entry.origin == origin) { origins.add(origin); break }
+            }
+        }
     }
 
     private func add(symbol: SymbolDoc, origin: String, declaredBy: ?SymbolDoc,

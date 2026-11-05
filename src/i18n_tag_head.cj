@@ -25,6 +25,19 @@ internal class LocalizedTagHead {
     }
 }
 
+internal class AdmonitionTagHead {
+    let level: String
+    let language: ?String
+    let rest: String
+    let error: ?String
+    let entryId: ?String
+    init(level: String, language: ?String, rest: String, error!: ?String = None,
+        entryId!: ?String = None) {
+        this.level = level; this.language = language; this.rest = rest
+        this.error = error; this.entryId = entryId
+    }
+}
+
 private func languageLetters(value: String, minimum: Int64, maximum: Int64): Bool {
     if (value.size < minimum || value.size > maximum) { return false }
     for (byte in value.toArray()) { if (byte < b'a' || byte > b'z') { return false } }
@@ -83,8 +96,9 @@ internal func wellFormedDocumentationLanguage(value: String): Bool {
     index == parts.size
 }
 
-// Scoped only to @throws: an author-provided identity for one exception condition.
-private func validThrowsEntryId(value: String): Bool {
+// Shared strict author-entry identity rule. Throws keeps its existing accepted
+// language and attribute grammar; admonition tags reuse only this validator.
+internal func validDocumentationEntryId(value: String): Bool {
     if (value.isEmpty() || value.size > 64) { return false }
     for (index in 0..value.size) {
         let byte = value[index]
@@ -93,6 +107,71 @@ private func validThrowsEntryId(value: String): Bool {
         return false
     }
     true
+}
+
+internal func admonitionTagHead(line: String): ?AdmonitionTagHead {
+    let text = line.trimAscii()
+    if (!text.startsWith("@")) { return None }
+    var end: Int64 = 1
+    while (end < text.size && text[end] >= b'a' && text[end] <= b'z') { end++ }
+    let level = text[1..end]
+    if (!["note", "warning", "danger"].contains(level)) { return None }
+    if (end < text.size && text[end] != b'[' && text[end] != b' ' && text[end] != b'\t') {
+        return None
+    }
+    var language: ?String = None
+    var entryId: ?String = None
+    if (end < text.size && text[end] == b'[') {
+        let close = text[end..].indexOf("]")
+        if (close.isNone()) {
+            return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3115"))
+        }
+        let stop = end + close.getOrThrow()
+        let attribute = text[end + 1..stop]
+        if (attribute.contains(" ") || attribute.contains("\t") ||
+            attribute.contains("\"") || attribute.contains("'")) {
+            return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3115"))
+        }
+        let attributes = attribute.split(",", removeEmpty: false)
+        if (attributes.size == 1 && attributes[0].startsWith("id=")) {
+            let value = attributes[0][3..]
+            if (!validDocumentationEntryId(value)) {
+                return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3116"))
+            }
+            entryId = Some(value)
+        } else if ((attributes.size == 1 && attributes[0].startsWith("lang=")) ||
+            (attributes.size == 2 && attributes[0].startsWith("lang=") && attributes[1].startsWith("id="))) {
+            let value = attributes[0][5..]
+            if (!wellFormedDocumentationLanguage(value)) {
+                return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3102"))
+            }
+            language = try { Some(public_model.documentationLanguage(value)) } catch (_: Exception) {
+                return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3103"))
+            }
+            if (!["en", "zh-CN"].contains(language.getOrThrow())) {
+                return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3103"))
+            }
+            if (attributes.size == 2) {
+                let idValue = attributes[1][3..]
+                if (!validDocumentationEntryId(idValue)) {
+                    return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3116"))
+                }
+                entryId = Some(idValue)
+            }
+        } else {
+            return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3115"))
+        }
+        end = stop + 1
+    }
+    if (end < text.size && text[end] != b' ' && text[end] != b'\t') {
+        return Some(AdmonitionTagHead(level, language, "", error: "CJDOC3115"))
+    }
+    let rest = text[end..].trimAscii()
+    Some(AdmonitionTagHead(level, language, rest, entryId: entryId))
+}
+
+private func validThrowsEntryId(value: String): Bool {
+    validDocumentationEntryId(value)
 }
 
 internal func localizedTagHead(line: String): ?LocalizedTagHead {

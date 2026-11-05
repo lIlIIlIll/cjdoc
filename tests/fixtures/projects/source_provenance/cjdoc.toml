@@ -1,0 +1,7 @@
+[[source.repositories]]
+root = "src"
+url = "https://github.com/example/source-provenance-fixture"
+revision = "1111111111111111111111111111111111111111"
+repository-path = "src"
+receipt = "evidence/source.json"
+receipt-sha256 = "f552207dbc8619aeefa26d7ab20b290095a8d9ecb0262b77a4c2410807efb7ed"

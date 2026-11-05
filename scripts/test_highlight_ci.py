@@ -78,6 +78,69 @@ class HighlightCiContractTest(unittest.TestCase):
             for forbidden in ["example-user", "workspace", "secret", "stdout", "highlight_acceptance"]:
                 self.assertNotIn(forbidden, published)
 
+    def test_compiler_failure_projection_retains_only_allowlisted_facts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            stdout, stderr = root / "stdout.log", root / "stderr.log"
+            stdout.write_text("private user path C:\\Users\\example-user\\source\\x.cj\n",
+                              encoding="utf-8")
+            stderr.write_text(
+                "PLEASE submit a bug report to the compiler vendor\n"
+                "LLVM ERROR: failed while reading C:\\Users\\example-user\\source\\x.cj\n"
+                "Stack dump:\n"
+                " #0 0x00007ff123456789 llvm::sys::PrintStackTrace(llvm::raw_ostream&)\n"
+                " #1 0x00007ff123456790 project::privateFunction()\n"
+                "Exception Code: 0xC0000005\n"
+                " #2 0x00007ff123456791 llvm::example_user()\n"
+                " #3 C:\\Users\\example-user\\llvm::sys::PrintStackTrace()\n"
+                "runner.example.test 192.0.2.11\n",
+                encoding="utf-8")
+            result = highlight_ci.compiler_failure_evidence(
+                "public-cancel-host", [("stdout", stdout), ("stderr", stderr)])
+            self.assertIsNotNone(result)
+            self.assertEqual(result["status"], "recorded")
+            self.assertEqual(result["tool"], "cjc")
+            self.assertEqual(result["wrapper"], "cjpm")
+            self.assertEqual(result["package"], "highlight_host_fixture")
+            self.assertEqual(result["exceptionCodes"], ["0xC0000005"])
+            self.assertEqual(result["stackSymbols"], ["llvm::sys::PrintStackTrace"])
+            self.assertIn("llvm-crash-report", result["classifications"])
+            self.assertIn("llvm-stack-dump", result["classifications"])
+            published = json.dumps(result)
+            for forbidden in ["example-user", "example_user", "source", "privateFunction",
+                              "runner.example.test", "192.0.2.11", "0x00007ff123456789",
+                              "failed while reading"]:
+                self.assertNotIn(forbidden, published)
+
+    def test_compiler_failure_ignores_untrusted_tokens_and_limits_log_tail(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            log = Path(temporary) / "compiler.log"
+            log.write_text(" #0 0x1234 llvm::example_user()\n"
+                           "source literal: Exception Code: 0xC0000005\n", encoding="utf-8")
+            self.assertIsNone(highlight_ci.compiler_failure_evidence(
+                "public-cancel-host", [("stderr", log)]))
+            log.write_bytes(b"LLVM ERROR: outside retained tail\n" + b"x" * (1024 * 1024) +
+                            b"\nException Code: 0xC0000005\n")
+            result = highlight_ci.compiler_failure_evidence(
+                "public-cancel-host", [("stderr", log)])
+            self.assertEqual(result["classifications"], ["native-exception"])
+            self.assertEqual(result["exceptionCodes"], ["0xC0000005"])
+
+    def test_whitespace_only_log_finishes_without_diagnosis(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            log = Path(temporary) / "compiler.log"
+            log.write_bytes(b"\n" * (1024 * 1024))
+            code = (
+                "import json,sys; from pathlib import Path; "
+                "from compiler_failure_evidence import compiler_failure_evidence; "
+                "print(json.dumps(compiler_failure_evidence("
+                "'provider', [('stage-log', Path(sys.argv[1]))])))"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", code, str(log)], capture_output=True, text=True,
+                env=dict(os.environ, PYTHONPATH=str(REPO / "scripts")), timeout=10, check=True)
+            self.assertIsNone(json.loads(result.stdout))
+
 
     def test_public_host_build_receipt_is_allowlisted_and_discriminating(self):
         with tempfile.TemporaryDirectory() as temporary:

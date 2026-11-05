@@ -18,7 +18,7 @@ from .localization import (DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, DIFF_RAW_LAB
 
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
-IR = "cjdoc.doc-ir/17"
+IR = "cjdoc.doc-ir/18"
 COVERAGE = "cjdoc.documentation-coverage/2"
 DIFF = "cjdoc.api-diff/2"
 QUALITY = "cjdoc.documentation-quality/1"

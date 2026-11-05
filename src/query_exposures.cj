@@ -4,6 +4,17 @@ import cjdoc.model as query_model
 import cjdoc.render as query_render
 import std.collection.*
 import yjson.*
+private func queryCapturedSourceRange(node: JsonNode): query_model.SourceRange {
+    let object = node.asObject()
+    let start = object.get("start").getOrThrow().asObject()
+    let end = object.get("end").getOrThrow().asObject()
+    query_model.SourceRange(queryString(object, "path"),
+        query_model.SourcePosition(queryInt(start, "line"), queryInt(start, "column"),
+            queryInt(start, "byteOffset")),
+        query_model.SourcePosition(queryInt(end, "line"), queryInt(end, "column"),
+            queryInt(end, "byteOffset")))
+}
+
 
 internal func queryCapturedImportContexts(raw: JsonObject,
     snapshot: query_render.DocumentationReadSnapshot): JsonArray {
@@ -24,6 +35,11 @@ internal func queryCapturedImportContexts(raw: JsonObject,
             // The complete captured record includes unresolved/ambiguous imports.
             // This context does not assert a binding to any particular symbol.
             context.put("reExport", imports[position])
+            let reExport = imports[position].asObject()
+            let sourceRange = queryCapturedSourceRange(
+                reExport.get("source").getOrThrow())
+            context.put("source", JsonNode.parse(query_render.sourceReferenceJson(
+                snapshot.sourceReference(moduleId, sourceRange))))
             contexts.add(context)
         }
     }
@@ -57,6 +73,7 @@ internal func queryBuildExposureIndex(document: QueryDocument): Unit {
                 exposure.put("declaringPackage", context.get("packageName").getOrThrow())
                 exposure.put("documentSet", context.get("documentSet").getOrThrow())
                 exposure.put("reExport", reExport)
+                exposure.put("source", context.get("source").getOrThrow())
                 let values = document.exposures.get(id).getOrDefault({ => JsonNode.array() })
                 values.add(exposure)
                 document.exposures[id] = values

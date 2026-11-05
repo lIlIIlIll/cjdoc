@@ -3,6 +3,38 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+internal func isAdmonitionOnlyLocalization(comment: DocComment): Bool {
+    comment.localizationScope == "admonitions"
+}
+
+private func localizedAdmonitionTextFor(comment: DocComment, fieldId: String,
+    language: ?String): ?DocumentationText {
+    var result: ?DocumentationText = None
+    for (text in comment.localizedTexts) {
+        if (text.fieldId != fieldId || !isAdmonitionLevel(text.kind) ||
+            text.language != language || text.state != "valid" || text.text.trimAscii().isEmpty()) { continue }
+        if (result.isSome()) { return None }
+        result = Some(text)
+    }
+    result
+}
+
+private func selectedAdmonitionText(comment: DocComment, fieldId: String,
+    locale: String): ?DocumentationText {
+    let selected = localizedAdmonitionTextFor(comment, fieldId, Some(locale))
+    if (selected.isSome()) { return selected }
+    let original = localizedAdmonitionTextFor(comment, fieldId, comment.defaultLanguage)
+    if (original.isSome()) { return original }
+    var unique: ?DocumentationText = None
+    for (text in comment.localizedTexts) {
+        if (text.fieldId != fieldId || !isAdmonitionLevel(text.kind) ||
+            text.state != "valid" || text.text.trimAscii().isEmpty() || text.language.isNone() ||
+            text.language == Some(locale) || text.language == comment.defaultLanguage) { continue }
+        if (unique.isSome()) { return None }
+        unique = Some(text)
+    }
+    unique
+}
 internal func localizedTextFor(comment: DocComment, fieldId: String, language: ?String): ?DocumentationText {
     var result: ?DocumentationText = None
     for (text in comment.localizedTexts) {
@@ -38,6 +70,11 @@ internal func soleForeignThrowsText(comment: DocComment, fieldId: String, locale
 }
 
 internal func selectedDocumentationText(comment: DocComment, fieldId: String, locale: String): ?DocumentationText {
+    for (text in comment.localizedTexts where text.fieldId == fieldId) {
+        if (isAdmonitionLevel(text.kind)) {
+            return selectedAdmonitionText(comment, fieldId, locale)
+        }
+    }
     let selected = localizedTextFor(comment, fieldId, Some(locale))
     if (selected.isSome()) { return selected }
     let fallback = localizedTextFor(comment, fieldId, comment.defaultLanguage)
@@ -48,7 +85,6 @@ internal func selectedDocumentationText(comment: DocComment, fieldId: String, lo
     if (defaultReference.isSome()) { return defaultReference }
     soleForeignThrowsText(comment, fieldId, locale)
 }
-
 private func selectedDocumentationTag(text: DocumentationText, locale: String,
     requestedState!: String = ""): DocTag {
     let state = if (!requestedState.isEmpty() && text.language != Some(locale)) { requestedState + "-fallback" }
@@ -63,8 +99,11 @@ private func selectedDocumentationTag(text: DocumentationText, locale: String,
         exampleMarkdown: if (text.kind == "example") { Some(text.markdown) } else { None },
         contentLanguage: text.language, translationState: state, fieldId: text.fieldId,
         descriptionMarkdown: if (text.kind == "example") { None } else { Some(text.markdown) },
-        navigation: text.navigation)
+        navigation: text.navigation,
+        entryId: if (isAdmonitionLevel(text.kind)) { text.entryId } else { None },
+        source: if (isAdmonitionLevel(text.kind)) { text.source } else { None })
 }
+
 
 private func requestedDocumentationState(comment: DocComment, fieldId: String, locale: String): String {
     for (text in comment.localizedTexts where text.fieldId == fieldId && text.language == Some(locale)) {
@@ -80,8 +119,53 @@ private func missingDocumentationTag(kind: String, subject: String, id: String,
     DocTag(kind, subject, "", fieldId: id, translationState: if (state.isEmpty()) { "missing" } else { state })
 }
 
+private func selectedAdmonitionTags(value: DocComment, locale: String): Array<DocTag> {
+    let tags = ArrayList<DocTag>()
+    let seen = HashSet<String>()
+    for (text in value.localizedTexts where isAdmonitionLevel(text.kind)) {
+        if (text.fieldId.isEmpty()) {
+            if (text.state == "unpaired" && !text.text.trimAscii().isEmpty()) {
+                tags.add(selectedDocumentationTag(text, locale))
+            }
+            continue
+        }
+        if (!seen.add(text.fieldId)) { continue }
+        if (let Some(selected) <- selectedAdmonitionText(value, text.fieldId, locale)) {
+            tags.add(selectedDocumentationTag(selected, locale,
+                requestedState: requestedDocumentationState(value, text.fieldId, locale)))
+        }
+    }
+    tags.toArray()
+}
+
+private func admonitionIntroductionTag(name: String): Bool {
+    ["param", "example", "return", "throws", "see"].contains(name)
+}
+
+private func selectedAdmonitionsOnlyComment(value: DocComment, locale: String): DocComment {
+    let admonitions = selectedAdmonitionTags(value, locale)
+    let tags = ArrayList<DocTag>()
+    var inserted = false
+    for (tag in value.tags) {
+        if (isAdmonitionLevel(tag.name)) {
+            if (!inserted) { tags.add(all: admonitions); inserted = true }
+            continue
+        }
+        if (!inserted && !admonitionIntroductionTag(tag.name)) {
+            tags.add(all: admonitions)
+            inserted = true
+        }
+        tags.add(tag)
+    }
+    if (!inserted) { tags.add(all: admonitions) }
+    DocComment(value.rawText, value.summary, value.description, value.markdown,
+        tags: tags.toArray(), defaultLanguage: value.defaultLanguage,
+        localizedTexts: value.localizedTexts.toArray(), localizationScope: value.localizationScope)
+}
+
 private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: String): DocComment {
     if (value.localizedTexts.isEmpty()) { return value }
+    if (isAdmonitionOnlyLocalization(value)) { return selectedAdmonitionsOnlyComment(value, locale) }
     var summary = ""
     var description = ""
     let children = ArrayList<MarkdownNode>()
@@ -110,6 +194,12 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
     }
     for (text in value.localizedTexts) {
         if (["summary", "description", "param"].contains(text.kind)) { continue }
+        if (isAdmonitionLevel(text.kind) && text.fieldId.isEmpty()) {
+            if (text.state == "unpaired" && !text.text.trimAscii().isEmpty()) {
+                tags.add(selectedDocumentationTag(text, locale))
+            }
+            continue
+        }
         if (text.state == "unpaired") {
             // Without a proven association these are independent author entries,
             // including contract facts. Hiding one would pretend it was a translation.
@@ -117,12 +207,16 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
         } else if (seen.add(text.fieldId)) {
             match (selectedDocumentationText(value, text.fieldId, locale)) {
                 case Some(selected) => tags.add(selectedDocumentationTag(selected, locale, requestedState: requestedDocumentationState(value, text.fieldId, locale)))
-                case None => tags.add(missingDocumentationTag(text.kind, text.subject, text.fieldId, value, locale))
+                case None =>
+                    if (!isAdmonitionLevel(text.kind)) {
+                        tags.add(missingDocumentationTag(text.kind, text.subject, text.fieldId, value, locale))
+                    }
             }
         }
     }
     return DocComment(value.rawText, summary, description, MarkdownNode("document", children: children.toArray()),
-        tags: tags.toArray(), defaultLanguage: value.defaultLanguage, localizedTexts: value.localizedTexts.toArray())
+        tags: tags.toArray(), defaultLanguage: value.defaultLanguage,
+        localizedTexts: value.localizedTexts.toArray(), localizationScope: value.localizationScope)
 }
 
 private func selectedSymbol(value: SymbolDoc, locale: String): SymbolDoc {
@@ -134,18 +228,26 @@ private func selectedSymbol(value: SymbolDoc, locale: String): SymbolDoc {
         case None => None
     }
     let parameters = ArrayList<ParameterDoc>()
-    for (parameter in value.parameters) {
-        var text = parameter.documentation
-        if (let Some(documentation) <- comment) {
-            for (tag in documentation.tags) {
-                if (tag.name == "param" && tag.subject == parameter.name) {
-                    text = if (tag.description.isEmpty()) { None } else { Some(tag.description) }
-                    break
+    let admonitionsOnly = match (value.documentation) {
+        case Some(documentation) => isAdmonitionOnlyLocalization(documentation)
+        case None => false
+    }
+    if (admonitionsOnly) {
+        for (parameter in value.parameters) { parameters.add(parameter) }
+    } else {
+        for (parameter in value.parameters) {
+            var text = parameter.documentation
+            if (let Some(documentation) <- comment) {
+                for (tag in documentation.tags) {
+                    if (tag.name == "param" && tag.subject == parameter.name) {
+                        text = if (tag.description.isEmpty()) { None } else { Some(tag.description) }
+                        break
+                    }
                 }
             }
+            parameters.add(ParameterDoc(parameter.name, parameter.typeRef, documentation: text,
+                defaultExpression: parameter.defaultExpression))
         }
-        parameters.add(ParameterDoc(parameter.name, parameter.typeRef, documentation: text,
-            defaultExpression: parameter.defaultExpression))
     }
     SymbolDoc(value.id, value.kind, value.name, value.qualifiedName, value.packageName, value.moduleId,
         value.visibility, value.source, value.headerSpelling, value.semantic, value.enumNonExhaustive,

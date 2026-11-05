@@ -264,7 +264,7 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     tagged = copy.deepcopy(author)
     symbol = next(symbol for symbol in tagged["declarations"] if symbol.get("documentation"))
     field = dict(name="description", subject="", description="Portable tag", referenceState="unavailable",
-                 targetSymbolId=None, navigation=None, contentLanguage="en",
+                 targetSymbolId=None, navigation=None, entryId=None, source=None, contentLanguage="en",
                  fieldId=symbol["id"] + ":doc:description:")
     fields = [dict(field), dict(field), dict(field)]
     fields[0].pop("fieldId")

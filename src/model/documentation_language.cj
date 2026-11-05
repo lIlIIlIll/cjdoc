@@ -71,11 +71,14 @@ public class DocumentationText {
     public let targetSymbolId: ?String
     public let directives: String
     public let navigation: ?TypeNavigation
+    /** Explicit admonition author ID; absent entries are never paired by position or prose. */
+    public let entryId: ?String
 
     public init(fieldId: String, kind: String, subject: String, language: ?String,
         text: String, markdown: MarkdownNode, source!: ?SourceRange = None,
         state!: String = "valid", referenceState!: String = "unavailable",
-        targetSymbolId!: ?String = None, directives!: String = "", navigation!: ?TypeNavigation = None) {
+        targetSymbolId!: ?String = None, directives!: String = "", navigation!: ?TypeNavigation = None,
+        entryId!: ?String = None) {
         if (let Some(value) <- language) {
             if (documentationLanguage(value) != value) {
                 throw IllegalArgumentException("documentation language must be normalized")
@@ -88,7 +91,8 @@ public class DocumentationText {
             throw IllegalArgumentException("paired localized documentation requires a field identity")
         }
         if (!["summary", "description", "param", "return", "throws", "see", "deprecated", "example",
-            "precondition", "postcondition", "invariant", "performance", "state", "concurrency", "platform", "compatibility", "error"].contains(kind)) {
+            "precondition", "postcondition", "invariant", "performance", "state", "concurrency", "platform", "compatibility", "error",
+            "note", "warning", "danger"].contains(kind)) {
             throw IllegalArgumentException("invalid localized documentation kind")
         }
         if (!isSemanticState(referenceState)) {
@@ -105,5 +109,6 @@ public class DocumentationText {
         this.source = source; this.state = state; this.referenceState = referenceState
         this.targetSymbolId = targetSymbolId; this.directives = directives
         this.navigation = navigation
+        this.entryId = entryId
     }
 }

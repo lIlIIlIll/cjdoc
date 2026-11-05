@@ -41,7 +41,7 @@ private func bindDependencyComment(comment: nav_model.DocComment, owner: nav_mod
             directives: tag.directives, exampleMarkdown: tag.exampleMarkdown,
             contentLanguage: tag.contentLanguage, translationState: tag.translationState,
             fieldId: tag.fieldId, descriptionMarkdown: tag.descriptionMarkdown,
-            navigation: navigation))
+            navigation: navigation, entryId: tag.entryId, source: tag.source))
     }
     let localized = ArrayList<nav_model.DocumentationText>()
     for (text in comment.localizedTexts) {
@@ -53,10 +53,11 @@ private func bindDependencyComment(comment: nav_model.DocComment, owner: nav_mod
             text.text, text.markdown, source: text.source, state: text.state,
             referenceState: if (genericReference) { "unavailable" } else { text.referenceState },
             targetSymbolId: if (genericReference) { None<String> } else { text.targetSymbolId },
-            directives: text.directives, navigation: navigation))
+            directives: text.directives, navigation: navigation, entryId: text.entryId))
     }
     nav_model.DocComment(comment.rawText, comment.summary, comment.description, comment.markdown,
-        tags: tags.toArray(), defaultLanguage: comment.defaultLanguage, localizedTexts: localized.toArray())
+        tags: tags.toArray(), defaultLanguage: comment.defaultLanguage, localizedTexts: localized.toArray(),
+        localizationScope: comment.localizationScope)
 }
 
 private func bindDependencySymbol(symbol: nav_model.SymbolDoc,

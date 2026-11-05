@@ -165,10 +165,19 @@ jobs:
             --binary "${RUNNER_TEMP}/reader-baseline-source/target/release/bin/main" \
             --revision 67faf0b244544a750543f049370c59479769eff4 --label baseline \
             --corpus "${READER_CORPUS}" --output "${RUNNER_TEMP}/reader-evidence/baseline"
-          python scripts/reader_register.py \
-            --baseline "${RUNNER_TEMP}/reader-evidence/baseline/observation" \
-            --template docs/maintainer/reader-scale-budgets.json \
+          registration_command=(
+            python scripts/reader_register.py
+            --baseline "${RUNNER_TEMP}/reader-evidence/baseline/observation"
+            --template docs/maintainer/reader-scale-budgets.json
             --output "${RUNNER_TEMP}/reader-evidence/registered.json"
+          )
+          if [[ "${READER_CORPUS}" == 1000 ]]; then
+            registration_command+=(
+              --doc-ir-transition v17-v18-unregistered-source
+              --aria-transition docs/maintainer/reader-scale-docs-173-177.json
+            )
+          fi
+          "${registration_command[@]}"
           python scripts/with_stdx.py --variant static -- python scripts/reader_capture.py \
             --binary target/release/bin/main --revision "${READER_REVISION}" --label after \
             --corpus "${READER_CORPUS}" --output "${RUNNER_TEMP}/reader-evidence/after"
