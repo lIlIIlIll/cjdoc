@@ -299,16 +299,19 @@ def downloads(journey: Journey):
 def extension(journey: Journey):
     page = journey.page
     require_text(page.locator("main"), "byteLength")
-    links = page.locator("main a").filter(has_text="Entry")
-    if not links.count():
-        raise AssertionError("extension member has no native owner/provenance link")
-    from .site import load_json
     ir = load_json(journey.site.file(journey.target["docIr"]))
     source = next(item for item in ir["declarations"] if item["id"] == journey.target["resolved"]["symbolId"])
     if not source.get("ownerId"):
         raise AssertionError("extension member lacks native owner provenance")
+    contexts = [item for item in page.locator("[data-cjdoc-owner-context-source]").all()
+                if item.get_attribute("data-cjdoc-owner-context-source") == source["ownerId"]]
+    if len(contexts) != 1:
+        raise AssertionError("extension member must expose exactly one context for its native owner")
+    link = contexts[0].locator(":scope > h3 > a")
+    if link.count() != 1:
+        raise AssertionError("extension owner context lacks its precise provenance link")
     old = page.url
-    journey.click(links.first)
+    journey.click(link)
     assert_native_id(journey, source["ownerId"])
     require_text(page.locator("main"), "String", "extend")
     journey.back(old)
