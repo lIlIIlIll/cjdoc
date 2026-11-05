@@ -307,3 +307,134 @@ class HtmlMemberSectionsTest {
     }
 }
 
+private func memberDescriptionPage(symbol: SymbolDoc, locale!: String = "en"): String {
+    let moduleId = symbol.moduleId
+    let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+        ProjectInfo("description-fixture"), ConfigurationSnapshot(audience: "external"),
+        modules: [ModuleDoc(moduleId, "description-fixture", "root", "",
+            packageNames: [symbol.packageName])],
+        packages: [PackageDoc(symbol.packageName, moduleId, sourceFiles: ["src/api.cj"],
+            symbolIds: [symbol.id])],
+        files: [FileDoc("src/api.cj", moduleId, symbol.packageName)],
+        declarations: [symbol])
+    let projection = RenderProjection(documentation)
+    renderSymbolPage(documentation, projection, projection.visibleIndex, symbol,
+        HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection), locale: locale)
+}
+
+private func memberDescriptionComment(tags!: Array<DocTag> = []): DocComment {
+    DocComment("raw", "Documented declaration", "", MarkdownNode("document", children: [
+        MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Documented declaration")])
+    ]), tags: tags)
+}
+
+@Test
+class HtmlParameterAndReturnDescriptionTest {
+    @TestCase
+    func missingDescriptionNoticesCoverDocumentedAndUndocumentedDeclarations(): Unit {
+        let intType = TypeRef("primitive", "Int64", SemanticType("unavailable"))
+        let documented = SymbolDoc("description-documented", "function", "documented",
+            "fixture.documented", "fixture", "description-tests", "public",
+            memberBrowserTestSource(1), "public func documented(value: Int64): Int64",
+            SemanticInfo("partial", "ast"),
+            parameters: [ParameterDoc("value", intType)],
+            returnType: Some(intType),
+            documentation: Some(memberDescriptionComment()))
+        let documentedHtml = memberDescriptionPage(documented)
+        @Expect(documentedHtml.contains("Documented declaration"))
+        @Expect(documentedHtml.split("data-documentation-state=\"missing\"").size - 1, 2)
+        @Expect(documentedHtml.split("<div class=\"return-value\">")[1].split("</div>")[0].contains("Int64"))
+
+        let undocumented = SymbolDoc("description-undocumented", "function", "undocumented",
+            "fixture.undocumented", "fixture", "description-tests", "public",
+            memberBrowserTestSource(2), "public func undocumented(value: Int64): Int64",
+            SemanticInfo("partial", "ast"),
+            parameters: [ParameterDoc("value", intType)], returnType: Some(intType))
+        let undocumentedHtml = memberDescriptionPage(undocumented)
+        @Expect(undocumentedHtml.contains("No documentation is available for this declaration."))
+        @Expect(undocumentedHtml.split("data-documentation-state=\"missing\"").size - 1, 2)
+        @Expect(undocumentedHtml.split("<div class=\"return-value\">")[1].split("</div>")[0].contains("Int64"))
+    }
+
+    @TestCase
+    func emptyOrdinaryTagsAndMarkdownContentAreDistinguished(): Unit {
+        let intType = TypeRef("primitive", "Int64", SemanticType("unavailable"))
+        let markdownCode = MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("code_span", literal: "inline-code-content")])
+        ])
+        let markdownImage = MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [
+                MarkdownNode("image", literal: "diagram.png",
+                    children: [MarkdownNode("text", literal: "diagram alt text")])
+            ])
+        ])
+        let markdownImageWithoutAlt = MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("image", literal: "missing.png")])
+        ])
+        let symbol = SymbolDoc("description-content", "function", "content",
+            "fixture.content", "fixture", "description-tests", "public",
+            memberBrowserTestSource(3), "public func content(absent: Int64, supplied: Int64, tagged: Int64, code: Int64, image: Int64, imageWithoutAlt: Int64, captured: Int64, empty: Int64): Int64",
+            SemanticInfo("partial", "ast"),
+            parameters: [
+                ParameterDoc("absent", intType),
+                ParameterDoc("supplied", intType, documentation: Some("Standalone parameter documentation")),
+                ParameterDoc("tagged", intType),
+                ParameterDoc("code", intType),
+                ParameterDoc("image", intType),
+                ParameterDoc("imageWithoutAlt", intType),
+                ParameterDoc("captured", intType),
+                ParameterDoc("empty", intType)
+            ],
+            returnType: Some(intType),
+            documentation: Some(memberDescriptionComment(tags: [
+                DocTag("param", "tagged", ""),
+                DocTag("param", "code", "", descriptionMarkdown: Some(markdownCode)),
+                DocTag("param", "image", "", descriptionMarkdown: Some(markdownImage)),
+                DocTag("param", "imageWithoutAlt", "",
+                    descriptionMarkdown: Some(markdownImageWithoutAlt)),
+                DocTag("param", "captured", "Captured text fallback",
+                    descriptionMarkdown: Some(MarkdownNode("document"))),
+                DocTag("param", "empty", "", descriptionMarkdown: Some(MarkdownNode("document"))),
+                DocTag("return", "", ""),
+                DocTag("return", "", "", descriptionMarkdown: Some(MarkdownNode("document")))
+            ])))
+        let html = memberDescriptionPage(symbol)
+        @Expect(html.contains("Standalone parameter documentation"))
+        @Expect(html.contains("inline-code-content"))
+        @Expect(html.contains("diagram alt text"))
+        @Expect(html.contains("Captured text fallback"))
+        @Expect(html.split("data-documentation-state=\"missing\"").size - 1, 1)
+        @Expect(html.split("data-documentation-state=\"empty\"").size - 1, 5)
+        @Expect(html.split("<div class=\"return-value\">")[1].split("</div>")[0].contains("Int64"))
+        let localized = memberDescriptionPage(symbol, locale: "zh-CN")
+        @Expect(localized.contains("尚未提供说明。"))
+        @Expect(localized.contains("说明为空。"))
+    }
+
+    @TestCase
+    func unitReturnsAppearOnlyWhenTheAuthorProvidesAReturnTag(): Unit {
+        let unit = TypeRef("primitive", "Unit", SemanticType("resolved",
+            canonical: Some("std.core.Unit")))
+        let withoutTag = SymbolDoc("unit-no-return-doc", "function", "close",
+            "fixture.close", "fixture", "description-tests", "public",
+            memberBrowserTestSource(4), "public func close(): Unit",
+            SemanticInfo("partial", "ast"), returnType: Some(unit))
+        let noTagHtml = memberDescriptionPage(withoutTag)
+        @Expect(!noTagHtml.contains("id=\"${docBlockAnchor(withoutTag, "return")}\""))
+        @Expect(!noTagHtml.contains("Returns"))
+        @Expect(!noTagHtml.contains("返回值"))
+
+        let withTag = SymbolDoc("unit-with-return-doc", "function", "close",
+            "fixture.close", "fixture", "description-tests", "public",
+            memberBrowserTestSource(5), "public func close(): Unit",
+            SemanticInfo("partial", "ast"), returnType: Some(unit),
+            documentation: Some(memberDescriptionComment(tags: [
+                DocTag("returns", "", "Unit return explanation")
+            ])))
+        let taggedHtml = memberDescriptionPage(withTag)
+        @Expect(taggedHtml.contains("Returns"))
+        @Expect(taggedHtml.contains("Unit return explanation"))
+        @Expect(!taggedHtml.contains("data-documentation-state=\"missing\""))
+    }
+}
+

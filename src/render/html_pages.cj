@@ -416,22 +416,129 @@ private func appendMemberBrowserToolbar(out: RenderTextBuffer,
         label(locale, "No matching members.", "没有匹配的成员。") + "</p>")
 }
 
-internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<String, SymbolDoc>,
-    symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
+internal func visibleOwnerChain(index: HashMap<String, SymbolDoc>,
+    symbol: SymbolDoc): ArrayList<SymbolDoc> {
     let owners = ArrayList<SymbolDoc>()
+    if (symbol.ownerId.isNone()) { return owners }
+    let visited = HashSet<String>()
+    let _ = visited.add(symbol.id)
     var current = symbol.ownerId
     while (let Some(ownerId) <- current) {
+        if (!visited.add(ownerId)) { break }
         match (findSymbol(index, ownerId)) {
             case Some(owner) => owners.add(owner); current = owner.ownerId
             case None => current = None
         }
     }
+    owners
+}
+internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<String, SymbolDoc>,
+    owners: ArrayList<SymbolDoc>, rootPrefix: String, locale: String): Unit {
     var position = owners.size
     while (position > 0) {
         position--
         let owner = owners[position]
         out.append("<li><a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, owner))}\"><code>${escapeHtml(readerSymbolTitle(owner, locale))}</code></a></li>")
     }
+}
+
+
+private func appendOwnerContextSource(out: RenderTextBuffer,
+    index: HashMap<String, SymbolDoc>, current: SymbolDoc, source: SymbolDoc,
+    assetLookup: HashMap<String, String>, rootPrefix: String, locale: String,
+    contextRole: String): Unit {
+    let sourcePrefix = "owner-context-${htmlStableSlug(current.id)}-${htmlStableSlug(source.id)}"
+    let sourceFieldNamespace = sourcePrefix + ":"
+    let headingId = "${sourcePrefix}-heading"
+    let targetContext = contextRole == "extension-target"
+    let headingTag = if (targetContext) { "h4" } else { "h3" }
+    out.append("<section class=\"owner-context-source\" data-cjdoc-owner-context-source=\"" +
+        escapeHtml(source.id) + "\" data-context-role=\"" + contextRole + "\">")
+    out.append("<${headingTag} id=\"${headingId}\">")
+    if (targetContext) {
+        out.append(label(locale, "Resolved extension target: ", "已解析的扩展目标："))
+    }
+    out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, source))}\"><code>" +
+        escapeHtml(readerSymbolTitle(source, locale)) + "</code></a></${headingTag}>")
+    let responsibilityNote = if (targetContext) {
+        label(locale, "This is documentation for the explicitly resolved target type, not an additional guarantee for the extension member.",
+            "这是显式解析的目标类型文档，并非扩展成员的额外保证。")
+    } else {
+        label(locale, "This is documentation from the owning declaration's author, not a separate guarantee for this member.",
+            "这是所属声明作者提供的文档上下文，并非该成员单独声明的保证。")
+    }
+    out.append("<p class=\"owner-context-provenance\">" + escapeHtml(responsibilityNote) + "</p>")
+    if (!targetContext && source.kind == "extend" && !source.headerSpelling.trimAscii().isEmpty()) {
+        out.append("<div class=\"owner-context-signature\"><p>" +
+            label(locale, "Extension declaration", "扩展声明") +
+            "</p><pre><code>" + escapeHtml(source.headerSpelling.trimAscii()) +
+            "</code></pre></div>")
+    }
+    match (source.documentation) {
+        case Some(comment) =>
+            let markdownContext = markdownHtmlContext(comment, source, 4, locale: locale,
+                fieldAnchorNamespace: sourceFieldNamespace)
+            appendSummaryHtml(out, comment, source, assetLookup, rootPrefix,
+                locale: locale, fieldAnchorNamespace: sourceFieldNamespace)
+            appendDocumentationIntroductionHtml(out, source, rootPrefix,
+                assetLookup, 4, locale, context: Some(markdownContext))
+            appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(source),
+                assetLookup: assetLookup, rootPrefix: rootPrefix,
+                markdownContext: markdownContext, headingLevel: 4)
+        case None =>
+            let missingOwnerText = if (targetContext) {
+                label(locale, "No documentation is available for this resolved target type.",
+                    "此已解析目标类型暂无文档。")
+            } else {
+                label(locale, "No documentation is available for this owner; that does not imply the member has no usage responsibilities.",
+                    "所属声明暂无文档；这并不表示该成员没有使用责任。")
+            }
+            out.append("<p class=\"empty-state owner-context-empty\">" +
+                escapeHtml(missingOwnerText) + "</p>")
+    }
+    out.append("</section>")
+}
+
+internal func appendOwnerDocumentationContext(out: RenderTextBuffer,
+    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, owners: ArrayList<SymbolDoc>,
+    assetLookup: HashMap<String, String>, rootPrefix: String, locale: String): Unit {
+    if (owners.isEmpty()) { return }
+    out.append("<section class=\"owner-documentation-context\" data-cjdoc-owner-context>")
+    out.append("<h2 id=\"owner-context-${htmlStableSlug(symbol.id)}-heading\">" +
+        label(locale, "Documentation context from owning declarations",
+            "所属声明的文档上下文") + "</h2><ol>")
+    let sourceIds = HashSet<String>()
+    let _ = sourceIds.add(symbol.id)
+    var position = owners.size
+    while (position > 0) {
+        position--
+        let owner = owners[position]
+        if (!sourceIds.add(owner.id)) { continue }
+        out.append("<li>")
+        appendOwnerContextSource(out, index, symbol, owner, assetLookup,
+            rootPrefix, locale, "owner")
+        if (owner.kind == "extend") {
+            for (relationship in owner.symbolRelationships) {
+                if (relationship.kind != "extensionTarget" || relationship.state != "resolved") {
+                    continue
+                }
+                match (relationship.targetSymbolId) {
+                    case Some(targetId) =>
+                        match (index.get(targetId)) {
+                            case Some(target) =>
+                                if (sourceIds.add(target.id)) {
+                                    appendOwnerContextSource(out, index, symbol, target,
+                                        assetLookup, rootPrefix, locale, "extension-target")
+                                }
+                            case None => ()
+                        }
+                    case None => ()
+                }
+            }
+        }
+        out.append("</li>")
+    }
+    out.append("</ol></section>")
 }
 
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
@@ -443,6 +550,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
         "${label(locale, "Extension", "扩展")} ${readerQualifiedName(symbol)}"
     } else { symbol.qualifiedName }
     let hasMemberPage = isTypeDeclaration(symbol) || symbol.kind == "extend"
+    let owners = visibleOwnerChain(index, symbol)
     appendPageStart(out, pageTitle, "../", documentation, projection, locale: locale,
         currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
         currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol),
@@ -450,7 +558,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
         agentReadable: true, alternateMarkdown: Some(agentDeclarationMarkdownPath(symbol)))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
-    appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
+    appendOwnerBreadcrumbs(out, index, owners, "../", locale)
     out.append("<li aria-current=\"page\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></li></ol></nav>\n")
     let headerClass = if (symbol.kind == "extend") { " api-extension-header" } else { "" }
     out.append("<header class=\"page-header api-page-header${headerClass}\"><div class=\"api-title-row\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></h1>")
@@ -494,6 +602,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     }
     appendTypeGuideEntry(out, documentation, projection, symbol, locale)
     out.append("</header>\n")
+    appendOwnerDocumentationContext(out, index, symbol, owners,
+        assetLookup, "../", locale)
     if (hasMemberPage) {
         // Relations explain the type before readers browse its members.
         appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)

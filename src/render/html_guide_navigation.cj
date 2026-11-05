@@ -43,7 +43,8 @@ private func collectGuideBindingSections(node: MarkdownNode, source: String,
             Some((anchor, markdownNodeText(node)))
         } else { None }
     }
-    if (node.kind == "html_block" && node.literal == "<!-- cjdoc-bind -->") {
+    if ((node.kind == "html_block" || node.kind == "html_inline") &&
+        node.literal == "<!-- cjdoc-bind -->") {
         if (let Some(position) <- node.source) {
             if (position.path == source) {
                 if (let Some(chapter) <- context.chapter) {

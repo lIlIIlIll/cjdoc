@@ -14,6 +14,13 @@ route = "concepts/guides/first-catalogue"
 title = "目录与资源入门"
 package = "pocketkit"
 
+[docs.pages.sections]
+caller-setup = "准备调用者项目"
+store-read = "保存并读取文本"
+snapshot-clear = "保留快照再清空"
+index-errors = "选择索引失败的处理方式"
+reader-close = "关闭阅读会话"
+
 # Maintainer-facing reproduction and local authoring steps are separated from
 # the caller-facing usage guide.
 [[docs.pages]]
@@ -42,3 +49,10 @@ source = "docs/en/guide.md"
 route = "concepts/guides/first-catalogue"
 title = "Catalogue and lifetime"
 package = "pocketkit"
+
+[docs.pages.sections]
+caller-setup = "set-up-the-caller-project"
+store-read = "store-and-read-text"
+snapshot-clear = "keep-a-snapshot"
+index-errors = "check-the-index"
+reader-close = "close-the-reading-session"

@@ -116,23 +116,41 @@ def resources(journey: Journey):
 
 
 def guides(journey: Journey):
+    from playwright.sync_api import expect
     page, guide = journey.page, journey.page.url
     links = page.locator(".inline-binding a").filter(has_text="add(String)")
     if not links.count():
         raise AssertionError("guide has no bound overload link")
+    if journey.target["version"] == "demo-v2":
+        section = page.locator('[data-semantic-section="store-read"]')
+        expect(section).to_have_count(1)
+        # The explicit section identity is emitted from the captured page mapping.
+        anchor = section.get_attribute("id")
+    else:
+        # Historical v1 predates explicit task IDs; retain its actual bound chapter.
+        anchor = links.first.evaluate("""node => {
+          const headings = [...document.querySelectorAll('.guide-content h2[id]')];
+          return headings.filter(heading =>
+            heading.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1)?.id;
+        }""")
+    if not anchor:
+        raise AssertionError("bound overload has no exact task section")
+    expected_guide = guide.split("#", 1)[0] + "#" + anchor
     journey.click(links.first)
     require_text(page.locator("main"), "public func add(value: String): Unit")
     assert_native_symbol(journey, "pocketkit.TextCatalog.add", "public func add(value: String): Unit")
     backlinks = [link for link in page.locator(".api-usages a").all()
-                 if unquote(urljoin(page.url, link.get_attribute("href")).split("#")[0])
-                 == unquote(guide.split("#")[0])]
+                 if unquote(urljoin(page.url, link.get_attribute("href"))) == unquote(expected_guide)]
     if len(backlinks) != 1:
-        raise AssertionError("selected member needs one exact related-guide backlink")
+        raise AssertionError("selected member needs one exact task-section backlink")
     journey.click(backlinks[0])
-    if unquote(page.url.split("#")[0]) != unquote(guide.split("#")[0]):
-        raise AssertionError("related guide did not return to the exact bound concept page")
-    copy_code(journey)
-    journey.assertions.append("the guide selects the String overload, whose own related-guide link returns to this guide")
+    if unquote(page.url) != unquote(expected_guide):
+        raise AssertionError("related guide did not return to the exact bound task section")
+    section = next(heading for heading in page.locator(".guide-content h2[id]").all()
+                   if heading.get_attribute("id") == anchor)
+    expect(section).to_be_visible()
+    copy_code(journey, section.locator("xpath=following-sibling::*").locator(".code-copy").first)
+    journey.assertions.append("the guide selects the String overload and its API backlink returns to the exact captured task section")
 
 
 def search(journey: Journey):

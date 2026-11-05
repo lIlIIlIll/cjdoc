@@ -71,19 +71,22 @@ internal func summaryPlainText(comment: DocComment): String {
 }
 
 internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
-    symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String, locale!: String = "en"): Unit {
+    symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String,
+    locale!: String = "en", fieldAnchorNamespace!: String = ""): Unit {
     if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
         if (let Some(tag) <- findTag(comment, "summary")) {
             out.append("<div class=\"symbol-summary\">")
             appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix,
-                markdownHtmlContext(comment, symbol, 2, locale: locale))
+                markdownHtmlContext(comment, symbol, 2, locale: locale,
+                    fieldAnchorNamespace: fieldAnchorNamespace))
             out.append("</div>")
         }
         return
     }
     match (summaryParagraph(comment)) {
         case Some(paragraph) =>
-            let context = markdownHtmlContext(comment, symbol, 2, locale: locale)
+            let context = markdownHtmlContext(comment, symbol, 2, locale: locale,
+                fieldAnchorNamespace: fieldAnchorNamespace)
             out.append("<div class=\"symbol-summary\">")
             appendMarkdownNodeHtml(out, paragraph, assetLookup, rootPrefix, context)
             out.append("</div>\n")
@@ -153,6 +156,140 @@ private func appendDocumentationIntroductionBodyHtml(out: RenderTextBuffer, comm
     out.append("</div>\n")
 }
 
+internal func markdownTreeHasDescriptionContent(node: MarkdownNode,
+    assets: HashMap<String, String>): Bool {
+    if (node.kind == "image") {
+        return !markdownNodeText(node).trimAscii().isEmpty() ||
+            assetReference(assets, node.literal).isSome()
+    }
+    let literalContent = node.kind == "text" || node.kind == "code_span" ||
+        node.kind == "code_block" || node.kind == "html_inline" || node.kind == "html_block"
+    if (literalContent && !node.literal.trimAscii().isEmpty()) { return true }
+    for (child in node.children) {
+        if (markdownTreeHasDescriptionContent(child, assets)) { return true }
+    }
+    false
+}
+
+private func tagHasDescriptionContent(tag: DocTag, assets: HashMap<String, String>): Bool {
+    if (!tag.description.trimAscii().isEmpty()) { return true }
+    match (tag.descriptionMarkdown) {
+        case Some(tree) => markdownTreeHasDescriptionContent(tree, assets)
+        case None => false
+    }
+}
+
+private func appendDescriptionNoticeHtml(out: RenderTextBuffer, locale: String,
+    state: String): Unit {
+    let text = if (state == "empty") {
+        label(locale, "Description is empty.", "说明为空。")
+    } else {
+        label(locale, "No description has been provided.", "尚未提供说明。")
+    }
+    out.append("<span class=\"documentation-note\" data-documentation-state=\"" +
+        state + "\">" + escapeHtml(text) + "</span>")
+}
+
+private func appendParameterDescriptionHtml(out: RenderTextBuffer, parameter: ParameterDoc,
+    comment: ?DocComment, locale: String, assets: HashMap<String, String>,
+    rootPrefix: String, markdownContext: ?HtmlMarkdownContext): Unit {
+    var tag: ?DocTag = None
+    match (comment) {
+        case Some(value) => tag = findTag(value, "param", subject: Some(parameter.name))
+        case None => ()
+    }
+    match (tag) {
+        case Some(value) =>
+            if (value.translationState.isEmpty() && !tagHasDescriptionContent(value, assets)) {
+                appendDescriptionNoticeHtml(out, locale, "empty")
+            } else {
+                appendDocumentationTagHtml(out, value, locale, assets,
+                    rootPrefix, markdownContext.getOrThrow())
+            }
+        case None =>
+            match (parameter.documentation) {
+                case Some(value) =>
+                    if (value.trimAscii().isEmpty()) {
+                        appendDescriptionNoticeHtml(out, locale, "empty")
+                    } else {
+                        appendStructuredTextHtml(out, value)
+                    }
+                case None => appendDescriptionNoticeHtml(out, locale, "missing")
+            }
+    }
+}
+
+private func appendParameterDocumentationHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+    comment: ?DocComment, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String,
+    locale: String, sectionHeading: String, assets: HashMap<String, String>,
+    markdownContext: ?HtmlMarkdownContext): Unit {
+    if (symbol.parameters.isEmpty()) { return }
+    out.append("<${sectionHeading} id=\"${docBlockAnchor(symbol, "parameters")}\">" +
+        "${label(locale, "Parameters", "参数")}</${sectionHeading}><dl class=\"parameter-list\">\n")
+    for (parameter in symbol.parameters) {
+        out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">" +
+            "${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
+        appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
+            className: "parameter-type-code")
+        match (parameter.defaultExpression) {
+            case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" +
+                escapeHtml(defaultExpression) + "</code></span>")
+            case None => ()
+        }
+        out.append("</span></dt><dd class=\"parameter-description\">")
+        appendParameterDescriptionHtml(out, parameter, comment, locale, assets, rootPrefix,
+            markdownContext)
+        out.append("</dd></div>\n")
+    }
+    out.append("</dl>\n")
+}
+
+private func appendReturnDocumentationHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+    comment: ?DocComment, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String,
+    locale: String, sectionHeading: String, assets: HashMap<String, String>,
+    markdownContext: ?HtmlMarkdownContext): Unit {
+    var showReturnType = false
+    if (let Some(returnType) <- symbol.returnType) { showReturnType = !isUnitType(returnType) }
+    var hasReturnDocumentation = false
+    match (comment) {
+        case Some(value) =>
+            for (tag in value.tags) {
+                if (tag.name == "return" || tag.name == "returns") { hasReturnDocumentation = true; break }
+            }
+        case None => ()
+    }
+    if (!showReturnType && !hasReturnDocumentation) { return }
+
+    out.append("<${sectionHeading} id=\"${docBlockAnchor(symbol, "return")}\">" +
+        "${label(locale, "Returns", "返回值")}</${sectionHeading}><div class=\"return-value\">")
+    if (showReturnType) {
+        appendTypeRefCodeHtml(out, symbol.returnType.getOrThrow(), typeLinkIndex, rootPrefix, locale,
+            className: "return-type")
+    }
+    if (!hasReturnDocumentation) {
+        out.append("<div class=\"return-description\">")
+        appendDescriptionNoticeHtml(out, locale, "missing")
+        out.append("</div>")
+    } else {
+        match (comment) {
+            case Some(value) =>
+                for (tag in value.tags) {
+                    if (tag.name != "return" && tag.name != "returns") { continue }
+                    out.append("<div class=\"return-description\">")
+                    if (tag.translationState.isEmpty() && !tagHasDescriptionContent(tag, assets)) {
+                        appendDescriptionNoticeHtml(out, locale, "empty")
+                    } else {
+                        appendDocumentationTagHtml(out, tag, locale, assets,
+                            rootPrefix, markdownContext.getOrThrow())
+                    }
+                    out.append("</div>")
+                }
+            case None => ()
+        }
+    }
+    out.append("</div>\n")
+}
+
 internal func appendDocumentationHtml(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
@@ -167,49 +304,10 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale,
                     context: Some(markdownContext))
             }
-            if (!symbol.parameters.isEmpty()) {
-                out.append("<${blockHeading} id=\"${docBlockAnchor(symbol, "parameters")}\">${label(locale, "Parameters", "参数")}</${blockHeading}><dl class=\"parameter-list\">\n")
-                for (parameter in symbol.parameters) {
-                    out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
-                    appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
-                        className: "parameter-type-code")
-                    match (parameter.defaultExpression) {
-                        case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
-                        case None => ()
-                    }
-                    out.append("</span></dt>")
-                    out.append("<dd class=\"parameter-description\">")
-                    match (findTag(comment, "param", subject: Some(parameter.name))) {
-                        case Some(tag) => appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
-                        case None => match (parameter.documentation) {
-                            case Some(value) => appendStructuredTextHtml(out, value)
-                            case None => ()
-                        }
-                    }
-                    out.append("</dd></div>\n")
-                }
-                out.append("</dl>\n")
-            }
-            var showReturnType = false
-            if (let Some(returnType) <- symbol.returnType) { showReturnType = !isUnitType(returnType) }
-            var hasReturnDocumentation = false
-            for (tag in comment.tags) {
-                if (tag.name == "return" || tag.name == "returns") { hasReturnDocumentation = true; break }
-            }
-            if (showReturnType || hasReturnDocumentation) {
-                out.append("<${blockHeading} id=\"${docBlockAnchor(symbol, "return")}\">${label(locale, "Returns", "返回值")}</${blockHeading}><div class=\"return-value\">")
-                if (showReturnType) {
-                    appendTypeRefCodeHtml(out, symbol.returnType.getOrThrow(), typeLinkIndex, rootPrefix, locale,
-                        className: "return-type")
-                }
-                for (tag in comment.tags) {
-                    if (tag.name != "return" && tag.name != "returns") { continue }
-                    out.append("<div class=\"return-description\">")
-                    appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
-                    out.append("</div>")
-                }
-                out.append("</div>\n")
-            }
+            appendParameterDocumentationHtml(out, symbol, Some(comment), typeLinkIndex,
+                rootPrefix, locale, blockHeading, assetLookup, Some(markdownContext))
+            appendReturnDocumentationHtml(out, symbol, Some(comment), typeLinkIndex,
+                rootPrefix, locale, blockHeading, assetLookup, Some(markdownContext))
             var hasThrows = false
             for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
             if (hasThrows) {
@@ -266,29 +364,10 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
         case None =>
             out.append("<p class=\"empty-state\">${label(locale, "No documentation is available for this declaration.", "此声明暂无文档。")}</p>\n")
-            if (!symbol.parameters.isEmpty()) {
-                out.append("<${blockHeading} id=\"${docBlockAnchor(symbol, "parameters")}\">${label(locale, "Parameters", "参数")}</${blockHeading}><dl class=\"parameter-list\">\n")
-                for (parameter in symbol.parameters) {
-                    out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
-                    appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
-                        className: "parameter-type-code")
-                    match (parameter.defaultExpression) {
-                        case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
-                        case None => ()
-                    }
-                    out.append("</span></dt><dd class=\"parameter-description\"></dd></div>\n")
-                }
-                out.append("</dl>\n")
-            }
-            match (symbol.returnType) {
-                case Some(returnType) => if (!isUnitType(returnType)) {
-                    out.append("<${blockHeading} id=\"${docBlockAnchor(symbol, "return")}\">${label(locale, "Returns", "返回值")}</${blockHeading}><div class=\"return-value\">")
-                    appendTypeRefCodeHtml(out, returnType, typeLinkIndex, rootPrefix, locale,
-                        className: "return-type")
-                    out.append("</div>\n")
-                }
-                case None => ()
-            }
+            appendParameterDocumentationHtml(out, symbol, None, typeLinkIndex,
+                rootPrefix, locale, blockHeading, assetLookup, None)
+            appendReturnDocumentationHtml(out, symbol, None, typeLinkIndex,
+                rootPrefix, locale, blockHeading, assetLookup, None)
     }
 }
 private func appendTagSubjectHtml(out: RenderTextBuffer, tag: DocTag,

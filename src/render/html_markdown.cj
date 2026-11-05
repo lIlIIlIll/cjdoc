@@ -455,19 +455,30 @@ internal class HtmlMarkdownContext {
     let bindingSource: String
     let bindingChips: ?HashMap<Int64, String>
     let locale: String
+    let fieldAnchorNamespace: String
     var nextHeading: Int64 = 0
 
     init(headingBase: Int64, allowExternalLinks!: Bool = true,
         sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
         bindingSource!: String = "", bindingChips!: ?HashMap<Int64, String> = None,
-        locale!: String = "en") {
+        locale!: String = "en", fieldAnchorNamespace!: String = "") {
         this.headingBase = headingBase
         this.allowExternalLinks = allowExternalLinks
         this.sourceLinks = sourceLinks
         this.bindingSource = bindingSource
         this.bindingChips = bindingChips
         this.locale = locale
+        this.fieldAnchorNamespace = fieldAnchorNamespace
     }
+}
+
+internal func markdownHtmlContext(comment: DocComment, symbol: SymbolDoc,
+    headingBase: Int64, locale!: String = "en",
+    fieldAnchorNamespace!: String = ""): HtmlMarkdownContext {
+    let context = HtmlMarkdownContext(headingBase, locale: locale,
+        fieldAnchorNamespace: fieldAnchorNamespace)
+    collectMarkdownHeadings(comment.markdown, symbolAnchor(symbol), HashMap<String, Int64>(), context)
+    context
 }
 
 
@@ -485,12 +496,6 @@ internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
     }
 }
 
-internal func markdownHtmlContext(comment: DocComment, symbol: SymbolDoc,
-    headingBase: Int64, locale!: String = "en"): HtmlMarkdownContext {
-    let context = HtmlMarkdownContext(headingBase, locale: locale)
-    collectMarkdownHeadings(comment.markdown, symbolAnchor(symbol), HashMap<String, Int64>(), context)
-    context
-}
 
 internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
     assetLookup: HashMap<String, String>, rootPrefix: String, context: HtmlMarkdownContext,
@@ -625,6 +630,10 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 case Some(metadata) => metadata.semanticNavigation
                 case None => None
             }
+            let semanticState: ?String = match (node.metadata) {
+                case Some(metadata) => metadata.semanticState
+                case None => None
+            }
             let destination: ?String = match (node.metadata) {
                 case Some(metadata) => match (navigation) {
                     case Some(value) => if (value.state == "resolved") { Some(value.url) } else { None }
@@ -666,6 +675,18 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 case None => for (child in node.children) {
                     appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
                 }
+            }
+            match (semanticState) {
+                case Some(state) => if (state != "resolved") {
+                    let status = match (state) {
+                        case "unresolved" => label(context.locale, "Reference semantics unresolved", "引用语义未解析")
+                        case "ambiguous" => label(context.locale, "Reference semantics ambiguous", "引用语义不明确")
+                        case _ => label(context.locale, "Reference semantics unavailable", "暂无引用语义信息")
+                    }
+                    out.append("<span class=\"reference-state-note\" data-reference-state=\"" +
+                        escapeHtml(state) + "\">" + escapeHtml(status) + "</span>")
+                }
+                case None => ()
             }
         case "image" =>
             let alt = markdownNodeText(node)

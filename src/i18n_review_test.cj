@@ -346,21 +346,28 @@ class I18nReviewTest {
         let current = VersionSite(VersionComposeSpec("new", "unused"), VersionSymbolIndex())
         let target = VersionSite(VersionComposeSpec("old", "unused"), VersionSymbolIndex())
         target.defaultLanguage = "zh-CN"
-        current.parentsByIdentity["en:symbol:member:section:param-left"] = "en:symbol:member"
-        current.parentsByIdentity["en:symbol:member"] = "en:symbol:owner"
-        current.parentsByIdentity["en:symbol:owner"] = "en:symbol:module"
-        target.logicalRoutes["zh-CN:symbol:owner"] = "html/zh-CN/symbols/owner.html"
-        let (href, fallback) = versionLanguageTarget(current, "en:symbol:member:section:param-left", target)
-        @Expect(href, "html/zh-CN/symbols/owner.html")
-        @Expect(fallback)
-        let _ = target.logicalRoutes.remove("zh-CN:symbol:owner")
-        target.logicalRoutes["zh-CN:symbol:module"] = "html/zh-CN/packages/module.html"
-        @Expect(versionLanguageTarget(current, "en:symbol:member", target)[0], "html/zh-CN/packages/module.html")
-        let _ = target.logicalRoutes.remove("zh-CN:symbol:module")
+        let memberSection = VersionLogicalIdentity("en", symbolId: Some("member"),
+            sectionId: Some("param-left"))
+        let member = VersionLogicalIdentity("en", symbolId: Some("member"))
+        let owner = VersionLogicalIdentity("en", symbolId: Some("owner"))
+        let module = VersionLogicalIdentity("en", symbolId: Some("module"))
+        current.parentsByIdentity[memberSection.key()] = member
+        current.parentsByIdentity[member.key()] = owner
+        current.parentsByIdentity[owner.key()] = module
+        let defaultOwner = VersionLogicalIdentity("zh-CN", symbolId: Some("owner"))
+        target.logicalRoutes[defaultOwner.key()] = "html/zh-CN/symbols/owner.html"
+        let ownerFallback = versionLanguageTarget(current, memberSection, target)
+        @Expect(ownerFallback.href, "html/zh-CN/symbols/owner.html")
+        @Expect(match (ownerFallback.state) { case VersionNavigationState.MissingSymbol => true; case _ => false })
+        let _ = target.logicalRoutes.remove(defaultOwner.key())
+        let defaultModule = VersionLogicalIdentity("zh-CN", symbolId: Some("module"))
+        target.logicalRoutes[defaultModule.key()] = "html/zh-CN/packages/module.html"
+        @Expect(versionLanguageTarget(current, member, target).href, "html/zh-CN/packages/module.html")
+        let _ = target.logicalRoutes.remove(defaultModule.key())
         let _ = target.paths.add("html/zh-CN/index.html")
-        @Expect(versionLanguageTarget(current, "en:symbol:member", target)[0], "html/zh-CN/index.html")
+        @Expect(versionLanguageTarget(current, member, target).href, "html/zh-CN/index.html")
         let _ = target.paths.add("html/en/index.html")
-        @Expect(versionLanguageTarget(current, "en:symbol:member", target)[0], "html/en/index.html")
+        @Expect(versionLanguageTarget(current, member, target).href, "html/en/index.html")
     }
 
     @TestCase

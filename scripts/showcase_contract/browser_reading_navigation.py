@@ -68,9 +68,8 @@ def check_version_members(page, member_url: str, current_index: dict, old_index:
     if len(added) != 1 or any(entry["id"] == added[0]["id"] for entry in old_index["entries"]):
         raise AssertionError("controlled added member must be absent in demo-v1")
     _select_inline_member(page, added[0]["id"])
-    _expect_version_href(page, selector, expected_owner)
-    missing = page.locator(selector).get_attribute("data-cjdoc-version-missing")
-    expect(page.locator(selector)).to_have_text("demo-v1" + missing)
+    expect(page.locator(selector)).to_have_attribute("data-cjdoc-version-state", "missing-symbol")
+    expect(page.locator(selector)).to_contain_text("symbol unavailable in this version")
     page.locator(selector).click()
     page.wait_for_url(expected_owner, wait_until="load")
     expect(page.locator(".api-title-row h1")).to_have_text("TextCatalog")

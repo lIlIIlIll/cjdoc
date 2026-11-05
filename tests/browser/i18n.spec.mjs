@@ -7,6 +7,9 @@ import path from 'node:path';
 const site = process.env.CJDOC_I18N_SITE;
 if (!site) throw new Error('CJDOC_I18N_SITE is required for the i18n browser gate');
 const root = path.resolve(site);
+const composedSite = process.env.CJDOC_I18N_COMPOSED_SITE;
+if (!composedSite) throw new Error('CJDOC_I18N_COMPOSED_SITE is required for version-navigation browser coverage');
+const composedRoot = path.resolve(composedSite);
 const manifest = JSON.parse(await readFile(path.join(root, 'site-manifest.json'), 'utf8'));
 const search = JSON.parse(await readFile(path.join(root, 'html/en/search-index.json'), 'utf8'));
 const member = search.entries.find(x => x.name === 'increment' && x.parameterTypes?.[0] === 'Int64');
@@ -19,14 +22,20 @@ const shots = process.env.CJDOC_I18N_SCREENSHOTS;
 if (shots) await mkdir(shots, { recursive: true });
 let server;
 let base;
+let versionsBase;
 
 test.beforeAll(async () => {
   server = createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
-    if (!url.pathname.startsWith('/docs/')) return response.writeHead(404).end();
-    const relative = decodeURIComponent(url.pathname.slice(6));
-    const file = path.resolve(root, relative);
-    if (!file.startsWith(root + path.sep)) return response.writeHead(404).end();
+    const mount = url.pathname.startsWith('/docs/')
+      ? { prefix: '/docs/', root }
+      : url.pathname.startsWith('/versions/')
+        ? { prefix: '/versions/', root: composedRoot }
+        : null;
+    if (!mount) return response.writeHead(404).end();
+    const relative = decodeURIComponent(url.pathname.slice(mount.prefix.length));
+    const file = path.resolve(mount.root, relative);
+    if (!file.startsWith(mount.root + path.sep)) return response.writeHead(404).end();
     try {
       const bytes = await readFile(file);
       const ext = path.extname(file);
@@ -35,13 +44,16 @@ test.beforeAll(async () => {
     } catch { response.writeHead(404).end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  base = `http://127.0.0.1:${server.address().port}/docs/`;
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  base = `${origin}/docs/`;
+  versionsBase = `${origin}/versions/`;
 });
 test.afterAll(async () => { if (server) await new Promise(resolve => server.close(resolve)); });
 
 function destination(mode, href) {
   return mode === 'file' ? pathToFileURL(path.join(root, href.split('#')[0])).href + (href.includes('#') ? '#' + href.split('#')[1] : '') : base + href;
 }
+
 
 for (const scenario of [
   { name: 'desktop-light-http', mode: 'http', viewport: { width: 1440, height: 900 }, colorScheme: 'light' },
@@ -135,17 +147,119 @@ test('guide section identity survives translated headings', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Usage', exact: true })).toBeVisible();
 });
 
-test('a missing translated chapter falls back to the same guide with an explicit notice', async ({ page }) => {
+test('a missing translated chapter recovers across mapped, empty-hash and browser-history states', async ({ page }) => {
   const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'advanced');
+  const mappedSource = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'usage');
+  const mappedTarget = manifest.routes.find(x => x.language === 'en' && x.pageId === guidePageId && x.sectionId === 'usage');
+  const targetPage = manifest.routes.find(x => x.language === 'en' && x.pageId === guidePageId && !x.sectionId);
   await page.goto(base + source.href);
   await expect(page.getByRole('heading', { name: '高级用法', exact: true })).toBeVisible();
   await page.locator('.language-label').click();
-  const english = page.locator('.language-switcher a[hreflang="en"]');
+  const english = page.locator('.language-switcher a[hreflang=\"en\"]');
+  const notice = english.locator('.language-position-notice');
   await expect(english).toHaveAttribute('data-position-state', 'page-start');
+  await expect(notice).toBeVisible();
   await expect(english).toHaveAttribute('title', '该语言没有对应章节，打开同一页面的开头');
-  await english.click();
-  expect(page.url()).toBe(base + 'html/en/concepts/guides/start.html');
-  await expect(page.getByRole('heading', { name: 'Integer arithmetic guide', exact: true })).toBeVisible();
+
+  const mappedSourceHash = new URL(base + mappedSource.href).hash;
+  const mappedTargetUrl = base + mappedTarget.href;
+  await page.evaluate(hash => { location.hash = hash; }, mappedSourceHash);
+  await expect(english).toHaveAttribute('data-position-state', 'mapped');
+  await expect(english).toHaveAttribute('href', mappedTargetUrl);
+  await expect(notice).toBeHidden();
+  await expect(english).not.toHaveAttribute('title');
+
+  await page.evaluate(() => { location.hash = ''; });
+  await expect(english).toHaveAttribute('data-position-state', 'mapped');
+  await expect(english).toHaveAttribute('href', base + targetPage.href);
+  await expect(notice).toBeHidden();
+  await expect(english).not.toHaveAttribute('title');
+
+  await page.goBack();
+  await expect(page).toHaveURL(base + mappedSource.href);
+  await expect(english).toHaveAttribute('data-position-state', 'mapped');
+  await expect(english).toHaveAttribute('href', mappedTargetUrl);
+  await expect(notice).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(base + source.href);
+  await expect(english).toHaveAttribute('data-position-state', 'page-start');
+  await expect(notice).toBeVisible();
+  await expect(english).toHaveAttribute('title', '该语言没有对应章节，打开同一页面的开头');
+});
+
+test('a language-home fallback is visible in server-rendered main-page navigation', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  await page.goto(versionsBase + 'v1/html/en/concepts/guides/legacy.html');
+  const switcher = page.locator('details.language-switcher');
+  await switcher.evaluate(element => { element.open = true; });
+  const fallback = switcher.locator('a[hreflang=\"zh-CN\"]');
+  await expect(fallback).toHaveAttribute('data-switch-state', 'language-home');
+  await expect(fallback).toHaveAttribute('data-position-state', 'language-home');
+  await expect(fallback).toHaveAttribute('title', 'This page is unavailable; open the language home');
+  const notice = fallback.locator('.language-position-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveText('This page is unavailable; open the language home');
+  const noticeBox = await notice.boundingBox();
+  expect(noticeBox.height).toBeGreaterThan(15);
+  expect(noticeBox.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  expect(new URL(await fallback.getAttribute('href'), page.url()).pathname)
+    .toBe(new URL(versionsBase + 'v1/html/zh-CN/index.html').pathname);
+  await context.close();
+});
+
+test('hash updates preserve a page-level language-home fallback', async ({ page }) => {
+  await page.goto(versionsBase + 'v1/html/en/concepts/guides/legacy.html');
+  await page.locator('.language-label').click();
+  const fallback = page.locator('.language-switcher a[hreflang=\"zh-CN\"]');
+  const notice = fallback.locator('.language-position-notice');
+  const home = new URL(await fallback.getAttribute('href'), page.url()).href;
+  await expect(fallback).toHaveAttribute('data-position-state', 'language-home');
+  await expect(notice).toBeVisible();
+  await page.evaluate(() => { location.hash = '#missing-position'; });
+  await expect(fallback).toHaveAttribute('data-position-state', 'language-home');
+  await expect(fallback).toHaveAttribute('href', home);
+  await expect(notice).toHaveText('This page is unavailable; open the language home');
+  await expect(fallback).toHaveAttribute('title', 'This page is unavailable; open the language home');
+  await page.evaluate(() => { location.hash = ''; });
+  await expect(fallback).toHaveAttribute('data-position-state', 'language-home');
+  await expect(fallback).toHaveAttribute('href', home);
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveText('This page is unavailable; open the language home');
+  await expect(fallback).toHaveAttribute('title', 'This page is unavailable; open the language home');
+});
+
+test('real version switching exposes exact and fallback reasons, then navigates to their targets', async ({ page }) => {
+  const exactMember = search.entries.find(x => x.name === 'increment' && x.parameterTypes?.[0] === 'Int64');
+  const stringMember = search.entries.find(x => x.name === 'increment' && x.parameterTypes?.[0] === 'String');
+  expect(exactMember).toBeTruthy();
+  expect(stringMember).toBeTruthy();
+  const cases = [
+    ['exact', `v1/html/en/${exactMember.href}`],
+    ['missing-language', 'v1/html/zh-CN/concepts/guides/start.html'],
+    ['missing-section', 'v1/html/en/concepts/guides/reference.html#standalone--doc-details'],
+    ['missing-symbol', `v1/html/en/${stringMember.href}`],
+    ['missing-page', 'v1/html/en/concepts/guides/legacy.html'],
+  ];
+  for (const [state, sourcePath] of cases) {
+    await page.goto(versionsBase + sourcePath);
+    const target = page.locator('[data-cjdoc-version-link][href*=\"v2/html/\"]');
+    await expect(target).toHaveCount(1);
+    await expect(target).toHaveAttribute('data-cjdoc-version-state', state);
+    const messages = JSON.parse(await target.getAttribute('data-cjdoc-version-messages'));
+    if (state === 'exact') {
+      expect(messages.exact || '').toBe('');
+      await expect(target).toHaveText(await target.getAttribute('data-cjdoc-version-label'));
+    } else {
+      expect(messages[state]).toBeTruthy();
+      await expect(target).toContainText(messages[state]);
+    }
+    const targetUrl = new URL(await target.getAttribute('href'), page.url()).href;
+    expect(new URL(targetUrl).pathname).toContain('/versions/v2/html/');
+    await target.click();
+    await expect(page).toHaveURL(targetUrl);
+  }
 });
 
 test('Ctrl or Command click opens the exact overload and parameter in a new tab', async ({ page, context: browserContext }) => {

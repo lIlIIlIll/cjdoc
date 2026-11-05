@@ -168,12 +168,17 @@ class ReaderUiTests(unittest.TestCase):
         self.assertIn('href="../demo-v2/api-diff.json">原始 JSON', result)
 
     @unittest.skipUnless(shutil.which("node"), "Node is required for publication JavaScript runtime checks")
-    def test_native_version_script_keeps_published_report_route(self) -> None:
+    def test_native_version_script_restores_published_route_and_hash_state(self) -> None:
         (self.root / "demo-v1").mkdir()
         (self.root / "demo-v2").mkdir()
         (self.root / "demo-v1/report-coverage.html").write_text("report", encoding="utf-8")
-        routes = html.escape(json.dumps({"symbol-real": ["../demo-v1/symbols/owner.html#symbol-real", False]}), quote=True)
-        source = '<nav class="cjdoc-version-selector"><a data-cjdoc-version-link data-cjdoc-version-label="demo-v1" data-cjdoc-version-missing=" unavailable" data-cjdoc-version-routes="' + routes + '" href="../demo-v1/validation.html">demo-v1</a></nav>'
+        routes = html.escape(json.dumps({"symbol-real": [
+            "../demo-v1/symbols/owner.html#symbol-real", "missing-section"]}), quote=True)
+        messages = html.escape(json.dumps({
+            "exact": "",
+            "missing-section": " (section unavailable; opening an available position)"
+        }), quote=True)
+        source = '<nav class="cjdoc-version-selector"><a data-cjdoc-version-link data-cjdoc-version-label="demo-v1" data-cjdoc-version-state="exact" data-cjdoc-version-messages="' + messages + '" data-cjdoc-version-routes="' + routes + '" href="../demo-v1/validation.html">demo-v1</a></nav>'
         rendered = VersionLinks(source, self.root / "demo-v2/report-coverage.html", "en").result()
         from html.parser import HTMLParser
         class Anchor(HTMLParser):
@@ -182,11 +187,18 @@ class ReaderUiTests(unittest.TestCase):
         anchor = Anchor(); anchor.feed(rendered)
         native = (ROOT / "src/version_navigation.cj").read_text(encoding="utf-8").split('internal let VERSION_NAVIGATION_SCRIPT = #"', 1)[1].split('"#', 1)[0]
         harness = 'const attrs=' + json.dumps(anchor.attrs) + ''';
-const handlers={};const link={textContent:"demo-v1",getAttribute:k=>attrs[k],setAttribute:(k,v)=>attrs[k]=v};
+const handlers={};const link={textContent:"demo-v1",getAttribute:k=>attrs[k]??null,setAttribute:(k,v)=>attrs[k]=String(v),removeAttribute:k=>delete attrs[k]};
 global.document={querySelectorAll:()=>[link]};global.location={hash:"#diagnostics"};global.addEventListener=(name,fn)=>handlers[name]=fn;
 ''' + native + '''
-if(attrs.href!=="../demo-v1/report-coverage.html")throw Error("native script reset report category");
-location.hash="#coverage";handlers.hashchange();if(attrs.href!=="../demo-v1/report-coverage.html")throw Error("hash changed report category");'''
+if(attrs.href!=="../demo-v1/report-coverage.html")throw Error("initial hash changed published report category");
+if(attrs["data-cjdoc-version-state"]!=="exact"||link.textContent!=="demo-v1")throw Error("initial DOM state was not restored");
+location.hash="#symbol-real";handlers.hashchange();
+if(attrs.href!=="../demo-v1/symbols/owner.html#symbol-real")throw Error("native script lost the symbol route");
+if(attrs["data-cjdoc-version-state"]!=="missing-section"||link.textContent!=="demo-v1 (section unavailable; opening an available position)")throw Error("hash state was not applied");
+location.hash="#unknown";handlers.hashchange();
+if(attrs.href!=="../demo-v1/report-coverage.html"||attrs["data-cjdoc-version-state"]!=="exact"||link.textContent!=="demo-v1")throw Error("unknown hash did not restore initialized DOM");
+location.hash="";handlers.pageshow();
+if(attrs.href!=="../demo-v1/report-coverage.html"||attrs["data-cjdoc-version-state"]!=="exact")throw Error("empty hash did not restore initialized DOM");'''
         result = subprocess.run(["node", "-e", harness], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
