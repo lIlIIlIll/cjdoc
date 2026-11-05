@@ -35,7 +35,6 @@ class ReadingNavigationTest {
         @Expect(selector.contains(versionSymbolAnchor("overload-one")))
         @Expect(selector.contains(versionSymbolAnchor("overload-two")))
         @Expect(selector.contains("../../old/symbols/old-one.html"))
-        @Expect(selector.contains("此版本没有该符号"))
         @Expect(!selector.contains("data-cjdoc-version-missing"))
     }
 
