@@ -82,6 +82,8 @@
 `scripts/showcase_contract/browser_reading_regressions.py` 与 `scripts/test_html_search.py` 覆盖浏览器状态、键盘和阅读交互；原生 renderer/versioning 的对应测试覆盖稳定路由、别名、签名及转义。
 `scripts/reader_contract_review.py` 把两份指南、配置、清单与代码的实际复制字节绑定到回执，
 按共同 section ID 执行八个完整指南程序，并与原十三个 C/R 消费者用例分项记录。
+每个程序使用独立的完整 caller/sibling-library 目录，避免短间隔替换同一源文件时复用旧增量产物；
+成功标记校验不放宽，回执的程序路径指向该次真实编译输入。
 非零退出、超时、缺少或额外成功标记均拒绝；结束时复核原始输入没有变化。
 普通 Markdown 围栏不是 `@example` 产品语义，指南运行证据不能冒充源码 doctest 报告。
 调用该脚本前按 [build.md](build.md) 准备认证环境，并指定实际完整源码 SHA 的 `--revision` 与任务独占的 `--output`。
@@ -89,6 +91,8 @@
 浏览器套件需使用同次原生产物。`i18n.spec.mjs` 同时要求 `CJDOC_I18N_SITE` 指向
 `i18n_gate.py` 的 `multi` 根、`CJDOC_I18N_COMPOSED_SITE` 指向同次 `composed` 根；
 PocketKit 阅读 fixture 保留 HTML 根旁的 `site-manifest.json`，用于核对 API 回链的确切任务章节。
+两语言指南末尾的项目介绍链接也须命中同语言 manifest 中捕获的 `concepts/index.html`，
+并实际导航到可读正文；作者链接按各自 Markdown 源文件的位置解析，不能把输出目录当作源目录。
 `search.js` 的安全摘要必须从实际原生 emitted bytes 更新，继续保留严格资产 allowlist 与负例。
 
 

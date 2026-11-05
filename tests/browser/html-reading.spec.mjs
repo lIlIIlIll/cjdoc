@@ -109,6 +109,16 @@ for (const transport of ['root','subpath','file']) {
       await expect(page.locator('.inline-binding > .binding-state')).toHaveCount(0);
       await expect(page.locator('.inline-binding > .related-api-label').first()).toHaveText(locale === 'en' ? 'Related API:' : '相关 API：');
       await expect(page.locator('.inline-binding a').first()).toHaveAttribute('href', /symbols\/.*\.html(?:#.*)?$/);
+      const introduction = siteManifest.routes.find(item => item.language === locale &&
+        !item.symbolId && !item.sectionId && item.href === `html/${locale}/concepts/index.html`);
+      expect(introduction).toBeTruthy();
+      const introductionUrl = new URL(introduction.href.replace(`html/${locale}/`, ''), urls.home).href;
+      const introductionHref = await page.locator('.guide-content a[href]').evaluateAll(
+        (links, target) => links.find(link => link.href === target)?.getAttribute('href'), introductionUrl);
+      expect(introductionHref).toBeTruthy();
+      await page.locator(`.guide-content a[href=${JSON.stringify(introductionHref)}]`).first().click();
+      await expect(page).toHaveURL(introductionUrl);
+      await expect(page.locator('.guide-content')).toContainText('TextCatalog');
     }
   });
 }

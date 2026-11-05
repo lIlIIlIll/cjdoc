@@ -138,24 +138,23 @@ def run_guide_programs(output: Path, report: dict, stage) -> None:
             raise ValueError('caller guide must have one explicit localized page: ' + locale)
         guide = captured / source
         inputs = extract_guide_programs(guide, matches[0]['sections'])
-        layout = output / 'guides' / locale / 'examples/pocketkit'
-        layout.mkdir(parents=True)
-        for version in ('demo-v2', 'support-v1'):
-            shutil.copytree(output / 'sources' / version, layout / version)
-        caller = layout / 'guide-caller'
-        (caller / 'src').mkdir(parents=True)
-        manifest = caller / 'cjpm.toml'
-        manifest.write_bytes(inputs.manifest)
         for section, program in inputs.programs.items():
-            preserved = output / 'guides' / locale / 'programs' / section / 'src/main.cj'
-            preserved.parent.mkdir(parents=True)
-            preserved.write_bytes(program)
+            # Independent caller trees prevent incremental builds from running a
+            # previous exercise when rapid source replacements share timestamps.
+            layout = output / 'guides' / locale / section / 'examples/pocketkit'
+            layout.mkdir(parents=True)
+            for version in ('demo-v2', 'support-v1'):
+                shutil.copytree(output / 'sources' / version, layout / version)
+            caller = layout / 'guide-caller'
+            (caller / 'src').mkdir(parents=True)
+            manifest = caller / 'cjpm.toml'
+            manifest.write_bytes(inputs.manifest)
             main = caller / 'src/main.cj'
             main.write_bytes(program)
             name = 'guide-' + locale + '-' + section
             receipt = {'language': locale, 'sectionId': section, 'status': 'failed',
                        'guideSha256': sha256(guide), 'manifestSha256': sha256(manifest),
-                       'programSha256': sha256(main), 'programPath': preserved.relative_to(output).as_posix()}
+                       'programSha256': sha256(main), 'programPath': main.relative_to(output).as_posix()}
             report['guidePrograms'].append(receipt)
             result = stage(name, inputs.command, caller, 300)
             validate_guide_result(result,

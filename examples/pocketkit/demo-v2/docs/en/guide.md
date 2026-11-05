@@ -216,4 +216,4 @@ main(): Int64 {
 Guide execution evidence is recorded separately from source `@example` reports. Ordinary Markdown fences do not automatically become product doctests.
 The version switcher also offers the historical demo-v1 guide. Use that version's APIs there rather than applying these v2 programs to v1.
 
-[Back to the project introduction](index.md)
+[Back to the project introduction](../index.md)
