@@ -170,19 +170,25 @@ class CapturedPageShowcaseTest {
     }
 
     @TestCase
-    func capturedBindingInsideATableKeepsTheTableIntact(): Unit {
+    func capturedInlineTableBindingKeepsTableAndReturnsToItsHeading(): Unit {
         let root = createShowcaseBindingProject()
         try {
-            File.writeTo(root.join("docs/guide.md"), ("# Table binding\n\n" +
+            File.writeTo(root.join("docs/guide.md"), ("# Guide\n\n## Table binding\n\n" +
                 "| A | B |\n| - | - |\n| one | two |\n" +
                 "<!-- cjdoc-bind target=\"fixture.Box.add\" selector=\"signature:public func add(value: String): Unit\" -->\n" +
                 "| three | four |\n").toArray())
             let documentation = captureDocumentationPages(showcaseBindingFixture(), GenerationRequest(root.toString()))
-            let guide = artifactContent(api_render.HtmlDocumentationRenderer().render(documentation),
-                "html/concepts/guides/overload.html")
+            let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
+            let guide = artifactContent(artifacts, "html/concepts/guides/overload.html")
             @Expect(guide.split("<table>").size, 2)
+            @Expect(guide.contains("id=\"standalone--doc-table-binding\""))
+            @Expect(guide.contains("<td>one</td>"))
+            @Expect(guide.contains("<td>three</td>"))
             @Expect(guide.contains("class=\"inline-binding\""))
             @Expect(!guide.contains("cjdoc-inline-binding"))
+            let stringPage = showcaseSymbolPage(artifacts, documentation.declarations[1].id)
+            @Expect(stringPage.contains("href=\"../concepts/guides/overload.html#standalone--doc-table-binding\""))
+            @Expect(stringPage.contains("Exact String overload · Table binding"))
         } finally { let _ = removeIfExists(root, recursive: true) }
     }
 }

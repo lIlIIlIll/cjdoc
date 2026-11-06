@@ -64,6 +64,8 @@ class VersionContextMemberTest {
             ArrayList<VersionSite>([current, missing]))
         @Expect(unavailable.contains(versionSymbolAnchor("extra")), true)
         @Expect(unavailable.contains("../../missing/index.html"), true)
+        @Expect(unavailable.contains("missing-symbol"), true)
+        @Expect(!unavailable.contains("data-cjdoc-version-missing"))
     }
 
     @TestCase

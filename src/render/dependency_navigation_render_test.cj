@@ -163,7 +163,7 @@ class DependencyNavigationRenderTest {
     }
 
     @TestCase
-    func bodySemanticLinksConsumeFrozenNavigationWithRelativeFragments(): Unit {
+    func bodySemanticLinksKeepSemanticStateBesideResolvedManualNavigation(): Unit {
         for (fragment in ["L18", "%E7%B1%BB"]) {
             let url = "./dependencies/category.html#" + fragment
             let node = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink("external.Token.member", "unresolved",
@@ -172,11 +172,28 @@ class DependencyNavigationRenderTest {
             let document = navigationRenderDocument(TypeRef("named", "Token", SemanticType("unavailable")),
                 markdown: Some(MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])])))
             let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
-            @Expect(html.contains("href=\"../dependencies/category.html#" + fragment + "\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a>"))
+            @Expect(html.contains("href=\"../dependencies/category.html#" + fragment + "\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a><span class=\"reference-state-note\" data-reference-state=\"unresolved\">"))
             let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en"))
             @Expect(markdown.contains("[member](../../html/dependencies/category.html#" + fragment + " \"manual: explicit documentation\")"))
             @Expect(node.metadata.getOrThrow().semanticState, Some("unresolved"))
             @Expect(node.metadata.getOrThrow().semanticExternalUrl.isNone())
+        }
+    }
+
+    @TestCase
+    func ambiguousAndUnavailableBodySemanticsDoNotEraseManualNavigation(): Unit {
+        let url = "./dependencies/category.html#member"
+        for (state in ["ambiguous", "unavailable"]) {
+            let node = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(
+                "external.Token.member", state,
+                semanticNavigation: Some(TypeNavigation("resolved", "manual", "explicit documentation", url: url))),
+                children: [MarkdownNode("text", literal: "member")])
+            let document = navigationRenderDocument(TypeRef("named", "Token", SemanticType("unavailable")),
+                markdown: Some(MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])])))
+            let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
+            @Expect(html.contains("href=\"../dependencies/category.html#member\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a><span class=\"reference-state-note\" data-reference-state=\"" + state + "\">"))
+            @Expect(html.contains("data-reference-state=\"" + state + "\""))
+            @Expect(!html.contains("class=\"reference-state-note\" data-reference-state=\"resolved\""))
         }
     }
 

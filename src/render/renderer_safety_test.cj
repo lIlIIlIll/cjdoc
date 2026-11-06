@@ -169,12 +169,53 @@ class RendererSafetyTest {
                 MarkdownNode("paragraph", children: [target])
             ]))), "html/symbol-index.json")
         @Expect(htmlPages.contains("<a href=\"../symbols/target-id.html\">API</a>"), true)
+        @Expect(!htmlPages.contains("data-reference-state"), true)
         @Expect(markdown.contains("<a id=\"symbol-${htmlStableSlug(targetId)}\"></a>"), true)
         @Expect(markdown.contains("[API](#symbol-${htmlStableSlug(targetId)})"), true)
         @Expect(html.contains("\"href\":\"symbols/"), true)
         @Expect(rendererSafetyContent(HtmlDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document"))),
             "html/search-index.json").contains("cjdoc"), true)
+    }
+
+    @TestCase
+    func semanticLinkStatesRenderLocalizedStatusBesideTheirChildren(): Unit {
+        for (state in ["unresolved", "ambiguous", "unavailable"]) {
+            for (locale in ["en", "zh-CN"]) {
+                let node = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(
+                    "fixture.api", state),
+                    children: [MarkdownNode("text", literal: "API")])
+                let html = renderStandaloneMarkdownHtml(
+                    MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])]),
+                    locale: locale)
+                @Expect(html.contains("API<span class=\"reference-state-note\" data-reference-state=\"" +
+                    state + "\">"))
+            }
+        }
+    }
+
+    @TestCase
+    func resolvedUnsafeExternalSemanticLinkIsNotMarkedUnresolved(): Unit {
+        let node = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(
+            "fixture.api", "resolved", externalUrl: Some("javascript:alert(1)")),
+            children: [MarkdownNode("text", literal: "API")])
+        let html = renderStandaloneMarkdownHtml(
+            MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])]))
+        @Expect(html.contains("API"), true)
+        @Expect(!html.contains("href=\"javascript:"))
+        @Expect(!html.contains("data-reference-state"))
+    }
+
+    @TestCase
+    func semanticLinkStatusSurvivesInsideTagMarkdown(): Unit {
+        let node = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(
+            "fixture.api", "ambiguous"),
+            children: [MarkdownNode("text", literal: "related API")])
+        let tag = DocTag("return", "", "Result details", descriptionMarkdown: Some(
+            MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])])))
+        let html = rendererSafetyText(HtmlDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document"), tags: [tag])))
+        @Expect(html.contains("related API<span class=\"reference-state-note\" data-reference-state=\"ambiguous\">"))
     }
     @TestCase
     func reExportSearchSignaturesUseTokenIdentityAndPreserveUnavailableSource(): Unit {

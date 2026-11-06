@@ -6,6 +6,7 @@ import std.collection.*
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import yjson.*
 
 private func admonitionOnlyProject(comment: String): Path {
     let project = i18nTestProject(comment)
@@ -35,21 +36,22 @@ class I18nAdmonitionTest {
             let documentation = i18nTestGenerate(project)
             let decoded = api_render.decodeDocIr(api_render.encodeDocIr(documentation))
             for (locale in ["en", "zh-CN"]) {
-                var descriptions: Int64 = 0
-                var summaries: Int64 = 0
                 let artifacts = api_render.renderDocumentationFormatsWithOptions(decoded, ["html"], locale: locale)
-                for (artifact in artifacts where artifact.path.startsWith("html/symbols/")) {
-                    if (artifact.content.contains("Ordinary container description.")) {
-                        @Expect(artifact.content.contains("id=\"overview\""), true)
-                        descriptions++
+                let entries = JsonNode.parse(artifactContent(artifacts, "html/symbol-index.json"))
+                    .asObject()["entries"].asArray()
+                for (name in ["Plain", "Prompt", "SummaryOnly"]) {
+                    let owner = declarationNamed(decoded, name)
+                    var route = ""
+                    for (index in 0..entries.size()) {
+                        let entry = entries.get(index).getOrThrow().asObject()
+                        if (entry["id"].asString() == owner.id) {
+                            route = entry["href"].asString()
+                            break
+                        }
                     }
-                    if (artifact.content.contains("Summary-only note.")) {
-                        @Expect(artifact.content.contains("id=\"overview\""), false)
-                        summaries++
-                    }
+                    let page = artifactContent(artifacts, "html/" + route)
+                    @Expect(page.contains("id=\"overview\""), name != "SummaryOnly")
                 }
-                @Expect(descriptions, 2)
-                @Expect(summaries, 1)
             }
         } finally {
             let _ = removeIfExists(project, recursive: true)

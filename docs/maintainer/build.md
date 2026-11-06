@@ -249,6 +249,22 @@ node tests/browser/node_modules/@playwright/test/cli.js test \
 不把缺少阅读/版本 fixture 后的跳过结果写成完整通过。
 侧栏 current-page 按 URL 的 origin/pathname 核对；搜索筛选 query 与 fragment 是同一文档上的客户端状态，不构成另一页面。当前侧栏链接本身仍不得含 fragment；tag、moduleId、snapshotId 等查询状态由导航用例分别断言保留。
 
+阅读 fixture 的 `site-manifest.json` 位于 HTML 根的上一层；不要只复制 `html/` 后丢弃这份章节身份库存。
+独立的双语浏览器门禁还需要同次生成的 multi 和 composed 两根。可复用 CLI 阶段留下的
+`i18n_gate.py` 产物；没有既有产物时，在新的独占目录运行：
+
+```bash
+python3 scripts/i18n_gate.py --binary "$BIN" --repo . --workdir "$OUT/i18n"
+export CJDOC_I18N_SITE="$OUT/i18n/multi"
+export CJDOC_I18N_COMPOSED_SITE="$OUT/i18n/composed"
+export CJDOC_I18N_SCREENSHOTS="$OUT/i18n-screenshots"
+node tests/browser/node_modules/@playwright/test/cli.js test \
+  --config tests/browser/i18n.config.mjs --retries=0
+```
+
+守卫源码副本不得放入 `node_modules`；需要保持输入冻结时，将受跟踪的 canonical browser harness
+复制到任务外置 runtime、核对复制前后摘要，再在那里安装锁定依赖并运行同一配置。产物和日志仍放在任务目录。
+
 ## 验证层级
 
 不要把较低层级的通过当成更高层证据：

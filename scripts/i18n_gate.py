@@ -31,13 +31,21 @@ class VersionRoutes(HTMLParser):
     def __init__(self, text: str) -> None:
         super().__init__()
         self.maps: list[dict] = []
+        self.links: list[dict] = []
         self.feed(text)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        value = dict(attrs).get("data-cjdoc-version-routes")
-        if value:
-            self.maps.append(json.loads(value))
-
+        values = dict(attrs)
+        routes = values.get("data-cjdoc-version-routes")
+        if routes:
+            parsed = json.loads(routes)
+            self.maps.append(parsed)
+        if tag == "a" and "data-cjdoc-version-link" in values:
+            self.links.append({
+                "label": values.get("data-cjdoc-version-label"),
+                "state": values.get("data-cjdoc-version-state"),
+                "routes": json.loads(routes or "{}"),
+            })
 
 def artifacts(root: Path) -> dict[str, str]:
     return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -128,7 +136,9 @@ def check_page_route_identities(author: dict, manifest: dict, work: Path, run) -
     run("identity-compose", ["versions", "compose", "--version", "v1=" + str(outputs[0]),
         "--version", "v2=" + str(outputs[1]), "--latest", "v2", "--output", str(composed)])
     for language in languages:
-        for name, target_name, missing in (("delimiter", "renamed", True), ("topic", "topic", False)):
+        for name, target_name, expected_state, missing_section in (
+                ("delimiter", "renamed", "missing-section", True),
+                ("topic", "topic", "exact", False)):
             page = composed / "v1/html" / language / "concepts/guides" / f"identity-{name}.html"
             expected = composed / "v2/html" / language / "concepts/guides" / f"identity-{target_name}.html"
             source_href = "html/" + language + f"/concepts/guides/identity-{name}.html"
@@ -141,18 +151,19 @@ def check_page_route_identities(author: dict, manifest: dict, work: Path, run) -
             for mapping in VersionRoutes(page.read_text()).maps:
                 if anchor not in mapping:
                     continue
-                href, fallback = mapping[anchor]
+                href, state = mapping[anchor]
                 url = urlsplit(href)
                 target = (page.parent / unquote(url.path)).resolve()
                 if target.is_relative_to((composed / "v2").resolve()):
-                    targets.append((target, unquote(url.fragment), fallback))
+                    targets.append((target, unquote(url.fragment), state))
             assert len(targets) == 1, (name, language, targets)
-            target, fragment, fallback = targets[0]
-            assert target == expected.resolve() and fallback is missing
+            target, fragment, state = targets[0]
+            assert target == expected.resolve() and state == expected_state
             assert target.is_file()
-            if missing:
+            if missing_section:
                 assert not fragment
             else:
+                assert fragment == anchor
                 assert fragment in HtmlIds(target.read_text()).ids
 
 
@@ -184,6 +195,11 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
             configuration.write(f'\n[[docs.pages]]\nid = "reference"\nlanguage = "{language}"\n' +
                                 f'source = "docs/{language}/reference.md"\nroute = "concepts/guides/reference.html"\n' +
                                 f'[docs.pages.sections]\ndetails = "{heading.lower()}"\n')
+    legacy_page_config = ('\n[[docs.pages]]\nid = "legacy"\nlanguage = "en"\n' +
+                          'source = "docs/en/legacy.md"\nroute = "concepts/guides/legacy.html"\n')
+    (project / "docs/en/legacy.md").write_text("# Legacy\n\nThis page exists only in version one.\n")
+    with (project / "cjdoc.toml").open("a") as configuration:
+        configuration.write(legacy_page_config)
     formats = ["--format", "html", "--format", "json", "--format", "markdown",
                "--format", "api-surface", "--format", "coverage"]
     common = ["generate", "--project", str(project), "--lint-profile", "off", *formats]
@@ -356,9 +372,34 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     assert {v["id"] for v in versions["versions"]} == {"v1", "v2"}
     english_member = next(item for item in search["en"]["entries"]
                           if item["name"] == "increment" and item["parameterTypes"] == ["String"])
-    page = composed / "v1/html/en" / english_member["href"]
-    assert "symbol unavailable" in page.read_text(), "removed overload must have explicit fallback"
+    english_integral = next(item for item in search["en"]["entries"]
+                            if item["name"] == "increment" and item["parameterTypes"] == ["Int64"])
+    removed_page = composed / "v1/html/en" / english_member["href"]
+    removed_links = VersionRoutes(removed_page.read_text()).links
+    removed = [link for link in removed_links if link["label"] == "v2"]
+    assert len(removed) == 1 and removed[0]["state"] == "missing-symbol"
+    assert "symbol unavailable" in removed_page.read_text(), "removed overload must have explicit fallback"
+    retained_page = composed / "v1/html/en" / english_integral["href"]
+    retained_links = [link for link in VersionRoutes(retained_page.read_text()).links
+                      if link["label"] == "v2"]
+    assert len(retained_links) == 1 and retained_links[0]["state"] == "exact"
+
+    page_links = lambda path: VersionRoutes(path.read_text()).links
+    missing_language_page = composed / "v1/html/zh-CN/concepts/guides/start.html"
+    language_links = [link for link in page_links(missing_language_page) if link["label"] == "v2"]
+    assert len(language_links) == 1 and language_links[0]["state"] == "missing-language"
     reference = composed / "v1/html/zh-CN/concepts/guides/reference.html"
+    reference_link = next(link for link in page_links(reference) if link["label"] == "v2")
+    reference_section = next(route for route in manifest["routes"]
+                             if route["language"] == "zh-CN" and route["sectionId"] == "details"
+                             and urlsplit(route["href"]).path == "html/zh-CN/concepts/guides/reference.html")
+    section_target = reference_link["routes"].get(unquote(urlsplit(reference_section["href"]).fragment))
+    assert section_target and section_target[1] == "missing-section"
+    assert section_target[0].endswith("v2/html/en/concepts/guides/reference.html")
+    legacy = composed / "v1/html/en/concepts/guides/legacy.html"
+    legacy_links = [link for link in page_links(legacy) if link["label"] == "v2"]
+    assert len(legacy_links) == 1 and legacy_links[0]["state"] == "missing-page"
+
     maps = VersionRoutes(reference.read_text()).maps
     assert maps
     targets = [target[0] for mapping in maps for target in mapping.values() if "/v2/" in target[0]]
@@ -367,6 +408,9 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     for document in composed.rglob("*.html"):
         for routes in VersionRoutes(document.read_text()).maps:
             assert list(routes) == sorted(routes), "version section routes must be serialized in sorted order"
+            assert all(len(target) == 2 and target[1] in {
+                "exact", "missing-symbol", "missing-language", "missing-section", "missing-page"
+            } for target in routes.values()), "version route must carry a serialized state"
             if len(routes) > 1:
                 mapped += 1
     assert mapped > 0, "determinism regression needs a real multi-anchor selector"

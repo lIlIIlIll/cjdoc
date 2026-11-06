@@ -20,7 +20,8 @@ from unittest.mock import patch
 from reader_benchmark import file_digest, run, scrub, verify_corpus
 from reader_compare import (EvidenceError, check_font_usage, check_native_ir, check_search_transition,
                             check_visuals, compare_browser, p95)
-from reader_contract_review import copy_sources
+from reader_contract_review import (GUIDE_TASKS, copy_sources, extract_guide_programs,
+                                    validate_guide_result)
 from reader_corpus import digest, generate_corpus
 from reader_process import measured_process
 from reader_aria_transition import check_aria_pair, register_aria_transition, validate_aria_registration
@@ -474,6 +475,9 @@ class EvidenceIntegrityTests(unittest.TestCase):
     def test_contract_inventory_identifies_copied_bytes_during_original_edits(self):
         paths = ("examples/pocketkit/demo-v2/cjpm.toml",
                  "examples/pocketkit/demo-v2/src/value.cj",
+                 "examples/pocketkit/demo-v2/cjdoc.toml",
+                 "examples/pocketkit/demo-v2/docs/guide.md",
+                 "examples/pocketkit/demo-v2/docs/en/guide.md",
                  "examples/pocketkit/contract_review.cj")
         for relative in paths:
             with self.subTest(source=relative), tempfile.TemporaryDirectory() as directory:
@@ -485,6 +489,11 @@ class EvidenceIntegrityTests(unittest.TestCase):
                     (project / "cjpm.toml").write_text('[package]\nname = "pocketkit"\n', encoding="utf-8")
                     (project / "src/value.cj").write_text(
                         "package pocketkit\npublic func value(): Int64 { 7 }\n", encoding="utf-8")
+                project = repo / "examples/pocketkit/demo-v2"
+                for guide_input in ("cjdoc.toml", "docs/guide.md", "docs/en/guide.md"):
+                    path = project / guide_input
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("# copied caller input\n", encoding="utf-8")
                 consumer = repo / "examples/pocketkit/contract_review.cj"
                 consumer.write_text("package contract_probe\nmain(): Int64 { 0 }\n", encoding="utf-8")
                 original = repo / relative
@@ -504,6 +513,62 @@ class EvidenceIntegrityTests(unittest.TestCase):
                 recorded = next(row["sha256"] for row in inventory if row["path"] == relative)
                 self.assertEqual(copied.read_bytes(), original_bytes)
                 self.assertEqual(recorded, digest(original_bytes))
+
+    def test_guide_parser_preserves_complete_localized_fence_bytes(self):
+        manifest = ('[package]\nname = "guide_caller"\noutput-type = "executable"\n'
+                    '[dependencies]\npocketkit = { path = "../demo-v2", output-type = "static" }\n')
+        sections = {section: "任务 " + section for section in ("caller-setup", *GUIDE_TASKS)}
+        programs = {section: f'package guide_caller\n// 文本 {section}\nmain() {{ println("PASS guide-{section}") }}\n'
+                    for section in GUIDE_TASKS}
+        text = ("# Caller\n\n## 任务 caller-setup\n\n```toml\n" + manifest +
+                '```\n\n```sh\ncjpm run --build-args "--jobs 1"\n```\n')
+        for section, program in programs.items():
+            text += "\n## " + sections[section] + "\n\n```cangjie\n" + program + "```\n"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "guide.md"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            actual = extract_guide_programs(path, sections)
+        self.assertEqual(actual.manifest, manifest.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(actual.programs, {section: code.replace("\n", "\r\n").encode("utf-8")
+                                         for section, code in programs.items()})
+        self.assertEqual(actual.command, ["cjpm", "run", "--build-args", "--jobs 1"])
+
+    def test_guide_parser_rejects_incomplete_or_ambiguous_programs(self):
+        repo = Path(__file__).resolve().parents[1]
+        project = repo / "examples/pocketkit/demo-v2"
+        config = tomllib.loads((project / "cjdoc.toml").read_text(encoding="utf-8"))
+        page = next(page for page in config["docs"]["pages"]
+                    if page.get("id") == "first-catalogue" and page.get("language") == "en")
+        text = (project / page["source"]).read_text(encoding="utf-8")
+        variants = {
+            "missing program": text.replace("```cangjie", "```text", 1),
+            "duplicate program": text + '\n```cangjie\nmain() {}\n```\n',
+            "unclosed program": text + '\n```cangjie\nmain() {}\n',
+            "missing manifest": text.replace("```toml", "```text", 1),
+            "wrong command": text.replace('--jobs 1', '--jobs 2', 1),
+            "unknown section": text.replace("## Store and read text", "## Unmapped task", 1),
+            "duplicate section": text + "\n## Store and read text\n",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "guide.md"
+            for reason, altered in variants.items():
+                with self.subTest(reason=reason):
+                    path.write_text(altered, encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        extract_guide_programs(path, page["sections"])
+
+    def test_guide_evidence_rejects_wrong_extra_or_failed_success_output(self):
+        completed = {"exitCode": 0, "timedOut": False}
+        marker = "PASS guide-store-read"
+        validate_guide_result(completed, "cjpm build success\n" + marker + "\n", "", "store-read")
+        for stdout, stderr in (("", ""), ("PASS guide-index-errors\n", ""),
+                               (marker + "\n" + marker, ""), (marker, "PASS unexpected"),
+                               ("prefix " + marker, ""), (marker + " extra", "")):
+            with self.subTest(stdout=stdout, stderr=stderr), self.assertRaises(ValueError):
+                validate_guide_result(completed, stdout, stderr, "store-read")
+        for result in ({"exitCode": 1, "timedOut": False}, {"exitCode": 0, "timedOut": True}):
+            with self.subTest(result=result), self.assertRaises(ValueError):
+                validate_guide_result(result, marker, "", "store-read")
 
     def test_existing_corpus_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:

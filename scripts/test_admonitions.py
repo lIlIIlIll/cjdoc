@@ -108,18 +108,19 @@ def validate_products(output: Path, locale: str) -> tuple[Path, dict, dict, Path
     assert owner_html.index("admonition-risk-danger") < owner_html.index("admonition-risk-warning")
     member_html = artifact_from_index(html_root, member["href"]).read_text(encoding="utf-8")
     member_asides = AdmonitionHtml(member_html).asides
-    assert [aside.get("data-admonition-level") for aside in member_asides] == ["warning", "danger"]
+    # Owner context can contribute additional admonitions without replacing the member's tags.
+    assert {"warning", "danger"} <= {aside.get("data-admonition-level") for aside in member_asides}
+    expected = {"note": "Note", "warning": "Warning", "danger": "Danger"} if locale == "en" else {
+        "note": "注意", "warning": "警告", "danger": "危险"}
     for aside in member_asides:
         level = aside["data-admonition-level"]
-        expected = {"warning": "Warning", "danger": "Danger"} if locale == "en" else {
-            "warning": "警告", "danger": "危险"}
         assert aside.get("aria-label") == expected[level]
     owner_notes = [aside for aside in AdmonitionHtml(owner_html).asides
                    if aside.get("data-admonition-level") == "note"]
     assert len(owner_notes) == 1 and owner_notes[0].get("aria-label") == (
         "Note" if locale == "en" else "注意")
     assert 'role="alert"' not in member_html
-    assert 'aria-live' not in member_html.split('<aside class="admonition', 1)[1].split('</aside>', 1)[0]
+    assert all("aria-live" not in aside for aside in member_asides)
 
     guide_html_path = html_root / "concepts/guides/admonitions.html"
     guide_html = guide_html_path.read_text(encoding="utf-8")

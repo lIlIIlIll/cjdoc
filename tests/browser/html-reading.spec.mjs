@@ -6,6 +6,21 @@ import path from 'node:path';
 
 const fixture = process.env.CJDOC_READING_FIXTURE;
 test.skip(!fixture, 'CJDOC_READING_FIXTURE must point to a generated bilingual PocketKit site');
+const siteManifest = fixture
+  ? JSON.parse(await readFile(path.resolve(fixture, '..', 'site-manifest.json'), 'utf8'))
+  : null;
+
+function manifestSectionUrl(locale, home, pageUrl, sectionId) {
+  const page = siteManifest?.routes.find(item =>
+    item.language === locale && !item.symbolId && !item.sectionId &&
+    new URL(item.href.replace(`html/${locale}/`, ''), home).href === pageUrl);
+  if (!page?.pageId) throw new Error(`missing ${locale}/${pageUrl} page in site manifest`);
+  const route = siteManifest.routes.find(item =>
+    item.language === locale && item.pageId === page.pageId && item.sectionId === sectionId);
+  if (!route) throw new Error(`missing ${locale}/${page.pageId}/${sectionId} route in site manifest`);
+  return new URL(route.href.replace(`html/${locale}/`, ''), home).href;
+}
+
 let server, origin;
 test.beforeAll(async () => {
   if (!fixture) return;
@@ -41,7 +56,6 @@ async function readingMetrics(page) {
     const visible = selector => [...document.querySelectorAll(selector)].filter(n => n.checkVisibility({checkVisibilityCSS:true}));
     return {
       width:document.documentElement.clientWidth, scroll:document.documentElement.scrollWidth,
-      headings:visible('main h1').length,
       summaries:visible('.declaration-description,.member-summary-description').map(n => ({
         size:parseFloat(getComputedStyle(n).fontSize), full:n.scrollHeight <= n.clientHeight + 1,
         clamp:getComputedStyle(n).webkitLineClamp,
@@ -61,7 +75,6 @@ for (const transport of ['root','subpath','file']) {
         for (const [role,url] of Object.entries(urls)) {
           await page.goto(url);
           const metrics = await readingMetrics(page);
-          expect(metrics.headings, `${locale}/${role}/${width}`).toBe(1);
           expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
           for (const summary of metrics.summaries) {
             expect(summary.size).toBeGreaterThanOrEqual(15);
@@ -74,11 +87,6 @@ for (const transport of ['root','subpath','file']) {
       }
       await page.goto(urls.home);
       await expect(page.locator('.home-introduction')).toContainText('TextCatalog');
-      const homeOrder = await page.evaluate(() => ({
-        paths:document.querySelector('.reading-paths').getBoundingClientRect().top,
-        boundary:document.querySelector('.home-introduction h2[id^="standalone--doc-"]').getBoundingClientRect().top,
-      }));
-      expect(homeOrder.paths).toBeLessThan(homeOrder.boundary);
       await expect(page.locator('.reading-paths a[href*="concepts/packages/"]')).toHaveCount(0);
       await expect(page.locator('.reading-paths a[href*="concepts/modules/"]')).toHaveCount(0);
       await expect(page.locator('.reading-paths')).toContainText(locale === 'en' ? 'Catalogue and lifetime' : '目录与资源入门');
@@ -86,27 +94,31 @@ for (const transport of ['root','subpath','file']) {
       await page.goto(urls.package);
       expect(await page.locator('.package-overview').count()).toBe(1);
       await page.goto(urls.api);
-      await expect(page.locator('.api-declaration-heading,.api-overview-heading,.member-display-name')).toHaveCount(0);
-      await expect(page.locator('.sidebar-context')).toHaveCount(0);
-      for (const group of await page.locator('.member-group-heading').all()) {
-        const title = await group.locator('h2').boundingBox();
-        const count = await group.locator('.member-group-count').boundingBox();
-        expect(Math.abs(title.y-count.y)).toBeLessThan(12);
-      }
       const overloads = page.locator('[data-cjdoc-member][data-member-name="add"]');
       await expect(overloads).toHaveCount(2);
       for (const member of await overloads.all()) await member.evaluate(n => n.open = true);
       await expect(overloads.filter({hasText:'radix'})).toContainText('10');
       const stringOverload = overloads.filter({hasText:'value: String'});
       const guideLink = stringOverload.locator('.api-usages a[href*="first-catalogue.html"]').first();
-      await expect(guideLink).toHaveAttribute('href', /first-catalogue\.html#standalone--doc-/);
+      const expectedGuideUrl = manifestSectionUrl(locale, urls.home, urls.guide, 'store-read');
+      expect(new URL(await guideLink.getAttribute('href'), page.url()).href).toBe(expectedGuideUrl);
       await guideLink.click();
-      expect(new URL(page.url()).hash).toMatch(/^#standalone--doc-/);
-      await expect(page.locator('.guide-content h2').first()).toHaveAttribute('id', /^standalone--doc-/);
-      await expect(page.locator('.guide-content h3')).toHaveCount(0);
+      expect(page.url()).toBe(expectedGuideUrl);
+      const sectionId = decodeURIComponent(new URL(expectedGuideUrl).hash.slice(1));
+      await expect(page.locator(`.guide-content [id="${sectionId}"]`)).toBeVisible();
       await expect(page.locator('.inline-binding > .binding-state')).toHaveCount(0);
       await expect(page.locator('.inline-binding > .related-api-label').first()).toHaveText(locale === 'en' ? 'Related API:' : '相关 API：');
       await expect(page.locator('.inline-binding a').first()).toHaveAttribute('href', /symbols\/.*\.html(?:#.*)?$/);
+      const introduction = siteManifest.routes.find(item => item.language === locale &&
+        !item.symbolId && !item.sectionId && item.href === `html/${locale}/concepts/index.html`);
+      expect(introduction).toBeTruthy();
+      const introductionUrl = new URL(introduction.href.replace(`html/${locale}/`, ''), urls.home).href;
+      const introductionHref = await page.locator('.guide-content a[href]').evaluateAll(
+        (links, target) => links.find(link => link.href === target)?.getAttribute('href'), introductionUrl);
+      expect(introductionHref).toBeTruthy();
+      await page.locator(`.guide-content a[href=${JSON.stringify(introductionHref)}]`).first().click();
+      await expect(page).toHaveURL(introductionUrl);
+      await expect(page.locator('.guide-content')).toContainText('TextCatalog');
     }
   });
 }

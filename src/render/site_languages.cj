@@ -24,6 +24,30 @@ private func replaceLanguageLabel(content: String, locale: String, switcher: Str
     content.replace(placeholder, switcher)
 }
 
+private func languageHomeNotice(locale: String): String {
+    label(locale, "This page is unavailable; open the language home", "该语言无此页面，打开语言首页")
+}
+
+private func appendLanguageOption(out: RenderTextBuffer, locale: String, target: String,
+    href: String, routes: String, current!: Bool, homeFallback!: Bool): Unit {
+    let name = if (target == "zh-CN") { "中文" } else { "English" }
+    let notice = languageHomeNotice(locale)
+    out.append("<a href=\"" + escapeHtml(href) + "\" hreflang=\"" + target + "\" lang=\"" + target + "\"")
+    out.append(" data-language-routes=\"" + escapeHtml(routes) + "\"")
+    if (current) { out.append(" aria-current=\"page\"") }
+    if (homeFallback) {
+        out.append(" data-switch-state=\"language-home\" data-position-state=\"language-home\" title=\"" +
+            escapeHtml(notice) + "\"")
+    }
+    out.append("><span class=\"language-name\" lang=\"" + target + "\">" + name +
+        "</span><span class=\"language-position-notice\" lang=\"" + locale + "\"")
+    if (!homeFallback) { out.append(" hidden") }
+    out.append(">")
+    if (homeFallback) { out.append(escapeHtml(notice)) }
+    out.append("</span></a>")
+}
+
+
 
 internal func renderAllDocumentationLanguages(documentation: DocumentationSet, formats: Array<String>,
     version: ?String, agentFull!: Bool = false,
@@ -70,11 +94,9 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
                     let same = routes.get(target + ":" + identity)
                     let destination = same.getOrDefault({ => "index.html" })
                     let href = pageRootPrefix(route) + "../" + target + "/" + destination
-                    nav.append("<a href=\"" + escapeHtml(href) + "\" hreflang=\"" + target + "\" lang=\"" + target + "\"")
-                    nav.append(" data-language-routes=\"" + escapeHtml(languagePositionRoutes(publishedRoutes, language, route, target)) + "\"")
-                    if (target == language) { nav.append(" aria-current=\"page\"") }
-                    if (same.isNone()) { nav.append(" data-switch-state=\"language-home\" title=\"" + label(language, "This page is unavailable; open the language home", "该语言无此页面，打开语言首页") + "\"") }
-                    nav.append(">" + if (target == "zh-CN") { "中文" } else { "English" } + "</a>")
+                    appendLanguageOption(nav, language, target, href,
+                        languagePositionRoutes(publishedRoutes, language, route, target),
+                        current: target == language, homeFallback: same.isNone())
                 }
                 nav.append("</nav></details>")
                 content = replaceLanguageLabel(content, language, nav.toString())
@@ -137,13 +159,12 @@ public func finalizeDocumentationLanguageArtifacts(documentation: DocumentationS
                 let nav = RenderTextBuffer()
                 appendLanguageSwitcherStart(nav, language)
                 for (target in languages) {
-                    if (let Some(destination) <- routes.get(target + ":" + identity)) {
-                        let href = pageRootPrefix(route) + "../" + target + "/" + destination
-                        nav.append("<a href=\"" + escapeHtml(href) + "\" lang=\"" + target + "\" hreflang=\"" + target + "\"")
-                        nav.append(" data-language-routes=\"" + escapeHtml(languagePositionRoutes(published, language, route, target)) + "\"")
-                        if (target == language) { nav.append(" aria-current=\"page\"") }
-                        nav.append(">" + if (target == "zh-CN") { "中文" } else { "English" } + "</a>")
-                    }
+                    let same = routes.get(target + ":" + identity)
+                    let destination = same.getOrDefault({ => "index.html" })
+                    let href = pageRootPrefix(route) + "../" + target + "/" + destination
+                    appendLanguageOption(nav, language, target, href,
+                        languagePositionRoutes(published, language, route, target),
+                        current: target == language, homeFallback: same.isNone())
                 }
                 nav.append("</nav></details>")
                 content = replaceLanguageLabel(content, language, nav.toString())

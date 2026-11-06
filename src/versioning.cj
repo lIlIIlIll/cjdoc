@@ -187,15 +187,59 @@ internal class VersionComposeSpec {
     }
 }
 
+private func versionLogicalIdentityField(value: ?String): String {
+    match (value) {
+        case Some(text) => "S${text.size}:${text};"
+        case None => "N;"
+    }
+}
+
+internal class VersionLogicalIdentity {
+    let language: String
+    let pageId: ?String
+    let symbolId: ?String
+    let sectionId: ?String
+    private let encodedKey: String
+
+    init(language: String, pageId!: ?String = None, symbolId!: ?String = None,
+        sectionId!: ?String = None) {
+        this.language = language
+        this.pageId = pageId
+        this.symbolId = symbolId
+        this.sectionId = sectionId
+        this.encodedKey = versionLogicalIdentityField(Some(language)) +
+            versionLogicalIdentityField(pageId) + versionLogicalIdentityField(symbolId) +
+            versionLogicalIdentityField(sectionId)
+    }
+
+    func key(): String { encodedKey }
+
+    func withLanguage(value: String): VersionLogicalIdentity {
+        VersionLogicalIdentity(value, pageId: pageId, symbolId: symbolId, sectionId: sectionId)
+    }
+
+    func withoutSection(): VersionLogicalIdentity {
+        VersionLogicalIdentity(language, pageId: pageId, symbolId: symbolId)
+    }
+
+    func pageIdentity(): VersionLogicalIdentity {
+        VersionLogicalIdentity(language, pageId: pageId)
+    }
+
+    func canonicalSymbolIdentity(): VersionLogicalIdentity {
+        VersionLogicalIdentity(language, symbolId: symbolId)
+    }
+}
+
 internal class VersionSite {
     let spec: VersionComposeSpec
     let files = ArrayList<VersionSourceFile>()
     let paths = HashSet<String>()
     let symbols: VersionSymbolIndex
     let logicalRoutes = HashMap<String, String>()
-    let logicalIdsByHref = HashMap<String, String>()
-    let sectionIdsByPage = HashMap<String, HashMap<String, String>>()
-    let parentsByIdentity = HashMap<String, String>()
+    let logicalIdentityByHref = HashMap<String, VersionLogicalIdentity>()
+    let sectionIdsByPage = HashMap<String, HashMap<String, VersionLogicalIdentity>>()
+    let parentsByIdentity = HashMap<String, VersionLogicalIdentity>()
     var defaultLanguage = ""
 
     init(spec: VersionComposeSpec, symbols: VersionSymbolIndex) {
@@ -554,28 +598,34 @@ private func versionRelativeHref(fromPath: String, toPath: String): String {
     out.toString()
 }
 
-internal func versionSymbolTarget(current: VersionSite, id: String, target: VersionSite): (String, Bool) {
+internal func versionSymbolTarget(current: VersionSite, id: String,
+    target: VersionSite): VersionNavigationTarget {
     match (target.symbols.hrefById.get(id)) {
-        case Some(href) => (href, false)
+        case Some(href) => VersionNavigationTarget(href, VersionNavigationState.Exact)
         case None =>
             match (current.symbols.ownerById.get(id)) {
                 case Some(owner) => match (target.symbols.hrefById.get(owner)) {
-                    case Some(href) => return (href, true)
+                    case Some(href) => return VersionNavigationTarget(href, VersionNavigationState.MissingSymbol)
                     case None => ()
                 }
                 case None => ()
             }
-            ("index.html", true)
+            VersionNavigationTarget("index.html", VersionNavigationState.MissingSymbol)
     }
 }
 
-internal func versionTargetRoute(current: VersionSite, relative: String, target: VersionSite): (String, Bool) {
-    if (let Some(id) <- current.logicalIdsByHref.get(relative)) {
-        return versionLanguageTarget(current, id, target)
+internal func versionTargetRoute(current: VersionSite, relative: String,
+    target: VersionSite): VersionNavigationTarget {
+    if (let Some(identity) <- current.logicalIdentityByHref.get(relative)) {
+        return versionLanguageTarget(current, identity, target)
     }
     match (current.symbols.idByHref.get(relative)) {
         case Some(id) => versionSymbolTarget(current, id, target)
-        case None => if (target.hasPath(relative)) { (relative, false) } else { ("index.html", false) }
+        case None => if (target.hasPath(relative)) {
+            VersionNavigationTarget(relative, VersionNavigationState.Exact)
+        } else {
+            VersionNavigationTarget("index.html", VersionNavigationState.MissingPage)
+        }
     }
 }
 
@@ -584,28 +634,28 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
     chinese!: Bool = false): String {
     let out = VersionTextBuffer(limit)
     let versionLabel = if (chinese) { "文档版本" } else { "Documentation version" }
-    let missingLabel = if (chinese) { "（此版本没有该符号）" } else { " (symbol unavailable)" }
     out.append("<nav class=\"cjdoc-version-selector\" aria-label=\"${versionLabel}\"><span>${versionLabel}</span>")
     for (target in sites) {
-        let (route, unavailable) = versionTargetRoute(current, relative, target)
-        let targetPath = versionOutputPath(target, route)
-        let href = versionRelativeHref(currentOutputPath, targetPath)
-        let currentClass = if (target.spec.id == current.spec.id) { " aria-current=\"page\"" } else { "" }
-        let suffix = if (unavailable && target.spec.id != current.spec.id) {
-            missingLabel
+        let route = versionTargetRoute(current, relative, target)
+        let href = versionRelativeHref(currentOutputPath, versionOutputPath(target, route.href))
+        let state = versionNavigationStateName(route.state)
+        let suffix = if (target.spec.id != current.spec.id) {
+            versionNavigationMessage(route.state, chinese)
         } else {
             ""
         }
+        let currentClass = if (target.spec.id == current.spec.id) { " aria-current=\"page\"" } else { "" }
         var routes = VersionTextBuffer(limit)
         routes.append("{")
         var first = true
         match (current.symbols.idByHref.get(relative)) {
             case Some(ownerId) => match (current.symbols.membersByOwner.get(ownerId)) {
                 case Some(ids) => for (id in ids) {
-                    let (memberRoute, missing) = versionSymbolTarget(current, id, target)
-                    let memberHref = versionRelativeHref(currentOutputPath, versionOutputPath(target, memberRoute))
+                    let memberRoute = versionSymbolTarget(current, id, target)
+                    let memberHref = versionRelativeHref(currentOutputPath,
+                        versionOutputPath(target, memberRoute.href))
                     if (!first) { routes.append(",") }; first = false
-                    routes.append("${versionJsonEscape(versionSymbolAnchor(id))}:[${versionJsonEscape(memberHref)},${missing}]")
+                    routes.append("${versionJsonEscape(versionSymbolAnchor(id))}:[${versionJsonEscape(memberHref)},${versionJsonEscape(versionNavigationStateName(memberRoute.state))}]")
                 }
                 case None => ()
             }
@@ -620,14 +670,14 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
             for ((anchor, _) in sections) { anchors.add(anchor) }
             sort(anchors, lessThan: { left, right => left < right }, stable: true)
             for (anchor in anchors) {
-                let id = sections[anchor]
-                let (sectionRoute, missing) = versionLanguageTarget(current, id, target)
+                let identity = sections[anchor]
+                let sectionRoute = versionLanguageTarget(current, identity, target)
                 if (!firstSection) { routes.append(",") }; firstSection = false
-                routes.append("${versionJsonEscape(anchor)}:[${versionJsonEscape(versionRelativeHref(currentOutputPath, versionOutputPath(target, sectionRoute)))},${missing}]")
+                routes.append("${versionJsonEscape(anchor)}:[${versionJsonEscape(versionRelativeHref(currentOutputPath, versionOutputPath(target, sectionRoute.href)))},${versionJsonEscape(versionNavigationStateName(sectionRoute.state))}]")
             }
             routes.append("}")
         }
-        out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-missing=\"${public_render.escapeStandaloneHtml(missingLabel)}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
+        out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-state=\"${state}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
         match (target.spec.apiDiffSource) {
             case Some(_) =>
                 let diffPath = versionOutputPath(target, "api-diff.json")
@@ -640,6 +690,15 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
     out.append("</nav>\n")
     out.append("<script src=\"${public_render.escapeStandaloneHtml(versionRelativeHref(currentOutputPath, "version-navigation.js"))}\" defer></script>\n")
     out.toString()
+}
+private func versionNavigationStateName(state: VersionNavigationState): String {
+    match (state) {
+        case VersionNavigationState.Exact => "exact"
+        case VersionNavigationState.MissingSymbol => "missing-symbol"
+        case VersionNavigationState.MissingLanguage => "missing-language"
+        case VersionNavigationState.MissingSection => "missing-section"
+        case VersionNavigationState.MissingPage => "missing-page"
+    }
 }
 
 private func injectVersionSelector(html: String, selector: String): String {
@@ -789,8 +848,10 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
             }
         }
     }
-    budget.reserveArtifact("version-navigation.js", VERSION_NAVIGATION_SCRIPT.size)
-    artifacts.add(public_render.RenderArtifact("version-navigation.js", "text/javascript; charset=utf-8", VERSION_NAVIGATION_SCRIPT))
+    let navigationScript = VERSION_NAVIGATION_SCRIPT +
+        "({\"en\":${versionNavigationMessages(false)},\"zh-CN\":${versionNavigationMessages(true)}});\n"
+    budget.reserveArtifact("version-navigation.js", navigationScript.size)
+    artifacts.add(public_render.RenderArtifact("version-navigation.js", "text/javascript; charset=utf-8", navigationScript))
     let manifest = versionManifest(sites, latest, latestPolicy)
     budget.reserveArtifact("versions.json", manifest.size)
     artifacts.add(public_render.RenderArtifact("versions.json", "application/json", manifest))
@@ -842,4 +903,26 @@ internal func runVersionsCompose(options: NewCliOptions): Int64 {
         writeOwnedArtifactsWithLockHeld(prepared, artifacts, lock, forceOwned: options.forceOwned)
         0
     }, { => println("composed ${sites.size} documentation versions into ${output}") })
+}
+private func versionNavigationMessage(state: VersionNavigationState, chinese: Bool): String {
+    match (state) {
+        case VersionNavigationState.Exact => ""
+        case VersionNavigationState.MissingSymbol =>
+            if (chinese) { "（此版本没有该符号）" } else { " (symbol unavailable in this version)" }
+        case VersionNavigationState.MissingLanguage =>
+            if (chinese) { "（此版本没有该语言，已打开默认语言）" } else { " (language unavailable; opening the default language)" }
+        case VersionNavigationState.MissingSection =>
+            if (chinese) { "（此版本没有对应章节或阅读位置，已打开可用位置）" } else { " (section or reading position unavailable; opening an available position)" }
+        case VersionNavigationState.MissingPage =>
+            if (chinese) { "（此版本没有该页面，已返回版本首页）" } else { " (page unavailable in this version; opening its home page)" }
+    }
+}
+
+private func versionNavigationMessages(chinese: Bool): String {
+    let exact = versionJsonEscape(versionNavigationMessage(VersionNavigationState.Exact, chinese))
+    let symbol = versionJsonEscape(versionNavigationMessage(VersionNavigationState.MissingSymbol, chinese))
+    let language = versionJsonEscape(versionNavigationMessage(VersionNavigationState.MissingLanguage, chinese))
+    let section = versionJsonEscape(versionNavigationMessage(VersionNavigationState.MissingSection, chinese))
+    let page = versionJsonEscape(versionNavigationMessage(VersionNavigationState.MissingPage, chinese))
+    "{\"exact\":${exact},\"missing-symbol\":${symbol},\"missing-language\":${language},\"missing-section\":${section},\"missing-page\":${page}}"
 }

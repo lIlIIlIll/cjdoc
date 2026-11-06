@@ -1,8 +1,8 @@
 # API 阅读体验审计修复
 
-本轮修复针对 `9923d2732d004622d3db79ae26cacbb03d1ce98c` 演示站审计中的 33 项问题。
+前次 33 项修复针对 `9923d2732d004622d3db79ae26cacbb03d1ce98c` 演示站审计。
 范围包括原生 HTML 阅读界面、版本组合、展示首页、报告阅读和示例指南。
-下表描述实现与验收重点；实际测试结果以本次提交的测试记录和 CI 为准，不以这份清单代替运行证据。
+下列 F/U/C 编号保留该次审计的历史背景；当前读者契约与验证入口见文末，不以历史结果代替本次提交的运行证据。
 
 ## 功能与导航
 
@@ -60,10 +60,50 @@
 - C05 选择明确解释教学缺项，而非用推测出的说明填满所有字段；C07 只标注已知的示例包版本。
 - 语言界面本地化不自动翻译或改写作者 API 契约。代码着色不参与声明解析、语义绑定或类型判断。
 
+## 文档读者契约（当前实现）
+
+| 问题 | 当前行为与边界 | 永久回归入口 |
+| --- | --- | --- |
+| 独立成员页缺少 owner 的使用约束 | 独立 API 页按可见的真实 owner 链显示摘要、正文与作者契约，附精确来源链接和责任边界说明。nested type 同样适用；extend 仅补充显式 resolved 且可见的目标类型。不复制 owner 示例、参数、返回值或兄弟成员，也不把任意 derived type 的契约套给继承成员。 | `html_introduction_test.cj` |
+| 参数或返回说明静默留白 | 缺项和普通作者空说明分别就地提示，保留实际类型及独立参数说明。翻译 missing/empty/conflict/fallback 仍由翻译状态呈现；Unit 没有作者返回说明时不制造模板。 | `html_members_test.cj`、`html_language_test.cj` |
+| 正文引用丢失语义状态 | 正文和 tag Markdown 的 `semantic_link` 在内容旁保留 unresolved、ambiguous、unavailable，使用 `data-reference-state`。手工导航可用不代表语义已解析；安全策略拒绝外链也不把已解析语义改成 unresolved。 | `renderer_safety_test.cj`、`dependency_navigation_render_test.cj` |
+| 版本切换混淆回退原因 | 完整显式身份配对，不按名字配对重载，不解析不透明 ID 中的分隔符。切换链接区分 exact、missing-language、missing-symbol、missing-section、missing-page；hash 往返恢复初始化时的真实 DOM href、文字和状态，保留发布层路径改写。 | `reading_navigation_test.cj`、`i18n_review_test.cj`、`version_context_members_test.cj`、`i18n.spec.mjs` |
+| 表格绑定返回指南首页 | 只接受捕获器准入的 exact sentinel，并核对原始 source/path/line、resolved 绑定和目标身份。`html_block` 与 `html_inline` 均按捕获标题树回到确切章节；代码或 literal 中的伪 marker 不参与关联。 | `conceptual_showcase_test.cj`、`html_reading_test.cj`、`html-reading.spec.mjs` |
+| 调用者指南无法独立运行 | demo-v2 的中英文指南针对 PocketKit 0.2.0 教学快照、STS 1.2.0，提供 executable 清单、相对 static dependency、工作目录、四个完整替换程序和成功标记。五个共同 section ID 连接双语阅读路径，API 使用精确 signature 绑定；v1 保留历史教学内容。 | `reader_contract_review.py`、`test_reader_benchmark.py` |
+| 语言回退只在 title 中出现且提示残留 | 语言名称仍是标签内的 toggle。缺页面的回首页说明由服务端可见输出；缺章节则提示打开同页开头。映射恢复、空 hash 和历史恢复清除过期的章节提示，但不清除页级回退说明；保留 tag/moduleId 并移除旧 snapshotId。 | `html_language_test.cj`、`i18n.spec.mjs` |
+
+这些修复保留生成器与作者内容的责任边界：没有 owner 文档或说明缺项，不等于没有使用责任。
+生成器没有增加资源 requiredness schema，也不从实现推测释放义务。
+指南中的四项是教程练习，不是全库核心任务清单；`TextReader` 的关闭责任来自原作者文档，指内存会话而非 OS 文件描述符。
+
+Owner 上下文保留完整来源身份和精确链接，但标题使用页面内入口及来源身份的 SHA-256 命名空间，
+不把当前声明和来源声明的完整十六进制身份重复放进每个标题。
+版本回退消息由同一服务端本地化函数生成，整站共享一份脚本词典；页面初始可见说明不依赖 JavaScript。
+完整发布目录仍受原有体积预算约束，不通过删减指南、出处或离线内容满足预算。
+参数和返回值的普通缺项提示直接使用已有说明容器，不为每条缺项增加包装节点；
+作者显式空 tag 及翻译状态仍分别保留，不放宽 Reader 的 DOM 增长门槛。
+发布层扩展来源 journey 按 Doc IR 的 `ownerId` 选择当前页的精确出处链接，并核对落点的原生身份；
+隐藏的移动目录链接不作为作者出处链接，不能用 `main` 下第一个同名文本链接代替。
+
 ## 验证入口
 
 `tests/showcase_contract/test_reader_ui.py` 覆盖报告筛选、指标口径、原始证据保留、当前语言任务入口、安装路径、主题共享、语言 href 同步，以及发布层报告路由与原生版本脚本的兼容性。
 `scripts/showcase_contract/browser_reading_regressions.py` 与 `scripts/test_html_search.py` 覆盖浏览器状态、键盘和阅读交互；原生 renderer/versioning 的对应测试覆盖稳定路由、别名、签名及转义。
+`scripts/reader_contract_review.py` 把两份指南、配置、清单与代码的实际复制字节绑定到回执，
+按共同 section ID 执行八个完整指南程序，并与原十三个 C/R 消费者用例分项记录。
+每个程序使用独立的完整 caller/sibling-library 目录，避免短间隔替换同一源文件时复用旧增量产物；
+成功标记校验不放宽，回执的程序路径指向该次真实编译输入。
+非零退出、超时、缺少或额外成功标记均拒绝；结束时复核原始输入没有变化。
+普通 Markdown 围栏不是 `@example` 产品语义，指南运行证据不能冒充源码 doctest 报告。
+调用该脚本前按 [build.md](build.md) 准备认证环境，并指定实际完整源码 SHA 的 `--revision` 与任务独占的 `--output`。
+
+浏览器套件需使用同次原生产物。`i18n.spec.mjs` 同时要求 `CJDOC_I18N_SITE` 指向
+`i18n_gate.py` 的 `multi` 根、`CJDOC_I18N_COMPOSED_SITE` 指向同次 `composed` 根；
+PocketKit 阅读 fixture 保留 HTML 根旁的 `site-manifest.json`，用于核对 API 回链的确切任务章节。
+两语言指南末尾的项目介绍链接也须命中同语言 manifest 中捕获的 `concepts/index.html`，
+并实际导航到可读正文；作者链接按各自 Markdown 源文件的位置解析，不能把输出目录当作源目录。
+`search.js` 的安全摘要必须从实际原生 emitted bytes 更新，继续保留严格资产 allowlist 与负例。
+
 
 ```sh
 python3 -m unittest discover -s tests/showcase_contract -v
