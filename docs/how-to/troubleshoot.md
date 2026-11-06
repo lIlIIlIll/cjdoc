@@ -39,6 +39,8 @@ cjdoc generate --project . --format html --no-cache --output target/troubleshoot
 
 若输出路径冲突，检查它是否曾被手工修改或是否含未知文件。不要手动清理所有权清单；选择新的、尚不存在的 `target/` 子目录。仅在检查过 cjdoc 管理内容并明确接受覆盖手工修改后，才用 `--force-owned`。输出与源码缓存目录不能互相嵌套；详见[管理输出与缓存](manage-outputs.md)。
 
+锁冲突与所有权冲突不同：共享同一父目录的输出根会互相串行保护。若出现 `unable to verify output lock owner process ...; refusing unsafe recovery`，即使外部已确认旧 PID 消失，生成器仍可能无法安全回收旧锁。此时换一个同父目录的 `target/` 子目录或加 `--force-owned` 都不能保证解除阻塞；保留旧状态，按[输出仍被锁定时](manage-outputs.md#输出仍被锁定时)在独立、互不重叠的父目录生成新产物。不要手工删除锁来绕过不确定状态。
+
 ## `partial` 状态、依赖或条件编译诊断
 
 `partial` 表示输入中有一部分无法确定，不是所有结果都失效。先查看诊断中的源码位置；若它指向 `@When` 条件，确认应用需要的条件值后显式传入 `--cfg NAME=VALUE`。若依赖源码未纳入，cjdoc 不会替项目下载依赖；先在项目里准备真实依赖，再按[选择输入与依赖](select-inputs.md)选择 path/cache/显式源码输入。

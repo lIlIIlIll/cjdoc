@@ -84,7 +84,19 @@ cjdoc generate --project . --format html --no-cache \
 
 ## 输出仍被锁定时
 
-同时写同一个输出根的 cjdoc 命令由父目录锁串行保护；锁持有者仍运行时，另一条命令会拒绝写入。等待前一命令退出后重试。不要通过删除锁目录或手工改写 `.cjdoc-output.json` 解决冲突；若持续报锁错误，先确认没有仍在运行的 cjdoc 进程，再看诊断中的路径。
+共享同一父目录的输出根由同一个父目录锁串行保护；即使输出根名称不同，锁持有者仍运行时也会拒绝另一条写入。正常退出后再重试。不要通过删除锁目录、改写 `owner.json` 或手工改写 `.cjdoc-output.json` 解决冲突。
+
+若诊断为 `unable to verify output lock owner process ...; refusing unsafe recovery`，生成器无法确认旧锁可安全回收，会保持拒绝。进程查询异常可能出现在旧 PID 已消失或查询本身失败时；外部确认没有 cjdoc 进程，不等于生成器已经验证可恢复。异常退出后锁可能保留，当前版本不能保证自动恢复；仅换成同一父目录下的另一个输出根也可能继续被拒绝。
+
+需要继续生成时，可以选择与旧输出、事务和缓存都不重叠的**另一个父目录**。下面要求 `RUNNER_TEMP` 仍是[安装页](../getting-started/install.md)准备的磁盘临时目录，且不在旧输出或缓存内；命令仍从项目根执行：
+
+```bash
+RECOVERY_PARENT="$(mktemp -d "$RUNNER_TEMP/cjdoc-recovery.XXXXXX")"
+cjdoc generate --project . --format html --no-cache \
+  --output "$RECOVERY_PARENT/site"
+```
+
+新入口为 `$RECOVERY_PARENT/site/html/index.html`。这只生成新的独立产物，**不修复、不接管旧输出**；保留旧锁和事务状态供维护者核对，不要把手工删锁当作受支持的恢复步骤。
 
 输出根、缓存、事务恢复及 `--force-owned` 的完整约束见[产物参考](../reference/artifacts.md)和[CLI 参考](../reference/cli.md)。
 
