@@ -83,7 +83,7 @@ internal class NewCliOptions {
 }
 internal func newUsage(): String {
     "usage:\n" +
-    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--doc-version <version>] [--stdlib-doc-version <version>] [--stdlib-doc-base-url <https-url>]\n" +
+    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--doc-version <version>] [--stdlib-doc-version <version>] [--stdlib-doc-base-url <https-url>]\n" +
     "                 [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "                 [--chir-worker <executable>]\n" +
     "                 [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
@@ -112,7 +112,7 @@ internal func newUsage(): String {
     "               [--agent-full] [--validation-report <report.json>] [--api-diff-report <report.json>]\n" +
     "  cjdoc serve [--project <dir>] [--port <port>] [--open] [--agent-full] [--max-doc-ir-mib 1..64]\n" +
     "  cjdoc versions compose --version ID=PATH... [--label ID=TEXT] [--channel ID=TEXT] [--status ID=TEXT]\n" +
-    "                        [--base-path ID=PATH] [--release ID=URL] [--diff ID=PATH] [--latest ID] --output <dir> [--force-owned]\n" +
+    "                        [--base-path ID=PATH] [--release ID=TEXT] [--diff ID=PATH] [--latest ID] --output <dir> [--force-owned]\n" +
     "  cjdoc query --snapshot <docs.json|agent/manifest.json|versions.json>... --request <request.json|->\n" +
     "  cjdoc mcp --snapshot <docs.json|agent/manifest.json|versions.json>...\n" +
     "  cjdoc schema <name> (use 'cjdoc schema list' for available schemas)\n"

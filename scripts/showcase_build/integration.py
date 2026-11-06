@@ -19,6 +19,11 @@ from .parallel import BranchRunner
 from publication_ir import project as publication_projection
 
 FORMATS = ("html", "json", "markdown", "api-surface", "coverage", "symbol-index")
+USER_DOCUMENTATION_DIRECTORIES = ("getting-started", "tutorials", "how-to", "reference")
+PUBLICATION_ASSET_FILES = {
+    "brand": ("mark.svg", "lockup-light.svg", "lockup-dark.svg", "favicon.svg", "favicon.ico"),
+    "readme": ("preview-light.png", "preview-dark.png"),
+}
 
 
 def copy_file(source: Path, destination: Path) -> None:
@@ -26,6 +31,45 @@ def copy_file(source: Path, destination: Path) -> None:
         raise ContractError("missing or unsafe showcase input: " + str(source))
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
+
+
+def copy_tree(repo: Path, source: Path, destination: Path,
+              expected_files: tuple[str, ...] | None = None) -> None:
+    """Copy a maintained tree deterministically, rejecting symlinks and special files."""
+    relative = source.relative_to(repo)
+    current = repo
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            raise ContractError("symlink in showcase publication source: " + current.relative_to(repo).as_posix())
+    if not source.is_dir():
+        raise ContractError("missing showcase publication directory: " + relative.as_posix())
+    directories_to_copy = []
+    files_to_copy = []
+    for directory, directories, files in os.walk(source, topdown=True, followlinks=False):
+        source_directory = Path(directory)
+        directories.sort()
+        files.sort()
+        directories_to_copy.append(source_directory.relative_to(source))
+        for name in directories:
+            child = source_directory / name
+            if child.is_symlink() or not child.is_dir():
+                raise ContractError("unsafe showcase publication entry: " + child.relative_to(repo).as_posix())
+        for name in files:
+            child = source_directory / name
+            if child.is_symlink() or not child.is_file():
+                raise ContractError("unsafe showcase publication entry: " + child.relative_to(repo).as_posix())
+            files_to_copy.append(child)
+    if expected_files is not None:
+        actual_files = {path.relative_to(source).as_posix() for path in files_to_copy}
+        nested_directories = any(directory != Path(".") for directory in directories_to_copy)
+        if actual_files != set(expected_files) or nested_directories:
+            raise ContractError("showcase publication asset inventory mismatch: " + relative.as_posix())
+    for directory in directories_to_copy:
+        (destination / directory).mkdir(parents=True, exist_ok=True)
+    for path in files_to_copy:
+        output = destination / path.relative_to(source)
+        copy_file(path, output)
 
 
 def generate_api(binary: Path, project: Path, output: Path, provenance: dict, repo: Path,
@@ -122,14 +166,19 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
             target.write_bytes(canonical_json(publication_projection(load_json(path))))
         else:
             copy_file(path, site / "artifacts" / name)
-    shutil.copytree(repo / "docs/schema", site / "schemas")
+    copy_tree(repo, repo / "docs/schema", site / "schemas")
     links = ''.join('<li><a href="' + html.escape(path.name) + '">' + html.escape(path.name) + '</a></li>'
                     for path in sorted((site / "schemas").glob("*.json")))
-    (site / "schemas/index.html").write_text('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Schema registry</title></head><body><a href="../index.html">Showcase</a><h1>Schema registry</h1><ul>' + links + '</ul></body></html>', encoding="utf-8")
+    (site / "schemas/index.html").write_text(
+        '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Schema registry</title></head><body><a href="../index.html">Showcase</a><h1>Schema registry</h1><ul>'
+        + links + '</ul></body></html>', encoding="utf-8")
     copy_file(repo / "README.md", site / "README.md")
-    for name in ("README.md", "usage.md", "advanced-usage.md", "configuration.md", "guides.md",
-                 "documentation-quality.md", "i18n.md"):
-        copy_file(repo / "docs" / name, site / "docs" / name)
+    copy_file(repo / "docs/README.md", site / "docs/README.md")
+    for name in USER_DOCUMENTATION_DIRECTORIES:
+        copy_tree(repo, repo / "docs" / name, site / "docs" / name)
+    for name, files in PUBLICATION_ASSET_FILES.items():
+        copy_tree(repo, repo / "docs/assets" / name, site / "docs/assets" / name,
+                  expected_files=files)
 
 
 def pin_documentation_links(site: Path, provenance: dict, *, own_api_index: bool) -> None:
@@ -144,10 +193,15 @@ def pin_documentation_links(site: Path, provenance: dict, *, own_api_index: bool
             content = content.replace('href="' + source_prefix,
                                       'href="' + html.escape(target_prefix, quote=True))
         index.write_text(content, encoding="utf-8")
-    markdown = [site / "README.md", *sorted((site / "docs").glob("*.md"))]
+    markdown = [site / "README.md"]
+    docs = site / "docs"
+    if docs.is_dir():
+        markdown.extend(sorted(docs.rglob("*.md")))
     if own_api_index:
         markdown.append(site / "markdown/concepts/index.md")
     for path in markdown:
+        if path.is_symlink():
+            raise ContractError("symlink in published documentation: " + path.relative_to(site).as_posix())
         if path.is_file():
             content = path.read_text(encoding="utf-8")
             for source_prefix, target_prefix in prefixes:

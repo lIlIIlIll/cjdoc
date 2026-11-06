@@ -40,12 +40,12 @@ UI_TEXT = {
         "THEME": "主题：跟随系统", "COPY": "复制", "EYEBROW": "仓颉 · 原生 API 文档", "REPRODUCE": "复现 PocketKit 示例",
         "BUILD_LABEL": "构建来源", "PLAN_LABEL": "完整演示计划", "MANIFEST": "功能清单", "NAV_LABEL": "导航索引",
         "COVERAGE_LABEL": "覆盖率", "DIFF_LABEL": "API 变化", "NATIVE_CHECK_LABEL": "原生示例检查", "SCHEMAS": "数据结构定义",
-        "USAGE": "使用说明", "ADVANCED": "高级用法", "CONFIG": "配置参考", "LEGACY": "旧版演示入口"},
+        "INSTALL": "安装说明", "FIRST_SITE": "首次生成", "HOW_TO": "操作指南", "CONFIG": "配置参考", "DOCS": "完整手册", "LEGACY": "旧版演示入口"},
     "en": {"HOME": "en.html", "SKIP": "Skip to content", "TAGLINE": "documentation in practice", "NAVIGATION": "Showcase navigation",
         "THEME": "Theme: System", "COPY": "Copy", "EYEBROW": "CANGJIE · NATIVE API DOCUMENTATION", "REPRODUCE": "Reproduce the PocketKit example",
         "BUILD_LABEL": "Build provenance", "PLAN_LABEL": "Full demonstration plan", "MANIFEST": "Feature manifest", "NAV_LABEL": "Navigation",
         "COVERAGE_LABEL": "Coverage", "DIFF_LABEL": "API diff", "NATIVE_CHECK_LABEL": "Native example checks", "SCHEMAS": "Schemas",
-        "USAGE": "Usage", "ADVANCED": "Advanced usage", "CONFIG": "Configuration reference", "LEGACY": "Legacy demo entry"},
+        "INSTALL": "Install", "FIRST_SITE": "First site", "HOW_TO": "How-to guides", "CONFIG": "Configuration reference", "DOCS": "Full manual", "LEGACY": "Legacy demo entry"},
 }
 
 
@@ -102,22 +102,35 @@ def card(feature: dict, locale: str) -> str:
 
 def publish(repo: Path, site: Path, manifest: dict, metadata: dict) -> None:
     template = (repo / "site/index.html").read_text(encoding="utf-8")
+    mark_path = repo / "docs/assets/brand/mark.svg"
+    if any(path.is_symlink() for path in (repo / "docs", repo / "docs/assets",
+                                           repo / "docs/assets/brand", mark_path)) or not mark_path.is_file():
+        raise ContractError("missing or unsafe showcase brand mark: docs/assets/brand/mark.svg")
+    mark_svg = mark_path.read_text(encoding="utf-8").strip()
+    if not mark_svg.startswith("<svg ") or mark_svg.count("<svg") != 1:
+        raise ContractError("showcase brand mark must contain exactly one SVG root")
+    inline_mark = mark_svg.replace("<svg ", '<svg aria-hidden="true" focusable="false" ', 1)
     if template.count('<!-- SHOWCASE_FEATURES -->') != 1:
         raise ContractError("homepage needs exactly one feature-catalog slot")
+    if template.count('<!-- CJDOC_BRAND_MARK -->') != 1:
+        raise ContractError("homepage needs exactly one CJDOC_BRAND_MARK slot")
     documentation_root = metadata["source"]["repository"] + '/blob/' + manifest["revision"] + '/docs/'
     for locale, filename in (("zh-CN", "index.html"), ("en", "en.html")):
         values = {**TEXT[locale], **UI_TEXT[locale], "LOCALE": locale, "REPOSITORY": metadata["source"]["repository"],
                   "PRIMARY": first(manifest, "compact-members", locale)["resolved"]["href"],
                   "GUIDE": first(manifest, "guide-association", locale)["resolved"]["href"],
                   "SOURCE": metadata["source"]["repository"] + '/tree/' + manifest["revision"] + '/examples/pocketkit',
-                  "USAGE_URL": documentation_root + "usage.md",
-                  "ADVANCED_URL": documentation_root + "advanced-usage.md",
-                  "CONFIG_URL": documentation_root + "configuration.md",
+                  "INSTALL_URL": documentation_root + "getting-started/install.md",
+                  "FIRST_SITE_URL": documentation_root + "tutorials/first-site.md",
+                  "HOW_TO_URL": documentation_root + "how-to/generate-and-publish.md",
+                  "CONFIG_URL": documentation_root + "reference/configuration.md",
+                  "DOCS_URL": documentation_root + "README.md",
                   "BUILD": json.dumps(metadata, ensure_ascii=False, indent=2)}
         content = template
         for key, value in values.items():
             content = content.replace('__' + key + '__', html.escape(value, quote=True))
         content = content.replace('<!-- SHOWCASE_FEATURES -->', cards(manifest, locale))
+        content = content.replace('<!-- CJDOC_BRAND_MARK -->', inline_mark)
         content = content.replace('<!-- SHOWCASE_COVERAGE -->', coverage(manifest, locale))
         content = content.replace('<!-- SHOWCASE_GET_STARTED -->', getting_started(locale, metadata["source"]["repository"], manifest["revision"]))
         (site / filename).write_text(content, encoding="utf-8")
@@ -126,15 +139,15 @@ def publish(repo: Path, site: Path, manifest: dict, metadata: dict) -> None:
 def getting_started(locale: str, repository: str, revision: str) -> str:
     zh = locale == "zh-CN"
     title = "给自己的项目生成文档" if zh else "Document your own project"
-    intro = ("先安装仓颉 SDK（cjdoc 运行需要 SDK 运行时），再从发布页选择实际提供的平台文件，改名为 cjdoc（Windows 为 cjdoc.exe）并加入 PATH。若没有适合的平台文件，按源码构建说明安装。"
-             if zh else "Install the Cangjie SDK first (cjdoc needs its runtime), then choose an available platform file from Releases. Rename it to cjdoc (cjdoc.exe on Windows) and add it to PATH. If no matching file is available, follow the source build instructions.")
-    links = ("下载安装包", "源码构建说明", "完整使用说明") if zh else ("Download a release", "Build from source", "Full usage guide")
-    build_url = html.escape(repository, quote=True) + '/blob/' + html.escape(revision, quote=True) + '/docs/maintainer/build.md'
-    usage_url = html.escape(repository, quote=True) + '/blob/' + html.escape(revision, quote=True) + '/docs/usage.md'
+    intro = ("按当前源码安装说明构建并安装 cjdoc（cjdoc 运行需要仓颉 SDK 运行时）；发行版是明确区分的替代入口，需从发布页选择实际提供的平台文件，改名为 cjdoc（Windows 为 cjdoc.exe）并加入 PATH。"
+             if zh else "Build and install cjdoc by following the current source installation guide (cjdoc needs the Cangjie SDK runtime). As a separate alternative, choose an available platform file from Releases, rename it to cjdoc (cjdoc.exe on Windows) and add it to PATH.")
+    links = ("当前源码安装", "首次生成教程", "发行版替代入口") if zh else ("Install from source", "First-site tutorial", "Release alternative")
+    install_url = html.escape(repository, quote=True) + '/blob/' + html.escape(revision, quote=True) + '/docs/getting-started/install.md'
+    first_site_url = html.escape(repository, quote=True) + '/blob/' + html.escape(revision, quote=True) + '/docs/tutorials/first-site.md'
     command = 'cjdoc --version\ncjdoc generate --project /path/to/your-project --format html'
     note = ("项目根目录需要 cjpm.toml 与 src/。为公开 API 添加 /** ... */ 注释，再运行上面的命令。打开项目下的 target/doc/html/index.html 即可阅读；不需要启动服务器。"
             if zh else "Your project root needs cjpm.toml and src/. Add /** ... */ comments to public APIs and run the commands above. Open target/doc/html/index.html in that project; no server is required.")
-    return f'<section class="quickstart own-project" id="get-started" aria-labelledby="own-project-title"><div><h2 id="own-project-title">{title}</h2><p>{intro}</p><p><a href="{html.escape(repository, quote=True)}/releases">{links[0]}</a> · <a href="{build_url}">{links[1]}</a> · <a href="{usage_url}">{links[2]}</a></p></div><div><pre><code id="own-project-command">{html.escape(command)}</code></pre><button type="button" data-showcase-copy="own-project-command">{"复制" if zh else "Copy"}</button><p>{note}</p></div></section>'
+    return f'<section class="quickstart own-project" id="get-started" aria-labelledby="own-project-title"><div><h2 id="own-project-title">{title}</h2><p>{intro}</p><p><a href="{install_url}">{links[0]}</a> · <a href="{first_site_url}">{links[1]}</a> · <a href="{html.escape(repository, quote=True)}/releases">{links[2]}</a></p></div><div><pre><code id="own-project-command">{html.escape(command)}</code></pre><button type="button" data-showcase-copy="own-project-command">{"复制" if zh else "Copy"}</button><p>{note}</p></div></section>'
 
 
 def coverage(manifest: dict, locale: str) -> str:
@@ -181,6 +194,7 @@ def downloads(site: Path) -> None:
     for locale, raw in DOWNLOAD_TEXT.items():
         words = {key: html.escape(value) for key, value in raw.items()}
         content = f'''<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{words["title"]} · cjdoc</title><link rel="stylesheet" href="../showcase.css"><script src="../showcase.js" defer></script></head><body data-cjdoc-doc-version="showcase"><main class="download-page"><nav aria-label="Language and showcase"><a data-showcase-home href="../{words["home"]}">← {words["back"]}</a><a href="zh-CN.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><button type="button" data-showcase-theme>Theme: System</button></nav><h1>{words["title"]}</h1><article><h2>{words["source"]}</h2><p>{words["license"]}</p><p><a data-source-download href="pocketkit-source.zip" download>{words["source_zip"]}</a> · <a href="source-manifest.json">{words["manifest"]}</a></p><pre><code id="download-command">python3 examples/pocketkit/reproduce.py --cjdoc /absolute/path/to/cjdoc --output ./generated --locale both</code></pre><button data-showcase-copy="download-command">{words["copy"]}</button><p>{words["run"]}</p></article><article id="offline"><h2>{words["offline"]}</h2><p>{words["use"]}</p><p><a data-offline-download href="showcase-offline.zip" download>{words["offline_zip"]}</a></p><p>{words["recursive"]}</p></article><p aria-live="polite" data-showcase-status></p></main></body></html>'''
+        content = content.replace('</title>', '</title><link rel="icon" href="../docs/assets/brand/favicon.svg" type="image/svg+xml"><link rel="icon" href="../docs/assets/brand/favicon.ico" sizes="16x16 32x32">')
         content = content.replace('<script src="../showcase.js"', '<script src="../theme-bootstrap.js"></script><script src="../showcase.js"')
         if locale == "zh-CN":
             content = content.replace('Theme: System', '主题：跟随系统').replace('aria-label="Language and showcase"', 'aria-label="语言与展示导航"')

@@ -20,8 +20,10 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+from showcase_build import homepage
 from showcase_build.integration import (copy_composed_publication, install_output,
-                                        pin_documentation_links, publish_examples)
+                                        pin_documentation_links, publish_compatibility,
+                                        publish_examples)
 from showcase_build.manifest import roots
 from showcase_build.navigation import mount
 from showcase_build.packaging import copy_sources, source_archive
@@ -44,6 +46,164 @@ class BuildIntegrationTests(unittest.TestCase):
         path.write_text(json.dumps(value) if isinstance(value, dict) else value,
                         encoding="utf-8", newline="\n")
         return path
+
+    def compatibility_fixture(self) -> tuple[Path, Path, Path, dict]:
+        fixture = Path(tempfile.mkdtemp(prefix="compat-", dir=self.root))
+        repo = fixture / "repo"
+        site = fixture / "site"
+        current = fixture / "current"
+        demo = fixture / "demo"
+        checks = fixture / "checks"
+        site.mkdir()
+
+        def write(path: str, value: str | dict) -> Path:
+            return self.write((fixture / path).relative_to(self.root).as_posix(), value)
+
+        def source(path: str, value: str | dict) -> Path:
+            return write("repo/" + path, value)
+
+        source("README.md", "# cjdoc\n")
+        source("docs/README.md", "# Manual\n\n[Install](getting-started/install.md)\n")
+        source("docs/getting-started/install.md", "# Install\n")
+        source("docs/tutorials/first-site.md",
+               "# First site\n\n[Publish](../how-to/generate-and-publish.md#publish)\n"
+               "[Upstream](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/generate-and-publish.md#publish)\n"
+               "[Foreign](https://github.com/example-owner/other/blob/main/README.md)\n")
+        source("docs/how-to/generate-and-publish.md", "# Publish\n")
+        source("docs/how-to/nested/check-quality.md", "# Quality\n")
+        source("docs/reference/configuration.md", "# Configuration\n")
+        source("docs/maintainer/README.md", "# Maintainer-only\n")
+        source("docs/schema/doc-ir.schema.json", "{}")
+        for name in ("mark.svg", "lockup-light.svg", "lockup-dark.svg", "favicon.svg", "favicon.ico"):
+            source("docs/assets/brand/" + name, "brand:" + name)
+        for name in ("preview-light.png", "preview-dark.png"):
+            source("docs/assets/readme/" + name, "preview:" + name)
+        source("docs/assets/unselected/legacy.png", "not published")
+        (repo / "docs/assets/readme").mkdir(parents=True, exist_ok=True)
+
+        for name in ("docs.json", "symbol-index.json", "search-index.json",
+                     "llms.txt", "agent-full-index.json"):
+            write("current/html/" + name, {})
+        (current / "markdown").mkdir(parents=True)
+        author_ir = json.loads((ROOT / "tests/fixtures/golden-v18/basic.docs.json").read_text(encoding="utf-8"))
+        author_ir["declarations"][0]["documentation"]["rawText"] += (
+            "\nhttps://github.com/lIlIIlIll/cjdoc/blob/main/docs/README.md")
+        write("current/docs.json", author_ir)
+        write("current/api-surface/api-surface.json", {})
+        write("current/coverage/coverage.json", {})
+        write("current/coverage/quality.json", {})
+        write("demo/docs.json", author_ir)
+        diff = write("diff.json", {})
+        write("checks/native-check.json", {})
+        result = {"locales": {"en": {"generated": {"demo-v2": demo}, "diff": diff}},
+                  "checks": checks}
+        return repo, site, current, result
+
+    def test_compatibility_publication_preserves_nested_links_and_pins_only_copied_docs(self) -> None:
+        repo, site, current, result = self.compatibility_fixture()
+        source_ir = (current / "docs.json").read_bytes()
+        publish_compatibility(repo, site, current, result)
+        repository = "https://github.com/example-owner/cjdoc-fork"
+        revision = "e" * 40
+        pin_documentation_links(site, {"repository": repository, "revision": revision},
+                                own_api_index=False)
+
+        for relative in (
+                "README.md", "docs/README.md", "docs/getting-started/install.md",
+                "docs/how-to/generate-and-publish.md",
+                "docs/how-to/nested/check-quality.md", "docs/reference/configuration.md",
+                "docs/assets/brand/mark.svg", "docs/assets/brand/favicon.ico",
+                "docs/assets/readme/preview-light.png", "docs/assets/readme/preview-dark.png"):
+            self.assertEqual((site / relative).read_bytes(), (repo / relative).read_bytes())
+        self.assertFalse((site / "docs/maintainer").exists())
+        self.assertFalse((site / "docs/schema").exists())
+        self.assertFalse((site / "docs/assets/unselected").exists())
+        self.assertEqual((site / "schemas/doc-ir.schema.json").read_bytes(),
+                         (repo / "docs/schema/doc-ir.schema.json").read_bytes())
+        self.assertIn('href="doc-ir.schema.json"',
+                      (site / "schemas/index.html").read_text(encoding="utf-8"))
+
+        manual_index = site / "docs/README.md"
+        target = (manual_index.parent / "getting-started/install.md").resolve()
+        self.assertTrue(target.is_relative_to(site / "docs"))
+        self.assertTrue(target.is_file())
+        first_site = site / "docs/tutorials/first-site.md"
+        published_text = first_site.read_text(encoding="utf-8")
+        self.assertIn(f'[Upstream]({repository}/blob/{revision}/docs/how-to/generate-and-publish.md#publish)',
+                      published_text)
+        self.assertIn("[Foreign](https://github.com/example-owner/other/blob/main/README.md)",
+                      published_text)
+        target_link = re.search(r"\[Publish\]\(([^)]+)\)", published_text)
+        self.assertIsNotNone(target_link)
+        target_path = (first_site.parent / urlsplit(target_link.group(1)).path).resolve()
+        self.assertTrue(target_path.is_relative_to(site / "docs"))
+        self.assertIn("# Publish", target_path.read_text(encoding="utf-8"))
+        self.assertEqual((current / "docs.json").read_bytes(), source_ir)
+        artifact_ir = (site / "artifacts/docs.json").read_bytes()
+        self.assertIn(b"lIlIIlIll/cjdoc/blob/main/docs/README.md", artifact_ir)
+
+    def test_compatibility_publication_rejects_symlinked_files_and_directories(self) -> None:
+        for kind in ("file", "directory"):
+            with self.subTest(kind=kind):
+                repo, site, current, result = self.compatibility_fixture()
+                external = self.root / f"outside-{kind}"
+                if kind == "file":
+                    external.write_text("not a publication input", encoding="utf-8")
+                    source = repo / "docs/tutorials/external.md"
+                    source.symlink_to(external)
+                else:
+                    external.mkdir()
+                    (external / "foreign.svg").write_text("not a publication input", encoding="utf-8")
+                    source = repo / "docs/assets/readme/external"
+                    source.symlink_to(external, target_is_directory=True)
+                with self.assertRaisesRegex(ContractError, "symlink|unsafe"):
+                    publish_compatibility(repo, site, current, result)
+                self.assertFalse((site / "docs/assets/readme/external").exists())
+
+    def test_compatibility_publication_requires_the_exact_brand_and_preview_assets(self) -> None:
+        for change in ("missing-preview", "extra-asset"):
+            with self.subTest(change=change):
+                repo, site, current, result = self.compatibility_fixture()
+                if change == "missing-preview":
+                    (repo / "docs/assets/readme/preview-dark.png").unlink()
+                else:
+                    (repo / "docs/assets/brand/unused.svg").write_text("not published", encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, "asset inventory mismatch"):
+                    publish_compatibility(repo, site, current, result)
+
+    def publish_homepage_fixture(self, template: str, mark: str | None) -> Path:
+        repo = self.root / "homepage-repo"
+        self.write("homepage-repo/site/index.html", template)
+        if mark is not None:
+            self.write("homepage-repo/docs/assets/brand/mark.svg", mark)
+        output = self.root / "homepage-output"
+        output.mkdir(exist_ok=True)
+        with patch("showcase_build.homepage.first", return_value={"resolved": {"href": "demo/"}}), patch("showcase_build.homepage.cards", return_value=""), patch("showcase_build.homepage.coverage", return_value=""), patch("showcase_build.homepage.getting_started", return_value=""):
+            homepage.publish(repo, output, {"revision": "f" * 40},
+                             {"source": {"repository": "https://github.com/example-owner/cjdoc-fork"}})
+        return output
+
+    def test_homepage_requires_a_regular_brand_mark(self) -> None:
+        template = '<!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES -->'
+        with self.assertRaisesRegex(ContractError, "brand mark"):
+            self.publish_homepage_fixture(template, None)
+
+    def test_homepage_requires_exactly_one_brand_mark_slot_and_hides_inline_svg(self) -> None:
+        mark = '<svg xmlns="http://www.w3.org/2000/svg" class="brand-mark"></svg>'
+        template = '<!-- CJDOC_BRAND_MARK --><!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES -->'
+        with self.assertRaisesRegex(ContractError, "exactly one CJDOC_BRAND_MARK"):
+            self.publish_homepage_fixture(template, mark)
+        template = '<!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES -->'
+        output = self.publish_homepage_fixture(template, mark)
+        for page in ("index.html", "en.html"):
+            content = (output / page).read_text(encoding="utf-8")
+            self.assertIn('<svg aria-hidden="true" focusable="false" xmlns=', content)
+            self.assertNotIn("CJDOC_BRAND_MARK", content)
+        homepage.downloads(output)
+        for filename in ("downloads/zh-CN.html", "downloads/en.html"):
+            content = (output / filename).read_text(encoding="utf-8")
+            self.assertIn('../docs/assets/brand/favicon.svg', content)
+            self.assertIn('../docs/assets/brand/favicon.ico', content)
 
     def test_authored_manual_index_links_are_valid_in_the_published_tree(self) -> None:
         manual = (ROOT / "docs/README.md").read_text(encoding="utf-8")
@@ -72,28 +232,29 @@ class BuildIntegrationTests(unittest.TestCase):
         target_tree = repository + "/tree/" + revision + "/"
         foreign = "https://github.com/example-owner/another-project/blob/main/README.md"
         html_page = self.write("site/api/concepts/index.html",
-            f'<a href="{source}docs/usage.md#generate">Usage</a>'
+            f'<a href="{source}docs/how-to/generate-and-publish.md#generate">Guide</a>'
             f'<a href="{source}README.md">README</a><a href="{foreign}">Other</a>'
             f'<a href="{source_tree}docs/maintainer#build">Maintainer</a>'
-            f'<code>{source}docs/usage.md</code>')
-        original_markdown = (f'[Usage]({source}docs/usage.md#generate)\n'
+            f'<code>{source}docs/how-to/generate-and-publish.md</code>')
+        original_markdown = (f'[Guide]({source}docs/how-to/generate-and-publish.md#generate)\n'
                              f'[Maintainer]({source_tree}docs/maintainer#build)\n[Other]({foreign})\n')
         markdown = [self.write(path, original_markdown)
                     for path in ("site/markdown/concepts/index.md", "site/docs/README.md",
-                                 "site/docs/i18n.md", "site/docs/documentation-quality.md")]
-        author_ir = self.write("site/artifacts/docs.json", {"pages": [{"url": source + "docs/usage.md"}]})
+                                 "site/docs/tutorials/publish-languages.md",
+                                 "site/docs/how-to/check-quality.md")]
+        author_ir = self.write("site/artifacts/docs.json", {"pages": [{"url": source + "docs/how-to/generate-and-publish.md"}]})
         original_ir = author_ir.read_bytes()
         pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
                                 own_api_index=True)
         published = html_page.read_text(encoding="utf-8")
-        self.assertIn(f'href="{target}docs/usage.md#generate"', published)
+        self.assertIn(f'href="{target}docs/how-to/generate-and-publish.md#generate"', published)
         self.assertIn(f'href="{target}README.md"', published)
         self.assertIn(f'href="{target_tree}docs/maintainer#build"', published)
         self.assertIn(f'href="{foreign}"', published)
-        self.assertIn(f'<code>{source}docs/usage.md</code>', published)
+        self.assertIn(f'<code>{source}docs/how-to/generate-and-publish.md</code>', published)
         for path in markdown:
             self.assertEqual(path.read_text(encoding="utf-8"),
-                             f'[Usage]({target}docs/usage.md#generate)\n'
+                             f'[Guide]({target}docs/how-to/generate-and-publish.md#generate)\n'
                              f'[Maintainer]({target_tree}docs/maintainer#build)\n[Other]({foreign})\n')
         self.assertEqual(author_ir.read_bytes(), original_ir)
 
@@ -106,17 +267,17 @@ class BuildIntegrationTests(unittest.TestCase):
         markdown_index = self.write("site/markdown/concepts/index.md",
                                    f'[Upstream cjdoc]({source}/blob/main/README.md)')
         original_indexes = [(path, path.read_bytes()) for path in (html_index, markdown_index)]
-        manual = self.write("site/docs/README.md", f'[Usage]({source}/blob/main/docs/usage.md)')
-        directory = self.write("site/docs/i18n.md", f'[Maintainer]({source}/tree/main/docs/maintainer)')
-        readme = self.write("site/README.md", f'[Guide]({source}/blob/main/docs/guides.md)')
+        manual = self.write("site/docs/README.md", f'[Guide]({source}/blob/main/docs/how-to/generate-and-publish.md)')
+        directory = self.write("site/docs/tutorials/publish-languages.md", f'[Tutorial]({source}/tree/main/docs/tutorials/first-site.md)')
+        readme = self.write("site/README.md", f'[First site]({source}/blob/main/docs/tutorials/first-site.md)')
         pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
                                 own_api_index=False)
         self.assertEqual(manual.read_text(encoding="utf-8"),
-                         f'[Usage]({repository}/blob/{revision}/docs/usage.md)')
+                         f'[Guide]({repository}/blob/{revision}/docs/how-to/generate-and-publish.md)')
         self.assertEqual(directory.read_text(encoding="utf-8"),
-                         f'[Maintainer]({repository}/tree/{revision}/docs/maintainer)')
+                         f'[Tutorial]({repository}/tree/{revision}/docs/tutorials/first-site.md)')
         self.assertEqual(readme.read_text(encoding="utf-8"),
-                         f'[Guide]({repository}/blob/{revision}/docs/guides.md)')
+                         f'[First site]({repository}/blob/{revision}/docs/tutorials/first-site.md)')
         for path, original in original_indexes:
             self.assertEqual(path.read_bytes(), original)
 

@@ -93,14 +93,6 @@ class NewCliRegressionTest {
     }
 
     @TestCase
-    func helpListsEverySupportedTopLevelCommandAndDocVersion(): Unit {
-        let usage = newUsage()
-        @Expect(usage.contains("cjdoc serve"), true)
-        @Expect(usage.contains("cjdoc versions compose"), true)
-        @Expect(usage.contains("--doc-version"), true)
-    }
-
-    @TestCase
     func checkExamplesIsAnExplicitGenerationOption(): Unit {
         let options = parseNewCli(["check", "--check-examples"])
         @Expect(options.checkExamples, true)

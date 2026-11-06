@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <style>.mark{stroke:#176a54}@media(prefers-color-scheme:dark){.mark{stroke:#8ed5bc}}</style>
+  <path class="mark" d="M14 6H38L50 18V58H14Z"/>
+  <path class="mark" d="M38 6V18H50"/>
+  <path class="mark" d="M26 29L20 36L26 43"/>
+  <path class="mark" d="M38 29L44 36L38 43"/>
+  <path class="mark" d="M35 27L29 45"/>
+</svg>

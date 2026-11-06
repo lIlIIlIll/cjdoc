@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80" viewBox="0 0 300 80" fill="none">
+  <g transform="translate(0 8)" stroke="#8ed5bc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 6H38L50 18V58H14Z"/>
+    <path d="M38 6V18H50"/>
+    <path d="M26 29L20 36L26 43"/>
+    <path d="M38 29L44 36L38 43"/>
+    <path d="M35 27L29 45"/>
+  </g>
+  <text x="84" y="53" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="38" font-weight="650">cjdoc</text>
+</svg>
