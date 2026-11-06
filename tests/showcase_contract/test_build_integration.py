@@ -124,9 +124,10 @@ class BuildIntegrationTests(unittest.TestCase):
         self.assertIn('href="doc-ir.schema.json"',
                       (site / "schemas/index.html").read_text(encoding="utf-8"))
 
+        published_docs = (site / "docs").resolve()
         manual_index = site / "docs/README.md"
         target = (manual_index.parent / "getting-started/install.md").resolve()
-        self.assertTrue(target.is_relative_to(site / "docs"))
+        self.assertTrue(target.is_relative_to(published_docs))
         self.assertTrue(target.is_file())
         first_site = site / "docs/tutorials/first-site.md"
         published_text = first_site.read_text(encoding="utf-8")
@@ -137,7 +138,7 @@ class BuildIntegrationTests(unittest.TestCase):
         target_link = re.search(r"\[Publish\]\(([^)]+)\)", published_text)
         self.assertIsNotNone(target_link)
         target_path = (first_site.parent / urlsplit(target_link.group(1)).path).resolve()
-        self.assertTrue(target_path.is_relative_to(site / "docs"))
+        self.assertTrue(target_path.is_relative_to(published_docs))
         self.assertIn("# Publish", target_path.read_text(encoding="utf-8"))
         self.assertEqual((current / "docs.json").read_bytes(), source_ir)
         artifact_ir = (site / "artifacts/docs.json").read_bytes()
