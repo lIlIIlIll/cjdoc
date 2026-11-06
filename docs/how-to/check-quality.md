@@ -22,9 +22,10 @@ cjdoc generate --project . --format coverage --output target/quality-report
 
 ## 用空摘要与空参数说明实测两套计数
 
-配置 `[coverage]` 与 CLI 临时门槛不能互换：覆盖率报告要求摘要和参数说明非空；CLI 门槛只要求声明/参数已经绑定文档对象，其中参数绑定由 lint 阶段完成。以下完整工作流从 `docdemo/` 项目根目录运行，用 trap 还原原始 `src/api.cj` 与 `cjdoc.toml`，并保留默认 `standard`；`off` 的参数计数限制见后文专节。
+配置 `[coverage]` 与 CLI 临时门槛不能互换：覆盖率报告要求摘要和参数说明非空；CLI 门槛只要求声明/参数已经绑定文档对象，其中参数绑定由 lint 阶段完成。以下完整工作流从 `docdemo/` 项目根目录运行，在括号限定的 Bash 子 shell 中用 trap 还原原始 `src/api.cj` 与 `cjdoc.toml`，并保留默认 `standard`；`off` 的参数计数限制见后文专节。
 
 ```bash
+(
 set -eu
 mkdir -p target
 BACKUP="$(mktemp -d target/cjdoc-empty-fields.XXXXXX)"
@@ -88,9 +89,10 @@ for metric in ("symbols", "parameters"):
     assert quality[metric]["total"] == 1 and quality[metric]["meaningful"] == 0
 print("CLI presence gate passed; report metrics found empty summary and parameter text.")
 PY
+)
 ```
 
-第一次 `check` 应退出 `0`：CLI 的 `--min-symbol-coverage` 与 `--min-parameter-coverage` 统计文档对象是否存在；空摘要和空 `@param` 说明仍是已绑定对象。第二次 `generate` 应退出 `1`，但默认会在门槛失败时保留报告文件：`coverage.json` 的 `documented` 均为 `0`，而 `quality.json` 的 `meaningful` 均为 `0`。因此不能把 CLI 的 `100%` 解释成摘要/参数内容充分。命令结束或中断时 trap 恢复项目文件。
+第一次 `check` 应退出 `0`：CLI 的 `--min-symbol-coverage` 与 `--min-parameter-coverage` 统计文档对象是否存在；空摘要和空 `@param` 说明仍是已绑定对象。第二次 `generate` 应退出 `1`，但默认会在门槛失败时保留报告文件：`coverage.json` 的 `documented` 均为 `0`，而 `quality.json` 的 `meaningful` 均为 `0`。因此不能把 CLI 的 `100%` 解释成摘要/参数内容充分。该代码块结束或中断时 trap 恢复项目文件，然后返回当前交互终端。
 
 `[coverage]` 七类可配置指标为 `symbols`、`parameters`、`returns`、`throws`、`examples`、`deprecated` 和 `semantic-links`，取值均为 `0..100`；也可在 `[coverage.package.<包名>]` 为单个包设置门槛。该配置使用报告计数，并由 `generate`、`check`、`serve` 的构建执行；`render` 不执行门槛。`quality.json` 提供 symbols、parameters 两个有限模板启发式的 `meaningful` 百分比和 findings，不可配置为门槛，也不能证明语义正确。见[配置参考](../reference/configuration.md)与[产物参考](../reference/artifacts.md)。
 

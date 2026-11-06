@@ -15,6 +15,7 @@
 在项目根执行此 Bash 块。它保存原始源文件，运行正例，再临时引入错误的 stdout 预期作为负例，最后恢复原文件。临时备份位于项目 `target/` 下，不使用系统临时目录。
 
 ```bash
+(
 set -eu
 mkdir -p target
 BACKUP="$(mktemp target/cjdoc-example-api.XXXXXX)"
@@ -80,9 +81,10 @@ else
   status=$?
 fi
 test "$status" -eq 1
+)
 ```
 
-第一次检查的成功判据是退出码 `0`；`must-fail` 在这里是预期编译失败的示例，不是整个检查的失败。第二次检查应包含 `CJDOC3072` 并退出 `1`，因为实际 stdout 与 `output` 围栏不匹配。`run` 失败、运行超时、stdout/stderr 超限和示例总数上限分别会产生相应诊断；固定限制和诊断码见[状态与限制参考](../reference/states-and-limits.md)。工作流结束时 shell trap 会还原教程中的 `src/api.cj`。若指令本身有语法或互斥错误，例如同时写 `must-pass` 与 `must-fail`，检查会报告 `CJDOC3033`，该示例不会编译。
+第一次检查的成功判据是退出码 `0`；`must-fail` 在这里是预期编译失败的示例，不是整个检查的失败。第二次检查应包含 `CJDOC3072` 并退出 `1`，因为实际 stdout 与 `output` 围栏不匹配。`run` 失败、运行超时、stdout/stderr 超限和示例总数上限分别会产生相应诊断；固定限制和诊断码见[状态与限制参考](../reference/states-and-limits.md)。括号将工作流限定在 Bash 子 shell 中：代码块结束或中断时 trap 即还原 `src/api.cj`，不必退出当前交互终端。若指令本身有语法或互斥错误，例如同时写 `must-pass` 与 `must-fail`，检查会报告 `CJDOC3033`，该示例不会编译。
 
 ## 选择检查命令
 
