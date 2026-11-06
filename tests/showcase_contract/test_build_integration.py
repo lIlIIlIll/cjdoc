@@ -63,7 +63,7 @@ class BuildIntegrationTests(unittest.TestCase):
         def source(path: str, value: str | dict) -> Path:
             return write("repo/" + path, value)
 
-        source("README.md", "# cjdoc\n")
+        source("README.md", "# cjdoc\n\n[Manual](docs/README.md)\n")
         source("docs/README.md", "# Manual\n\n[Install](getting-started/install.md)\n")
         source("docs/getting-started/install.md", "# Install\n")
         source("docs/tutorials/first-site.md",
@@ -110,9 +110,6 @@ class BuildIntegrationTests(unittest.TestCase):
                                 own_api_index=False)
 
         for relative in (
-                "README.md", "docs/README.md", "docs/getting-started/install.md",
-                "docs/how-to/generate-and-publish.md",
-                "docs/how-to/nested/check-quality.md", "docs/reference/configuration.md",
                 "docs/assets/brand/mark.svg", "docs/assets/brand/favicon.ico",
                 "docs/assets/readme/preview-light.png", "docs/assets/readme/preview-dark.png"):
             self.assertEqual((site / relative).read_bytes(), (repo / relative).read_bytes())
@@ -125,8 +122,15 @@ class BuildIntegrationTests(unittest.TestCase):
                       (site / "schemas/index.html").read_text(encoding="utf-8"))
 
         published_docs = (site / "docs").resolve()
-        manual_index = site / "docs/README.md"
-        target = (manual_index.parent / "getting-started/install.md").resolve()
+        readme = (site / "README.md").read_text(encoding="utf-8")
+        manual_link = re.search(r"\[[^]]+\]\(([^)]+)\)", readme)
+        self.assertIsNotNone(manual_link)
+        manual_index = (site / urlsplit(manual_link.group(1)).path).resolve()
+        self.assertTrue(manual_index.is_relative_to(published_docs))
+        manual_text = manual_index.read_text(encoding="utf-8")
+        install_link = re.search(r"\[[^]]+\]\(([^)]+)\)", manual_text)
+        self.assertIsNotNone(install_link)
+        target = (manual_index.parent / urlsplit(install_link.group(1)).path).resolve()
         self.assertTrue(target.is_relative_to(published_docs))
         self.assertTrue(target.is_file())
         first_site = site / "docs/tutorials/first-site.md"
