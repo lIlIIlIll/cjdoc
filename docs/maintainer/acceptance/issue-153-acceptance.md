@@ -55,7 +55,7 @@
 
 ## S3：作者事实而不是语义评分
 
-[contract-review.md](../../contract-review.md) 分别定义 coverage 存在性、quality/lint 非模板结构质量、作者可验证的语义充分性与一致性。八维 checklist 包括适用参数域、None/异常条件、成功与失败状态、容器/元素所有权、资源关闭、并发、复杂度和跨语言/来源；无自动推断式诊断、评分或新增公开字段。
+[contract-review.md](https://github.com/lIlIIlIll/cjdoc/blob/677f36045135ffac967ffebd195b62f1a67b33ff/docs/contract-review.md) 分别定义 coverage 存在性、quality/lint 非模板结构质量、作者可验证的语义充分性与一致性。八维 checklist 包括适用参数域、None/异常条件、成功与失败状态、容器/元素所有权、资源关闭、并发、复杂度和跨语言/来源；无自动推断式诊断、评分或新增公开字段。
 
 真实未修改的 PocketKit demo-v2/support-v1 库先由 cjpm 构建，再由 cjc 编译实际消费者并执行 **13 个输入/状态用例**：复制/保序/重复/空输入；at/tryAt 的 -1、size、0 及失败后状态；默认十进制与不支持 radix；addAll 拷贝；snapshot/clear 容器独立；空输入/两行/反复 EOF；EOF 后 rewind；重复 close；关闭后 read/rewind 拒绝且保持关闭。
 
@@ -115,7 +115,7 @@
 | AC-07 | 各阶段 PR 的最新 HEAD Checks：既有 native、golden/integration、quality、schema/version、语言/链接、offline/CSP、Showcase reading/density/browser；本机局部通过不替代它们 |
 | AC-08 | #155→#156/#157→#159 独立 PR，最终 issue 汇总实际 run/head 和集成状态，不为清空 checklist 增功能 |
 
-复现规模数据按 [reader-scale.md](../reader-scale.md) 的原生命令、冻结 harness、注册与严格比较执行；真实契约消费者按 [contract-review.md](../../contract-review.md) 执行。已有 native 1k 站点另可运行以下真实分页/键盘/菜单/历史检查（输出目录必须全新）：
+复现规模数据按 [reader-scale.md](../reader-scale.md) 的原生命令、冻结 harness、注册与严格比较执行；真实契约消费者按 [contract-review.md](https://github.com/lIlIIlIll/cjdoc/blob/677f36045135ffac967ffebd195b62f1a67b33ff/docs/contract-review.md) 执行。已有 native 1k 站点另可运行以下真实分页/键盘/菜单/历史检查（输出目录必须全新）：
 
 ```bash
 node tests/browser/check-reader-discovery.mjs \

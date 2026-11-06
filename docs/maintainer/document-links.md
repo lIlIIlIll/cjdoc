@@ -1,6 +1,6 @@
 # 跨文档链接与依赖身份
 
-本文面向维护者，记录依赖/外部文档链接如何被证明：`--doc-source`、`--doc-inventory-pin`、`--build-context` 的契约，identity 与 pin 的边界，官方快照准备（DL05）、E2E2 独立链路、验收脚本和资源预算。使用者级用法见[高级用法](../advanced-usage.md)；本文不重复基础命令。
+本文面向维护者，记录依赖/外部文档链接如何被证明：`--doc-source`、`--doc-inventory-pin`、`--build-context` 的契约，identity 与 pin 的边界，官方快照准备（DL05）、E2E2 独立链路、验收脚本和资源预算。使用者级用法见[链接外部文档](../how-to/link-documentation.md)；本文不重复基础命令。
 
 ## 输入契约
 

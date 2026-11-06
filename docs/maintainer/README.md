@@ -1,6 +1,6 @@
 # 维护者文档
 
-这里是 cjdoc 的维护者/开发者文档：面向修改仓库、同步 Doc IR 与 golden、运行发布与 CI 验收的人。安装和日常使用请看[使用者文档索引](../README.md)（README、usage、advanced-usage、configuration、guides、i18n、documentation-quality）。
+这里是 cjdoc 的维护者/开发者文档：面向修改仓库、同步 Doc IR 与 golden、运行发布与 CI 验收的人。安装和日常使用请看[使用者文档索引](../README.md)，按安装、连续教程、操作指南与参考选择。
 
 改代码前先读仓库根目录的 [AGENTS.md](../../AGENTS.md)：它定义项目目标、架构边界、修改规则、代码风格和 Review 要求。本目录的文档补充具体操作；两者冲突时以 AGENTS.md 为准。
 
@@ -14,7 +14,7 @@
 4. **准备发布**：[build.md](build.md) → [release-process.md](release-process.md) → [ci-orchestration.md](ci-orchestration.md)、[ci-wallclock.md](ci-wallclock.md)、[paired-samples-main.md](paired-samples-main.md)。
 5. **处理 PR 复审门禁**：[codex-review-gate.md](codex-review-gate.md) → AGENTS.md 的“Codex 复审完成门禁”。
 6. **展示站与阅读体验**：[showcase-contract.md](showcase-contract.md) → [showcase-phases.md](showcase-phases.md) → [api-reading-audit.md](api-reading-audit.md) → [reader-scale.md](reader-scale.md)（原生规模语料、成对证据和事前预算）。
-7. **机器阅读与 Agent 评测**：[../agent-reading.md](../agent-reading.md) → [agent-evaluation.md](agent-evaluation.md)（冻结协议、双路径真实客户端、消费者编译与行为裁决）。
+7. **机器阅读与 Agent 评测**：[query 与 MCP](../how-to/query-and-mcp.md) → [agent-evaluation.md](agent-evaluation.md)（冻结协议、双路径真实客户端、消费者编译与行为裁决）。
 
 ## 文档地图
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import html
+from html.parser import HTMLParser
 import json
 from pathlib import Path
 import shutil
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -17,9 +19,30 @@ from report_views.localization import localize_ui
 from report_views.pages import PageTitle
 from report_views.reports import (FILTER_SCRIPT, coverage_view, declaration_link,
                                   diagnostics_view, diff_view)
-from showcase_build.homepage import cards, getting_started, publish
+from showcase_build.homepage import cards, publish
 from showcase_build.navigation import SCRIPT, VersionLinks
 from showcase_contract.browser_reports import expected_coverage_rows
+
+
+class PublishedLinks(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: list[tuple[str, str]] = []
+        self.current: tuple[str, list[str]] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            self.current = (dict(attrs).get("href") or "", [])
+
+    def handle_data(self, data: str) -> None:
+        if self.current is not None:
+            self.current[1].append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self.current is not None:
+            href, text = self.current
+            self.links.append((" ".join("".join(text).split()), href))
+            self.current = None
 
 
 class ReaderUiTests(unittest.TestCase):
@@ -222,15 +245,7 @@ if(attrs.href!=="../demo-v1/report-coverage.html"||attrs["data-cjdoc-version-sta
             other = 'en' if locale == 'zh-CN' else 'zh-CN'
             self.assertNotIn('href="' + other + '/api.html"', result)
 
-    def test_own_project_route_contains_install_generate_and_open_steps(self) -> None:
-        content = getting_started("zh-CN", "https://github.com/o/r", "abc123")
-        self.assertIn('https://github.com/o/r/releases', content)
-        self.assertIn('https://github.com/o/r/blob/abc123/docs/maintainer/build.md', content)
-        self.assertIn('https://github.com/o/r/blob/abc123/docs/usage.md', content)
-        self.assertIn('cjdoc generate --project /path/to/your-project --format html', content)
-        self.assertIn('target/doc/html/index.html', content)
-
-    def test_published_manual_links_follow_the_fork_and_build_revision(self) -> None:
+    def test_showcase_navigation_targets_existing_nested_user_manual_pages(self) -> None:
         repository = "https://github.com/example-owner/cjdoc-fork"
         revision = "b" * 40
         features = json.loads((ROOT / "site/showcase-catalog.json").read_text(encoding="utf-8"))["features"]
@@ -239,12 +254,36 @@ if(attrs.href!=="../demo-v1/report-coverage.html"||attrs["data-cjdoc-version-sta
              "resolved": {"href": locale + "/api.html"}}
             for locale in ("zh-CN", "en")] if feature["targets"] else []} for feature in features]}
         publish(ROOT, self.root, manifest, {"source": {"repository": repository}})
-        for filename in ("index.html", "en.html"):
-            with self.subTest(page=filename):
-                content = (self.root / filename).read_text(encoding="utf-8")
-                for name in ("usage", "advanced-usage", "configuration"):
-                    self.assertIn(f'href="{repository}/blob/{revision}/docs/{name}.md"', content)
-                self.assertNotIn("https://github.com/lIlIIlIll/cjdoc/blob/main/docs/", content)
+        destinations = {
+            "zh-CN": {
+                "安装说明": "getting-started/install.md",
+                "首次生成": "tutorials/first-site.md",
+                "操作指南": "how-to/generate-and-publish.md",
+                "配置参考": "reference/configuration.md",
+                "完整手册": "README.md",
+            },
+            "en": {
+                "Install": "getting-started/install.md",
+                "First site": "tutorials/first-site.md",
+                "How-to guides": "how-to/generate-and-publish.md",
+                "Configuration reference": "reference/configuration.md",
+                "Full manual": "README.md",
+            },
+        }
+        for filename, locale in (("index.html", "zh-CN"), ("en.html", "en")):
+            parser = PublishedLinks()
+            parser.feed((self.root / filename).read_text(encoding="utf-8"))
+            links = dict(parser.links)
+            for label, manual_path in destinations[locale].items():
+                with self.subTest(locale=locale, destination=manual_path):
+                    self.assertIn(label, links)
+                    url = urlsplit(links[label])
+                    self.assertEqual(url.scheme, "https")
+                    self.assertEqual(url.netloc, "github.com")
+                    pinned_docs = f"/blob/{revision}/docs/"
+                    self.assertIn(pinned_docs, url.path)
+                    self.assertEqual(url.path.split(pinned_docs, 1)[1], manual_path)
+                    self.assertTrue((ROOT / "docs" / manual_path).is_file())
 
     @unittest.skipUnless(shutil.which("node"), "Node is required for publication JavaScript runtime checks")
     def test_language_href_tracks_hash_before_activation_and_clears_stale_hash(self) -> None:

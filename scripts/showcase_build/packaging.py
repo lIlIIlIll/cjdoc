@@ -71,7 +71,8 @@ def source_archive(source: Path, site: Path, provenance: dict) -> dict:
             entry.create_system = 3
             entry.external_attr = (stat.S_IFREG | 0o644) << 16
             entry.compress_type = zipfile.ZIP_DEFLATED
-            archive.writestr(entry, data)
+            # An explicit ZipInfo does not inherit the container's compression level.
+            archive.writestr(entry, data, compresslevel=9)
     return {"path": "downloads/pocketkit-source.zip",
             "sha256": hashlib.sha256(destination.read_bytes()).hexdigest(),
             "manifest": "downloads/source-manifest.json", "files": len(payloads)}
