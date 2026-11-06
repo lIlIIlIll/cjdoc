@@ -82,11 +82,11 @@ source = "docs/en/start.md"
 route = "concepts/guides/start.html"
 kind = "guide"
 [docs.pages.sections]
-usage = "First greeting"
-boundaries = "Name boundaries"
+usage = "first-greeting"
+boundaries = "name-boundaries"
 ```
 
-同一 `id` 表示同一逻辑页；同一章节键表示等价章节，值是各自 Markdown 中真实且唯一的标题。目录名称本身不建立配对。[docs].index 首页只有一份，两种语言都会看到同一首页，并标注作者来源；本教程不承诺首页翻译。
+同一 `id` 表示同一逻辑页；同一章节键表示等价章节，值是各自 Markdown 标题的实际锚点，不是原始标题文本。`First greeting` 的锚点是 `first-greeting`，`Name boundaries` 的锚点是 `name-boundaries`；中文标题在本例中保持原样。目录名称本身不建立配对。[docs].index 首页只有一份，两种语言都会看到同一首页，并标注作者来源；本教程不承诺首页翻译。锚点规则和重复标题的后缀见[配置参考](../reference/configuration.md#docspagessections多语言章节锚点)。
 
 ## 3. 写两份完整指南
 
@@ -155,7 +155,7 @@ xdg-open target/doc/html/zh-CN/index.html
 
 两个站点入口分别为 `html/zh-CN/index.html` 和 `html/en/index.html`。进入 `greet`，在页头语言标签内切换，确认参数和返回说明跟随切换；不是独立的“zh-CN”导航项。进入指南“名字的边界”，通过语言标签切换，应落到 `Name boundaries` 等价章节，而不是猜测英文 fragment。两份指南都绑定相同 API，双向关联可用。
 
-`coverage/translations.json` 报告字段状态；共享首页和中文包概述并没有因此获得英文译文。只生成英文可用：
+`coverage/translations.json` 报告字段状态；共享首页和中文包概述并没有因此获得英文译文。两个 `@example` 没有可证明的跨语言身份，按独立条目保留，可能出现 `CJDOC3107` 和 `unpaired`/缺译警告；标题相似、顺序相同都不构成配对。本教程验证的是参数、返回与指南章节的作者译文，不声称全部内容已完整翻译。只生成英文可用：
 
 ```bash
 cjdoc generate --project . --format html --locale en --output target/doc-en

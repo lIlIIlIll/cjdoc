@@ -37,7 +37,7 @@ Markdown 路径必须是项目内安全相对路径且以 `.md` 结尾；源文�
 
 #### `[docs.pages.sections]`：多语言章节锚点
 
-该表紧跟相应 `[[docs.pages]]`，将稳定章节 ID 映射到该页中真实、唯一的 Markdown 标题：
+该表紧跟相应 `[[docs.pages]]`，将稳定章节 ID 映射到该页中实际存在的 Markdown 标题锚点：
 
 ```toml
 [[docs.pages]]
@@ -51,7 +51,9 @@ install = "安装"
 first-example = "第一个示例"
 ```
 
-不同语言页用相同逻辑章节 ID、各自的本地化标题。标题缺失或不能唯一匹配时，映射被忽略并报告 `CJDOC3110` warning；页面其余内容仍生成。章节键和值都按字符串读取；稳定键由作者维护。
+不同语言页用相同逻辑章节 ID、各自标题的实际锚点。值不是原始标题文本：`Installation` 对应 `installation`，`First example` 对应 `first-example`；本例中文标题的锚点与标题相同。空白转为 `-`，ASCII 大写转为小写；重复或冲突的锚点追加 `-1`、`-2` 等后缀。也接受页面中完整的 `standalone--doc-…` 标题 ID；应以生成页的实际链接为准，不凭标题猜测后缀。
+
+锚点不存在、逻辑章节 ID 重复，或不同映射解析到同一个实际标题锚点时，相关映射被忽略并报告 `CJDOC3110` warning；页面其余内容仍生成。重复标题本身可以通过各自不同的实际锚点分别映射。章节键和值都按字符串读取；稳定键由作者维护。
 
 ### `[docs.packages]`：包概述源文件
 
@@ -297,8 +299,8 @@ language = "en"
 kind = "guide"
 
 [docs.pages.sections]
-install = "Installation"
-first-example = "First example"
+install = "installation"
+first-example = "first-example"
 
 [docs.packages]
 pocketkit = "docs/pocketkit.md"

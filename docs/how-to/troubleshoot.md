@@ -27,6 +27,8 @@ cjdoc generate --project . --format html --output target/troubleshoot-html
 
 若仍看不到声明，检查 `src/api.cj` 中是否为 public/protected，以及使用的是文档注释而非普通 `//` 或 `/* ... */`。查看内部声明时可显式使用 `--audience package` 或 `--audience all`，但 `docs.json` 会保留收集到的声明内容，不能把 audience 当作 JSON 隐私过滤器。受众范围见[产物参考](../reference/artifacts.md)。
 
+例如误把 `src/` 传给 `--project`，可能报告 `CJDOC1010`、退出 `1`，但仍写出一个 `partial` 的空站点；“目录里有 HTML”不代表项目已成功收集。先核对退出码、诊断及项目清单，再从正确的项目根生成到新的输出目录，不要把空页当作公开 API 确实为空的证明。
+
 ## 修改后页面没更新或输出报冲突
 
 先重新生成到明确的输出根，并确认浏览器打开同一目录中的 HTML。源码变化未反映时可关闭源码缓存重试：

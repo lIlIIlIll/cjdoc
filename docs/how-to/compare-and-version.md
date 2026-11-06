@@ -85,10 +85,10 @@ test -f "$WORK/site/0.1.0/index.html"
 test -f "$WORK/site/0.2.0/index.html"
 
 cjdoc generate --project "$V2" --no-cache \
-  --audience all --format api-surface --output "$WORK/v2-all"
+  --audience package --format api-surface --output "$WORK/v2-package"
 if cjdoc diff \
     --baseline "$WORK/v1/api-surface/api-surface.json" \
-    --current "$WORK/v2-all/api-surface/api-surface.json"; then
+    --current "$WORK/v2-package/api-surface/api-surface.json"; then
   echo '错误：不同 audience 的快照被比较' >&2
   exit 1
 else
@@ -98,7 +98,7 @@ test "$status" -eq 2
 verify_source_inputs
 ```
 
-`demo-v1/cjpm.toml` 声明包版本 `0.1.0`，`demo-v2/cjpm.toml` 声明 `0.2.0`；两者是不同源码目录，后者新增了 `TextCatalog.nonEmpty()`。它们使用同一个真实 `support-v1` path dependency。默认 audience 为 `external`，因此依赖源码参与构建输入，但不混入 PocketKit 的 API 文档。
+`demo-v1/cjpm.toml` 声明包版本 `0.1.0`，`demo-v2/cjpm.toml` 声明 `0.2.0`；两者是不同源码目录，后者新增了 `TextCatalog.nonEmpty()`。它们使用同一个真实 `support-v1` path dependency。默认 audience 为 `external`，因此依赖源码参与构建输入，但不混入 PocketKit 的 API 文档。负例用 `--audience package` 生成第三份快照：它与前两份源码相同，只有 audience 不同。这两个教学库在 `cjdoc.toml` 中把 `[coverage]` 设为 80%，`--audience all` 会额外纳入私有声明而把全局符号覆盖率降到 77%；`generate` 仍会写出该快照，但随后以配置门槛失败退出 `1`，在 `set -eu` 下中止后续步骤。不要为了跑通负例放宽门槛。
 
 成功后，差异报告描述两份当前 cjdoc API surface 快照；组合站点包含版本选择页和两份 HTML 树。浏览器打开 `$WORK/site/index.html`，检查版本选择页；静态托管时上传整个 `$WORK/site/`。目标版本若没有相同符号或概念页，站点会回退到版本首页或显示缺失提示。`--channel`、`--status` 和 `--release` 是展示元数据，不会验证发布流程或生成外链；`--release ID=TEXT` 接收纯文本。
 

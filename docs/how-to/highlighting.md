@@ -64,7 +64,7 @@ npm ci --ignore-scripts
 
 项目首页中放一段 Cangjie 和一段 Python 代码围栏。默认配置只让内置 Cangjie lexer 处理 Cangjie；Node adapter 尚未参与。
 
-```bash
+~~~bash
 test ! -e "$TASK_ROOT" || { printf '请选择新的 TASK_ROOT\n' >&2; exit 1; }
 mkdir -p "$TASK_ROOT/src" "$TASK_ROOT/docs"
 
@@ -112,7 +112,7 @@ EOF
 
 "$CJDOC_BIN" generate --project "$TASK_ROOT" \
   --format html --format json --output "$TASK_ROOT/builtin"
-```
+~~~
 
 打开 `$TASK_ROOT/builtin/html/concepts/index.html`。Cangjie 代码应有内置高亮；Python 块仍以原文显示。默认静态配置只包含 `cangjie`，不要求 Node，也不会尝试启动外部程序。
 

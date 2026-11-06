@@ -52,9 +52,8 @@ test "$(git -C "$PRIVATE_SOURCE" rev-parse --verify HEAD)" = "$CJDOC_REVISION"
 
 cd "$PRIVATE_SOURCE"
 export GITHUB_WORKSPACE="$PRIVATE_SOURCE"
-set -a
-eval "$(python3 scripts/with_stdx.py --variant static --print-env --)"
-set +a
+while IFS= read -r assignment; do export "$assignment"; done \
+  < <(python3 scripts/with_stdx.py --variant static --print-env --)
 export CANGJIE_STDX_PATH="$CJDOC_STDX_PATH"
 . scripts/with_sts_cjpm.sh
 bash scripts/check.sh build --repo . \

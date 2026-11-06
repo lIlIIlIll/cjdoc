@@ -241,14 +241,15 @@ cat > "$TASK_ROOT/cjdoc-documents.json" <<'EOF'
 EOF
 
 "$CJDOC_BIN" generate --project "$TASK_ROOT/consumer" \
-  --include-path-dependencies \
   --doc-source "$TASK_ROOT/cjdoc-documents.json" \
   --doc-inventory-pin "$INDEX=$PIN" \
   --format html --format json \
   --output "$TASK_ROOT/consumer-site"
 ```
 
-cjdoc 读取消费方的真实 path dependency 和已 pin 的 producer inventory，不会获取 catalog 项目或文档。`baseUrl` 只选择链接目标的位置；它不会认证网站或建立 API identity。
+这里**不**加 `--include-path-dependencies`。加上它会把 `linklib` 的源码也当成本项目自己的文档模块，此时 `Label` 解析为本地页面，catalog 不会被用到，也就观察不到外部文档绑定。消费方仍然从自己的 `cjpm.toml` 记录到 path dependency 与源码字节，外部文档只在签名和 `@see` 中作为依赖 API 的链接目标出现。
+
+cjdoc 只读取消费方的 manifest 依赖记录和已 pin 的 producer inventory，不会获取 catalog 项目或文档。`baseUrl` 只选择链接目标的位置；它不会认证网站或建立 API identity。
 
 ## 核对选中的 identity 并发布本地目标
 
@@ -322,6 +323,10 @@ elif expected == "different":
     print("观察到 producer inventory 与源码依赖的 API identity 不同")
     print("producer API identity：", document_set["identity"])
     print("当前依赖 identity：", dependency["identity"])
+elif expected == "none":
+    if matched:
+        raise SystemExit("错误 pin 不应产生 exact dependency navigation")
+    print("没有 exact dependency navigation")
 else:
     raise SystemExit("expected 参数只能是 exact、none 或 different")
 PY
@@ -355,7 +360,6 @@ PY
 )"
 
 "$CJDOC_BIN" generate --project "$TASK_ROOT/consumer" \
-  --include-path-dependencies \
   --doc-source "$TASK_ROOT/cjdoc-documents.json" \
   --doc-inventory-pin "$INDEX=$WRONG_PIN" \
   --format html --format json \
@@ -388,7 +392,6 @@ PY
 (cd "$TASK_ROOT/consumer" && \
   python3 "$TASK_ROOT/with_stdx.py" --variant static -- cjpm build --jobs 1)
 "$CJDOC_BIN" generate --project "$TASK_ROOT/consumer" \
-  --include-path-dependencies \
   --doc-source "$TASK_ROOT/cjdoc-documents.json" \
   --doc-inventory-pin "$INDEX=$PIN" \
   --format html --format json \

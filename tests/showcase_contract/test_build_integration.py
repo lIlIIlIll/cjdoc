@@ -6,6 +6,7 @@ import html
 import os
 import json
 import re
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -199,11 +200,15 @@ class BuildIntegrationTests(unittest.TestCase):
             content = (output / page).read_text(encoding="utf-8")
             self.assertIn('<svg aria-hidden="true" focusable="false" xmlns=', content)
             self.assertNotIn("CJDOC_BRAND_MARK", content)
+        shutil.copytree(ROOT / "docs/assets/brand", output / "docs/assets/brand")
         homepage.downloads(output)
+        site = Site(output)
+        expected_icons = {"docs/assets/brand/favicon.svg", "docs/assets/brand/favicon.ico"}
         for filename in ("downloads/zh-CN.html", "downloads/en.html"):
-            content = (output / filename).read_text(encoding="utf-8")
-            self.assertIn('../docs/assets/brand/favicon.svg', content)
-            self.assertIn('../docs/assets/brand/favicon.ico', content)
+            links = HtmlDocument((output / filename).read_text(encoding="utf-8")).links
+            icons = [href for href in links if Path(urlsplit(href).path).suffix in (".svg", ".ico")]
+            resolved = {site.local_link(filename, href)[0] for href in icons}
+            self.assertEqual(resolved, expected_icons)
 
     def test_authored_manual_index_links_are_valid_in_the_published_tree(self) -> None:
         manual = (ROOT / "docs/README.md").read_text(encoding="utf-8")

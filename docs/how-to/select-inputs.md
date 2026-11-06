@@ -277,7 +277,15 @@ PY
 
 `cjpm build` 会准备真实 Git 源码并写入消费项目的 `cjpm.lock`；生成器依赖 URL 与 commitId 先从记录的源码仓 `cjpm.toml`、`cjpm.lock` 两边读取并核对，再检查消费项目生成的锁文件包含相同二者。默认缓存根目录为 `$HOME/.cjpm`；若 cjpm 配置了其他根目录，把 `CJPM_CACHE` 改成该实际路径，并确认构建与读取使用同一缓存。该目录与 cjdoc 的 `--cache-dir` 不同。
 
-检查缓存依赖是否包含且没有被跳过：
+用已准备的缓存生成消费方文档。扫描这个含 2200 余个声明的库比最小示例占用更多堆，这里沿用仓库 CI 的 `cjHeapSize=512MB` 进程环境；它是仓颉运行时变量，不是 cjdoc 的资源预算选项。
+
+```bash
+cjHeapSize=512MB "$CJDOC_BIN" generate --project "$CACHE_PROJECT" \
+  --format json --output "$CACHE_TASK_ROOT/cached-dependency-output" \
+  --include-cached-dependencies --cjpm-cache "$CJPM_CACHE"
+```
+
+检查锁定的 yjson 依赖是否被实际读取：
 
 ```bash
 python3 - "$CACHE_TASK_ROOT/cached-dependency-output/docs.json" <<'PY'
@@ -289,15 +297,46 @@ doc = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 names = {item["name"] for item in doc["dependencies"]}
 if "yjson" not in names:
     raise SystemExit("未采集到锁定的 yjson 源码依赖")
-missing = [item for item in doc["diagnostics"] if item["code"] == "CJDOC1021"]
+if not any(item["packageName"] == "yjson" for item in doc["declarations"]):
+    raise SystemExit("没有从 cjpm 缓存采集 yjson 源码声明")
+missing = [item["message"] for item in doc["diagnostics"]
+           if item["code"] == "CJDOC1021" and "'yjson'" in item["message"]]
 if missing:
-    raise SystemExit("有缓存依赖被跳过：" + "; ".join(
-        item["message"] for item in missing))
+    raise SystemExit("yjson 本身被跳过：" + "; ".join(missing))
 print("已从 cjpm 缓存采集固定的 yjson 依赖")
 PY
 ```
 
-所有消费项目输入、构建产物、生成结果和 cjpm cache 都在 `$CACHE_TASK_ROOT` 或 `$CJPM_CACHE`，并与受保护的 `CJDOC_SOURCE` 分离；`--no-cache` 让 cjdoc 不写源码解析缓存。cjdoc 不会下载缺失的锁定依赖；找不到时会跳过并给出 `CJDOC1021`。只有在真实本地 checkout 且其中有自己的 `cjpm.toml` 时才使用 `--dependency-source NAME=PATH`。`--cjpm-cache` 必须与 `--include-cached-dependencies` 一起使用；选项适用范围见[CLI 参考](../reference/cli.md)。
+yjson 自己的锁文件还声明了仅用于测试的 `yjson_macros`；消费项目不构建它，缓存里没有时会出现一条指向 `yjson_macros` 的 `CJDOC1021`。它不影响本例读取的库源码，因此上面的检查只要求 `yjson` 本身未被跳过。
+
+再验证缓存缺失时 cjdoc 不会隐式下载，而是跳过并报告。这里使用一个空的缓存目录：
+
+```bash
+mkdir -p "$CACHE_TASK_ROOT/empty-cache"
+cjHeapSize=512MB "$CJDOC_BIN" generate --project "$CACHE_PROJECT" \
+  --format json --output "$CACHE_TASK_ROOT/missing-cache-output" \
+  --include-cached-dependencies --cjpm-cache "$CACHE_TASK_ROOT/empty-cache"
+
+python3 - "$CACHE_TASK_ROOT/missing-cache-output/docs.json" \
+  "$CACHE_TASK_ROOT/empty-cache" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+doc = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if any(item["packageName"] == "yjson" for item in doc["declarations"]):
+    raise SystemExit("空缓存下仍然采集了 yjson 声明")
+messages = [item["message"] for item in doc["diagnostics"]
+            if item["code"] == "CJDOC1021"]
+if not any("'yjson'" in message for message in messages):
+    raise SystemExit("缺失缓存时没有针对 yjson 的 CJDOC1021")
+if any(Path(sys.argv[2]).iterdir()):
+    raise SystemExit("cjdoc 向缓存目录写入了内容")
+print("缺失缓存已跳过并报告 CJDOC1021，缓存目录未被填充")
+PY
+```
+
+所有消费项目输入、构建产物、生成结果和 cjpm cache 都在 `$CACHE_TASK_ROOT` 或 `$CJPM_CACHE`，并与受保护的 `CJDOC_SOURCE` 分离。前面的 `--no-cache` 示例关闭源码解析缓存；本节未加该开关，默认解析缓存位于消费项目自己的 `target/` 下，与 `--cjpm-cache` 指定的依赖源码缓存不是同一目录。cjdoc 不会下载缺失的锁定依赖；找不到时会跳过并给出 `CJDOC1021`。只有在真实本地 checkout 且其中有自己的 `cjpm.toml` 时才使用 `--dependency-source NAME=PATH`。`--cjpm-cache` 必须与 `--include-cached-dependencies` 一起使用；选项适用范围见[CLI 参考](../reference/cli.md)。
 
 ## 后续任务
 

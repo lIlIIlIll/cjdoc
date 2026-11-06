@@ -22,7 +22,7 @@ cjdoc generate --project . --format coverage --output target/quality-report
 
 ## 用空摘要与空参数说明实测两套计数
 
-配置 `[coverage]` 与 CLI 临时门槛不能互换：覆盖率报告要求摘要和参数说明非空；CLI 门槛只要求声明/参数已经绑定文档对象。以下完整工作流从 `docdemo/` 项目根目录运行，用 trap 还原原始 `src/api.cj` 与 `cjdoc.toml`。
+配置 `[coverage]` 与 CLI 临时门槛不能互换：覆盖率报告要求摘要和参数说明非空；CLI 门槛只要求声明/参数已经绑定文档对象，其中参数绑定由 lint 阶段完成。以下完整工作流从 `docdemo/` 项目根目录运行，用 trap 还原原始 `src/api.cj` 与 `cjdoc.toml`，并保留默认 `standard`；`off` 的参数计数限制见后文专节。
 
 ```bash
 set -eu
@@ -60,7 +60,7 @@ public func greet(name: String): String {
 }
 CJ
 rm -f cjdoc.toml
-cjdoc check --project . --lint-profile off --no-cache \
+cjdoc check --project . --no-cache \
   --min-symbol-coverage 100 --min-parameter-coverage 100
 
 cat > cjdoc.toml <<'TOML'
@@ -105,6 +105,28 @@ cjdoc check --project . \
 ```
 
 退出码 `0` 表示当前规则允许通过，`1` 表示 error、门槛失败或 `--deny-warnings` 拒绝了 warning，`2` 表示 CLI/配置错误。`--deny-warnings` 会把所有当前 warning 也作为失败处理。自动报告和门槛都不替代作者契约复核。
+
+## `--lint-profile off` 下的参数计数限制
+
+`--lint-profile off` 跳过 lint 阶段的 `@param` 绑定，因此参数说明不会写回参数对象；源码收集、引用解析和渲染仍执行。同一份带 `@param name 要问候的名字。` 的源码实测结果是：
+
+```text
+$ cjdoc check --project . --no-cache --min-symbol-coverage 100 --min-parameter-coverage 100
+documentation coverage: symbols 1/1 (100%), parameters 1/1 (100%)   # 退出 0
+
+$ cjdoc check --project . --no-cache --lint-profile off --min-symbol-coverage 100 --min-parameter-coverage 100
+documentation coverage: symbols 1/1 (100%), parameters 0/1 (0%)     # 退出 1
+
+$ cjdoc generate --project . --no-cache --format coverage --output out
+parameters: {"total":1,"documented":1,"percent":100}
+
+$ cjdoc generate --project . --no-cache --lint-profile off --format coverage --output out-off
+parameters: {"total":1,"documented":0,"percent":0}
+```
+
+摘要、`@return` 和 `@example` 计数不受影响，HTML、Markdown 与搜索摘要也仍显示作者写的参数说明，因为渲染会回退到 `@param` 标签；不一致出现在 Doc IR 参数对象的 `documentation` 字段、覆盖率报告的 `parameters` 以及 CLI 参数门槛。需要这些数值时使用默认 `standard`（或 `strict`），并区分参数对象与注释标签中的说明。
+
+配置门槛与 CLI 门槛同时生效而不是互相覆盖：只把 `[coverage].parameters = 100` 写进 `cjdoc.toml`、注释里只有空 `@param` 时，`check` 会同时打印 `error: global parameters coverage 0% is below 100%` 与 `documentation coverage: symbols 1/1 (100%), parameters 1/1 (100%)` 并退出 `1`；未知 `[coverage]` 键、越界阈值等配置错误退出 `2`。
 
 ## 下一步
 
