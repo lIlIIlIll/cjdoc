@@ -147,13 +147,14 @@ python3 scripts/reader_compare.py \
   --budgets "$TASK/registered-1000.json" --output "$TASK/comparison-1000.json"
 ```
 
-登记只读取 baseline、数值模板和明确提供的 transition profile，不读取 after，并且不覆盖已有登记。比较器重算原始样本分位，拒绝更换源码/任务、SDK、浏览器、字体、harness、语言/载体或缺失测量；前 20 排序、原始重载签名/作者详情、准确性、体积、堆、DOM、打印/无 JS、布局和所有性能门槛继续照常检查。没有 transition 登记时，Doc IR 与搜索 index payload 仍按原有严格规则比较。资源受限输出保持 `pass: false`，不能补造浏览器样本。
+登记只读取 baseline、数值模板和明确提供的 transition profile；Doc IR 过渡还从当前候选源码的 `cjpm.toml` 读取一次 `package.version`。登记不读取 after，并且不覆盖已有登记。比较器重算原始样本分位，拒绝更换源码/任务、SDK、浏览器、字体、harness、语言/载体或缺失测量；前 20 排序、原始重载签名/作者详情、准确性、体积、堆、DOM、打印/无 JS、布局和所有性能门槛继续照常检查。没有 transition 登记时，Doc IR 与搜索 index payload 仍按原有严格规则比较。资源受限输出保持 `pass: false`，不能补造浏览器样本。
 
 ### 固定 1k 的 v17→v18 窄过渡
 
 workflow 只在 `READER_CORPUS=1000` 时预登记 `v17-v18-unregistered-source` 和 `docs/maintainer/reader-scale-docs-173-177.json`；10k、50k、external 及手动其它规模不继承这两项登记。它们只允许比较副本中的下列精确、可验证变化，不改变输入、任务、采样或性能预算。
 
-- Doc IR 基线必须是 `/17`，改后必须是 `/18`。基线每个 `ModuleDoc.repositoryPath` 都必须为 `null`；改后移除此字段。改后每个 `FileDoc.provenance` 必须恰为 `state=unavailable`、`reason=no_project_repository`、`evidenceKind=none`，`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity` 全为 `null`。只允许新增 `DocComment.localizationScope="all"`、`DocTag.entryId=null`、`DocTag.source=null` 和 `DocumentationText.entryId=null`。不允许出现 admonition，也不允许 generator、metadata 或其它字段发生漂移。
+- Doc IR 基线必须是 `/17`，改后必须是 `/18`。基线每个 `ModuleDoc.repositoryPath` 都必须为 `null`；改后移除此字段。改后每个 `FileDoc.provenance` 必须恰为 `state=unavailable`、`reason=no_project_repository`、`evidenceKind=none`，`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity` 全为 `null`。只允许新增 `DocComment.localizationScope="all"`、`DocTag.entryId=null`、`DocTag.source=null` 和 `DocumentationText.entryId=null`。不允许出现 admonition，metadata 与其它字段仍须相等。
+- native 与每种 locale 的 publisher Doc IR 分别冻结基线完整 `generator`，并在 after 捕获前冻结候选源码的 `package.version` 为 `afterGeneratorVersion`。改后的 `generator.version` 必须精确等于该登记值；generator 名称、toolchain、其它键和值仍须与基线相同。只在上述身份核验成功后，才在比较副本中配对 version；不接受任意版本漂移。
 - IR 的原始 receipt/hash 在两侧分别验证。native `docs.json` 与 publisher 打包的 Doc IR 都按同一组精确默认值规则比较；publisher 快照身份还须从打包的 Doc IR 和 manifest 独立验证。登记不把原始文件改写成 v18，也不把默认来源值概括成任意来源差异。
 - search-index 仍是 `/11`，search-contract 仍是 `/2`。每侧的原始 `search-index.json`、`search-index.js` 和捕获 receipt 分别核验；严格解析 JS wrapper 的两个数据赋值：index 数据须与 JSON 一致，signature payload 在配对比较中须严格一致，且不允许额外可执行片段。另从 publisher 打包的 Doc IR 独立重算 snapshot ID，并以完整 schema 11 投影、UTF-8 长度前缀输入重算 projection fingerprint。
 - 只有上述证明成功后，比较副本才可配对 `scope.snapshotId`、`scope.sourceSnapshotId`、`entries[].snapshotId` 及根/coverage 的 `projectionId`。其余 schema 11 payload、正文、分类、模块/依赖/暴露、href、顺序、coverage 与 contract 全部严格相等。保留两侧原始 JSON/JS、receipt、SHA-256 和新身份，不回写产物。
@@ -191,7 +192,7 @@ build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 
 - 正文从 15px 变为 16px，并加入明确的 CJK 字体回退；before/after 必须分别精确匹配登记的 CSS family 与字号。
 - 实际使用字体的家族集合按语言分别登记；两次采集还必须具有完全相同的六家族安装文件清单和 SHA-256。实际节点字体仍逐项保留，不能把改后的字体使用集合当成另一台机器的环境。
 - 无 JS 原生 ARIA 树只移除重复的“声明”标题、重复的 `choose` 文本，以及操作名称中的同一冗余标识符。四份[完整树快照](../../tests/fixtures/reader-presentation/)可直接比较；任何其它角色、顺序、链接、签名或契约变化都会改变登记摘要并失败。
-- 原生 Doc IR 仅允许 `generator.version` 从 0.7.3 变为 0.7.5。比较器先校验两个原始文件各自的 receipt 摘要，再对其余全部字段作严格相等比较；不规范化声明、来源、诊断、作者正文或签名。
+- 原生 Doc IR 的两侧 `generator.version` 必须分别等于登记 profile 中冻结的 `baseline` / `after` 值；不得随当前包版本改写历史 profile。比较器先校验两个原始文件各自的 receipt 摘要，再对其余全部字段作严格相等比较；不规范化声明、来源、诊断、作者正文或签名。
 
 查询排名、搜索 payload、原生目标、重载原文、print 可见身份和三种隐藏反例仍严格检查。
 `reader-scale-budgets.json` 中所有绝对/相对性能预算均未改变。该登记不是性能通过凭据，旧的 invalid-evidence 不会被改写；以最新 HEAD 的完整采集结果为准。

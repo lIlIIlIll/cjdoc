@@ -60,24 +60,28 @@ def _baseline_document(document: dict) -> None:
             _require("entryId" not in text, "baseline already contains prompt text identity")
 
 
-def register_ir_transition(path: Path, expected_sha256: str) -> dict:
+def register_ir_transition(path: Path, expected_sha256: str, expected_after_version: str) -> dict:
     encoded = path.read_bytes()
     _require(hashlib.sha256(encoded).hexdigest() == expected_sha256,
              "baseline raw Doc IR disagrees with its capture receipt")
     document = strict_loads(encoded, description="baseline native Doc IR")
-    return register_ir_observation(document, expected_sha256)
+    return register_ir_observation(document, expected_sha256, expected_after_version)
 
 
-def register_ir_observation(document: dict, observed_sha256: str) -> dict:
-    """Bind a model already parsed from independently hash-verified bytes."""
+def register_ir_observation(document: dict, observed_sha256: str, expected_after_version: str) -> dict:
+    """Bind verified baseline bytes and the candidate source version before after capture."""
     _baseline_document(document)
+    _require(isinstance(expected_after_version, str) and bool(expected_after_version),
+             "candidate generator version must be a nonempty string")
     return {"name": TRANSITION_NAME, "baselineDocIrSha256": observed_sha256,
-            "baselineGenerator": deepcopy(document["generator"])}
+            "baselineGenerator": deepcopy(document["generator"]),
+            "afterGeneratorVersion": expected_after_version}
 
 
 def compare_ir_transition(before: dict, after: dict, registration: dict,
                           baseline_sha256: str) -> None:
-    _require(set(registration) == {"name", "baselineDocIrSha256", "baselineGenerator"},
+    _require(set(registration) == {"name", "baselineDocIrSha256", "baselineGenerator",
+                                   "afterGeneratorVersion"},
              "unexpected registration fields")
     _require(registration["name"] == TRANSITION_NAME, "unsupported transition name")
     _require(registration["baselineDocIrSha256"] == baseline_sha256,
@@ -85,6 +89,12 @@ def compare_ir_transition(before: dict, after: dict, registration: dict,
     _baseline_document(before)
     _require(before["generator"] == registration["baselineGenerator"],
              "baseline generator differs from registration")
+    after_version = registration["afterGeneratorVersion"]
+    _require(isinstance(after_version, str) and bool(after_version),
+             "registered candidate generator version must be a nonempty string")
+    expected_generator = {**before["generator"], "version": after_version}
+    _require(after.get("generator") == expected_generator,
+             "after generator differs from the registered candidate version or baseline identity")
     _require(after.get("schemaVersion") == "cjdoc.doc-ir/18", "after must be exactly v18")
     _reject_admonitions(after)
     old, new = deepcopy(before), deepcopy(after)
@@ -113,4 +123,5 @@ def compare_ir_transition(before: dict, after: dict, registration: dict,
                      "after localized text has missing or nondefault prompt identity")
             del text["entryId"]
     new["schemaVersion"] = old["schemaVersion"]
+    new["generator"]["version"] = old["generator"]["version"]
     _require(old == new, "original fields changed beyond the exact registered defaults")
