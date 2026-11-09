@@ -8,6 +8,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 import sys
+import tomllib
 
 sys.dont_write_bytecode = True
 try:
@@ -76,8 +77,9 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
     if doc_ir_transition is not None:
         if doc_ir_transition != TRANSITION_NAME:
             raise ValueError("unsupported Doc IR transition")
-        native_registration = register_ir_transition(baseline / "native-json/docs.json",
-                                                      native["nativeResult"]["docIrSha256"])
+        candidate_version = tomllib.loads((REPO / "cjpm.toml").read_text(encoding="utf-8"))["package"]["version"]
+        native_registration = register_ir_transition(
+            baseline / "native-json/docs.json", native["nativeResult"]["docIrSha256"], candidate_version)
         budget["docIrTransition"] = {"name": TRANSITION_NAME, "native": native_registration, "published": {}}
     browser_hashes, failure_sets = {}, []
     for locale in native["locales"]:
@@ -93,7 +95,7 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
             site = document(baseline, locale["site"] + "/search-index.json").parent
             proof = verify_search_identity(site, browser["resources"], REPO / "docs/schema")
             budget["docIrTransition"]["published"][locale["locale"]] = register_ir_observation(
-                proof["docIr"], proof["docIrSha256"])
+                proof["docIr"], proof["docIrSha256"], candidate_version)
     if failure_sets and any(items != failure_sets[0] for items in failure_sets):
         raise ValueError("baseline query failures disagree across languages or transports")
     budget["baselineQueryFailures"] = failure_sets[0] if failure_sets else []

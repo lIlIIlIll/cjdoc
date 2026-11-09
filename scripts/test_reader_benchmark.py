@@ -387,11 +387,6 @@ class EvidenceIntegrityTests(unittest.TestCase):
         with self.assertRaises(EvidenceError):
             compare_browser(a, b, manifest, budget, [])
 
-    def test_registered_after_version_matches_current_candidate(self):
-        repo = Path(__file__).resolve().parent.parent
-        profile = json.loads((repo / "docs/maintainer/reader-scale-presentation.json").read_text())
-        package = tomllib.loads((repo / "cjpm.toml").read_text())
-        self.assertEqual(profile["generatorVersions"]["after"], package["package"]["version"])
 
     def test_registered_aria_hashes_match_reviewable_full_snapshots(self):
         repo = Path(__file__).resolve().parent.parent
@@ -581,9 +576,45 @@ class EvidenceIntegrityTests(unittest.TestCase):
 
 
 class ReaderTransitionEvidenceTests(unittest.TestCase):
+    def test_registration_freezes_release_version_before_after_capture(self):
+        before, after = ir_transition_pair()
+        before["generator"]["version"] = "0.7.7"
+        for model in (before, after):
+            model["generator"].update(name="cjdoc", toolchain="")
+        repo = Path(__file__).resolve().parent.parent
+        after["generator"]["version"] = tomllib.loads(
+            (repo / "cjpm.toml").read_text())["package"]["version"]
+        with tempfile.TemporaryDirectory() as directory:
+            baseline, candidate = [Path(directory) / label for label in ("baseline", "after")]
+            before_path = baseline / "native-json/docs.json"
+            before_path.parent.mkdir(parents=True)
+            before_path.write_text(json.dumps(before), encoding="utf-8")
+            old = {"label": "baseline", "status": "measured",
+                   "rendererRevision": "a" * 40, "sourceSha256": "b" * 64,
+                   "nativeResult": {"docIrSha256": file_digest(before_path)}, "locales": []}
+            (baseline / "reader-generation.json").write_text(json.dumps(old), encoding="utf-8")
+            budget = register_reader(
+                baseline, repo / "docs/maintainer/reader-scale-budgets.json",
+                doc_ir_transition=TRANSITION_NAME)
+            frozen = deepcopy(budget)
+            after_path = candidate / "native-json/docs.json"
+            after_path.parent.mkdir(parents=True)
+            after_path.write_text(json.dumps(after), encoding="utf-8")
+            new = {"nativeResult": {"docIrSha256": file_digest(after_path)}}
+            check_native_ir(baseline, candidate, old, new, None, budget["docIrTransition"])
+            self.assertEqual(file_digest(after_path), new["nativeResult"]["docIrSha256"])
+            for field in ("version", "name", "toolchain", "build"):
+                changed = deepcopy(after)
+                changed["generator"][field] = "unregistered"
+                after_path.write_text(json.dumps(changed), encoding="utf-8")
+                new["nativeResult"]["docIrSha256"] = file_digest(after_path)
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    check_native_ir(baseline, candidate, old, new, None, budget["docIrTransition"])
+            self.assertEqual(budget, frozen)
+
     def test_ir_registration_accepts_only_the_exact_v17_v18_defaults(self):
         before, after = ir_transition_pair()
-        registration = register_ir_observation(before, "a" * 64)
+        registration = register_ir_observation(before, "a" * 64, after["generator"]["version"])
         before_copy, after_copy = deepcopy(before), deepcopy(after)
         compare_ir_transition(before, after, registration, "a" * 64)
         self.assertEqual(before, before_copy)
@@ -610,7 +641,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             invalid = deepcopy(before)
             change(invalid)
             with self.subTest(baseline=label), self.assertRaises(ValueError):
-                register_ir_observation(invalid, "a" * 64)
+                register_ir_observation(invalid, "a" * 64, after["generator"]["version"])
 
         invalid_after = [
             ("wrong version", lambda document: document.update(schemaVersion="cjdoc.doc-ir/17")),
@@ -674,6 +705,8 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
     def test_register_freezes_artifact_receipts_consumed_by_compare(self):
         before_ir, after_ir = ir_transition_pair()
         repo = Path(__file__).resolve().parent.parent
+        after_ir["generator"]["version"] = tomllib.loads(
+            (repo / "cjpm.toml").read_text())["package"]["version"]
         template = repo / "docs/maintainer/reader-scale-budgets.json"
         with tempfile.TemporaryDirectory() as directory:
             baseline = Path(directory) / "baseline"
@@ -729,6 +762,8 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
     def test_cli_reports_corrupt_search_schema_as_invalid_evidence(self):
         before_ir, after_ir = ir_transition_pair()
         repo = Path(__file__).resolve().parent.parent
+        after_ir["generator"]["version"] = tomllib.loads(
+            (repo / "cjpm.toml").read_text())["package"]["version"]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = root / "tasks.json"
@@ -787,13 +822,15 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
                 receipts.append({"nativeResult": {"docIrSha256": file_digest(path)}})
             registration = register_ir_transition(
-                roots[0] / "native-json/docs.json", receipts[0]["nativeResult"]["docIrSha256"])
+                roots[0] / "native-json/docs.json", receipts[0]["nativeResult"]["docIrSha256"],
+                after["generator"]["version"])
             check_native_ir(roots[0], roots[1], receipts[0], receipts[1], None,
                             {"native": registration})
             with self.assertRaises(EvidenceError):
                 check_native_ir(roots[0], roots[1], receipts[0], receipts[1], None)
             with self.assertRaises(ValueError):
-                register_ir_transition(roots[0] / "native-json/docs.json", "0" * 64)
+                register_ir_transition(roots[0] / "native-json/docs.json", "0" * 64,
+                                       after["generator"]["version"])
             wrong_receipt = deepcopy(receipts[0])
             wrong_receipt["nativeResult"]["docIrSha256"] = "0" * 64
             with self.assertRaises(EvidenceError):
@@ -827,7 +864,8 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 publisher_pairs[locale] = (
                     before_site, after_site, before_resources, after_resources, before_proof, after_proof)
             registrations = {
-                locale: register_ir_observation(pair[4]["docIr"], pair[4]["docIrSha256"])
+                locale: register_ir_observation(pair[4]["docIr"], pair[4]["docIrSha256"],
+                                                after_ir["generator"]["version"])
                 for locale, pair in publisher_pairs.items()
             }
             transition = {"published": registrations}
