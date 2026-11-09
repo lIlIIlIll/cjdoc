@@ -17,7 +17,7 @@
 
 首页路由固定为 `concepts/index.html`。存在所设源文件时读取它；启用概念文档但首页源文件不存在时生成默认项目页。默认模块页源文件为 `docs/modules/<slug>.md`，默认包页为 `docs/packages/<slug>.md`；不存在时分别生成中立的默认说明。`slug` 将名称中的 ASCII 字母、数字以外字符折叠为连字符，跨平台路径不要依赖其他字符原样保留。每个源 Markdown 最多 256 KiB，概念页总数最多 128。
 
-Markdown 路径必须是项目内安全相对路径且以 `.md` 结尾；源文件必须存在，路径不能逃出项目根或经过符号链接。页面标题显式设置 `title` 时使用该值；否则读取源文件中第一个非代码块、非缩进的 `# ` 标题；没有一级标题时用来源路径回退。页面内容写法、章节与 API 绑定见[添加指南](../tutorials/add-guides.md)。
+Markdown 路径必须是项目内安全相对路径且以 `.md` 结尾，不能逃出项目根或经过符号链接。`[[docs.pages]]` 的源文件必须存在；项目首页、自动模块页与包概述缺文件时采用上文的默认内容。页面标题显式设置 `title` 时使用该值；否则读取源文件中第一个非代码块、非缩进的 `# ` 标题；没有一级标题时用来源路径回退。页面内容写法、章节与 API 绑定见[添加指南](../tutorials/add-guides.md)。
 
 ### `[[docs.pages]]`：自定义指南或概念页
 
@@ -63,13 +63,13 @@ first-example = "第一个示例"
 [docs.packages]
 pocketkit = "docs/pocketkit.md"
 
-[docs.packages."pocketkit-core"]
+[docs.packages.pocketkit-core]
 overview = "docs/pocketkit-core.md"
 ```
 
-`[docs.packages]` 的值是路径；`[docs.packages.<包名>]` 接受 `source`、`path`、`overview` 三个同义键。带点的包名应使用子表。包名不得是绝对路径或含 `\\`、`..`、`:`。没有对应已发现包的配置项不会生成额外包。
+`[docs.packages]` 的值是路径；`[docs.packages.<包名>]` 接受 `source`、`path`、`overview` 三个同义键。当前读取器按 `docs.packages.` 后的原样文本识别包名，子表名不加引号；带点的包名也直接写在该前缀之后。包名不得是绝对路径或含 `\\`、`..`、`:`。没有对应已发现包的配置项不会生成额外包。
 
-未配置源文件时，默认读取 `docs/packages/<slug>.md`；该文件缺失时保留中立默认包页。显式指定的概述文件缺失则按概念页来源错误处理。包概述是否显示在 HTML 包页顶部，还要求正文非空、绑定全部可解析且能唯一证明所属模块；同一个 Markdown 文件不会重复出现。`kind = "package"` 的页面优先于普通指南候选。具体页面写法见[添加指南](../tutorials/add-guides.md)。
+未配置源文件时，默认读取 `docs/packages/<slug>.md`；缺失时保留中立默认包页。显式指定的概述文件缺失时也采用默认包内容，与 `[[docs.pages]]` 缺文件报错不同。包概述是否显示在 HTML 包页顶部，还要求正文非空、绑定全部可解析且能唯一证明所属模块；同一个 Markdown 文件不会重复出现。`kind = "package"` 的页面优先于普通指南候选。具体页面写法见[添加指南](../tutorials/add-guides.md)。
 
 ## `[[source.repositories]]`：显式多仓源码来源
 

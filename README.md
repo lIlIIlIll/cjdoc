@@ -19,7 +19,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/preview-dark.png">
-    <img src="docs/assets/readme/preview-light.png" width="900" alt="cjdoc 生成的 PocketKit 示例文档：zh-CN、demo-v2 的 TextCatalog.add String 重载已展开，显示签名 public func add(value: String): Unit、参数 value、后置条件与示例代码">
+    <img src="docs/assets/readme/preview-light.png" width="900" alt="PocketKit 的 TextCatalog.add 字符串重载、参数与示例">
   </picture>
 </p>
 
@@ -27,9 +27,9 @@
 
 ## 快速开始
 
-本 README 与手册描述**当前源码**。先按[安装步骤](docs/getting-started/install.md)准备 STS 1.2.0 SDK、匹配的静态 stdx，从同一提交构建并安装 `cjdoc`。运行时保留 SDK 环境。已发布版本与 main CI 徽章分别反映上游发行版、main 工作流，不代表本提交的完整验收。
+首次使用，请先按[安装指南](docs/getting-started/install.md)安装 `cjdoc`，并在当前终端加载仓颉 SDK 环境。下面创建一个最小仓颉库，为函数添加注释并生成 HTML 文档。
 
-工具已安装后，在一个空工作目录创建无依赖静态库：
+在一个空工作目录执行：
 
 ```bash
 cjpm init --name docdemo --path docdemo --type=static
@@ -93,9 +93,8 @@ cjdoc generate --project . --format html
 
 ## 边界与排错
 
-- 注释来自源码；cjdoc 不补写说明，不自动翻译，也不证明作者描述符合实现。默认受众选择不是隐私过滤。
-- 普通 source 生成不编译项目；示例检查与可选 CHIR 使用真实编译器。CHIR 是保守语义补充，失败保留 AST/source fallback，不是 authoritative provider。
-- 离线 `render` 只接受当前 Doc IR v18，不迁移旧输入。不同查询/索引协议有自己的版本。
-- 发行包按清单 `sourceCommit` 查看同版本 README/手册；离线包不含预览图片，完整视觉预览请通过该提交在线查看。不要仅凭版本字符串套用当前手册。
+- cjdoc 从源码注释生成说明，不补写内容，也不自动翻译。发布前请[核对 API 说明与实际行为](docs/how-to/review-contracts.md)。
+- 默认页面主要显示公开 API；受众选择不用于删除敏感信息。选择输入范围前请看[输入指南](docs/how-to/select-inputs.md)。
+- 使用预编译发行包时，按[发行包安装说明](docs/getting-started/install.md#替代安装公开发行包-v077)查看对应版本手册。
 
 遇到启动、项目根、输出所有权或外部工具问题，查[按症状排错](docs/how-to/troubleshoot.md)。项目开发、schema、发布与证据门禁见[维护者入口](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/README.md)。

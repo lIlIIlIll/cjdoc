@@ -6,6 +6,8 @@
 
 `query` 需要 `1..64` 个显式 `--snapshot`，并恰好一个 `--request <文件|->`；`-` 表示从 stdin 读一个 UTF-8 JSON 对象。快照可为当前 Doc IR、HTML 文档根/`agent/manifest.json`，或已有版本目录的 `versions.json`。读取器启动时一次性装载这些输入，再在冻结快照上执行查询。
 
+显式输入和 `versions.json` 中的语言、版本目录展开后，合计最多 64 个快照。所有快照的规范化 Doc IR 合计最多 64 MiB；加载清单、文档及其资源的累计读取量最多 512 MiB。这些是启动加载的总量限制，与单次请求的 `limit`、`maxBytes` 以及结果字节上限分别计算。
+
 ```bash
 cjdoc query --snapshot <已生成的当前快照或机器清单> --request request.json
 ```
@@ -38,7 +40,7 @@ cjdoc query --snapshot <已生成的当前快照或机器清单> --request reque
 | `get_symbol` 的 scope | `moduleId`、`packageName`、`kind`、`documentSetId`、`apiVersion`、`dependencyInstanceId`、`library`、`target`、`cfg`。 |
 | `get_symbol` 的声明详情 | 身份选择器恰好一个：`symbolId`、`symbolKey`、`pageId`。声明支持 `preset`/`sections`、`maxBytes`；仅声明详情可加 `relations`、`relatedSnapshotIds`、`cursor`、`limit`。 |
 
-`resolve_docs.query` 用于匹配库、模块、包；查符号使用 `search`，不要把声明名作为 resolve 的库/包语义。context 字段指向已载入的消费者/依赖快照，不重新解析依赖，也不会自动扩大目标候选的快照范围。`compatible` 是显式选择策略；`latest` 仅在输入 catalog 已声明 latest alias 时有效，缺失 alias 会返回 `unavailable`，不等价于任意选最新文件。
+`resolve_docs.query` 用于匹配库、模块、包；查符号使用 `search`，不要把声明名作为 resolve 的库/包语义。context 字段指向已载入的消费者/依赖快照，不重新解析依赖，也不会自动扩大目标候选的快照范围。`compatible` 是显式选择策略。`resolve_docs` 的 `latest` 只沿输入 catalog 明示的 latest alias 选择；独立快照没有该别名但仍有可选候选时，返回 `ambiguous`（退出 `0`）且不填 `selection.selected`，不会猜选最新文件。
 
 `search` 的通用选择/过滤字段可以组合收窄候选。`parameterTypes`、`genericArity`、`symbolId`、`symbolKey` 与结构化范围均使用已捕获身份，不会调用编译器判断调用适配性。
 
@@ -166,6 +168,6 @@ cjdoc mcp --snapshot <已生成的当前快照或机器清单>
 
 JSON-RPC/协议层错误码：`-32700` parse error；`-32600` invalid request（包含尚未 ready）；`-32601` method not found；`-32602` invalid params；`-32603` internal error。未知工具、tool 参数非 object、重复传 `operation`、无效 initialization 参数属于协议/tool 调用层错误。请求字段/查询 scope/预算问题则由 query core 的 `cjdoc.query-result/4` 状态报告，不与 JSON-RPC 错误混淆。
 
-MCP 每条输入最多 1 MiB、JSON 深度 64；查询请求自身也最多 1 MiB。工具 schema 最多 8 MiB；响应最多 130 MiB，因为核心结果上限 64 MiB 的 JSON 另作为可读 `content[].text` 携带一次，并含 JSON-RPC ID/framing。正常 CLI query 仅返回核心 envelope；不要把 MCP 外层限制与 `maxBytes` 混为一谈。
+MCP 每条输入最多 1 MiB、JSON 深度 64；查询请求自身也最多 1 MiB。工具 schema 最多 8 MiB；响应外层最多 130 MiB，包含完整结果 `structuredContent`、可读 `content[0].text` 和 JSON-RPC 封装。可读文本来自结果的 `text` 字段。正常 CLI query 仅返回核心 envelope；MCP 外层上限、核心结果上限和用户 `maxBytes` 是独立限制。
 
 客户端配置还需要正确传递 cjdoc 动态运行时库搜索路径；若客户端/进程不能继承环境，应在其 MCP server 配置里显式设置平台运行时路径。Codex CLI 0.163 的 MCP 调度还依赖配套 `codex-code-mode-host`，这是客户端前提，不代表 cjdoc 已被模型调用或启用 shell/网页工具。

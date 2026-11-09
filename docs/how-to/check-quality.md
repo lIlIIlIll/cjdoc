@@ -1,137 +1,115 @@
 # 检查文档质量并设置门槛
 
-本指南用 `docdemo` 查看覆盖率与结构质量报告，并在检查或生成时阻止低于门槛的输入。字段有内容、文字不像模板、说明符合实现是三种不同判断，自动报告不能代替作者复核。
+先运行检查读取诊断，再生成覆盖率与质量报告，最后把门槛写进 `cjdoc.toml`，让本地和 CI 用同一条 `check` 命令判断文档是否达标。字段是否有内容、文字是否像模板、说明是否符合实现是三种不同判断，自动报告只覆盖前两类的一部分。
 
 ## 前提
 
-- 已完成[首次生成教程](../tutorials/first-site.md)，`docdemo/` 中有带摘要、`@param` 和 `@return` 的公开 `greet`。
-- 已安装当前版本 `cjdoc`，仓颉运行环境在当前终端可用。命令在 `docdemo/` 项目根运行。
-- 下例以 Bash 执行。为避免覆盖项目已有文件，工作流先保存 `src/api.cj` 和 `cjdoc.toml`，结束时恢复。
+- 已完成[首次生成教程](../tutorials/first-site.md)，`docdemo/` 中有带摘要、`@param`、`@return` 和示例的公开 `greet`。
+- 已安装 `cjdoc`，并在当前终端加载仓颉 SDK 环境。
+- 以下命令都在 `docdemo/` 项目根执行。
 
-## 生成并阅读报告
+## 运行检查并阅读诊断
 
-`coverage` 输出字段是否有内容及其分母；`quality` 输出摘要/参数说明是否命中有限的模板规则。报告不证明作者说法正确，也不提供质量分门槛。
+`check` 读取当前项目并运行文档诊断，不写站点：
+
+```bash
+cjdoc check --project .
+```
+
+有诊断时，每条输出一行 `warning[诊断码]: 说明` 或 `error[诊断码]: 说明`，下一行是源文件与行列位置。没有诊断时命令不打印内容，退出码为 `0`。默认只有 error 导致失败；warning 会打印但不改变退出码，加上 `--deny-warnings` 后 warning 也算失败。规则严重级别可以在 `[lint]` 表中逐项改成 `off`、`warning` 或 `error`，键和默认值见[配置参考](../reference/configuration.md)。
+
+`docdemo` 的 `greet` 注释完整，这一步不应出现缺注释、缺参数一类的诊断。如果看到 `CJDOC3034`（可见声明没有文档注释）或 `CJDOC3004`（参数缺少 `@param`），先按提示补注释，再继续生成报告。已经按[发布多语言页面](../tutorials/publish-languages.md)配置 `[i18n]` 的项目可能同时出现缺译 warning；默认 warning 不改变退出码，设置了缺译或翻译覆盖率门槛时按相应策略处理。
+
+## 生成并阅读覆盖率与质量报告
+
+在同一个项目根生成报告：
 
 ```bash
 cjdoc generate --project . --format coverage --output target/quality-report
 ```
 
-检查 `target/quality-report/coverage/coverage.json` 和 `target/quality-report/coverage/quality.json`。目录输出时会生成两份报告；启用 `[i18n]` 后还会生成 `coverage/translations.json`。若输出路径已存在但不是 cjdoc 管理的目录，选择新的 `target/` 子目录，不要先创建空的输出目录。报告字段的完整定义见[产物参考](../reference/artifacts.md)。
+报告写入 `target/quality-report/coverage/coverage.json` 和 `target/quality-report/coverage/quality.json`；启用 `[i18n]` 后还会生成 `coverage/translations.json`。输出目录不存在时由 cjdoc 创建；如果 `target/quality-report` 已经存在且不是 cjdoc 管理的输出，换一个新的 `target/` 子目录，不要先手工创建空目录。
 
-`coverage.json` 的七类指标是 `symbols`、`parameters`、`returns`、`throws`、`examples`、`deprecated` 和 `semanticLinks`。它们按当前 `--audience` 的可见声明计数，分母为零时百分比为 `100`。`quality.json` 只提供 symbols、parameters 两个 `meaningful` 百分比和 findings；三条模板规则分别是摘要重复声明名、参数说明重复参数名、返回值说明重复返回类型。没有命中模板，不代表文字充分。
+`coverage.json` 的 `metrics` 记录七类指标，`packages` 和 `modules` 用同样的结构给出分组：
 
-## 用空摘要与空参数说明实测两套计数
+| 指标 | 计入分母 | 计入已写 |
+|---|---|---|
+| `symbols` | 当前受众可见的声明 | 摘要非空 |
+| `parameters` | 名称不以 `_` 开头的参数 | `@param` 说明非空 |
+| `returns` | 有非 `Unit` 返回值的声明 | `@return` 说明非空 |
+| `throws` | 实际写出的 `@throws` 条目 | 说明非空 |
+| `examples` | 所有可见声明，没有注释的也计入 | 至少一个说明非空的 `@example` |
+| `deprecated` | 实际写出的 `@deprecated` 条目 | 弃用说明非空 |
+| `semanticLinks` | 记录的 `@see` 与结构化 Markdown 链接 | 解析成功 |
 
-配置 `[coverage]` 与 CLI 临时门槛不能互换：覆盖率报告要求摘要和参数说明非空；CLI 门槛只要求声明/参数已经绑定文档对象，其中参数绑定由 lint 阶段完成。以下完整工作流从 `docdemo/` 项目根目录运行，在括号限定的 Bash 子 shell 中用 trap 还原原始 `src/api.cj` 与 `cjdoc.toml`，并保留默认 `standard`；`off` 的参数计数限制见后文专节。
+每项包含 `total`、`documented` 和 `percent`。分母为 `0` 时百分比按 `100` 计算，所以没有返回值、没有异常说明或没有语义链接的项目会显示 `0/0 (100%)`。只有首站教程的 `greet` 时，`symbols`、`parameters`、`returns` 和 `examples` 都应是 `1/1`；如果你已在[检查示例](check-examples.md)中加入 `add`，对应数字会随之增加。
 
-```bash
-(
-set -eu
-mkdir -p target
-BACKUP="$(mktemp -d target/cjdoc-empty-fields.XXXXXX)"
-cp src/api.cj "$BACKUP/api.cj"
-if test -f cjdoc.toml; then
-  cp cjdoc.toml "$BACKUP/cjdoc.toml"
-  HAD_CONFIG=1
-else
-  HAD_CONFIG=0
-fi
-restore() {
-  cp "$BACKUP/api.cj" src/api.cj
-  if test "$HAD_CONFIG" -eq 1; then
-    cp "$BACKUP/cjdoc.toml" cjdoc.toml
-  else
-    rm -f cjdoc.toml
-  fi
-  rm -rf "$BACKUP"
-}
-trap restore EXIT HUP INT TERM
-OUT="target/empty-fields-report-$$"
-test ! -e "$OUT"
+`quality.json` 只计算 `symbols` 和 `parameters` 两个 `meaningful` 百分比，并列出 `findings`。三条模板规则分别检查摘要重复声明名、参数说明重复参数名、返回值说明重复返回类型；命中时 `findings` 中给出对应 `code` 和 `message`。这两个百分比不能配置成门槛，也没有最低质量分：没有命中模板不代表文字充分，命中也不代表说明错误。
 
-cat > src/api.cj <<'CJ'
-package docdemo
+## 设置持久覆盖率门槛
 
-/**
- *
- * @param name
- */
-public func greet(name: String): String {
-    return "Hello, ${name}!"
-}
-CJ
-rm -f cjdoc.toml
-cjdoc check --project . --no-cache \
-  --min-symbol-coverage 100 --min-parameter-coverage 100
+把门槛写进项目自己的 `cjdoc.toml`。如果文件中已经有 `[docs]`、`[i18n]` 或 `[[docs.pages]]`，在末尾追加 `[coverage]` 表，不要替换整个文件：
 
-cat > cjdoc.toml <<'TOML'
+```toml
 [coverage]
 symbols = 100
 parameters = 100
-TOML
-if cjdoc generate --project . --no-cache --format coverage --output "$OUT"; then
-  echo '错误：非空字段要求的 coverage 门槛意外通过' >&2
-  exit 1
-else
-  status=$?
-fi
-test "$status" -eq 1
-python3 - "$OUT/coverage/coverage.json" "$OUT/coverage/quality.json" <<'PY'
-import json
-from pathlib import Path
-import sys
-
-coverage = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-quality = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-for metric in ("symbols", "parameters"):
-    values = coverage["metrics"][metric]
-    assert values["total"] == 1 and values["documented"] == 0 and values["percent"] == 0
-    assert quality[metric]["total"] == 1 and quality[metric]["meaningful"] == 0
-print("CLI presence gate passed; report metrics found empty summary and parameter text.")
-PY
-)
 ```
 
-第一次 `check` 应退出 `0`：CLI 的 `--min-symbol-coverage` 与 `--min-parameter-coverage` 统计文档对象是否存在；空摘要和空 `@param` 说明仍是已绑定对象。第二次 `generate` 应退出 `1`，但默认会在门槛失败时保留报告文件：`coverage.json` 的 `documented` 均为 `0`，而 `quality.json` 的 `meaningful` 均为 `0`。因此不能把 CLI 的 `100%` 解释成摘要/参数内容充分。该代码块结束或中断时 trap 恢复项目文件，然后返回当前交互终端。
+项目还没有 `cjdoc.toml` 时，新建该文件并写入同样的内容。文件里已经有 `[coverage]` 时，只补充缺少的键，不要重复表头。键名与报告指标对应，其中 `semantic-links` 带连字符；取值是 `0..100` 的整数，可用的键还包括 `returns`、`throws`、`examples` 和 `deprecated`。需要给单个包设不同门槛时用 `[coverage.package.<包名>]`，只需要求某个语言达到翻译比例时用 `[coverage.translation]`。
 
-`[coverage]` 七类可配置指标为 `symbols`、`parameters`、`returns`、`throws`、`examples`、`deprecated` 和 `semantic-links`，取值均为 `0..100`；也可在 `[coverage.package.<包名>]` 为单个包设置门槛。该配置使用报告计数，并由 `generate`、`check`、`serve` 的构建执行；`render` 不执行门槛。`quality.json` 提供 symbols、parameters 两个有限模板启发式的 `meaningful` 百分比和 findings，不可配置为门槛，也不能证明语义正确。见[配置参考](../reference/configuration.md)与[产物参考](../reference/artifacts.md)。
-
-计数实现：[CLI 对象存在性计数](https://github.com/lIlIIlIll/cjdoc/blob/main/src/render/renderers_output.cj)；[覆盖率报告的非空字段计数](https://github.com/lIlIIlIll/cjdoc/blob/main/src/render/coverage_v2.cj)。
-
-一次性 CLI 门槛可直接用于 CI；这两个阈值只在命令行显式传入时应用：
+保存后重新运行检查：
 
 ```bash
-cjdoc check --project . \
-  --min-symbol-coverage 90 \
-  --min-parameter-coverage 90
+cjdoc check --project .
 ```
 
-退出码 `0` 表示当前规则允许通过，`1` 表示 error、门槛失败或 `--deny-warnings` 拒绝了 warning，`2` 表示 CLI/配置错误。`--deny-warnings` 会把所有当前 warning 也作为失败处理。自动报告和门槛都不替代作者契约复核。
+`docdemo` 的注释完整，这一步应仍以 `0` 结束。任一指标低于门槛时，命令打印 `error: global <指标> coverage <实际>% is below <门槛>%`，并以 `1` 退出；包级门槛的消息以 `package <包名>` 开头。配置门槛在 `generate`、`check` 和 `serve` 的构建中执行，`render` 不执行。
+
+## 在 CI 中使用退出码
+
+CI 中直接运行同一条命令，用退出码判定：
+
+```bash
+cjdoc check --project .
+```
+
+`0` 表示本次启用的规则允许通过，`1` 表示有 error、门槛失败或 `--deny-warnings` 拒绝了 warning，`2` 表示命令行或配置错误。`2` 同样应让流水线失败，通常意味着 `[coverage]` 键名拼错、阈值越界或使用了不存在的选项。需要把 warning 也作为发布阻塞时加 `--deny-warnings`。
+
+## 一次性 CLI 门槛与两套计数
+
+不修改项目配置时，可以在 `check` 上临时要求符号和参数达到某个比例：
+
+```bash
+cjdoc check --project . --min-symbol-coverage 90 --min-parameter-coverage 90
+```
+
+传入任一选项时，命令会在诊断之外打印一行统计，例如 `documentation coverage: symbols 1/1 (100%), parameters 1/1 (100%)`。这两个门槛和 `[coverage]` 同时检查，互不覆盖。
+
+两套数字统计的对象不同：
+
+| 判断 | 已写的条件 | 设置位置 |
+|---|---|---|
+| `[coverage]` 门槛与报告（以 `symbols`、`parameters` 为例） | 摘要或参数说明的文字非空 | 项目 `cjdoc.toml` |
+| `--min-symbol-coverage`、`--min-parameter-coverage` | 声明上存在文档对象；参数在 lint 阶段与 `@param` 绑定，说明为空也算已绑定 | `check` 命令行 |
+
+因此注释里只写空的 `@param name`，又在 `cjdoc.toml` 配置 `[coverage].parameters = 100`，并同时传入 `--min-parameter-coverage 100` 时，`check` 会打印配置门槛的 error 和 `parameters 1/1 (100%)` 统计行，并以 `1` 退出。CLI 的 `100%` 只说明文档对象存在，不能当作参数说明已经写好。把这两个选项加在 `check` 上使用；`generate` 也会解析其中部分选项，但发布判断应交给同一条 `check` 命令。
 
 ## `--lint-profile off` 下的参数计数限制
 
-`--lint-profile off` 跳过 lint 阶段的 `@param` 绑定，因此参数说明不会写回参数对象；源码收集、引用解析和渲染仍执行。同一份带 `@param name 要问候的名字。` 的源码实测结果是：
+`--lint-profile off` 关闭文档诊断，参数覆盖率也不再把这些 `@param` 说明算作已写。同一份写出 `@param name 要问候的名字。` 的源码，覆盖率报告的 `parameters` 会显示 `0/1`，CLI 参数门槛同样失败；HTML、Markdown 和搜索摘要仍然显示你写的参数说明。摘要、`@return` 和 `@example` 的计数不受影响。
 
-```text
-$ cjdoc check --project . --no-cache --min-symbol-coverage 100 --min-parameter-coverage 100
-documentation coverage: symbols 1/1 (100%), parameters 1/1 (100%)   # 退出 0
+关闭 lint 后，缺少注释、缺少参数等诊断也不再出现，检查通过不能说明这些字段已经写好。需要参数覆盖率数值和这些诊断时保留默认的 `standard`，或改用 `strict`。
 
-$ cjdoc check --project . --no-cache --lint-profile off --min-symbol-coverage 100 --min-parameter-coverage 100
-documentation coverage: symbols 1/1 (100%), parameters 0/1 (0%)     # 退出 1
+## 遇到问题怎么办
 
-$ cjdoc generate --project . --no-cache --format coverage --output out
-parameters: {"total":1,"documented":1,"percent":100}
-
-$ cjdoc generate --project . --no-cache --lint-profile off --format coverage --output out-off
-parameters: {"total":1,"documented":0,"percent":0}
-```
-
-摘要、`@return` 和 `@example` 计数不受影响，HTML、Markdown 与搜索摘要也仍显示作者写的参数说明，因为渲染会回退到 `@param` 标签；不一致出现在 Doc IR 参数对象的 `documentation` 字段、覆盖率报告的 `parameters` 以及 CLI 参数门槛。需要这些数值时使用默认 `standard`（或 `strict`），并区分参数对象与注释标签中的说明。
-
-配置门槛与 CLI 门槛同时生效而不是互相覆盖：只把 `[coverage].parameters = 100` 写进 `cjdoc.toml`、注释里只有空 `@param` 时，`check` 会同时打印 `error: global parameters coverage 0% is below 100%` 与 `documentation coverage: symbols 1/1 (100%), parameters 1/1 (100%)` 并退出 `1`；未知 `[coverage]` 键、越界阈值等配置错误退出 `2`。
+- 门槛失败但字段看起来都有内容：核对失败指标的分母规则。`examples` 会把没有注释的可见声明计入分母，`semanticLinks` 只把解析成功的链接算作已写，`parameters` 会忽略 `_` 开头的参数。
+- 退出码为 `2`：检查 `[coverage]` 的键名、阈值范围，以及同一文件是否重复了表头或键。
+- 报告目录冲突：换一个尚不存在的输出目录，处理方式见[管理输出](manage-outputs.md)。
+- 报告显示 `100%` 但说明没有帮助：用 `quality.json` 的 `findings` 找到模板化文字，再按[复核 API 契约](review-contracts.md)检查说明是否与实现一致。
 
 ## 下一步
 
-- 编译并运行文档中的程序：[检查示例](check-examples.md)。
+- 编译并运行注释示例：[检查示例](check-examples.md)。
 - 核对源码行为和作者承诺：[复核 API 契约](review-contracts.md)。
-- 查找具体阈值和规则键：[配置参考](../reference/configuration.md)。
+- 查找完整阈值、包级门槛和规则键：[配置参考](../reference/configuration.md)；报告字段：[产物参考](../reference/artifacts.md)。
