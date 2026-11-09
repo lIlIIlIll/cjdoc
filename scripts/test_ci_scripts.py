@@ -26,7 +26,7 @@ from test_ci_wallclock_wiring import function_block as _job_block
 
 class ChangesRoutingTest(unittest.TestCase):
     def test_docs_only_changes_skip_native_work(self) -> None:
-        planned = ci_changes.classify_paths(["docs/advanced-usage.md", "README.md"])
+        planned = ci_changes.classify_paths(["docs/how-to/generate-and-publish.md", "README.md"])
         self.assertTrue(planned["docs"])
         self.assertFalse(planned["native"])
         self.assertEqual({name for name, needed in planned["jobSet"].items() if needed}, set())

@@ -1,6 +1,6 @@
 # 构建与本地验收
 
-面向修改 cjdoc 源码的维护者。普通使用者应下载 release binary（见[使用者文档索引](../README.md)）；只有在发布页没有对应资产，或你正在修改 cjdoc 时，才从源码构建。
+面向修改 cjdoc 源码的维护者。使用者从[当前源码安装](../getting-started/install.md)开始，保证工具和手册属于同一提交；发行包替代入口按自身清单的 sourceCommit 阅读同版本手册。
 
 以下命令以 POSIX shell 为例；Windows 请在 Git Bash 中运行，`python3` 视环境换成 `python`。
 

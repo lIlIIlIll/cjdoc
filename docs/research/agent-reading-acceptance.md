@@ -8,7 +8,7 @@
 - [原生完整门禁](agent-reading-acceptance/native-gate.json)、[双版本双语发布](agent-reading-acceptance/static-publication.json)、[逐文件字节/hash 清单](agent-reading-acceptance/static-file-manifest.json)。
 - [HTTP/断网 file 浏览器记录](agent-reading-acceptance/static-browser.json)、[无 SDK/源码/网络的真实运行回执](agent-reading-acceptance/offline-runtime.json)。
 - [固定规模原始协议](agent-reading-acceptance/fixed-input-cost/protocol.json)、[全部 15 次成本观测](agent-reading-acceptance/fixed-input-cost/observations.json)、[汇总与限制](agent-reading-acceptance/fixed-input-cost/summary.json)。
-- [证据索引及原始/显示文件 hash](agent-reading-acceptance/evidence-index.json)。复现命令见[评测维护手册](../maintainer/agent-evaluation.md)，产品用法见[机器读取手册](../agent-reading.md)。
+- [证据索引及原始/显示文件 hash](agent-reading-acceptance/evidence-index.json)。复现命令见[评测维护手册](../maintainer/agent-evaluation.md)，产品用法见[机器读取手册](https://github.com/lIlIIlIll/cjdoc/blob/1e692adb0d4441d18f32925fdb2e42877a316b8d/docs/agent-reading.md)。
 
 ## 固定身份
 

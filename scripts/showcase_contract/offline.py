@@ -46,7 +46,8 @@ def create_archive(root: Path) -> Path:
                 info.create_system = 3
                 info.external_attr = (stat.S_IFREG | 0o644) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
-                archive.writestr(info, path.read_bytes())
+                # An explicit ZipInfo does not inherit the container's compression level.
+                archive.writestr(info, path.read_bytes(), compresslevel=9)
         os.replace(temporary, destination)
     finally:
         Path(temporary).unlink(missing_ok=True)

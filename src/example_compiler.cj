@@ -586,7 +586,7 @@ private func syntheticExampleSource(unit: ExampleCompilationUnit,
 }
 
 // `staticExecutable` selects `--static --output-type exe` (needed so a run-mode
-// example is executable without the SDK runtime on `PATH`, see docs/usage.md).
+// example is executable without the SDK runtime on `PATH`, see docs/how-to/check-examples.md).
 // `--output-type exe` also drops a `<package>.cjo` into the current working
 // directory, so every caller must pass `workingDirectory: Some(temporary)`.
 internal func exampleCompilerArguments(documentation: DocumentationSet,

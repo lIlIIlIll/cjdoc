@@ -10,7 +10,7 @@ on:
       - 'tests/browser/*reader-scale*.mjs'
       - 'tests/browser/check-reader-discovery.mjs'
       - 'docs/maintainer/reader-scale*'
-      - 'docs/contract-review.md'
+      - 'docs/how-to/review-contracts.md'
       - 'examples/pocketkit/**'
       - '.github/workflows/reader-scale.yml'
   push:
