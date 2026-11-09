@@ -1,0 +1,179 @@
+name: Diagnose Windows SDK payload
+
+# Diagnostic only: no project compilation, SDK mutation, cache save or acceptance retry.
+on:
+  push:
+    branches: [diagnostics/0.7.8-windows-sdk]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-windows-sdk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+      SOURCE_COMMIT: d0fb6d3e4646bfda005502d845a1f551f239bf9e
+      CACHE_KEY: cjv-Windows-X64-1.2.0-sts-stdx-cjv0.3.2-f93a657cf005110709789d46b7ae86e5388ab1aa824c4379cc1423381fa06307
+      SDK_SHA256: 7bd5088ad56fb03c1214e73ea076de5ac08580cc419a8cbd46a524ee1ca250bf
+      REPORT_DIRECTORY: ${{ runner.temp }}/windows-sdk-diagnostic
+    steps:
+      - name: Check out the exact release candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d0fb6d3e4646bfda005502d845a1f551f239bf9e
+          persist-credentials: false
+
+      - name: Enable Windows long paths
+        shell: bash
+        run: git config --global core.longpaths true
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Record non-identifying processor facts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path $env:REPORT_DIRECTORY | Out-Null
+          $processors = @(Get-CimInstance -ClassName Win32_Processor -Property Manufacturer,Name,Architecture,NumberOfCores,NumberOfLogicalProcessors)
+          if ($processors.Count -eq 0) { throw 'Processor facts unavailable' }
+          @($processors | ForEach-Object {
+            [ordered]@{
+              manufacturer = $_.Manufacturer
+              model = $_.Name
+              architecture = [int]$_.Architecture
+              physicalCores = [int]$_.NumberOfCores
+              logicalProcessors = [int]$_.NumberOfLogicalProcessors
+            }
+          }) | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8NoBOM (Join-Path $env:REPORT_DIRECTORY 'processors.json')
+
+      - name: Restore the original compiler cache read-only
+        id: cached
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/setup-cangjie-cjv
+          key: ${{ env.CACHE_KEY }}
+          fail-on-cache-miss: true
+
+      - name: Authenticate a fresh copy of the same compiler archive
+        id: official
+        shell: bash
+        env:
+          SDK_URL: https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.2.0.zip&objectKey=6ab1eafae4bd101f57762f5e
+        run: |
+          set -euo pipefail
+          python scripts/install_cangjie_sdk.py \
+            --url "${SDK_URL}" --sha256 "${SDK_SHA256}" \
+            --destination "${RUNNER_TEMP}/official-sdk" --github-output "${GITHUB_OUTPUT}"
+
+      - name: Compare exact compiler payload bytes
+        shell: bash
+        env:
+          OFFICIAL_ROOT: ${{ steps.official.outputs.root }}
+          CACHED_ROOT: ${{ runner.temp }}/setup-cangjie-cjv/toolchains/sts-1.2.0
+          CACHE_HIT: ${{ steps.cached.outputs.cache-hit }}
+          MATCHED_KEY: ${{ steps.cached.outputs.cache-matched-key }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import stat
+
+          def entry_kind(path):
+              value = path.lstat()
+              if stat.S_ISLNK(value.st_mode) or getattr(value, 'st_file_attributes', 0) & 0x400:
+                  raise ValueError('SDK links and reparse points are not accepted')
+              if stat.S_ISREG(value.st_mode):
+                  return 'file'
+              if stat.S_ISDIR(value.st_mode):
+                  return 'directory'
+              raise ValueError('SDK special files are not accepted')
+
+          def snapshot(root):
+              for directory in (root, *root.parents):
+                  if entry_kind(directory) != 'directory':
+                      raise ValueError('SDK root chain is not a regular directory')
+              records = {}
+              pending = [root]
+              while pending:
+                  directory = pending.pop()
+                  for path in sorted(directory.iterdir()):
+                      if entry_kind(path) == 'directory':
+                          pending.append(path)
+                          continue
+                      digest, size = hashlib.sha256(), 0
+                      with path.open('rb') as stream:
+                          for block in iter(lambda: stream.read(1 << 20), b''):
+                              digest.update(block)
+                              size += len(block)
+                      records[path.relative_to(root).as_posix()] = {'bytes': size, 'sha256': digest.hexdigest()}
+              return records
+
+          def digest(records):
+              return hashlib.sha256(json.dumps(records, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+          if os.environ['CACHE_HIT'] != 'true' or os.environ['MATCHED_KEY'] != os.environ['CACHE_KEY']:
+              raise ValueError('The original exact cache key was not restored')
+          cached_root, official_root = Path(os.environ['CACHED_ROOT']), Path(os.environ['OFFICIAL_ROOT'])
+          before = snapshot(cached_root)
+          official = snapshot(official_root)
+          after = snapshot(cached_root)
+          missing = sorted(official.keys() - before.keys())
+          extra = sorted(before.keys() - official.keys())
+          changed = [{'path': path, 'official': official[path], 'cached': before[path]}
+                     for path in sorted(official.keys() & before.keys()) if official[path] != before[path]]
+          required = ('bin/cjc.exe', 'third_party/llvm/bin/llc.exe',
+                      'third_party/llvm/bin/libLLVM-15.dll', 'third_party/llvm/bin/libLLVM-Foundation-15.dll')
+          core = [{'path': path, 'official': official.get(path), 'cached': before.get(path),
+                   'match': path in official and path in before and official[path] == before[path]}
+                  for path in required]
+          directory = Path(os.environ['REPORT_DIRECTORY'])
+          hardware = json.loads((directory / 'processors.json').read_text(encoding='utf-8-sig'))
+          report = {
+              'kind': 'windows-sdk-payload-diagnostic',
+              'sourceCommit': os.environ['SOURCE_COMMIT'],
+              'workflowCommit': os.environ['WORKFLOW_COMMIT'],
+              'sdkArchiveSha256': os.environ['SDK_SHA256'],
+              'cacheKey': os.environ['MATCHED_KEY'],
+              'hardware': hardware,
+              'officialFiles': len(official), 'cachedFiles': len(before),
+              'officialPayloadSha256': digest(official),
+              'cachedBeforeSha256': digest(before), 'cachedAfterSha256': digest(after),
+              'cachedInputUnchanged': before == after,
+              'officialPayloadMatches': not missing and not changed,
+              'missingPaths': missing, 'changedPaths': changed,
+              'extraCachedPaths': [{'path': path, 'cached': before[path]} for path in extra],
+              'coreBinaries': core,
+              'jobSuccessMeaning': 'diagnostic captured, not acceptance',
+              'extraCachedFilesAloneImplyCorruption': False,
+              'hardwareIsCausalClaim': False,
+          }
+          (directory / 'windows-sdk-payload-diagnostic.json').write_text(
+              json.dumps(report, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps({key: report[key] for key in
+                ('officialFiles', 'cachedFiles', 'cachedInputUnchanged', 'officialPayloadMatches')}))
+          if before != after or not all(path in official for path in required):
+              raise ValueError('Compiler payload observation is incomplete or changed during comparison')
+          PY
+
+      - name: Upload only the normalized diagnostic report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-sdk-payload-diagnostic
+          path: ${{ runner.temp }}/windows-sdk-diagnostic/windows-sdk-payload-diagnostic.json
+          if-no-files-found: error
+          retention-days: 7
