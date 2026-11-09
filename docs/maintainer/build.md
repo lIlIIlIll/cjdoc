@@ -63,15 +63,13 @@ python3 scripts/with_stdx.py --variant static --print-env --
 python3 scripts/with_stdx.py --variant static -- cjpm build --jobs 1
 ```
 
-需要让 `scripts/check.sh` 这类间接调用也拿到环境时，把 `--print-env` 的键导出到当前 shell：
+需要让 `scripts/check.sh` 这类间接调用也拿到环境时，通过 wrapper 启动整个命令；需要编译的阶段仍先按前文加载 `scripts/with_sts_cjpm.sh`：
 
 ```bash
-set -a
-eval "$(python3 scripts/with_stdx.py --variant static --print-env --)"
-set +a
+python3 scripts/with_stdx.py --variant static -- bash scripts/check.sh preflight --repo .
 ```
 
-输出的键包括 `CANGJIE_STDX_PATH`、`CJDOC_STDX_PATH`、`CJDOC_STDX_VARIANT`、`CJDOC_STDX_DIGEST`、`CJDOC_STDX_LINK_OPTIONS`、`CJDOC_STDX_DEPENDENCY_DIGEST` 与 `CJDOC_TOOLCHAIN_VERSION/TARGET/FINGERPRINT`。路径含空格时不要用 `eval`，改为逐项 `export`。
+`--print-env` 输出的键包括 `CANGJIE_STDX_PATH`、`CJDOC_STDX_PATH`、`CJDOC_STDX_VARIANT`、`CJDOC_STDX_DIGEST`、`CJDOC_STDX_LINK_OPTIONS`、`CJDOC_STDX_DEPENDENCY_DIGEST` 与 `CJDOC_TOOLCHAIN_VERSION/TARGET/FINGERPRINT`。这是供 CI 环境文件读取的原始 `KEY=VALUE`，不是 shell 脚本；版本字符串含空格和括号，不要用 `eval` 执行。wrapper 会把这些值直接传给子进程，无需手工解析。
 
 ## 构建与运行
 
@@ -181,15 +179,13 @@ mkdir -p "$HOME/.cache/agent-tmp"
 chmod 700 "$HOME/.cache/agent-tmp"
 export RUNNER_TEMP="$(mktemp -d "$HOME/.cache/agent-tmp/cjdoc-check.XXXXXX")"
 export TMPDIR="$RUNNER_TEMP" TMP="$RUNNER_TEMP" TEMP="$RUNNER_TEMP"
-set -a
-eval "$(python3 scripts/with_stdx.py --variant static --print-env --)"
-set +a
-export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-. scripts/with_sts_cjpm.sh
-bash scripts/check.sh build --repo . \
-  --main-binary-out target/release/bin/main \
-  --worker-binary-out target/release/bin/chir-worker-main \
-  --manifest target/ci-build/build-manifest.json
+python3 scripts/with_stdx.py --variant static -- bash -c '
+  . scripts/with_sts_cjpm.sh
+  bash scripts/check.sh build --repo . \
+    --main-binary-out target/release/bin/main \
+    --worker-binary-out target/release/bin/chir-worker-main \
+    --manifest target/ci-build/build-manifest.json
+'
 ```
 
 候选产物包含 `target/release/bin/main`、`target/release/bin/chir-worker-main` 与 `target/ci-build/build-manifest.json`；workflow 用固定 ustar 参数打包后上传，消费方解包后必须重新校验身份。
