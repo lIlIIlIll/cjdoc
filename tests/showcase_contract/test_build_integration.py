@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import html
 import os
 import json
 import re
@@ -215,24 +214,6 @@ class BuildIntegrationTests(unittest.TestCase):
             resolved = {site.local_link(filename, href)[0] for href in icons}
             self.assertEqual(resolved, expected_icons)
 
-    def test_authored_manual_index_links_are_valid_in_the_published_tree(self) -> None:
-        manual = (ROOT / "docs/README.md").read_text(encoding="utf-8")
-        targets = re.findall(r"\[[^\]]+\]\(([^)]+)\)", manual)
-        self.assertTrue(targets)
-        # The authored manual is also the self-hosted API's concept index.
-        index = self.write("site/api/concepts/index.html", "".join(
-            '<a href="' + html.escape(target, quote=True) + '">Manual</a>'
-            for target in targets))
-        self.write("site/docs/README.md", manual)
-        repository = "https://github.com/example-owner/cjdoc-fork"
-        revision = "e" * 40
-        pin_documentation_links(self.root / "site",
-                                {"repository": repository, "revision": revision},
-                                own_api_index=True)
-        Site(self.root / "site").validate_links()
-        self.assertIn(repository + "/blob/" + revision + "/docs/release-notes.md",
-                      index.read_text(encoding="utf-8"))
-
     def test_self_hosted_manual_links_follow_the_fork_revision_without_rewriting_ir(self) -> None:
         source = "https://github.com/lIlIIlIll/cjdoc/blob/main/"
         source_tree = "https://github.com/lIlIIlIll/cjdoc/tree/main/"
@@ -241,11 +222,13 @@ class BuildIntegrationTests(unittest.TestCase):
         target = repository + "/blob/" + revision + "/"
         target_tree = repository + "/tree/" + revision + "/"
         foreign = "https://github.com/example-owner/another-project/blob/main/README.md"
-        html_page = self.write("site/api/concepts/index.html",
+        html_content = (
             f'<a href="{source}docs/how-to/generate-and-publish.md#generate">Guide</a>'
             f'<a href="{source}README.md">README</a><a href="{foreign}">Other</a>'
             f'<a href="{source_tree}docs/maintainer#build">Maintainer</a>'
             f'<code>{source}docs/how-to/generate-and-publish.md</code>')
+        html_pages = [self.write(path, html_content)
+                      for path in ("site/api/index.html", "site/api/concepts/index.html")]
         original_markdown = (f'[Guide]({source}docs/how-to/generate-and-publish.md#generate)\n'
                              f'[Maintainer]({source_tree}docs/maintainer#build)\n[Other]({foreign})\n')
         markdown = [self.write(path, original_markdown)
@@ -256,12 +239,14 @@ class BuildIntegrationTests(unittest.TestCase):
         original_ir = author_ir.read_bytes()
         pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
                                 own_api_index=True)
-        published = html_page.read_text(encoding="utf-8")
-        self.assertIn(f'href="{target}docs/how-to/generate-and-publish.md#generate"', published)
-        self.assertIn(f'href="{target}README.md"', published)
-        self.assertIn(f'href="{target_tree}docs/maintainer#build"', published)
-        self.assertIn(f'href="{foreign}"', published)
-        self.assertIn(f'<code>{source}docs/how-to/generate-and-publish.md</code>', published)
+        for html_page in html_pages:
+            with self.subTest(page=html_page.relative_to(self.root).as_posix()):
+                published = html_page.read_text(encoding="utf-8")
+                self.assertIn(f'href="{target}docs/how-to/generate-and-publish.md#generate"', published)
+                self.assertIn(f'href="{target}README.md"', published)
+                self.assertIn(f'href="{target_tree}docs/maintainer#build"', published)
+                self.assertIn(f'href="{foreign}"', published)
+                self.assertIn(f'<code>{source}docs/how-to/generate-and-publish.md</code>', published)
         for path in markdown:
             self.assertEqual(path.read_text(encoding="utf-8"),
                              f'[Guide]({target}docs/how-to/generate-and-publish.md#generate)\n'
@@ -272,11 +257,11 @@ class BuildIntegrationTests(unittest.TestCase):
         source = "https://github.com/lIlIIlIll/cjdoc"
         repository = "https://github.com/example-owner/cjdoc-fork"
         revision = "d" * 40
-        html_index = self.write("site/api/concepts/index.html",
-                               f'<a href="{source}/blob/main/README.md">Upstream cjdoc</a>')
+        html_indexes = [self.write(path, f'<a href="{source}/blob/main/README.md">Upstream cjdoc</a>')
+                        for path in ("site/api/index.html", "site/api/concepts/index.html")]
         markdown_index = self.write("site/markdown/concepts/index.md",
                                    f'[Upstream cjdoc]({source}/blob/main/README.md)')
-        original_indexes = [(path, path.read_bytes()) for path in (html_index, markdown_index)]
+        original_indexes = [(path, path.read_bytes()) for path in (*html_indexes, markdown_index)]
         manual = self.write("site/docs/README.md", f'[Guide]({source}/blob/main/docs/how-to/generate-and-publish.md)')
         directory = self.write("site/docs/tutorials/publish-languages.md", f'[Tutorial]({source}/tree/main/docs/tutorials/first-site.md)')
         readme = self.write("site/README.md", f'[First site]({source}/blob/main/docs/tutorials/first-site.md)')

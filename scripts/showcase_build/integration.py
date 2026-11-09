@@ -186,13 +186,16 @@ def pin_documentation_links(site: Path, provenance: dict, *, own_api_index: bool
     prefixes = [(f"https://github.com/lIlIIlIll/cjdoc/{view}/main/",
                  provenance["repository"] + f"/{view}/" + provenance["revision"] + "/")
                 for view in ("blob", "tree")]
-    index = site / "api/concepts/index.html"
-    if own_api_index and index.is_file():
-        content = index.read_text(encoding="utf-8")
-        for source_prefix, target_prefix in prefixes:
-            content = content.replace('href="' + source_prefix,
-                                      'href="' + html.escape(target_prefix, quote=True))
-        index.write_text(content, encoding="utf-8")
+    if own_api_index:
+        for relative in ("api/index.html", "api/concepts/index.html"):
+            index = site / relative
+            if not index.is_file():
+                continue
+            content = index.read_text(encoding="utf-8")
+            for source_prefix, target_prefix in prefixes:
+                content = content.replace('href="' + source_prefix,
+                                          'href="' + html.escape(target_prefix, quote=True))
+            index.write_text(content, encoding="utf-8")
     markdown = [site / "README.md"]
     docs = site / "docs"
     if docs.is_dir():
