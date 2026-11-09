@@ -79,7 +79,7 @@ public func clamp(value: Int64, lower: Int64, upper: Int64): Int64 {
 }
 ```
 
-该实现把区间外的 `value` 截到最近边界；`lower == upper` 时返回该边界，`lower > upper` 时抛出 `IllegalArgumentException`。如何亲自编译和运行此文件，见[检查文档示例](../how-to/check-examples.md)。
+该实现把区间外的 `value` 截到最近边界；`lower == upper` 时返回该边界，`lower > upper` 时抛出 `IllegalArgumentException`。如何亲自编译和运行这些边界，见[验证一个边界条件](../how-to/review-contracts.md#验证一个边界条件)。
 
 ## 分组与标签
 

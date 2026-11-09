@@ -1,107 +1,94 @@
-# 管理输出目录与源码缓存
+# 复用输出目录并管理源码缓存
 
-本指南说明如何安全复用生成目录、识别冲突并把源码缓存放到别处。cjdoc 使用输出所有权清单、事务写入和父目录锁，避免静默覆盖手工文件。
+重复生成到同一个目录时，cjdoc 只替换自己管理的文件，你在目录里放的其它内容会保留。本页说明怎样重复生成和发布、遇到冲突时怎么选，以及输出被锁住时怎样拿到一份可用的新产物。源码缓存的位置也在本页调整。
 
 ## 前提
 
-- 已完成[首次生成教程](../tutorials/first-site.md)，命令在 `docdemo/` 项目根目录运行。
-- 已安装并能启动当前版本的 `cjdoc`。本页的文件操作示例使用 Bash。
-- 开始时选择新的输出路径；若路径已存在，它必须是 cjdoc 先前生成并管理的目录。
+- 已完成[首次生成教程](../tutorials/first-site.md)，命令在 `docdemo/` 项目根运行。
+- 已安装 `cjdoc`，仓颉 SDK 环境在当前终端可用。
+- 本页命令使用 Bash。
+- 准备一个新的输出路径。首次生成时让 cjdoc 创建它；如果目录已经存在，它必须是 cjdoc 先前生成的输出。
 
-## 复用输出并保留无关文件
+## 重复生成到同一目录
 
-为演示所有权行为，第一次生成 HTML 后手工放入一个不与产物冲突的文件，再用同一输出根改为只生成 JSON。
+先选择输出目录并生成 HTML。`OUT` 只在这里定义一次，你可以换成自己的路径；后面所有命令都沿用这个值：
 
 ```bash
-OUT=target/doc-managed
-if test -e "$OUT"; then
-  printf '请选择一个新的输出目录：%s\n' "$OUT" >&2
-  exit 2
-fi
+OUT=target/doc-site
 cjdoc generate --project . --format html --output "$OUT"
-printf 'keep this file\n' > "$OUT/KEEP.txt"
+```
+
+浏览器打开 `"$OUT/html/index.html"` 应看到 `docdemo` 的页面。重复生成时沿用同一个 `$OUT`：下一次生成会替换 cjdoc 上次登记的产物，并移除本次不再生成的已登记文件。例如改用 JSON 格式：
+
+```bash
 cjdoc generate --project . --format json --output "$OUT"
-test -f "$OUT/docs.json"
-test -f "$OUT/KEEP.txt"
-test ! -e "$OUT/html/index.html"
 ```
 
-第二次生成替换 cjdoc 自己登记的文件，并移除已登记但本次不再生成的 HTML 文件；`KEEP.txt` 不属于 cjdoc，因此保留。目录根的 `.cjdoc-output.json` 记录被管理的相对路径和摘要。初次生成不要预建空的输出根；让 cjdoc 创建它。
+现在目录里是 `docs.json`；上次生成的 `html/` 文件已被移除，因为这次不再生成 HTML。你自己放进 `$OUT` 的其它文件不受影响，保持原样。目录根的 `.cjdoc-output.json` 记录 cjdoc 管理了哪些相对路径和摘要，不要手工编辑。
 
-## 处理手工修改的已登记产物
-
-如果手工修改 cjdoc 管理的文件，下一次生成会拒绝替换它。以下负例故意编辑刚生成的 `docs.json`，确认失败后用 `--force-owned` 明确接受 cjdoc 当前生成内容。
+发布时只上传生成的站点目录，例如 `$OUT/html/` 的完整内容；`docs.json`、`api-surface/` 和 `coverage/` 是给后续工具读取的产物，不放进站点根。改回 HTML 即可重新得到可发布站点：
 
 ```bash
-OUT=target/doc-managed
-printf 'manual edit\n' > "$OUT/docs.json"
-if cjdoc generate --project . --format json --output "$OUT"; then
-  echo '错误：手工修改的已登记文件被静默覆盖' >&2
-  exit 1
-else
-  status=$?
-fi
-test "$status" -eq 2
-cjdoc generate --project . --format json --output "$OUT" --force-owned
-test -s "$OUT/docs.json"
-test -f "$OUT/KEEP.txt"
+cjdoc generate --project . --format html --output "$OUT"
 ```
 
-仅在检查过目录且愿意丢弃已登记文件上的手工修改时使用 `--force-owned`。它也可接管本次产物所需的预先存在普通子目录，但不能覆盖未登记的产物文件或其它未知内容，也不会把任意预建输出根强行认领。不要手工编辑输出目录中的文件，也不要在生成过程中删除锁文件。
+## 处理输出冲突
 
-## 将缓存与输出分开
+如果 `--output` 指向已经存在、但不是 cjdoc 生成的目录，生成会拒绝写入，退出码为 `2`。换一个尚不存在的目录，或先确认那个目录里的内容可以另外保存。
 
-默认源码缓存位于 `<项目>/target/cjdoc/cache/source-v11`，可用 `--cache-dir` 改位置，也可用 `--no-cache` 对某次源码扫描禁用缓存。输出根和源码缓存不能重叠或互相包含；以下组合是确定的负例，会在写入前以参数/路径错误退出码 `2` 失败：
+如果目录是 cjdoc 生成的，但你手工改过其中某个产物文件，下一次生成会拒绝覆盖，并指出被修改的文件。这时有两个选择：
+
+- 换一个新的输出目录，保留旧目录里的手工内容。
+- 确认不再需要那些手工修改后，让 cjdoc 用这次生成的内容替换它：
 
 ```bash
-if test -e target/overlap; then
-  printf '请选择一个新的输出路径：%s\n' target/overlap >&2
-  exit 2
-fi
-if cjdoc generate --project . --format html \
-    --output target/overlap \
-    --cache-dir target/overlap/cache; then
-  echo '错误：输出目录与源码缓存重叠的组合被接受' >&2
-  exit 1
-else
-  status=$?
-fi
-test "$status" -eq 2
-test ! -e target/overlap
+cjdoc generate --project . --format html --output "$OUT" --force-owned
 ```
 
-合法的独立缓存路径例如：
+`--force-owned` 只放宽两类检查：已登记文件被手工修改，以及本次产物需要的普通子目录已经存在。未登记的产物同名文件、其它未知内容、锁状态和事务状态都不会因此被接管。不要手工编辑生成目录里的文件，也不要在生成过程中删除锁。
+
+## 把源码缓存放到别处
+
+源码缓存默认位于 `<项目>/target/cjdoc/cache/source-v11`。用 `--cache-dir` 改位置，用 `--no-cache` 关闭某次源码扫描的缓存读写：
 
 ```bash
-cjdoc generate --project . --format html \
-  --output target/doc-managed \
-  --cache-dir .cache/cjdoc-source
-cjdoc generate --project . --format html --no-cache \
-  --output target/doc-managed
+cjdoc generate --project . --format html --output "$OUT" --cache-dir .cache/cjdoc-source
+cjdoc generate --project . --format html --output "$OUT" --no-cache
 ```
 
-缓存仅用于源码分析；`render` 使用已保存的 Doc IR，不扫描源码也不使用源码缓存。`--jobs` 控制扫描并行度，范围为 `1..64`，默认 `1`；内存或磁盘紧张时保持较低值。缓存键含源码内容、路径和工具链信息，SDK 变化后旧条目可能不会命中。
-
-## 输出仍被锁定时
-
-共享同一父目录的输出根由同一个父目录锁串行保护；即使输出根名称不同，锁持有者仍运行时也会拒绝另一条写入。正常退出后再重试。不要通过删除锁目录、改写 `owner.json` 或手工改写 `.cjdoc-output.json` 解决冲突。
-
-若诊断为 `unable to verify output lock owner process ...; refusing unsafe recovery`，生成器无法确认旧锁可安全回收，会保持拒绝。进程查询异常可能出现在旧 PID 已消失或查询本身失败时；外部确认没有 cjdoc 进程，不等于生成器已经验证可恢复。异常退出后锁可能保留，当前版本不能保证自动恢复；仅换成同一父目录下的另一个输出根也可能继续被拒绝。
-
-需要继续生成时，可以选择与旧输出、事务和缓存都不重叠的**另一个父目录**。下面要求 `RUNNER_TEMP` 仍是[安装页](../getting-started/install.md)准备的磁盘临时目录，且不在旧输出或缓存内；命令仍从项目根执行：
+输出根与源码缓存不能重叠或互相包含，缓存也不能落在输出根的父目录锁和事务状态路径上。下面的组合会在写入前以路径错误退出码 `2` 被拒绝：
 
 ```bash
-RECOVERY_PARENT="$(mktemp -d "$RUNNER_TEMP/cjdoc-recovery.XXXXXX")"
+cjdoc generate --project . --format html --output "$OUT" --cache-dir "$OUT/cache"
+```
+
+提示类似 `output directory '...' and source cache directory '...' overlap`。把 `--cache-dir` 移到输出根之外即可。`--cache-dir` 与 `--no-cache` 同时出现时，以最后一个为准。
+
+缓存只用于源码分析。`render` 读取已保存的 Doc IR，不扫描源码，也不使用源码缓存。单个源码缓存最多 64 MiB、100,000 个条目，超限或内容无效时 cjdoc 会拒绝或重建；缓存键包含源码内容、路径和工具链信息，SDK 变化后旧条目可能不会命中。`--jobs` 控制扫描并行度，取值范围 `1..64`，默认 `1`；内存或磁盘紧张时保持较低值，并行不会扩大总的扫描预算，`--no-cache` 也不会解除源码扫描自身的上限。
+
+## 输出仍被锁定时怎么办
+
+同一父目录下的输出根共用一把父目录锁，即使输出根名称不同，也会互相阻塞。看到下面的提示时，先确认哪个进程还在写：
+
+- `output directory '...' is locked by process <pid>`：另一个生成或预览仍在运行。等它结束；预览要在它的终端按 `Ctrl+C` 停止，然后重试。
+- `unable to verify output lock owner process <pid>; refusing unsafe recovery`：cjdoc 无法确认旧锁可以安全回收。用系统工具看不到 cjdoc 进程，也不代表生成器已经验证可以恢复；换同一父目录下的另一个输出根或加 `--force-owned` 都不会解除这个阻塞。
+
+不要删除锁目录，不要改写 `owner.json`，也不要手工改写 `.cjdoc-output.json`。需要继续生成时，选一个与旧输出、旧事务和缓存都不重叠的新父目录。下面在磁盘上创建本次专用目录，再把新站点生成到它的 `site` 子目录：
+
+```bash
+mkdir -p "$HOME/.cache/cjdoc"
+RECOVERY_PARENT="$(mktemp -d "$HOME/.cache/cjdoc/recovery.XXXXXX")"
 cjdoc generate --project . --format html --no-cache \
   --output "$RECOVERY_PARENT/site"
+xdg-open "$RECOVERY_PARENT/site/html/index.html"
 ```
 
-新入口为 `$RECOVERY_PARENT/site/html/index.html`。这只生成新的独立产物，**不修复、不接管旧输出**；保留旧锁和事务状态供维护者核对，不要把手工删锁当作受支持的恢复步骤。
+macOS 用 `open`，Windows PowerShell 用 `Start-Process` 打开同一路径。新入口是 `$RECOVERY_PARENT/site/html/index.html`。
 
-输出根、缓存、事务恢复及 `--force-owned` 的完整约束见[产物参考](../reference/artifacts.md)和[CLI 参考](../reference/cli.md)。
+这只是一份独立的完整产物，不会修复或接管旧输出。旧输出、旧锁和事务状态全部保持原样；手工删锁不是受支持的恢复方式。输出根、缓存、事务恢复和 `--force-owned` 的完整约束见[产物参考](../reference/artifacts.md)和[CLI 参考](../reference/cli.md)。
 
 ## 下一步
 
-- [本地预览](preview.md)：观察服务的初次生成与失败重建。
-- [生成并发布文档](generate-and-publish.md)：选择发布格式并检查完整站点。
-- [排查常见故障](troubleshoot.md)：判断路径、权限和缓存问题。
+- [生成并发布文档](generate-and-publish.md)：选择发布格式并上传完整站点。
+- [按症状排查故障](troubleshoot.md)：定位项目、诊断和预览问题。
+- [本地预览](preview.md)：边改注释边查看页面。

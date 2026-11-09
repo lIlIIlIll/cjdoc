@@ -1,21 +1,30 @@
 # 从空目录生成第一个 API 站点
 
-用一个没有外部依赖的静态库 `docdemo`，完成写注释、编译、生成和阅读。后续[加入指南](add-guides.md)和[发布中英文](publish-languages.md)继续使用这个目录。
+用一个没有外部依赖的静态库 `docdemo`，从写注释走到在浏览器里读到 API 页面。完成后你会得到 `target/doc/html/index.html`，其中能读到 `greet` 的签名、参数、返回值和示例。[加入指南](add-guides.md)和[发布中英文](publish-languages.md)继续使用这个库。
 
-## 前提与起点
+## 前提
 
-先完成[当前源码安装](../getting-started/install.md)，在同一终端保留 SDK 环境。`cjc -v`、`cjpm -v` 应为 1.2.0，`command -v cjdoc` 应指向你刚安装的工具。起点是你选择的一个空工作目录，**不是 cjdoc 源码目录**。下文 Bash 命令适用于 Linux；系统打开方式见第 4 步。
+- 已按[安装 cjdoc](../getting-started/install.md)安装 `cjdoc`，并在当前终端加载仓颉 SDK 环境。
+
+确认命令和环境可用：
+
+```bash
+command -v cjdoc
+cjdoc --version
+```
+
+第一条命令输出 `cjdoc` 的绝对路径，第二条输出当前安装的版本。步骤 4 的打开命令以 Linux 为例，macOS 和 Windows 的替代命令写在该步骤里。
 
 ## 1. 创建静态库
 
-在空工作目录执行：
+选一个空工作目录，不要使用 cjdoc 源码目录，然后在其中执行：
 
 ```bash
 cjpm init --name docdemo --path docdemo --type=static
 cd docdemo
 ```
 
-SDK 1.2.0 会创建 `cjpm.toml` 和空的 `src/`，不会替你编写 API。将 `cjpm.toml` 完整替换为：
+SDK 1.2.0 会创建 `cjpm.toml` 和 `src/`。这个库不依赖 stdx，把 `cjpm.toml` 完整替换为：
 
 ```toml
 [package]
@@ -27,9 +36,7 @@ output-type = "static"
 [dependencies]
 ```
 
-这个库不依赖 stdx。不要复制 cjdoc 生成器自己的链接选项。
-
-## 2. 写一个真实 API
+## 2. 添加一个带注释的公开函数
 
 新建完整文件 `src/api.cj`：
 
@@ -61,9 +68,11 @@ private func internalGreeting(): String {
 }
 ~~~
 
-`/** ... */` 是文档注释；普通 `//`、`/* ... */` 不会成为文档正文。默认展示 `public` 和 `protected` 声明，未写文档注释的公开声明仍会出现，但没有摘要、参数说明等作者内容。`--audience` 是展示选择，**不是删除私有源码信息的隐私过滤器**；公开前检查你实际发布的文件。
+`/** ... */` 是文档注释，摘要、`@param`、`@return` 和 `@example` 都写在其中；普通 `//` 和 `/* ... */` 不会成为文档正文。
 
-## 3. 编译、检查示例并生成
+默认受众是 `external`，页面显示 `public` 和 `protected` 声明。`greet` 即使没有写文档注释也会出现在页面上，只是没有摘要、参数和返回说明；`internalGreeting` 是 `private` 声明，默认视图里没有它。`--audience package` 或 `--audience all` 可以扩大展示范围，这只改变文档视图，不是删除敏感源码的保护措施；发布前请检查你实际放进输出的文件。
+
+## 3. 编译、核对示例并生成 HTML
 
 仍在 `docdemo/` 根目录执行：
 
@@ -73,25 +82,38 @@ cjdoc check --project . --check-examples
 cjdoc generate --project . --format html
 ```
 
-库应编译通过；第二条命令实际编译并运行注释示例，核对输出 `Hello, Cangjie!`，成功退出码为 0。示例检查需要当前 `cjc` 和受支持的进程资源限制环境，详见[检查示例](../how-to/check-examples.md)。普通 `generate` 默认不编译被扫描项目，也不运行示例。
+第一条命令编译这个库。第二条命令编译注释里的 `@example` 代码，并运行标了 `run` 的示例，把实际输出与 `output` 围栏比较：一致时以退出码 0 结束，这里应匹配 `Hello, Cangjie!`。第三条命令读取同一份源码生成静态 HTML。
 
-本教程的示例运行判据针对 Linux。当前 macOS 环境若无法建立所需地址空间限制，会以 `CJDOC3074` 拒绝运行用户代码；这不妨碍第三条命令生成静态页面，也不能记作示例运行通过。Windows 使用自身的 Job 内存限制，本轮未实操。
+`generate` 默认不编译项目，也不运行示例，所以示例是否真的执行过只取决于第二条命令的结果。示例检查需要能建立进程资源限制的环境，限制和诊断码见[检查示例](../how-to/check-examples.md)。
 
-生成结果的入口是 `target/doc/html/index.html`。省略 `--format` 时默认生成 JSON，不会产生 HTML。项目根错误时，检查 `pwd` 和 `cjpm.toml`；也可以从其他目录传入 `--project /你选择的项目根`，不要把 `src/` 当项目根。
+省略 `--format` 时默认生成 JSON，不会产生 HTML。生成结果的入口是 `target/doc/html/index.html`。
 
-## 4. 打开并确认内容
+## 4. 打开页面并阅读 `greet`
 
-Linux 在项目根执行：
+在项目根执行：
 
 ```bash
 xdg-open target/doc/html/index.html
 ```
 
-macOS 对应 `open target/doc/html/index.html`；Windows PowerShell 对应 `Start-Process .\target\doc\html\index.html`。本轮 Linux 实操，后两者仅静态核对。
+macOS 使用 `open target/doc/html/index.html`，Windows PowerShell 使用 `Start-Process .\target\doc\html\index.html`。
 
-在浏览器进入 `docdemo` 包，找到 `greet`，确认签名 `public func greet(name: String): String`、参数 `name`、返回说明与示例输出均可读。`internalGreeting` 不应出现在默认公开 API 列表。页面可用 `file://` 直接打开，不需要服务器。搜索、深链、HTTP 发布见[生成与发布](../how-to/generate-and-publish.md)。
+页面是纯静态文件，可以直接用 `file://` 打开，不需要启动服务器。从首页进入 `docdemo` 包和 `greet`，应能读到：
 
-修改注释后重新运行生成命令，再刷新页面。若你看不到更新，先核对浏览器打开的文件是否属于这个项目，而不是 cjdoc 源码根的 `target/`。
+- 签名 `public func greet(name: String): String`；
+- 参数 `name` 的说明；
+- 返回值说明“格式为 `Hello, <name>!` 的字符串”；
+- 示例及其 `Hello, Cangjie!` 输出。
+
+默认公开视图里没有 `internalGreeting`；`greet` 之所以出现，是因为它是公开声明，与是否写了注释无关。页面只展示示例的内容和预期输出，不会标记它是否真的执行过；示例有没有实际运行，以第 3 步 `cjdoc check --check-examples` 的结果为准。
+
+修改注释后重新执行生成命令，再刷新页面就能看到新内容。搜索、深链和 HTTP 发布见[生成与发布](../how-to/generate-and-publish.md)。
+
+## 遇到问题怎么办
+
+- **打不开页面或看不到更新**：确认打开的是当前项目下的 `target/doc/html/index.html`，不要停在 cjdoc 源码目录的 `target/`。
+- **生成报项目根错误**：用 `pwd` 确认当前目录含 `cjpm.toml`，不要停在 `src/`；也可以从任意目录传入 `--project /你的项目根`。
+- **示例检查报 `CJDOC3074`**：当前平台无法建立示例运行所需的地址空间限制，带 `run` 的示例被拒绝执行。这不影响 `generate` 生成 HTML，但示例没有实际运行；平台差异见[状态与限制](../reference/states-and-limits.md)。
 
 ## 下一步
 

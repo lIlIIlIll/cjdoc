@@ -1,146 +1,24 @@
 # 将依赖 API 链接到独立文档
 
-本指南由同一份真实库源码生成 HTML 与 symbol index，再用本地 catalog、独立 SHA-256 pin 和实际消费方依赖建立文档链接。完成后会检查导航记录是否绑定了观察到的依赖 identity、声明的文档集、目标/cfg 范围和 pinned inventory。catalog 的展示 URL 或发布者自报摘要本身不是验证。
+为库生成文档和符号索引，再让消费方的参数类型和相关链接跳到这份库文档。本页创建两个完整静态库，完成后可以从消费方的 `render` 页面点击 `Label`，进入依赖库的 API 页面。
 
-## 前提与工具身份
+## 前提
 
-- 已按[源码安装](../getting-started/install.md)完成安装；当前 shell 保留 Cangjie SDK 1.2.0 runtime、匹配的静态 stdx 1.2.0、`cjc`、`cjpm` 和 Bash。
-- `CJDOC_SOURCE` 与 `CJDOC_REVISION` 使用安装页记录的 checkout 和完整提交；本指南调用该 checkout 的 `target/release/bin/main`，不从 PATH 上的版本字符串推断工具身份。
-- Python 3，用于检查生成的 Doc IR 和计算 inventory digest。
-- 本页在新建的任务目录中完整创建库和消费方，不依赖仓库示例或虚构网址/提交。
-
-以下命令从 Bash 执行。新终端先从安装记录恢复 `CJDOC_SOURCE`、`CJDOC_REVISION` 并重新加载 SDK 环境；再确认 `$HOME/.cache` 位于磁盘文件系统，而不是 tmpfs。
+- 已安装 `cjdoc`，当前终端已加载仓颉 SDK 1.2.0 环境，`cjpm` 可用。
+- Bash 和 Python 3；Python 只用标准库计算文件摘要。
+- 从任意目录开始，创建独立练习目录：
 
 ```bash
-: "${CJDOC_SOURCE:?先按源码安装页设置 CJDOC_SOURCE}"
-: "${CJDOC_REVISION:?从构建记录恢复与二进制配对的完整提交}"
-test "$(git -C "$CJDOC_SOURCE" rev-parse --verify HEAD)" = "$CJDOC_REVISION"
-export CJDOC_BIN="$CJDOC_SOURCE/target/release/bin/main"
-if [ -f "$CJDOC_BIN.exe" ]; then export CJDOC_BIN="$CJDOC_BIN.exe"; fi
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) test -f "$CJDOC_BIN" ;;
-  *) test -x "$CJDOC_BIN" ;;
-esac
-
-mkdir -p "$HOME/.cache/agent-tmp"
-chmod 700 "$HOME/.cache/agent-tmp"
-export TASK_AREA="$(mktemp -d "$HOME/.cache/agent-tmp/cjdoc-link-documentation.XXXXXX")"
-export RUNNER_TEMP="$(mktemp -d "$TASK_AREA/runner-temp.XXXXXX")"
-export TMPDIR="$RUNNER_TEMP" TMP="$RUNNER_TEMP" TEMP="$RUNNER_TEMP"
-export PYTHONDONTWRITEBYTECODE=1
-case "$TASK_AREA/" in
-  "$CJDOC_SOURCE/"*) printf '任务目录必须位于 CJDOC_SOURCE 之外\n' >&2; exit 1 ;;
-esac
-export TASK_ROOT="$TASK_AREA/project"
+mkdir -p "$HOME/.cache/cjdoc/examples"
+TASK_ROOT="$(mktemp -d "$HOME/.cache/cjdoc/examples/links.XXXXXX")"
 mkdir -p "$TASK_ROOT/library/src" "$TASK_ROOT/consumer/src"
-git -C "$CJDOC_SOURCE" show "$CJDOC_REVISION:scripts/with_stdx.py" \
-  > "$TASK_ROOT/with_stdx.py"
 ```
 
-这一步只读取源码 checkout 与已构建二进制；示例文件、静态 stdx 认证脚本副本、cjpm 构建产物、输出和 catalog 都在 `$TASK_ROOT`，不会改动 `CJDOC_SOURCE`。
-
-## 为仓库声明生成源码链接
-
-源码链接依赖可证明的仓库根、源文件相对路径和所选 revision。下面使用记录提交中的真实 `tools/chir-protocol` 静态 package；项目根是该子包，仓库根是完整 checkout。revision 使用安装记录的完整提交，输出在任务目录且禁用源码缓存。checkout 必须与该提交的 tracked 输入一致。
-
-```bash
-cd "$CJDOC_SOURCE"
-python3 - "$CJDOC_SOURCE" "$CJDOC_REVISION" <<'PY'
-import sys
-from pathlib import Path
-from scripts.worktree_identity import exact_worktree_identity
-
-identity = exact_worktree_identity(Path(sys.argv[1]), sys.argv[2])
-print("source links use commit:", identity["headCommit"])
-PY
-
-"$CJDOC_BIN" generate --project "$CJDOC_SOURCE/tools/chir-protocol" \
-  --format html --format json --no-cache \
-  --repository-url https://github.com/lIlIIlIll/cjdoc \
-  --repository-revision "$CJDOC_REVISION" \
-  --repository-root "$CJDOC_SOURCE" \
-  --output "$TASK_ROOT/cjdoc-source-site"
-```
-
-确认生成页面中的源码地址指向该 revision，而不是 `main` 或另一份 checkout：
-
-```bash
-python3 - "$TASK_ROOT/cjdoc-source-site/html" "$CJDOC_REVISION" <<'PY'
-import sys
-from pathlib import Path
-
-root, revision = Path(sys.argv[1]), sys.argv[2]
-prefix = f"https://github.com/lIlIIlIll/cjdoc/blob/{revision}/tools/chir-protocol/src/"
-if not any(prefix in path.read_text(encoding="utf-8")
-           for path in root.rglob("*.html")):
-    raise SystemExit("生成的 HTML 中没有指向记录 revision 的 GitHub 源码链接")
-print("HTML 源码链接指向记录的完整 revision")
-PY
-```
-
-`--repository-url` 与 `--repository-revision` 必须成对提供；URL 必须是 canonical GitHub HTTPS 仓库根。`--repository-root` 只用于正确映射仓库内源码位置，不会让仓库外的依赖文件变成仓库源码。缺少可靠路径映射、路径越过根目录或通过符号链接逃逸时，不应生成链接。三个选项适用于 `generate`；`render` 使用已写入 Doc IR 的信息。源码链接只标出源位置，不证明源码在该 revision 与当前二进制完全一致，除非两者使用同一受保护提交。
-
-## 链接标准库文档
-
-此独立 docs-only package 展示 `ArrayList<String>` 与 `String` 的自动链接。生成不编译被扫描项目，也不改 SDK；链接目标显式选择内置目录 STS 1.2.0。
-
-```bash
-mkdir -p "$TASK_ROOT/stdlib/src"
-cat > "$TASK_ROOT/stdlib/cjpm.toml" <<'EOF'
-[package]
-cjc-version = "1.2.0"
-name = "stdliblinkdemo"
-version = "0.1.0"
-output-type = "static"
-EOF
-
-cat > "$TASK_ROOT/stdlib/src/api.cj" <<'EOF'
-package stdliblinkdemo
-import std.collection.ArrayList
-
-/** 接收标准库列表并返回文本。
- * @param values 标准库列表。
- * @return 示例文本。
- */
-public func accept(values: ArrayList<String>): String { "ok" }
-
-/** 使用限定类型名声明同一组标准库类型。 */
-public func acceptQualified(values: std.collection.ArrayList<String>): std.core.String {
-    "ok"
-}
-EOF
-
-"$CJDOC_BIN" generate --project "$TASK_ROOT/stdlib" \
-  --format html --no-cache --stdlib-doc-version 1.2.0 \
-  --output "$TASK_ROOT/stdlib-site"
-
-python3 - "$TASK_ROOT/stdlib-site/html" <<'PY'
-import sys
-from pathlib import Path
-
-root = Path(sys.argv[1])
-pages = [path.read_text(encoding="utf-8") for path in root.rglob("*.html")]
-html = "\n".join(pages)
-targets = (
-    "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/collection/"
-    "collection_package_api/collection_package_class.html#class-arraylistt",
-    "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/"
-    "core_package_api/core_package_structs.html#struct-string",
-)
-missing = [url for url in targets if url not in html]
-if missing:
-    raise SystemExit("标准库类型链接未指向预期的 1.2.0 文档目录：" + ", ".join(missing))
-print("ArrayList 与 String 链接指向 STS 1.2.0 标准库文档")
-PY
-```
-
-版本参数只选择链接目录，不证明项目实际使用的 std API 与目标文档完全一致。当前内置版本为 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3`、`1.2.0`；其他版本必须同时传 `--stdlib-doc-base-url`，其值必须是 HTTPS 且以 `/libs/std` 结尾。比如 1.1.4 的真实官方文档根为 `https://cj-docs.gitcode.com/zh/1.1.4/libs/std`。未知版本不会猜测主机；`--stdlib-doc-version` 与 `--stdlib-doc-base-url` 只适用于 `generate`，render 会保留既有链接。它们与站点发布标签 `--doc-version` 无关。
-
-如果没有找到某个标准库链接，先确认类型被当前文档目录收录且导入可唯一解析。通配导入只是候选名称；显式未知导入、条件导入、多个不同目标或名称歧义会保守地不链接。类型链接是文档导航，不是标准库 API/ABI 兼容性证明。
+`TASK_ROOT` 是本页文件的存放位置，后续一直沿用这个绝对路径；也可以选择自己的空目录。
 
 ## 创建库与消费方
 
-库和消费方是两个完整的 Cangjie 静态 package。消费方通过 path dependency 使用库中的公开类型，并在注释中引用该类型。
+库提供 `Label` 类型。写入完整清单和源码：
 
 ```bash
 cat > "$TASK_ROOT/library/cjpm.toml" <<'EOF'
@@ -162,7 +40,11 @@ public class Label {
     public func text(): String { "from linklib" }
 }
 EOF
+```
 
+消费方通过相对路径依赖使用这个类型，并在注释中引用它：
+
+```bash
 cat > "$TASK_ROOT/consumer/cjpm.toml" <<'EOF'
 [package]
 cjc-version = "1.2.0"
@@ -186,26 +68,26 @@ import linklib.*
 public func render(label: Label): String { label.text() }
 EOF
 
-(cd "$TASK_ROOT/library" && \
-  python3 "$TASK_ROOT/with_stdx.py" --variant static -- cjpm build --jobs 1)
-(cd "$TASK_ROOT/consumer" && \
-  python3 "$TASK_ROOT/with_stdx.py" --variant static -- cjpm build --jobs 1)
+(cd "$TASK_ROOT/library" && cjpm build --jobs 1)
+(cd "$TASK_ROOT/consumer" && cjpm build --jobs 1)
 ```
 
-两个构建都应成功退出。若 cjpm 无法解析 `linklib`，请确认第二次构建从 `$TASK_ROOT/consumer` 执行，且 `path` 为 `../library`。
+两次构建都应成功。若消费方找不到 `linklib`，确认库与消费方是同级目录，清单中的 `path` 为 `../library`。
 
-## 生成并固定库的 inventory
+## 生成库文档并计算摘要
 
-从消费方构建所使用的同一份库源码生成 HTML 站点与 symbol index。`html/symbol-index.json` 保存实际生成的 API identity 与路由。
+先为库生成 HTML 和符号索引。索引也称 inventory，记录这份文档有哪些 API 及其页面地址：
 
 ```bash
-"$CJDOC_BIN" generate --project "$TASK_ROOT/library" \
-  --format html --format symbol-index \
-  --output "$TASK_ROOT/library-site"
+cjdoc generate --project "$TASK_ROOT/library" \
+  --format html --format symbol-index --output "$TASK_ROOT/library-site"
+INDEX="$TASK_ROOT/library-site/html/symbol-index.json"
+```
 
-export INDEX="$TASK_ROOT/library-site/html/symbol-index.json"
-test -f "$INDEX"
-export PIN="$(python3 - "$INDEX" <<'PY'
+为整个索引文件计算 SHA-256，后续用这个摘要固定要读取的索引：
+
+```bash
+PIN="$(python3 - "$INDEX" <<'PY'
 import hashlib
 import sys
 from pathlib import Path
@@ -217,14 +99,14 @@ with Path(sys.argv[1]).open("rb") as source:
 print(digest.hexdigest())
 PY
 )"
-printf '库 inventory 的 SHA-256：%s\n' "$PIN"
+printf '%s\n' "$PIN"
 ```
 
-后续生成命令把读取到的摘要作为独立 pin。它将 inventory 文件字节与此处生成的文件绑定，但不能证明任意远端主机正在提供相同字节。
+输出是 64 位十六进制摘要。索引内容变化后需要重新计算；不要复用旧摘要。
 
-## 添加本地 catalog 并生成消费方
+## 登记库文档并生成消费方
 
-catalog 中的 `index` 是相对于 catalog 文件目录的 canonical 路径。`baseUrl` 是站点内链接的基址；最后的复制步骤把 producer 站点放到该地址对应的目录。
+用 catalog 告诉 cjdoc 在哪里读取索引，以及发布后依赖页面放在哪里：
 
 ```bash
 cat > "$TASK_ROOT/cjdoc-documents.json" <<'EOF'
@@ -240,170 +122,100 @@ cat > "$TASK_ROOT/cjdoc-documents.json" <<'EOF'
 }
 EOF
 
-"$CJDOC_BIN" generate --project "$TASK_ROOT/consumer" \
+cjdoc generate --project "$TASK_ROOT/consumer" \
   --doc-source "$TASK_ROOT/cjdoc-documents.json" \
   --doc-inventory-pin "$INDEX=$PIN" \
-  --format html --format json \
-  --output "$TASK_ROOT/consumer-site"
+  --format html --format json --output "$TASK_ROOT/consumer-site"
 ```
 
-这里**不**加 `--include-path-dependencies`。加上它会把 `linklib` 的源码也当成本项目自己的文档模块，此时 `Label` 解析为本地页面，catalog 不会被用到，也就观察不到外部文档绑定。消费方仍然从自己的 `cjpm.toml` 记录到 path dependency 与源码字节，外部文档只在签名和 `@see` 中作为依赖 API 的链接目标出现。
+catalog 的 `index` 相对 **catalog 文件所在目录**解释；`--doc-inventory-pin` 中的路径相对 **命令当前目录**解释。本例让 `INDEX` 使用绝对路径，避免两个基准混淆。pin 校对索引的实际字节；它不认证远端网站。
 
-cjdoc 只读取消费方的 manifest 依赖记录和已 pin 的 producer inventory，不会获取 catalog 项目或文档。`baseUrl` 只选择链接目标的位置；它不会认证网站或建立 API identity。
+这里不加 `--include-path-dependencies`：消费方仍通过清单记录实际依赖，但 `linklib` 的页面由独立库站点提供。加入该选项会将依赖源码也纳入本地文档，类型链接可能转到本地页面，详见[选择输入](select-inputs.md)。
 
-## 核对选中的 identity 并发布本地目标
+## 放入依赖页面并沿链接阅读
 
-不要把非空 URL 当作验证。exact dependency navigation 必须引用已声明 document set 和实际观察到的 source dependency；API identity、inventory identity、target 与 cfg 都须与这些记录一致。下面在任务目录创建一次性检查脚本，只用来复核本例生成的 Doc IR：
+catalog 不会替你复制或下载文档。把库的完整 HTML 树放到 `baseUrl` 对应位置：
 
 ```bash
-cat > "$TASK_ROOT/check-navigation.py" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-doc = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-expected = sys.argv[2]
-
-def walk(value):
-    if isinstance(value, dict):
-        yield value
-        for child in value.values():
-            yield from walk(child)
-    elif isinstance(value, list):
-        for child in value:
-            yield from walk(child)
-
-sets = {item["id"]: item for item in doc["documentSets"]}
-dependencies = {item["instanceId"]: item for item in doc["dependencies"]}
-matched = []
-for navigation in walk(doc):
-    if (navigation.get("state") != "resolved"
-            or navigation.get("matchLevel") != "exact"
-            or not navigation.get("documentSetId")
-            or not navigation.get("dependencyInstanceId")):
-        continue
-    document_set = sets.get(navigation["documentSetId"])
-    dependency = dependencies.get(navigation["dependencyInstanceId"])
-    if document_set is None or dependency is None:
-        continue
-    if (document_set["state"] == "declared"
-            and dependency["state"] in {"observed", "verified"}
-            and dependency["kind"] == "source"
-            and dependency.get("componentModuleId")
-            and document_set["identity"] == navigation.get("apiIdentity") == dependency["identity"]
-            and navigation.get("indexIdentity") == document_set["indexIdentity"]
-            and dependency.get("target") == document_set.get("target")
-            and dependency.get("cfg") == document_set.get("cfg")):
-        matched.append((navigation, document_set, dependency))
-
-if expected == "exact":
-    if not matched:
-        raise SystemExit("没有找到 identity 一致的 exact dependency navigation")
-    navigation, document_set, dependency = matched[0]
-    print("exact 链接绑定到观察到的源码依赖和 pinned inventory")
-    print("依赖：", dependency["name"], dependency["identity"])
-    print("API identity：", document_set["identity"])
-    print("inventory identity：", document_set["indexIdentity"])
-elif expected == "different":
-    mismatches = []
-    for document_set in sets.values():
-        for dependency in dependencies.values():
-            if (document_set["state"] == "declared"
-                    and document_set["library"] == dependency["name"]
-                    and dependency["kind"] == "source"
-                    and dependency["state"] in {"observed", "verified"}
-                    and dependency.get("componentModuleId")
-                    and document_set.get("target") == dependency.get("target")
-                    and document_set.get("cfg") == dependency.get("cfg")
-                    and document_set["identity"] != dependency["identity"]):
-                mismatches.append((document_set, dependency))
-    if matched or not mismatches:
-        raise SystemExit("没有观察到预期的 API identity 不匹配")
-    document_set, dependency = mismatches[0]
-    print("观察到 producer inventory 与源码依赖的 API identity 不同")
-    print("producer API identity：", document_set["identity"])
-    print("当前依赖 identity：", dependency["identity"])
-elif expected == "none":
-    if matched:
-        raise SystemExit("错误 pin 不应产生 exact dependency navigation")
-    print("没有 exact dependency navigation")
-else:
-    raise SystemExit("expected 参数只能是 exact、none 或 different")
-PY
-
-python3 "$TASK_ROOT/check-navigation.py" \
-  "$TASK_ROOT/consumer-site/docs.json" exact
+mkdir -p "$TASK_ROOT/consumer-site/html/dependencies"
+cp -R "$TASK_ROOT/library-site/html" "$TASK_ROOT/consumer-site/html/dependencies/linklib"
+xdg-open "$TASK_ROOT/consumer-site/html/index.html"
 ```
 
-这个检查核对的是生成文件中的绑定关系，不是 catalog 对 URL 或 API/ABI 的外部认证。若正例没有 exact navigation，先检查 `docs.json` 的诊断、dependencies、document sets、target/cfg、消费者签名以及 pin；不要把 manual 或 compatible 链接改称 verified。
+在消费方的 `render` 页面点击参数类型 `Label`，再点击相关链接中的 `linklib.Label`。两处都应打开刚生成的库文档，库页中可以阅读 `Label.text()`。发布时上传完整 `consumer-site/html/`，包含 `dependencies/linklib/`；不要只上传消费方页面。
 
-本地 catalog 使用 `./dependencies/linklib`，所以打开或发布消费者站点前，要把 producer 的完整 HTML 树复制到 consumer 的 HTML 根目录下：
+macOS 用 `open`，Windows PowerShell 用 `Start-Process` 打开同一个入口。
+
+## 链接没有出现时
+
+- **pin 不匹配**：该索引不可用，不会据此生成确定匹配的链接。消费方自身的文档仍可能生成成功，因此要阅读索引相关诊断。确认选中了正确索引，重新生成库文档、计算摘要，再更新 pin 并生成消费方。
+- **库源码或版本已变**：旧索引可能不再对应消费方实际使用的库。用消费方所用版本重新生成库文档，同时更新索引、摘要和发布的 HTML。
+- **已有链接但打开是 404**：确认复制了整个库 HTML 树，位置与 `baseUrl` 一致，发布平台保留文件名大小写。
+- **目标仍不确定**：文档集、版本、语言或依赖范围可能不匹配，也可能有多个候选。查看 `docs.json` 的导航状态，不要按同名类型任选一份文档。
+
+完整选择规则、歧义和摘要约束见[维护者的跨文档链接说明](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/document-links.md)。可读状态定义见[状态与限制](../reference/states-and-limits.md)。
+
+## 可选：链接到自己的源码
+
+在你已经公开发布的 GitHub 项目根目录操作。先确认当前 HEAD 已推送，读者能访问它；下面从该项目的 origin 和 HEAD 取得仓库地址与 revision：
 
 ```bash
-mkdir -p "$TASK_ROOT/consumer-site/html/dependencies/linklib"
-cp -R "$TASK_ROOT/library-site/html/." \
-  "$TASK_ROOT/consumer-site/html/dependencies/linklib/"
+SOURCE_ROOT="$(git rev-parse --show-toplevel)"
+SOURCE_REVISION="$(git rev-parse HEAD)"
+SOURCE_REPOSITORY="$(git remote get-url origin)"
+case "$SOURCE_REPOSITORY" in
+  git@github.com:*) SOURCE_REPOSITORY="https://github.com/${SOURCE_REPOSITORY#git@github.com:}" ;;
+esac
+SOURCE_REPOSITORY="${SOURCE_REPOSITORY%.git}"
+
+cjdoc generate --project . --format html \
+  --repository-url "$SOURCE_REPOSITORY" \
+  --repository-revision "$SOURCE_REVISION" \
+  --repository-root "$SOURCE_ROOT" \
+  --output target/doc-source-links
 ```
 
-打开 `$TASK_ROOT/consumer-site/html/index.html`。消费者 API 页面应能链接到复制的库页面。发布到其他地址时复制完整 `html/` 树，并把 `baseUrl` 改成实际部署位置；不要把示例或占位主机写进生产 catalog。
+origin 需要是 GitHub HTTPS 或上面转换的 `git@github.com:` 形式；其它形式先手动将 `SOURCE_REPOSITORY` 设为实际的 `https://github.com/<owner>/<repo>` 根地址。生成后从声明页面的源码入口打开对应提交中的文件。仓库 URL 与 revision 必须成对提供，源码必须位于仓库根内；这些参数标出源码位置，不负责推送源码。
 
-## 检查 pin 与源码 identity 失败
+## 可选：链接标准库文档
 
-错误 pin 不应授权使用 inventory。翻转一个十六进制字符，并生成到独立输出目录：
+选择与读者使用的 SDK 对应的标准库文档版本。下面创建一个独立静态库，展示 `ArrayList<String>` 和 `String` 链接：
 
 ```bash
-export WRONG_PIN="$(python3 - "$PIN" <<'PY'
-import sys
-pin = sys.argv[1]
-print(("0" if pin[0] != "0" else "1") + pin[1:])
-PY
-)"
+mkdir -p "$TASK_ROOT/stdlib/src"
+cat > "$TASK_ROOT/stdlib/cjpm.toml" <<'EOF'
+[package]
+cjc-version = "1.2.0"
+name = "stdliblinkdemo"
+version = "0.1.0"
+output-type = "static"
+EOF
+cat > "$TASK_ROOT/stdlib/src/api.cj" <<'EOF'
+package stdliblinkdemo
+import std.collection.ArrayList
 
-"$CJDOC_BIN" generate --project "$TASK_ROOT/consumer" \
-  --doc-source "$TASK_ROOT/cjdoc-documents.json" \
-  --doc-inventory-pin "$INDEX=$WRONG_PIN" \
-  --format html --format json \
-  --output "$TASK_ROOT/wrong-pin-site"
-python3 "$TASK_ROOT/check-navigation.py" \
-  "$TASK_ROOT/wrong-pin-site/docs.json" none
+/** 接收标准库列表并返回文本。
+ * @param values 标准库列表。
+ * @return 示例文本。
+ */
+public func accept(values: ArrayList<String>): String { "ok" }
+
+/** 使用限定类型名声明同一组标准库类型。 */
+public func acceptQualified(values: std.collection.ArrayList<String>): std.core.String {
+    "ok"
+}
+EOF
+
+cjdoc generate --project "$TASK_ROOT/stdlib" \
+  --format html --stdlib-doc-version 1.2.0 --output "$TASK_ROOT/stdlib-site"
 ```
 
-错误 pin 会令该 inventory 不可用，而不是产生 exact 链接。cjdoc 仍可能成功生成消费方自己的文档；错误 pin 不一定使整个生成命令失败。
+打开 `$TASK_ROOT/stdlib-site/html/index.html`，在函数签名里点击 `ArrayList` 和 `String`，应进入 1.2.0 标准库文档。版本参数只选择链接目录，不检查项目是否使用了完全相同的 SDK API。
 
-再检查 producer inventory 与消费方实际源码不同的情形。此处在任务目录的库源码中增加一个公开函数，让 API identity 发生变化；消费方仍使用原有公开 API，因此可以重新构建，但旧 inventory 不再与它匹配。
+内置文档版本为 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3`、`1.2.0`。其它版本需要同时给 `--stdlib-doc-base-url`，它必须是以 `/libs/std` 结尾的 HTTPS 根地址，例如官方 `https://cj-docs.gitcode.com/zh/1.1.4/libs/std`。两个选项只适用于 `generate`，与站点发布标签 `--doc-version` 不同；`render` 保留快照中的既有链接。
 
-```bash
-python3 - "$TASK_ROOT/library/src/api.cj" <<'PY'
-import sys
-from pathlib import Path
+## 下一步
 
-path = Path(sys.argv[1])
-source = path.read_text(encoding="utf-8")
-if "addedAfterPin" in source:
-    raise SystemExit("公开函数已存在，请使用新 TASK_ROOT 重做此例")
-addition = """
-
-/** 在 producer inventory 固定后新增的公开 API。 */
-public func addedAfterPin(): Unit {}
-"""
-path.write_text(source.rstrip() + addition, encoding="utf-8")
-PY
-
-(cd "$TASK_ROOT/consumer" && \
-  python3 "$TASK_ROOT/with_stdx.py" --variant static -- cjpm build --jobs 1)
-"$CJDOC_BIN" generate --project "$TASK_ROOT/consumer" \
-  --doc-source "$TASK_ROOT/cjdoc-documents.json" \
-  --doc-inventory-pin "$INDEX=$PIN" \
-  --format html --format json \
-  --output "$TASK_ROOT/changed-source-site"
-python3 "$TASK_ROOT/check-navigation.py" \
-  "$TASK_ROOT/changed-source-site/docs.json" different
-```
-
-源码变化后，消费方观察到的 dependency identity 不再与旧 inventory 对应，因此不应产生 exact 链接。比较各次生成时保留独立源码与输出目录。
-
-## 后续任务
-
-- [选择要扫描的源码](select-inputs.md)
-- [配置 cjdoc](../reference/configuration.md)
-- [检查状态与能力边界](../reference/states-and-limits.md)
+- [选择依赖源码与可见范围](select-inputs.md)。
+- [查完整配置规则](../reference/configuration.md)。
+- [发布整个站点](generate-and-publish.md)。

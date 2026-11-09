@@ -90,7 +90,7 @@ Doc IR 的 `translationState` 可为 `complete`、`fallback`、`empty-fallback`�
 
 `--audience` 控制面向读者的声明投影：`external` 是 `public`/`protected`，`package` 包含除 `private` 外的声明，`all` 包含全部声明。嵌套声明也要满足其 owner 的可见范围。此选项是文档视图/契约比较范围，不是访问控制、源码过滤或保密边界；尤其不能把 `docs.json` 当成已按 audience 脱敏的数据，Doc IR 快照会保留捕获模型及配置中的 audience。发布前不要把含内部/私有源码事实的 JSON 交给不受信任的读者。
 
-读取语言、audience、项目/模块身份、目标与 cfg 等上下文会影响阅读视图、依赖导航、快照匹配和查询 cursor。`documentationRevision` 是文档发布标签，不等同于 API 源码身份或依赖 revision；不要只改显示版本标签来伪造另一份源码版本。不同版本比较应先分别生成各自快照，见[比较与多版本](../how-to/compare-and-version.md)。
+读取语言、audience、项目/模块身份、目标与 cfg 等上下文会影响阅读视图、依赖导航、快照匹配和查询 cursor。`documentationRevision` 是文档发布标签，不改变 API 源码或依赖版本。比较不同版本前，应分别从对应源码生成快照，见[比较与多版本](../how-to/compare-and-version.md)。
 
 ## 能力边界
 
@@ -99,7 +99,7 @@ Doc IR 的 `translationState` 可为 `complete`、`fallback`、`empty-fallback`�
 - CHIR 是显式的可选语义补充，要求匹配的本机 compiler/worker 配置；缺失或失败时保留源码/AST 信息并给出诊断，不应把 CHIR 字段解释为权威的完整类型检查。配置步骤见[CHIR 语义补充](../how-to/chir.md)。
 - cjdoc 不猜无法唯一绑定的类型、`@see` 或章节目标；保留可见原文并给出 `unresolved`、`ambiguous` 或 `unavailable` 状态。
 - GitHub 源码 URL 仅接受 `https://github.com/<owner>/<repo>` 仓库根形式，且被引用源码必须位于该仓库根内。非 GitHub URL、仓库根外路径或不可信来源不会变成经验证的源码链接。
-- Windows 当前不提供用于捕获站点本地图片的安全相对文件读取实现；图片会被省略并报告 `CJDOC4026`，其 Markdown 替代文本仍保留，生成可为 `partial`。Linux 与 macOS 实现该读取路径；这条代码路径说明能力，不代表本任务对这些平台都做了用户流程实测。图片格式和大小上限见下表。
+- Windows 当前不提供用于捕获站点本地图片的安全相对文件读取实现；图片会被省略并报告 `CJDOC4026`，其 Markdown 替代文本仍保留，生成可为 `partial`。Linux 与 macOS 支持该读取路径。图片格式和大小上限见下表。
 - `--locale` 不翻译作者正文；`versions compose` 只复制既有站点并注入选择器，不重新生成，也不验证各版本实际内容是否一致；每个版本输入须是有效 HTML 站点入口或带站点清单的多语言输出根。
 - `render` 只接受当前 Doc IR `cjdoc.doc-ir/18`。它不会重新扫描项目或读取当前配置/依赖；源码或指南变更后重新 `generate`。这条 current-only 限制只属于 Doc IR，不适用于所有 JSON 索引或协议 schema；各产物版本见[产物参考](artifacts.md)。
 - 声明、标签、源文件、辅助输入和渲染产物均受固定预算约束。超过限制时可产生诊断、跳过输入、保留部分结果或报告资源错误；不能把“保留了一部分输出”称为全量成功，也不应通过增大上限绕过安全限制。

@@ -97,6 +97,62 @@ Owner 上下文保留完整来源身份和精确链接，但标题使用页面�
 普通 Markdown 围栏不是 `@example` 产品语义，指南运行证据不能冒充源码 doctest 报告。
 调用该脚本前按 [build.md](build.md) 准备认证环境，并指定实际完整源码 SHA 的 `--revision` 与任务独占的 `--output`。
 
+以下从本次已提交的干净源码根开始，在 Linux Bash 中创建独立源码副本与全新证据目录。SDK/stdx 按构建指南准备；`REVISION` 取实际完整 HEAD，不以版本字符串或旧报告替代：
+
+```bash
+(
+set -euo pipefail
+SOURCE="$PWD"
+REVISION="$(git rev-parse HEAD)"
+mkdir -p "$HOME/.cache/agent-tmp"
+chmod 700 "$HOME/.cache/agent-tmp"
+df -T "$HOME/.cache/agent-tmp"
+TASK_ROOT="$(mktemp -d "$HOME/.cache/agent-tmp/cjdoc-contract-review.XXXXXX")"
+chmod 700 "$TASK_ROOT"
+TASK_SOURCE="$TASK_ROOT/source"
+EVIDENCE_ROOT="$TASK_ROOT/contracts"
+mkdir -m 700 "$TASK_SOURCE" "$TASK_ROOT/tmp"
+export TMPDIR="$TASK_ROOT/tmp" TMP="$TASK_ROOT/tmp" TEMP="$TASK_ROOT/tmp"
+export PYTHONDONTWRITEBYTECODE=1
+
+verify_protected_inputs() {
+  PYTHONPATH="$SOURCE/scripts" python3 - "$SOURCE" "$REVISION" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+from worktree_identity import exact_worktree_identity
+
+root = Path(sys.argv[1])
+revision = sys.argv[2]
+for relative in ("examples/pocketkit/demo-v2", "examples/pocketkit/support-v1"):
+    exact_worktree_identity(root / relative, revision)
+relative = "examples/pocketkit/contract_review.cj"
+expected = subprocess.check_output(
+    ["git", "-C", str(root), "rev-parse", f"{revision}:{relative}"], text=True).strip()
+actual = subprocess.check_output(
+    ["git", "-C", str(root), "hash-object", "--no-filters", str(root / relative)],
+    text=True).strip()
+if actual != expected:
+    raise SystemExit(f"protected input differs from {revision}: {relative}")
+PY
+}
+
+verify_protected_inputs
+git -C "$SOURCE" archive --format=tar "$REVISION" | tar -xf - -C "$TASK_SOURCE"
+verify_protected_inputs
+cd "$TASK_SOURCE"
+export GITHUB_WORKSPACE="$TASK_SOURCE" RUNNER_TEMP="$TASK_ROOT/tmp"
+export CJDOC_PYTHON=python3
+. scripts/with_sts_cjpm.sh
+python3 scripts/with_stdx.py --variant static -- \
+  python3 scripts/reader_contract_review.py \
+  --revision "$REVISION" --output "$EVIDENCE_ROOT"
+verify_protected_inputs
+)
+```
+
+`contracts` 由 runner 创建，不要预建或复用。成功需要命令退出 `0`，且 `reader-contract-review.json` 的 `status` 与 `inputIntegrity` 为 `pass`、`cases` 有 13 项通过、`guidePrograms` 有 8 项通过。保留报告、实际编译输入与阶段日志；结论限于这些输入和场景，不外推为并发、分配失败或全库契约证明。
+
 浏览器套件需使用同次原生产物。`i18n.spec.mjs` 同时要求 `CJDOC_I18N_SITE` 指向
 `i18n_gate.py` 的 `multi` 根、`CJDOC_I18N_COMPOSED_SITE` 指向同次 `composed` 根；
 PocketKit 阅读 fixture 保留 HTML 根旁的 `site-manifest.json`，用于核对 API 回链的确切任务章节。

@@ -1,69 +1,70 @@
-# 从离线 Doc IR 重渲染文档
+# 从保存的快照重新生成文档
 
-`cjdoc render` 从保存的 `docs.json` 生成新格式，不重新扫描仓颉源码。适合源码不可用、或只想重新输出 HTML/Markdown 的场景；它只读取当前 Doc IR wire 格式。
+`cjdoc render` 读取一份已经保存的 `docs.json`，重新输出 HTML、Markdown 等格式，不重新扫描仓颉源码。源码已经不在手边、或者只想换一种输出格式时用它；快照内容保持不变，只是重新排版。
 
 ## 前提
 
-- 已完成[首次生成教程](../tutorials/first-site.md)，并能在 `docdemo/` 根目录运行当前版本的 `cjdoc`。
-- 本例用 Python 3 复制并修改一个任务用 JSON 文件；Bash 用于保存输出目录。
-- `render` 的输入必须是当前 `cjdoc.doc-ir/18` 的 `docs.json`。旧 Doc IR 不会自动升级；有原始源码时，先用对应版本的 cjdoc 重新执行 `generate`。
+- 已完成[首次生成教程](../tutorials/first-site.md)，并能在 `docdemo/` 项目根运行 `cjdoc`。
+- 快照必须是当前版本 cjdoc 生成的 `cjdoc.doc-ir/18`。旧版本快照不会自动升级。
 
-## 捕获快照并在项目目录外重渲染
+## 保存快照并复制到独立目录
 
-先从源码生成 Doc IR，然后把快照放入独立的重渲染目录。从重渲染目录执行 `render`，命令不需要 `--project`、`cjpm.toml`、源码缓存或源码路径。
+先在 `docdemo/` 根目录把文档保存为 JSON：
 
 ```bash
 cjdoc generate --project . --format json --output target/doc-ir-capture
-WORK="$PWD/target/doc-ir-replay"
-mkdir -p "$WORK"
+```
+
+`target/doc-ir-capture/docs.json` 是这次生成的完整快照。下面把它复制到项目之外的一个新目录，模拟只拿到快照、没有源码的场景：
+
+```bash
+mkdir -p "$HOME/.cache/cjdoc/examples"
+WORK="$(mktemp -d "$HOME/.cache/cjdoc/examples/replay.XXXXXX")"
 cp target/doc-ir-capture/docs.json "$WORK/current.json"
+```
+
+`WORK` 只在这里定义一次。后面的 `render` 命令都在这个目录里启动，不再读取项目目录或项目内的 `target/`。当前 shell 本身留在 `docdemo/`，因为 `render` 在子 shell 中执行。
+
+## 从快照生成 HTML 和 Markdown
+
+```bash
 (
   cd "$WORK"
   cjdoc render --input current.json \
     --format html --format markdown \
     --output rendered
 )
-test -f "$WORK/rendered/html/index.html"
-test -f "$WORK/rendered/markdown/index.md"
 ```
 
-成功后，从 `$WORK/rendered/html/index.html` 打开 HTML，或读取 `$WORK/rendered/markdown/index.md`。`render` 保留快照里已捕获的源码位置、项目/受众/语言等信息；不会重新观察源码、读取项目配置、执行示例或重新计算依赖和标准库链接。
+`render` 不需要 `--project`，也不读取 `cjpm.toml`、项目配置或源码缓存；它只认 `--input` 指向的这份 JSON。产物在 `$WORK/rendered/`：
 
-`render` 可重复指定 `--format`；支持 `json`、`markdown`、`html`、`api-surface`、`coverage` 和 `symbol-index`，省略时默认 `json`。不写 `--output` 时，默认写当前目录的 `target/doc`。与 `generate` 一样，目录输出要由 cjdoc 管理；不要手动预建空输出根。`render` 不执行配置覆盖率门槛。
+- `$WORK/rendered/html/index.html`：可以直接用浏览器打开的静态站点。
+- `$WORK/rendered/markdown/index.md`：Markdown 版本，及其目录内的包页、声明页和概念页文件。
 
-## 负例：拒绝旧 Doc IR wire
+打开这两个文件应看到与 `docdemo` 生成时相同的项目首页和 `greet` 页面内容。快照里已经记录了源码位置、项目、受众、语言，以及生成时用 `--doc-version` 写入的版本标签；`render` 原样沿用这些信息：它不会重新观察源码、重新执行示例、重新计算依赖和标准库链接，也不会因为当前项目配置变化而改变输出。
 
-下面复制一份快照，只把 `schemaVersion` 改成上一版标识，再尝试渲染。JSON 仍是合法 JSON，但不是受支持的当前 Doc IR，因此命令应以输入错误退出码 `2` 结束，也不应创建拒绝用的输出目录。
+## 选择格式和输出目录
+
+`--format` 可重复，支持的格式与 `generate` 相同：`json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index`。省略时默认只生成 `json`。`--output` 省略时写到当前目录下的 `target/doc`；如果在 `$WORK` 里运行，就写 `$WORK/target/doc`。输出目录要由 cjdoc 创建和管理，不要提前手工建一个空目录。
 
 ```bash
-WORK="$PWD/target/doc-ir-replay"
-python3 - "$WORK/current.json" "$WORK/old.json" <<'PY'
-import json
-from pathlib import Path
-import sys
-
-source, destination = map(Path, sys.argv[1:])
-document = json.loads(source.read_text(encoding="utf-8"))
-document["schemaVersion"] = "cjdoc.doc-ir/17"
-destination.write_text(
-    json.dumps(document, ensure_ascii=False, indent=2) + "\n",
-    encoding="utf-8",
+(
+  cd "$WORK"
+  cjdoc render --input current.json --format html --output site
 )
-PY
-if (cd "$WORK" && cjdoc render --input old.json --format html --output rejected); then
-  echo '错误：旧 Doc IR 被接受' >&2
-  exit 1
-else
-  status=$?
-fi
-test "$status" -eq 2
-test ! -e "$WORK/rejected"
 ```
 
-需要从旧快照恢复时，若原始项目源码仍在，使用与该输入相匹配的源码和当前 cjdoc 重新生成；没有源码时，没有受支持的旧 Doc IR 迁移路径。Doc IR wire、格式限制和相关 schema 见[产物参考](../reference/artifacts.md)。
+需要换一个站点版本标签时可以加 `--doc-version`，同样是写入元数据，不改变快照内容。`render` 不执行项目配置里的覆盖率门槛，也不会因为门槛失败而以 `1` 退出；覆盖率与质量报告根据快照里的声明和诊断重新生成，不重新扫描源码。
+
+## 遇到问题怎么办
+
+- **报 Doc IR 版本或 schema 错误**：快照来自旧版本的 cjdoc。原始项目源码还在时，用当前 cjdoc 重新执行 `cjdoc generate --project . --format json` 得到新快照；源码已经不在时，没有受支持的旧快照迁移路径。
+- **`--input` 文件找不到**：确认命令是在 `$WORK` 里执行的，且 `current.json` 已复制进去；也可以用绝对路径传给 `--input`。
+- **输出目录被拒绝**：目录已存在且不是 cjdoc 生成的，或其中文件被手工改过。换一个新的输出目录；确认可以覆盖时再加 `--force-owned`。
+- **页面里缺少某个声明或示例结果**：`render` 只展示快照里已有的内容。生成快照时没有包含的声明、没有运行过的示例，重新渲染也不会出现。
 
 ## 下一步
 
-- [比较 API 并组合版本站点](compare-and-version.md)：准备不同版本的真实源码快照。
-- [生成并发布文档](generate-and-publish.md)：发布静态 HTML 文件树。
-- [排查常见故障](troubleshoot.md)：定位旧 wire、损坏输入或输出冲突。
+- [比较两个版本的 API 并发布版本站点](compare-and-version.md)：为不同源码分别生成快照并组合。
+- [生成并发布文档](generate-and-publish.md)：从源码生成并发布完整 HTML 树。
+- [产物与格式参考](../reference/artifacts.md)：各格式的实际路径、Doc IR wire 版本和目录布局。

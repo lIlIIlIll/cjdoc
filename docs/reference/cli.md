@@ -104,6 +104,19 @@ CHIR 失败不升级语义权威性，也不替代注释真值。真实 worker �
 
 `cjdoc serve --project . --port 8080`。`--port` 默认 8080，`--open` 默认关闭；后者请求浏览器打开。`--agent-full` 可选。当前 serve 复用项目输入、缓存、受众、lint、jobs、cfg 与源码链接选项，也接受 `--output`、`--format`、`--locale`、`--force-owned`；重建时强制加入 HTML，服务根为输出下的 `html/`，额外格式不是 HTTP 根。不要使用 `--stdout`：serve 始终是站点预览进程，解析接受该标志不代表它变成管道输出命令。semantic/外部库存/高亮 host 等受 generate/check 限定的参数不能用于 serve。状态、重建与退出行为见[预览](../how-to/preview.md)。
 
+状态接口为 `http://127.0.0.1:<port>/__cjdoc/status.json`，返回 `cjdoc.serve-status/1`：
+
+| 字段 | 含义 |
+|---|---|
+| `schemaVersion` | 固定为 `cjdoc.serve-status/1` |
+| `status` | 最近一次构建成功为 `ok`，失败为 `error` |
+| `port` | 当前监听端口 |
+| `builds` | 初次生成与后续重建的累计尝试次数，失败也计入 |
+| `successfulBuilds` | 其中成功构建的累计次数 |
+| `lastError` | 最近一次构建失败的提示；下一次成功后清空为 `""`。具体诊断看服务终端 |
+
+监视范围包括源码、Markdown、`cjpm.toml`、`cjpm.lock` 与 `cjdoc.toml`；保存后重建，浏览器需要手动刷新。重建失败保留最近成功站点。在服务终端按 `Ctrl+C` 停止。
+
 ## diff
 
 ```text
@@ -111,7 +124,7 @@ cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-
 cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]
 ```
 
-格式默认 text。两个输入都必需，不能多给第三个位置参数；仅接受输入、格式及 API deny 选项。deny-breaking 阻断 breaking；deny-potentially-breaking 同时考虑该策略定义的潜在破坏性差异。严格 API baseline 是另一个检查接口，不应叠加后宣称允许新增。[完整两份源码流程](../how-to/compare-and-version.md)。
+格式默认 text。两个输入都必需，不能多给第三个位置参数；仅接受输入、格式及 API deny 选项。`--deny-breaking-api` 阻断 `breaking`，`--deny-potentially-breaking-api` 阻断 `potentially-breaking`；要拒绝两类变化，同时提供两个选项。严格 API baseline 是另一个检查接口，连新增也会拒绝。[完整两份源码流程](../how-to/compare-and-version.md)。
 
 ## versions compose
 
@@ -119,11 +132,11 @@ cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-ap
 |---|---|
 | `--version ID=PATH` | 必需、可重复；实际生成的版本站点输入 |
 | `--output DIR` | 必需；组合站点输出 |
-| `--latest ID` | 默认由组合契约选择；显式值必须属于版本集合 |
-| `--label ID=TEXT` | 显示标签；不是源码版本 |
-| `--channel ID=TEXT` | 发布渠道文本 |
-| `--status ID=TEXT` | 发布状态文本 |
-| `--base-path ID=PATH` | 版本基路径，受安全相对路由规则约束 |
+| `--latest ID` | 默认首个 `--version` 的 ID，不按版本号排序；显式值必须属于版本集合 |
+| `--label ID=TEXT` | 默认 ID；显示标签，不是源码版本 |
+| `--channel ID=TEXT` | 默认 `unspecified`；发布渠道文本 |
+| `--status ID=TEXT` | 默认 `published`；发布状态文本 |
+| `--base-path ID=PATH` | 默认 ID；版本基路径，受安全相对路由规则约束 |
 | `--release ID=TEXT` | 发布说明文本，不要求是 URL |
 | `--diff ID=PATH` | 关联已存在 diff 文件 |
 | `--force-owned` | 默认关闭；输出所有权规则不变 |
