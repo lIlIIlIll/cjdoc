@@ -22,7 +22,6 @@ jobs:
       SOURCE_COMMIT: d0fb6d3e4646bfda005502d845a1f551f239bf9e
       CACHE_KEY: cjv-Windows-X64-1.2.0-sts-stdx-cjv0.3.2-f93a657cf005110709789d46b7ae86e5388ab1aa824c4379cc1423381fa06307
       SDK_SHA256: 7bd5088ad56fb03c1214e73ea076de5ac08580cc419a8cbd46a524ee1ca250bf
-      REPORT_DIRECTORY: ${{ runner.temp }}/windows-sdk-diagnostic
     steps:
       - name: Check out the exact release candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,6 +40,8 @@ jobs:
 
       - name: Record non-identifying processor facts
         shell: pwsh
+        env:
+          REPORT_DIRECTORY: ${{ runner.temp }}/windows-sdk-diagnostic
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path $env:REPORT_DIRECTORY | Out-Null
@@ -83,6 +84,7 @@ jobs:
           CACHE_HIT: ${{ steps.cached.outputs.cache-hit }}
           MATCHED_KEY: ${{ steps.cached.outputs.cache-matched-key }}
           WORKFLOW_COMMIT: ${{ github.sha }}
+          REPORT_DIRECTORY: ${{ runner.temp }}/windows-sdk-diagnostic
         run: |
           set -euo pipefail
           python - <<'PY'
