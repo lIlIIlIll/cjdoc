@@ -110,7 +110,7 @@ command -v cjdoc
 
 `command -v cjdoc` 应输出 `$CJDOC_PREFIX/bin/cjdoc`。
 
-`install` 会覆盖该前缀下已有的 `cjdoc`。要保留旧版本，先把 `CJDOC_PREFIX` 设为新的私人目录，例如 `$HOME/.local/cjdoc-0.7.7`，再把它的 `bin` 加入 PATH。
+`install` 会覆盖该前缀下已有的 `cjdoc`。要保留旧版本，先把 `CJDOC_PREFIX` 设为新的私人目录，例如 `$HOME/.local/cjdoc-0.7.8`，再把它的 `bin` 加入 PATH。
 
 长期使用时，把 `$CJDOC_PREFIX/bin` 写进你的 shell 配置；SDK 环境需按后文“以后在新终端使用 cjdoc”在每个新终端加载。
 
@@ -136,7 +136,7 @@ cjdoc --version
 cjdoc --help
 ```
 
-`command -v cjdoc` 应指向第 3 步的前缀，`cjdoc --version` 输出 `cjdoc 0.7.7`，`cjdoc --help` 列出顶层命令。只有顶层提供 `--help`，子命令没有独立帮助。
+`command -v cjdoc` 应指向第 3 步的前缀，`cjdoc --version` 输出 `cjdoc 0.7.8`，`cjdoc --help` 列出顶层命令。只有顶层提供 `--help`，子命令没有独立帮助。
 
 这些命令不需要 `CJDOC_SOURCE`，也不需要第 2 步的构建临时目录。当前终端仍需已加载的 SDK 环境。Windows 在另一个空目录中运行 `Get-Command cjdoc`、`cjdoc --version` 和 `cjdoc --help`，并保持 SDK runtime 环境。
 
