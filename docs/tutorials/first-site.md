@@ -84,6 +84,8 @@ cjdoc generate --project . --format html
 
 第一条命令编译这个库。第二条命令编译注释里的 `@example` 代码，并运行标了 `run` 的示例，把实际输出与 `output` 围栏比较：一致时以退出码 0 结束，这里应匹配 `Hello, Cangjie!`。第三条命令读取同一份源码生成静态 HTML。
 
+源码模式下可能同时打印 `CJDOC3041` 类型链接 warning，表示类型的语义链接尚未解析，不是示例编译或运行失败。使用本页默认检查参数时，示例通过仍以退出码 `0` 结束。
+
 `generate` 默认不编译项目，也不运行示例，所以示例是否真的执行过只取决于第二条命令的结果。示例检查需要能建立进程资源限制的环境，限制和诊断码见[检查示例](../how-to/check-examples.md)。
 
 省略 `--format` 时默认生成 JSON，不会产生 HTML。生成结果的入口是 `target/doc/html/index.html`。

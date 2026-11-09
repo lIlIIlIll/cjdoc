@@ -137,7 +137,8 @@ xdg-open target/troubleshoot-fresh/html/index.html
     --output target/troubleshoot-cfg
   ```
 
-- 指向依赖源码：cjdoc 不会替你下载依赖。先在项目里准备好依赖，再按[选择输入与依赖](select-inputs.md)用 path、cjpm 缓存或显式源码引入。
+- 指向 workspace 成员（如 `CJDOC1010`）：确认成员目录存在且含有 `cjpm.toml`，再从 workspace 根重新生成。
+- 指向依赖源码：cjdoc 不会替你下载依赖。先准备好依赖，再按[选择输入与依赖](select-inputs.md)引入。依赖 warning 不一定将结果标为 `partial`；例如缺失 path 依赖的 `CJDOC2302` 可以与 `complete` 并存，仍应单独处理。
 - 仍无法消除：保留 `partial` 结果，按[状态与限制参考](../reference/states-and-limits.md)判断它适合哪类用途。
 
 **恢复后**：重新生成，确认诊断中不再有刚才处理的来源问题，再查看 `status` 与 `apiCollectionState`。仍有其它不完整项时，继续按其诊断处理，不要只凭网页可打开就忽略它们。

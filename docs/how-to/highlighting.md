@@ -103,7 +103,7 @@ cjdoc generate --project . --format html --format json --output target/off
 
 ## 3. 用锁定的 Node adapter 高亮 Python
 
-这一步才需要 Node.js **26.11.1**、npm，以及安装时保存的 `CJDOC_SOURCE` 源码目录。准备一个只属于本练习的 adapter 子目录，复制四个文件，再按锁文件安装依赖；`node_modules` 会放在这个子目录里，不写回安装源码。
+本例选用 Node.js **26.11.1**；这一步还需要 npm，以及安装时保存的 `CJDOC_SOURCE` 源码目录。准备一个只属于本练习的 adapter 子目录，复制四个文件，再按锁文件安装依赖；`node_modules` 会放在这个子目录里，不写回安装源码。
 
 ```bash
 : "${CJDOC_SOURCE:?请设置为安装时保存的 CJDOC_SOURCE}"
@@ -119,7 +119,7 @@ npm ci --ignore-scripts
 
 `npm ci` 按 `package-lock.json` 安装精确版本并校验完整性，不运行包的生命周期脚本。若 registry 或 npm 缓存不可用，恢复网络访问后重试；不要改成 `npm install`，那会允许浮动版本。
 
-复制出的 `.node-version` 写着 `26.11.1`，`node --version` 应输出 `v26.11.1`。Node 及其依赖只用于生成时的外部进程，发布时只复制生成的 `html/` 树，不复制这个目录。
+复制出的 `.node-version` 记录本例使用的 `26.11.1`，可用 `node --version` 核对当前版本。Node 及其依赖只用于生成时的外部进程，发布时只复制生成的 `html/` 树，不复制这个目录。
 
 ### 同时处理两种语言
 

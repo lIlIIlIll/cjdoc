@@ -79,8 +79,8 @@
 | `--stdlib-doc-version VERSION` | 内置目录选择；非内置版本需提供 base URL | generate |
 | `--stdlib-doc-base-url HTTPS_URL` | 必须是 HTTPS 且以 `/libs/std` 结尾 | generate |
 | `--build-context FILE` | 无；捕获实际依赖选择的记录 | generate、check |
-| `--doc-source PATH` | 可重复；文档 catalog 文件或含 `cjdoc-documents.json` 的目录，不是随便的 HTML 根 | generate、check |
-| `--doc-inventory-pin PATH=SHA256` | 可重复；对实际库存字节固定 SHA-256 | generate、check |
+| `--doc-source PATH` | 可重复；文档 catalog 文件或含 `cjdoc-documents.json` 的目录，不是随便的 HTML 根；相对路径以项目根为基准 | generate、check |
+| `--doc-inventory-pin PATH=SHA256` | 可重复；对实际库存字节固定 SHA-256；相对路径以项目根为基准 | generate、check |
 | `--link-language LANG` | 默认未指定；规范化文档语言 | generate、check |
 | `--link-language-fallback` | 默认关闭；允许显式语言回退 | generate、check |
 | `--link-compatible` | 默认关闭；允许契约所定义的兼容匹配，不把它标成 exact | generate、check |
@@ -115,7 +115,7 @@ CHIR 失败不升级语义权威性，也不替代注释真值。真实 worker �
 | `successfulBuilds` | 其中成功构建的累计次数 |
 | `lastError` | 最近一次构建失败的提示；下一次成功后清空为 `""`。具体诊断看服务终端 |
 
-监视范围包括源码、Markdown、`cjpm.toml`、`cjpm.lock` 与 `cjdoc.toml`；保存后重建，浏览器需要手动刷新。重建失败保留最近成功站点。在服务终端按 `Ctrl+C` 停止。
+监视范围包括源码、Markdown、`cjpm.toml`、`cjpm.lock` 与 `cjdoc.toml`；保存后重建，浏览器需要手动刷新。重建失败后仍运行的服务保留最近成功站点；若进程因输入错误退出，修正输入后重新启动。在服务终端按 `Ctrl+C` 停止。
 
 ## diff
 

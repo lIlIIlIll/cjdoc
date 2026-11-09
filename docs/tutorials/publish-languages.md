@@ -203,7 +203,7 @@ cjdoc generate --project . --format html --format coverage --locale en --output 
 xdg-open target/doc-en-missing/html/index.html
 ```
 
-打开 `target/doc-en-missing/html/index.html` 里的 `greet`，返回说明会回退为中文原文，并标注“暂无当前语言翻译，原文：zh-CN”。再看本次生成的 `target/doc-en-missing/coverage/translations.json`：该返回字段的 `state` 不再是 `complete`，对应的回退计数增加。
+打开 `target/doc-en-missing/html/index.html` 里的 `greet`，返回说明会回退为中文原文，并标注英文界面提示“Translation missing. Original text: zh-CN”。再看本次生成的 `target/doc-en-missing/coverage/translations.json`：该返回字段的 `state` 不再是 `complete`，对应的回退计数增加。
 
 看报告时注意：
 

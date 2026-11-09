@@ -40,7 +40,7 @@ cjdoc query --snapshot <已生成的当前快照或机器清单> --request reque
 | `get_symbol` 的 scope | `moduleId`、`packageName`、`kind`、`documentSetId`、`apiVersion`、`dependencyInstanceId`、`library`、`target`、`cfg`。 |
 | `get_symbol` 的声明详情 | 身份选择器恰好一个：`symbolId`、`symbolKey`、`pageId`。声明支持 `preset`/`sections`、`maxBytes`；仅声明详情可加 `relations`、`relatedSnapshotIds`、`cursor`、`limit`。 |
 
-`resolve_docs.query` 用于匹配库、模块、包；查符号使用 `search`，不要把声明名作为 resolve 的库/包语义。context 字段指向已载入的消费者/依赖快照，不重新解析依赖，也不会自动扩大目标候选的快照范围。`compatible` 是显式选择策略；`latest` 仅在输入 catalog 已声明 latest alias 时有效，缺失 alias 会返回 `unavailable`，不等价于任意选最新文件。
+`resolve_docs.query` 用于匹配库、模块、包；查符号使用 `search`，不要把声明名作为 resolve 的库/包语义。context 字段指向已载入的消费者/依赖快照，不重新解析依赖，也不会自动扩大目标候选的快照范围。`compatible` 是显式选择策略。`resolve_docs` 的 `latest` 只沿输入 catalog 明示的 latest alias 选择；独立快照没有该别名但仍有可选候选时，返回 `ambiguous`（退出 `0`）且不填 `selection.selected`，不会猜选最新文件。
 
 `search` 的通用选择/过滤字段可以组合收窄候选。`parameterTypes`、`genericArity`、`symbolId`、`symbolKey` 与结构化范围均使用已捕获身份，不会调用编译器判断调用适配性。
 

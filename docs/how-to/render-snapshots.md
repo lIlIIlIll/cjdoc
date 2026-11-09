@@ -60,7 +60,7 @@ cp target/doc-ir-capture/docs.json "$WORK/current.json"
 
 - **报 Doc IR 版本或 schema 错误**：快照来自旧版本的 cjdoc。原始项目源码还在时，用当前 cjdoc 重新执行 `cjdoc generate --project . --format json` 得到新快照；源码已经不在时，没有受支持的旧快照迁移路径。
 - **`--input` 文件找不到**：确认命令是在 `$WORK` 里执行的，且 `current.json` 已复制进去；也可以用绝对路径传给 `--input`。
-- **输出目录被拒绝**：目录已存在且不是 cjdoc 生成的，或其中文件被手工改过。换一个新的输出目录；确认可以覆盖时再加 `--force-owned`。
+- **输出目录被拒绝**：手工创建的目录要改为尚不存在的新输出路径，`--force-owned` 不会接管它。若是 cjdoc 管理的产物被手工修改，确认接受覆盖后才加这个选项。详见[管理输出](manage-outputs.md)。
 - **页面里缺少某个声明或示例结果**：`render` 只展示快照里已有的内容。生成快照时没有包含的声明、没有运行过的示例，重新渲染也不会出现。
 
 ## 下一步

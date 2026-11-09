@@ -59,13 +59,13 @@ EOF
 cat > "$TASK_ROOT/consumer/src/api.cj" <<'EOF'
 package linkconsumer
 
-import linklib.*
+import linklib
 
 /** 返回真实 linklib 依赖提供的文本。
  * @param label 来自 linklib 的值。
  * @see linklib.Label
  */
-public func render(label: Label): String { label.text() }
+public func render(label: linklib.Label): String { label.text() }
 EOF
 
 (cd "$TASK_ROOT/library" && cjpm build --jobs 1)
@@ -128,9 +128,11 @@ cjdoc generate --project "$TASK_ROOT/consumer" \
   --format html --format json --output "$TASK_ROOT/consumer-site"
 ```
 
-catalog 的 `index` 相对 **catalog 文件所在目录**解释；`--doc-inventory-pin` 中的路径相对 **命令当前目录**解释。本例让 `INDEX` 使用绝对路径，避免两个基准混淆。pin 校对索引的实际字节；它不认证远端网站。
+catalog 的 `index` 相对 **catalog 文件所在目录**解释；`--doc-source` 和 `--doc-inventory-pin` 中的相对路径以 **`--project` 指定的项目根**为基准。本例让这些路径与 `INDEX` 都使用绝对路径，避免两个基准混淆。pin 校对索引的实际字节；它不认证远端网站。
 
 这里不加 `--include-path-dependencies`：消费方仍通过清单记录实际依赖，但 `linklib` 的页面由独立库站点提供。加入该选项会将依赖源码也纳入本地文档，类型链接可能转到本地页面，详见[选择输入](select-inputs.md)。
+
+源码模式下仍可能出现 `CJDOC3008` 或 `CJDOC3041` 语义链接 warning；它们不等同于页面没有导航链接。沿下面的类型和相关链接检查实际目的地，不能只凭是否有 warning 判断链接是否生成。
 
 ## 放入依赖页面并沿链接阅读
 
@@ -142,7 +144,7 @@ cp -R "$TASK_ROOT/library-site/html" "$TASK_ROOT/consumer-site/html/dependencies
 xdg-open "$TASK_ROOT/consumer-site/html/index.html"
 ```
 
-在消费方的 `render` 页面点击参数类型 `Label`，再点击相关链接中的 `linklib.Label`。两处都应打开刚生成的库文档，库页中可以阅读 `Label.text()`。发布时上传完整 `consumer-site/html/`，包含 `dependencies/linklib/`；不要只上传消费方页面。
+在消费方的 `render` 页面点击参数类型 `linklib.Label`，再点击相关链接中的 `linklib.Label`。两处都应打开刚生成的库文档，库页中可以阅读 `Label.text()`。发布时上传完整 `consumer-site/html/`，包含 `dependencies/linklib/`；不要只上传消费方页面。
 
 macOS 用 `open`，Windows PowerShell 用 `Start-Process` 打开同一个入口。
 
@@ -193,6 +195,8 @@ EOF
 cat > "$TASK_ROOT/stdlib/src/api.cj" <<'EOF'
 package stdliblinkdemo
 import std.collection.ArrayList
+import std.collection as collections
+import std.core as core
 
 /** 接收标准库列表并返回文本。
  * @param values 标准库列表。
@@ -201,7 +205,7 @@ import std.collection.ArrayList
 public func accept(values: ArrayList<String>): String { "ok" }
 
 /** 使用限定类型名声明同一组标准库类型。 */
-public func acceptQualified(values: std.collection.ArrayList<String>): std.core.String {
+public func acceptQualified(values: collections.ArrayList<core.String>): core.String {
     "ok"
 }
 EOF
@@ -210,9 +214,9 @@ cjdoc generate --project "$TASK_ROOT/stdlib" \
   --format html --stdlib-doc-version 1.2.0 --output "$TASK_ROOT/stdlib-site"
 ```
 
-打开 `$TASK_ROOT/stdlib-site/html/index.html`，在函数签名里点击 `ArrayList` 和 `String`，应进入 1.2.0 标准库文档。版本参数只选择链接目录，不检查项目是否使用了完全相同的 SDK API。
+打开 `$TASK_ROOT/stdlib-site/html/index.html`，进入 `stdliblinkdemo` 包页或 `accept` 的 API 页面，再在函数签名里点击 `ArrayList` 和 `String`，应进入 1.2.0 标准库文档。版本参数只选择链接目录，不检查项目是否使用了完全相同的 SDK API。
 
-内置文档版本为 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3`、`1.2.0`。其它版本需要同时给 `--stdlib-doc-base-url`，它必须是以 `/libs/std` 结尾的 HTTPS 根地址，例如官方 `https://cj-docs.gitcode.com/zh/1.1.4/libs/std`。两个选项只适用于 `generate`，与站点发布标签 `--doc-version` 不同；`render` 保留快照中的既有链接。
+内置文档版本为 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3`、`1.2.0`。也可以用 `--stdlib-doc-base-url` 指定已发布的文档树，例如选择 `--stdlib-doc-version 1.1.3` 时指定 `https://cj-docs.gitcode.com/zh/1.1.3/libs/std`。未列出的版本必须同时给出该选项；地址必须是以 `/libs/std` 结尾的 HTTPS 根地址。两个选项只适用于 `generate`，与站点发布标签 `--doc-version` 不同；`render` 保留快照中的既有链接。
 
 ## 下一步
 

@@ -47,7 +47,10 @@ git rev-parse --verify HEAD
 
 worker 是一个独立的仓颉可执行程序，构建时需要静态 stdx 参与链接。仓库提供两个脚本处理这件事：`scripts/with_sts_cjpm.sh` 固定本仓使用的编译器选项，`scripts/with_stdx.py` 校验 stdx 是否与当前编译器匹配。它们都通过环境变量工作，所以下面把整段构建放进一个子 shell，构建结束后这些变量不会影响你之后的命令：
 
+先把下面的 `CANGJIE_STDX_PATH` 改为实际的静态 stdx 目录；macOS 和 Windows 按[安装指南](../getting-started/install.md)中的平台布局选择。这个变量必须在构建 worker 前设置。
+
 ```bash
+export CANGJIE_STDX_PATH="$HOME/toolchains/sts-1.2.0/linux_x86_64_cjnative/static/stdx"
 cd "$TASK_ROOT/cjdoc-source"
 (
   export GITHUB_WORKSPACE="$TASK_ROOT/cjdoc-source"
@@ -68,7 +71,7 @@ cd "$TASK_ROOT/cjdoc-source"
 
 `GITHUB_WORKSPACE` 是仓库脚本用来定位源码根的名字，`RUNNER_TEMP` 是本次构建的临时目录；这两个名字来自仓库脚本，本地照设即可，不需要 GitHub Actions。构建成功后 worker 可执行文件位于 `tools/chir-worker/target/release/bin/main`，Windows 为 `main.exe`。
 
-先将 `CANGJIE_STDX_PATH` 设置为实际的静态 stdx 目录，再把运行时要用的三个路径定为绝对路径：
+构建成功后，把运行时要用的三个路径定为绝对路径：
 
 ```bash
 export CHIR_WORKER="$TASK_ROOT/cjdoc-source/tools/chir-worker/target/release/bin/main"
@@ -193,7 +196,7 @@ cjdoc --version
 
 ## worker 或 compiler 失败时
 
-worker 不可用或分析失败时，cjdoc 默认保留源码声明并产生 warning，说明这次哪些语义没有补上。启用了拒绝 warning 的策略时，检查仍可因此失败。先看诊断码，再决定改哪一项：
+worker 不可用或分析失败时，cjdoc 默认保留源码声明并产生 warning，说明这次哪些语义没有补上。对 `check` 使用 `--deny-warnings` 时，这些 warning 也会使检查失败。先看诊断码，再决定改哪一项：
 
 | 诊断码 | 含义 | 先检查什么 |
 |---|---|---|

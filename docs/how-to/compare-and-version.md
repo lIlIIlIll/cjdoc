@@ -92,7 +92,7 @@ cp -R "$WORK/support/html" "$WORK/site/0.2.0/dependencies/support-v1"
 
 `--version ID=PATH` 指向的是生成输出里的 `html` 目录，不是整个输出根。省略 `--label` 和 `--base-path` 时，两者都等于版本 ID，所以本页的版本页面位于 `site/0.1.0/` 和 `site/0.2.0/`。`--channel` 与默认的 `status=published` 只是展示文字，不验证发布流程。省略 `--latest` 时默认取第一个 `--version` 的 ID，而不是按版本号排序；这里显式指定 `0.2.0`，它会被标为最新并生成 `latest/` 跳转。`--diff` 把差异报告附到 0.2.0 版本，并在版本选择器里给出“版本变化”入口。
 
-依赖库的完整 HTML 树要在 `compose` 之后复制到每个版本根的 `dependencies/support-v1`。本页生成的是单语言站点，版本根下就是 `index.html` 与 `symbols/` 等页面，符号页里的 `../dependencies/support-v1/...` 正好指到这里；如果你改用 `--all-languages`，页面位于 `html/<语言>/` 下，就要按同样规则复制成 `<版本根>/html/<语言>/dependencies/support-v1`。如果先复制再组合，这些页面会被当成版本输入的一部分，从而被注入 PocketKit 的版本选择器；后复制则保持它们是独立依赖文档，但路径仍与配置里的 `base-url` 一致。
+依赖库的完整 HTML 树要在 `compose` 之后复制到每个版本根的 `dependencies/support-v1`。本页生成的是单语言站点，版本根下就是 `index.html` 与 `symbols/` 等页面，符号页里的 `../dependencies/support-v1/...` 正好指到这里；如果你改用 `--all-languages`，输入的 `html/<语言>/` 会组合成 `<版本根>/<语言>/`，就要复制到 `<版本根>/<语言>/dependencies/support-v1`。如果先复制再组合，这些页面会被当成版本输入的一部分，从而被注入 PocketKit 的版本选择器；后复制则保持它们是独立依赖文档，但路径仍与配置里的 `base-url` 一致。
 
 ## 打开并发布版本站点
 
@@ -102,9 +102,9 @@ xdg-open "$WORK/site/index.html"
 
 macOS 用 `open "$WORK/site/index.html"`，Windows 在 Git Bash 中用 `start "" "$WORK/site/index.html"`。首页应列出 `0.1.0`（stable）与 `0.2.0`（preview），并标出最新版本。
 
-接着打开 `site/0.2.0/index.html`，在版本选择器里切到 `0.1.0`：两份源码都有的符号应落到 `0.1.0` 的对应页面。切到 `nonEmpty` 这类只在 0.2.0 存在的符号时，目标版本没有同一符号，选择器会落到该符号的所属页面，找不到时退回该版本首页，并标注缺失状态。页面缺失同样退回版本首页；章节缺失落到同一页的页首。若组合的是多语言站点，目标版本没有当前语言时退回该版本的默认语言。这些回退是版本选择器的预期行为，不是链接损坏。
+接着打开 `site/0.2.0/index.html`，在版本选择器里切到 `0.1.0`：两份源码都有的符号应落到 `0.1.0` 的对应页面。从只在 0.2.0 存在的 `nonEmpty` 页面切到 0.1.0 时，会退回目标版本首页，并标注“此版本没有该符号”或“此版本没有该页面”。缺失符号按可用的所属页面或版本首页回退；页面缺失回到版本首页，章节缺失落到同一页的页首。若组合的是多语言站点，目标版本没有当前语言时退回该版本的默认语言。这些回退是版本选择器的预期行为，不是链接损坏。
 
-再打开 0.2.0 的 `TextCatalog` 页面，它的注释里有 `@see pocket_support.SourceLabel`；点击“外部文档”里的链接，应打开 `site/0.2.0/dependencies/support-v1/` 下的依赖库页面。依赖页面本身没有 PocketKit 的版本选择器，因为它在组合完成后才被复制进来。
+再打开 0.2.0 的 `TextCatalog` 页面，它的注释里有 `@see pocket_support.SourceLabel`；点击“另请参阅”里的链接，应打开 `site/0.2.0/dependencies/support-v1/` 下的依赖库页面。依赖页面本身没有 PocketKit 的版本选择器，因为它在组合完成后才被复制进来。
 
 `site/versions.json` 记录每个版本的 `id`、`label`、`basePath`、`channel`、`status`、入口和附带的差异报告。它是组合清单，不代替目录里的实际页面：要确认某个符号是否存在于某版本，直接打开该版本的页面或它的符号索引。发布时上传整个 `$WORK/site/`，不要只复制某一个版本目录；版本选择器和 `latest/` 都依赖同级的其它目录。
 
@@ -136,7 +136,7 @@ cjdoc check --project "$V2" --api-surface-baseline "$WORK/v1/api-surface/api-sur
 ## 遇到问题怎么办
 
 - **`diff` 以 `2` 失败**：两份快照的 project、audience 或 cfgProfile 不一致。用相同的 `--audience`、`--cfg` 从两份源码重新生成快照，再比较；不要靠改版本标签绕过输入不匹配。
-- **外部文档只显示“无外部参考”或“引用不明确”**：索引缺失、版本字段不符，或 demo 生成时还没放入新索引。重新生成 `support-v1`，覆盖两份 demo 的 `docs/support-symbol-index.json`，再重新生成两个版本。
+- **外部参考状态显示“无外部参考”**：检查索引是否缺失、版本字段是否匹配，以及 demo 生成前是否已放入新索引。重新生成 `support-v1`，覆盖两份 demo 的 `docs/support-symbol-index.json`，再重新生成两个版本。
 - **点击依赖链接打不开**：按配置的相对路径把完整 `support/html` 复制到每个组合版本根的 `dependencies/support-v1`；复制后不要再运行 `compose`，否则选择器会被注入依赖页面。
 - **切换版本后落在首页**：目标版本确实缺少该页面、符号、语言或章节，选择器已按回退规则处理；从该版本首页重新导航即可。
 - **`compose` 报输入错误**：确认 `--version` 指向 `html` 目录且其中存在 `index.html`；版本 ID 不能重复，元数据选项引用的 ID 必须已经出现在 `--version` 中。
