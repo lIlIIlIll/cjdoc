@@ -52,6 +52,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install the diagnostic debugger
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gdb
+          gdb --version
+
       - name: Prepare private task directories and diagnostic tools
         shell: bash
         run: |
