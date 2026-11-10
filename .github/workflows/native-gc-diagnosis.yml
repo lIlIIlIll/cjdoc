@@ -1,0 +1,172 @@
+name: Native GC diagnostic capture
+
+# This observes a frozen candidate; it does not retry or qualify a release.
+on:
+  push:
+    branches: [diagnostic/linux-gc-0.7.8-capture]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: native-gc-diagnosis-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUTF8: "1"
+  DIAGNOSTIC_SUBJECT_COMMIT: d0fb6d3e4646bfda005502d845a1f551f239bf9e
+  DIAGNOSTIC_SUBJECT_TREE: 644953a988995309dc9006d15308a7ef51ee29e8
+  DIAGNOSTIC_CANDIDATE_TAR_SHA256: 05a424f712603feff3b76a2f7d43d0fa1a88a42c65259062971a92ea455e38da
+  DIAGNOSTIC_CERTIFICATE_SHA256: 7f97b417287e770f3c880a9b24b8709fd0942af8536fd1d067153fd93d7f42f2
+  CANGJIE_SDK_URL: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
+  CANGJIE_SDK_SHA256: 8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f
+  CANGJIE_STDX_URL: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-linux-x64-1.2.0.1.zip"
+  CANGJIE_STDX_SHA256: c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47
+
+jobs:
+  capture:
+    name: Pinned Linux GC capture (not release acceptance)
+    if: github.ref == 'refs/heads/diagnostic/linux-gc-0.7.8-capture'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out the diagnostic harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the immutable subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d0fb6d3e4646bfda005502d845a1f551f239bf9e
+          path: subject
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Prepare private task directories and diagnostic tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          command -v gdb
+          command -v openssl
+          command -v taskset
+          root="${RUNNER_TEMP}/native-gc-diagnosis"
+          test ! -e "${root}"
+          install -d -m 0700 "${root}" "${root}/tmp"
+          {
+            echo "DIAGNOSTIC_ROOT=${root}"
+            echo "DIAGNOSTIC_OUTPUT=${root}/output"
+            echo "TMPDIR=${root}/tmp"
+            echo "TMP=${root}/tmp"
+            echo "TEMP=${root}/tmp"
+          } >> "${GITHUB_ENV}"
+
+      - name: Download the original candidate without rebuilding it
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: "13712324192"
+          repository: lIlIIlIll/cjdoc
+          run-id: "42704455770"
+          github-token: ${{ github.token }}
+          path: ${{ env.DIAGNOSTIC_ROOT }}/candidate
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Verify the frozen inputs before installing the SDK
+        shell: bash
+        env:
+          DIAGNOSTIC_WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${DIAGNOSTIC_WORKFLOW_SHA}"
+          test "$(git -C subject rev-parse HEAD)" = "${DIAGNOSTIC_SUBJECT_COMMIT}"
+          test "$(git -C subject rev-parse 'HEAD^{tree}')" = "${DIAGNOSTIC_SUBJECT_TREE}"
+          test -f scripts/native_gc_diagnosis.py
+          certificate="${GITHUB_WORKSPACE}/.github/diagnostics/native-gc-capture.pem"
+          candidate="${DIAGNOSTIC_ROOT}/candidate/cjdoc-linux-candidate.tar"
+          printf '%s  %s\n' "${DIAGNOSTIC_CERTIFICATE_SHA256}" "${certificate}" | sha256sum -c -
+          test "$(wc -c < "${candidate}")" = "27637760"
+          printf '%s  %s\n' "${DIAGNOSTIC_CANDIDATE_TAR_SHA256}" "${candidate}" | sha256sum -c -
+          echo "DIAGNOSTIC_WORKFLOW_SHA=${DIAGNOSTIC_WORKFLOW_SHA}" >> "${GITHUB_ENV}"
+
+      - name: Install the authenticated SDK and stdx sidecar
+        id: sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python subject/scripts/install_cangjie_sdk.py \
+            --url "${CANGJIE_SDK_URL}" \
+            --sha256 "${CANGJIE_SDK_SHA256}" \
+            --stdx-url "${CANGJIE_STDX_URL}" \
+            --stdx-sha256 "${CANGJIE_STDX_SHA256}" \
+            --destination "${DIAGNOSTIC_ROOT}/sdk" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Capture the single original-recipe native invocation
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+          DIAGNOSTIC_RUN_ID: ${{ github.run_id }}
+          DIAGNOSTIC_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          # The harness is the sole authority for full input binding, native
+          # credential isolation, the original recipe, and encrypted evidence.
+          set +e
+          python subject/scripts/with_stdx.py --variant static -- \
+            python scripts/native_gc_diagnosis.py \
+              --subject "${GITHUB_WORKSPACE}/subject" \
+              --candidate-tar "${DIAGNOSTIC_ROOT}/candidate/cjdoc-linux-candidate.tar" \
+              --sdk-root "${CANGJIE_SDK_ROOT}" \
+              --certificate "${GITHUB_WORKSPACE}/.github/diagnostics/native-gc-capture.pem" \
+              --output "${DIAGNOSTIC_OUTPUT}" \
+              --workflow-sha "${DIAGNOSTIC_WORKFLOW_SHA}" \
+              --run-id "${DIAGNOSTIC_RUN_ID}" \
+              --run-attempt "${DIAGNOSTIC_RUN_ATTEMPT}"
+          status=$?
+          set -e
+          echo "DIAGNOSTIC_EXIT_CODE=${status}" >> "${GITHUB_ENV}"
+          exit "${status}"
+
+      - name: Record the diagnostic outcome
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '### Native GC diagnostic — not release acceptance'
+            echo 'Successful collection is not evidence that the original defect is fixed.'
+            echo "Capture exit status: ${DIAGNOSTIC_EXIT_CODE:-not started}"
+            if [ -f "${DIAGNOSTIC_OUTPUT:-}/public/diagnosis.txt" ]; then
+              printf '\n```text\n'
+              cat "${DIAGNOSTIC_OUTPUT}/public/diagnosis.txt"
+              printf '\n```\n'
+            else
+              echo 'No capture summary was produced; inspect the failed prerequisite step.'
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload only summaries and encrypted private evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-gc-diagnosis-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/native-gc-diagnosis/output/public/manifest.json
+            ${{ runner.temp }}/native-gc-diagnosis/output/public/diagnosis.txt
+            ${{ runner.temp }}/native-gc-diagnosis/output/public/private-evidence.p7m
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+          compression-level: 0
