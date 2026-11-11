@@ -383,24 +383,24 @@ internal func linkedSignatureSpans(symbol: SymbolDoc,
 
 // Only validated presentation metadata supplies colours. The signature witness
 // remains an alignment/navigation fact, including for legacy and mode=off IR.
-private func appendSignatureRangeHtml(out: RenderTextBuffer, raw: String,
+private func appendSignatureRangeHtml(w: HtmlWriter, raw: String,
     start: Int64, end: Int64, highlight!: ?CodeHighlight = None): Unit {
     if (let Some(prepared) <- highlight) {
-        appendCodeHighlightRangeHtml(out, raw, prepared, start, end)
-    } else { appendHtmlEscapedValue(out, raw[start..end]) }
+        appendCodeHighlightRangeHtml(w, raw, prepared, start, end)
+    } else { w.text(raw[start..end]) }
 }
 
-internal func appendSignatureTextHtml(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
+internal func appendSignatureTextHtml(w: HtmlWriter, symbol: SymbolDoc): Unit {
     if (let Some(prepared) <- symbol.signatureHighlight) {
         if (!prepared.matchesSource(symbol.headerSpelling)) {
-            appendHtmlEscapedValue(out, symbol.headerSpelling); return
+            w.text(symbol.headerSpelling); return
         }
     }
-    appendSignatureRangeHtml(out, symbol.headerSpelling,
+    appendSignatureRangeHtml(w, symbol.headerSpelling,
         0, symbol.headerSpelling.size, highlight: symbol.signatureHighlight)
 }
 
-internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+internal func appendLinkedSignatureHtml(w: HtmlWriter, symbol: SymbolDoc,
     links: HtmlTypeLinkIndex, rootPrefix: String): Unit {
     let raw = symbol.headerSpelling
     // Stale highlight metadata is dropped, but the type links come from the
@@ -413,18 +413,17 @@ internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc
     var position: Int64 = 0
     for (span in linkedSignatureSpans(symbol, links)) {
         if (span.start < position) { continue }
-        appendSignatureRangeHtml(out, raw, position, span.start, highlight: prepared)
+        appendSignatureRangeHtml(w, raw, position, span.start, highlight: prepared)
         let href = navigationHref(rootPrefix, span.url)
         match (href) {
             case Some(url) =>
-                out.append("<a class=\"type-link signature-type-link\" href=\"" + escapeHtml(url) + "\"")
-                appendNavigationAttributes(out, span.navigation)
-                out.append(">")
-            case None => out.append("<span title=\"" + escapeHtml(span.title) + "\">")
+                w.open("a", attrs: documentationHrefAttrs(url,
+                    navigation: span.navigation, cssClass: "cj-type-link"))
+            case None => w.open("span", attrs: [htmlAttr("title", span.title)])
         }
-        appendSignatureRangeHtml(out, raw, span.start, span.end, highlight: prepared)
-        out.append(if (href.isSome()) { "</a>" } else { "</span>" })
+        appendSignatureRangeHtml(w, raw, span.start, span.end, highlight: prepared)
+        w.close(if (href.isSome()) { "a" } else { "span" })
         position = span.end
     }
-    appendSignatureRangeHtml(out, raw, position, raw.size, highlight: prepared)
+    appendSignatureRangeHtml(w, raw, position, raw.size, highlight: prepared)
 }

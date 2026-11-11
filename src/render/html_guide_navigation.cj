@@ -3,7 +3,7 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-internal func appendGuideSequence(out: RenderTextBuffer, pages: Array<DocumentationPage>,
+internal func appendGuideSequence(w: HtmlWriter, pages: Array<DocumentationPage>,
     current: DocumentationPage, locale: String): Unit {
     if (current.kind != "guide") { return }
     let guides = ArrayList<DocumentationPage>()
@@ -11,20 +11,27 @@ internal func appendGuideSequence(out: RenderTextBuffer, pages: Array<Documentat
     if (guides.size < 2) { return }
     for (index in 0..guides.size) {
         if (guides[index].id != current.id) { continue }
-        out.append("<nav class=\"guide-sequence\" aria-label=\"" + label(locale, "Continue reading", "继续阅读") + "\">")
-        if (index > 0) { appendGuideSequenceLink(out, guides[index - 1], current.route, locale, false) }
-        if (index + 1 < guides.size) { appendGuideSequenceLink(out, guides[index + 1], current.route, locale, true) }
-        out.append("</nav>\n")
+        w.element("nav", [htmlClass("cj-guide-sequence"),
+            htmlAttr("aria-label", label(locale, "Continue reading", "继续阅读"))]) { nav =>
+            if (index > 0) { appendGuideSequenceLink(nav, guides[index - 1], current.route, locale, false) }
+            if (index + 1 < guides.size) {
+                appendGuideSequenceLink(nav, guides[index + 1], current.route, locale, true)
+            }
+        }
+        w.newline()
         return
     }
 }
 
-private func appendGuideSequenceLink(out: RenderTextBuffer, page: DocumentationPage,
+private func appendGuideSequenceLink(w: HtmlWriter, page: DocumentationPage,
     currentRoute: String, locale: String, next: Bool): Unit {
     let direction = if (next) { "next" } else { "prev" }
-    let text = if (next) { label(locale, "Next", "下一篇") } else { label(locale, "Previous", "上一篇") }
-    out.append("<a rel=\"${direction}\" href=\"" + pageRootPrefix(currentRoute) + escapeHtml(page.route) +
-        "\"><span>" + text + "</span>" + escapeHtml(page.title) + "</a>")
+    let directionText = if (next) { label(locale, "Next", "下一篇") } else { label(locale, "Previous", "上一篇") }
+    w.element("a", [htmlAttr("rel", direction),
+        htmlHref(documentationRouteHref(pageRootPrefix(currentRoute) + page.route))]) { link =>
+        link.textElement("span", directionText)
+        link.text(page.title)
+    }
 }
 
 private class GuideSectionContext {
@@ -83,7 +90,7 @@ internal func guideSectionTargets(page: DocumentationPage, symbolId: String): Ar
 
 // The author's first guide that actually binds this type or its members is an
 // entry point; no package-name or prose-keyword inference creates a link.
-internal func appendTypeGuideEntry(out: RenderTextBuffer, documentation: DocumentationSet,
+internal func appendTypeGuideEntry(w: HtmlWriter, documentation: DocumentationSet,
     projection: RenderProjection, symbol: SymbolDoc, locale: String): Unit {
     if (!isTypeDeclaration(symbol) && symbol.kind != "extend") { return }
     let related = HashSet<String>()
@@ -91,8 +98,12 @@ internal func appendTypeGuideEntry(out: RenderTextBuffer, documentation: Documen
     for (entry in projection.members(symbol).entries) { let _ = related.add(entry.symbol.id) }
     for (page in selectedDocumentationPages(documentation, locale) where page.kind == "guide") {
         for (target in page.targetSymbolIds where related.contains(target)) {
-            out.append("<p class=\"api-guide-entry\">" + label(locale, "Read the guide: ", "从指南开始：") +
-                "<a href=\"../" + escapeHtml(page.route) + "\">" + escapeHtml(page.title) + "</a></p>")
+            w.element("p", [htmlClass("cj-guide-entry")]) { paragraph =>
+                paragraph.text(label(locale, "Read the guide: ", "从指南开始："))
+                paragraph.element("a", [htmlHref(documentationRouteHref("../" + page.route))]) { link =>
+                    link.text(page.title)
+                }
+            }
             return
         }
     }
