@@ -1,131 +1,141 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-26T15:29:22+00:00",
+  "generatedAt": "2026-11-10T15:47:12+00:00",
   "title": "Design System: cjdoc API Documentation",
   "extensions": {
     "colorMeta": {
       "bg": {
-        "displayName": "Bg"
+        "displayName": "Bg",
+        "purpose": "Reading plane and header."
       },
       "surface": {
-        "displayName": "Surface"
+        "displayName": "Surface",
+        "purpose": "Tool groups: search trigger, toolbars, notes, table headers."
       },
-      "surface-raised": {
-        "displayName": "Surface Raised"
+      "surface-2": {
+        "displayName": "Surface 2",
+        "purpose": "Hover fields and kind badges."
       },
-      "surface-subtle": {
-        "displayName": "Surface Subtle"
-      },
-      "code-bg": {
-        "displayName": "Code Bg"
-      },
-      "ink": {
-        "displayName": "Ink"
+      "fg": {
+        "displayName": "Fg",
+        "purpose": "Primary text."
       },
       "muted": {
-        "displayName": "Muted"
+        "displayName": "Muted",
+        "purpose": "Secondary text, metadata, outline links."
       },
-      "faint": {
-        "displayName": "Faint"
+      "border": {
+        "displayName": "Border",
+        "purpose": "Row and section rules."
       },
-      "line": {
-        "displayName": "Line"
-      },
-      "line-strong": {
-        "displayName": "Line Strong"
+      "border-strong": {
+        "displayName": "Border Strong",
+        "purpose": "Input and button outlines (3:1)."
       },
       "accent": {
-        "displayName": "Accent"
+        "displayName": "Accent",
+        "purpose": "Links, focus, current entry, pressed options."
       },
-      "accent-strong": {
-        "displayName": "Accent Strong"
+      "accent-fg": {
+        "displayName": "Accent Fg",
+        "purpose": "Text on accent."
       },
       "accent-soft": {
-        "displayName": "Accent Soft"
+        "displayName": "Accent Soft",
+        "purpose": "Current tree entry and selected search hit."
       },
-      "success": {
-        "displayName": "Success"
-      },
-      "warning": {
-        "displayName": "Warning"
-      },
-      "danger": {
-        "displayName": "Danger"
+      "code-bg": {
+        "displayName": "Code Bg",
+        "purpose": "Code blocks and signatures."
       },
       "code-keyword": {
         "displayName": "Code Keyword"
       },
       "code-type": {
-        "displayName": "Code Type"
-      },
-      "code-comment": {
-        "displayName": "Code Comment"
+        "displayName": "Code Type",
+        "purpose": "Linked types, class/struct kind."
       },
       "code-string": {
         "displayName": "Code String"
       },
       "code-number": {
         "displayName": "Code Number"
+      },
+      "code-comment": {
+        "displayName": "Code Comment"
+      },
+      "code-function": {
+        "displayName": "Code Function"
+      },
+      "code-operator": {
+        "displayName": "Code Operator"
+      },
+      "success": {
+        "displayName": "Success",
+        "purpose": "Copy confirmation."
+      },
+      "warning": {
+        "displayName": "Warning",
+        "purpose": "Warning admonitions and risk badges."
+      },
+      "danger": {
+        "displayName": "Danger",
+        "purpose": "Danger admonitions and risk badges."
       }
     },
     "typographyMeta": {
-      "reading-title": {
-        "displayName": "Reading title",
-        "purpose": "Home and guide entry titles with CJK serif fallbacks."
-      },
-      "api-title": {
-        "displayName": "API title",
-        "purpose": "Monospace symbol identifiers."
-      },
       "body": {
         "displayName": "Body",
-        "purpose": "Shared document and shell text."
+        "purpose": "Shell and prose text; system sans stack."
       },
-      "prose": {
-        "displayName": "Prose",
-        "purpose": "Continuous authored narrative with an open line height."
+      "page-title": {
+        "displayName": "Page title",
+        "purpose": "Home, guide and package titles."
       },
-      "summary": {
-        "displayName": "Summary",
-        "purpose": "Complete descriptions, parameters, returns, and behavior."
+      "section-title": {
+        "displayName": "Section title",
+        "purpose": "H2 with hairline rule."
       },
       "code": {
         "displayName": "Code",
-        "purpose": "Signatures and executable examples."
+        "purpose": "Code blocks and inline code."
+      },
+      "signature": {
+        "displayName": "Signature",
+        "purpose": "Declaration and member signatures."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Badges, legends, counts."
       }
     },
     "shadows": [
       {
-        "name": "temporary-panel-light",
-        "value": "0 12px 32px rgba(23, 31, 48, .08)",
-        "purpose": "Default light search, filters, theme, action menus, and mobile navigation."
+        "name": "overlay-light",
+        "value": "0 12px 32px rgb(16 24 40 / .12), 0 2px 6px rgb(16 24 40 / .06)",
+        "purpose": "Dialogs, menus and the mobile drawer in light themes."
       },
       {
-        "name": "temporary-panel-dark",
-        "value": "0 18px 42px rgba(0, 0, 0, .26)",
-        "purpose": "The same temporary surfaces in dark appearance."
+        "name": "overlay-dark",
+        "value": "0 16px 40px rgb(0 0 0 / .45), 0 2px 6px rgb(0 0 0 / .3)",
+        "purpose": "The same overlays in dark themes."
       }
     ],
     "motion": [
       {
-        "name": "search-focus",
-        "value": "border-color .18s ease, box-shadow .18s ease",
-        "purpose": "Search focus feedback."
+        "name": "state",
+        "value": "background-color .12s, color .12s, border-color .12s",
+        "purpose": "Hover and pressed feedback."
       },
       {
-        "name": "type-link",
-        "value": "background-color .12s ease, color .12s ease",
-        "purpose": "Type link hover and focus feedback."
+        "name": "disclosure",
+        "value": "transform .15s ease-out",
+        "purpose": "Chevron rotation."
       },
       {
-        "name": "disclosure-chevron",
-        "value": "transform .16s ease",
-        "purpose": "Package navigation expansion."
-      },
-      {
-        "name": "reduced-motion",
-        "value": "transition-duration: .01ms; animation-duration: .01ms; scroll-behavior: auto",
-        "purpose": "Honor the user's reduced-motion preference."
+        "name": "drawer",
+        "value": "transform .22s cubic-bezier(.16,1,.3,1)",
+        "purpose": "Mobile navigation drawer."
       }
     ],
     "breakpoints": [
@@ -134,125 +144,85 @@
         "value": "1180px"
       },
       {
-        "name": "mobile-tools-and-drawer",
+        "name": "single-column-and-drawer",
         "value": "760px"
       }
     ]
   },
   "components": [
     {
-      "name": "Outline action",
+      "name": "Button",
       "kind": "button",
-      "refersTo": "button-outline",
-      "description": "Quiet member expansion or supporting action.",
-      "html": "<button class=\"ds-outline\">Expand all</button>",
-      "css": ".ds-outline{min-height:34px;padding:.25rem .55rem;border:1px solid var(--line-strong,#c2cdc3);border-radius:5px;background:var(--surface,#fcfbf8);color:var(--muted,#56665c);font-size:.78rem;cursor:pointer}.ds-outline:hover{border-color:var(--accent,#176a54);color:var(--accent,#176a54)}.ds-outline:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}.ds-outline:active{background:var(--surface-subtle,#f3f5ef)}"
+      "refersTo": "button",
+      "description": "Default bordered action (pagination, toolbar).",
+      "html": "<button class=\"ds-btn\">Next</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;gap:.4rem;height:2rem;padding:0 .7rem;border:1px solid var(--cj-border-strong,#858c97);border-radius:6px;background:var(--cj-bg,#ffffff);color:var(--cj-fg,#16181d);font:500 .8125rem/1 system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}.ds-btn:hover{background:var(--cj-surface-2,#eceef2)}.ds-btn:focus-visible{outline:2px solid var(--cj-accent,#2952c4);outline-offset:2px}"
     },
     {
-      "name": "Document search",
+      "name": "Search trigger",
       "kind": "input",
-      "refersTo": "search",
-      "description": "Labeled global search field with a quiet focus ring.",
-      "html": "<label class=\"ds-search\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-4-4\"/></svg><input type=\"search\" aria-label=\"Search documentation\" placeholder=\"Search docs\"></label>",
-      "css": ".ds-search{display:flex;align-items:center;gap:.65rem;height:40px;padding:0 .75rem;border:1px solid var(--line-strong,#c2cdc3);border-radius:7px;background:var(--surface-subtle,#f3f5ef);color:var(--muted,#56665c);transition:border-color .18s ease,box-shadow .18s ease}.ds-search:focus-within{border-color:var(--accent,#176a54);box-shadow:0 0 0 3px var(--accent-soft,#edf2ea)}.ds-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink,#24352e);font:inherit}.ds-search input::placeholder{color:var(--muted,#56665c)}"
+      "refersTo": "search-trigger",
+      "description": "Header button that opens the search dialog; shows the shortcut.",
+      "html": "<button class=\"ds-st\"><span>Search docs</span><kbd>Ctrl K</kbd></button>",
+      "css": ".ds-st{display:flex;align-items:center;gap:.55rem;width:21rem;height:2.125rem;padding:0 .4rem 0 .7rem;border:1px solid var(--cj-border,#e3e6eb);border-radius:6px;background:var(--cj-surface,#f6f7f9);color:var(--cj-muted,#565c66);font:.8125rem system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}.ds-st span{flex:1;text-align:left}.ds-st kbd{padding:.05rem .35rem;border:1px solid var(--cj-border,#e3e6eb);border-radius:4px;background:var(--cj-bg,#ffffff);font:500 .6875rem system-ui,-apple-system,'Segoe UI',sans-serif}.ds-st:hover{border-color:var(--cj-border-strong,#858c97);color:var(--cj-fg,#16181d)}"
     },
     {
-      "name": "Current navigation",
+      "name": "Tree link",
       "kind": "nav",
-      "refersTo": "navigation-current",
-      "description": "Project and package navigation shares one quiet selected field.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Documentation\"><a href=\"#overview\" aria-current=\"page\">Overview</a><a href=\"#reference\">API reference</a></nav>",
-      "css": ".ds-nav{display:grid;gap:.12rem}.ds-nav a{display:flex;align-items:center;min-height:34px;padding:.38rem .6rem;border-radius:6px;color:var(--muted,#56665c);font-size:.88rem;text-decoration:none}.ds-nav a:hover{background:var(--surface-subtle,#f3f5ef);color:var(--ink,#24352e)}.ds-nav a[aria-current]{background:var(--accent-soft,#edf2ea);color:var(--accent-strong,#125641);font-weight:680}.ds-nav a:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
+      "refersTo": "tree-link-current",
+      "description": "Navigation tree rows: kind dot, monospace label, current entry tinted.",
+      "html": "<nav class=\"ds-tree\"><a><i></i>ReferenceBox&lt;T&gt;</a><a aria-current=\"page\"><i></i>Token</a></nav>",
+      "css": ".ds-tree{display:grid;gap:1px;width:15rem;font:.8125rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.ds-tree a{display:flex;align-items:center;gap:.45rem;padding:.22rem .5rem;border-radius:6px;color:var(--cj-fg,#16181d)}.ds-tree a:hover{background:var(--cj-surface-2,#eceef2)}.ds-tree i{width:.5rem;height:.5rem;border-radius:2px;background:var(--cj-code-type,#0f6a7d)}.ds-tree a[aria-current=page]{background:var(--cj-accent-soft,#ebf0fc);color:var(--cj-accent,#2952c4);font-weight:600}"
     },
     {
-      "name": "State badge",
+      "name": "Kind badge",
       "kind": "chip",
-      "refersTo": "badge",
-      "description": "An explicit textual state, not a color-only indicator.",
-      "html": "<span class=\"ds-badge\">partial</span>",
-      "css": ".ds-badge{display:inline-flex;align-items:center;padding:.16rem .42rem;border:1px solid color-mix(in srgb,var(--warning,#835b15) 38%,var(--line,#dfe4dc));border-radius:5px;background:var(--surface-subtle,#f3f5ef);color:var(--warning,#835b15);font:650 .69rem/1.4 ui-monospace,monospace}"
+      "refersTo": "kind-badge",
+      "description": "Declaration kind, colored by the matching syntax role.",
+      "html": "<span class=\"ds-kind\">class</span>",
+      "css": ".ds-kind{display:inline-flex;padding:.05rem .42rem;border-radius:4px;background:var(--cj-surface-2,#eceef2);color:var(--cj-code-type,#0f6a7d);font:600 .6875rem/1.5 system-ui,-apple-system,'Segoe UI',sans-serif}"
     },
     {
-      "name": "Module record",
-      "kind": "card",
-      "description": "A light bordered grouping when the document needs a module container.",
-      "html": "<section class=\"ds-record\"><h3><a href=\"#package\">catalog</a></h3><p>Collections and their documented contracts.</p></section>",
-      "css": ".ds-record{padding:1rem 1.1rem;border:1px solid var(--line,#dfe4dc);border-radius:8px;background:var(--surface,#fcfbf8)}.ds-record h3{margin:0;font-size:1rem}.ds-record p{margin:.35rem 0;color:var(--muted,#56665c);font-size:.84rem}.ds-record a{color:var(--accent,#176a54);text-decoration:none}.ds-record a:hover{text-decoration:underline}.ds-record a:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
+      "name": "Signature block",
+      "kind": "code",
+      "refersTo": "signature-block",
+      "description": "Monospace declaration signature with underlined type links.",
+      "html": "<pre class=\"ds-sig\">public func <b>ping</b>(value: <a>Int64</a>): <a>Unit</a></pre>",
+      "css": ".ds-sig{margin:0;padding:.75rem 1rem;border:1px solid var(--cj-border,#e3e6eb);border-radius:6px;background:var(--cj-code-bg,#f5f6f8);color:var(--cj-fg,#16181d);font:500 .875rem/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap}.ds-sig b{font-weight:600}.ds-sig a{color:var(--cj-code-type,#0f6a7d);text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 32%,transparent);text-underline-offset:.2em}"
     },
     {
-      "name": "Code block",
-      "kind": "custom",
-      "refersTo": "code-block",
-      "description": "Tinted paper distinguishes executable material from continuous prose.",
-      "html": "<pre class=\"ds-code\"><code><span class=\"ds-keyword\">let</span> catalog = TextCatalog()</code></pre>",
-      "css": ".ds-code{margin:1.4rem 0;padding:1.1rem 3.3rem 1.1rem 1rem;overflow:auto;border:1px solid var(--line-strong,#c2cdc3);border-radius:8px;background:var(--code-bg,#f0f3ed);color:var(--ink,#24352e);font:14px/1.75 var(--code-font,ui-monospace,monospace);white-space:pre-wrap;overflow-wrap:anywhere}.ds-keyword{color:var(--code-keyword,#754197)}"
-    },
-    {
-      "name": "Member disclosure",
-      "kind": "custom",
-      "description": "Native expansion keeps the complete summary and contract available.",
-      "html": "<details class=\"ds-member\"><summary><code>public func snapshot(): Array&lt;String&gt;</code><span>Retain the current entries as a snapshot.</span></summary><p>The snapshot remains unchanged after later catalog edits.</p></details>",
-      "css": ".ds-member{border-block:1px solid var(--line,#dfe4dc);color:var(--ink,#24352e)}.ds-member summary{cursor:pointer;padding:.45rem .35rem;border-radius:6px}.ds-member summary:hover,.ds-member[open]>summary{background:var(--surface-subtle,#f3f5ef)}.ds-member summary:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}.ds-member code{font:500 14px/1.7 var(--code-font,ui-monospace,monospace);white-space:pre-wrap;overflow-wrap:anywhere}.ds-member summary span{display:block;margin-top:.2rem;color:var(--muted,#56665c);font-size:15px;line-height:1.75}.ds-member p{padding:.75rem .5rem 1.4rem 1.3rem;margin:0;font-size:15px;line-height:1.8}"
-    },
-    {
-      "name": "In-document outline",
-      "kind": "nav",
-      "description": "Native section disclosure on narrower layouts.",
-      "html": "<details class=\"ds-outline-nav\"><summary>On this page</summary><nav><a href=\"#usage\">Usage</a><a href=\"#members\">Members</a></nav></details>",
-      "css": ".ds-outline-nav{padding:.7rem .85rem;border:1px solid var(--line,#dfe4dc);border-radius:8px;background:var(--surface-subtle,#f3f5ef);color:var(--ink,#24352e)}.ds-outline-nav summary{cursor:pointer;font-weight:650}.ds-outline-nav nav{display:grid;gap:.35rem;margin-top:.6rem}.ds-outline-nav a{color:var(--muted,#56665c);font-size:.84rem;text-decoration:none}.ds-outline-nav a:hover{color:var(--accent,#176a54);text-decoration:underline}.ds-outline-nav a:focus-visible,.ds-outline-nav summary:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
-    },
-    {
-      "name": "Selected theme option",
-      "kind": "button",
-      "description": "The active preset is named and checked in the theme list.",
-      "html": "<button class=\"ds-theme-option\" aria-pressed=\"true\">Paper<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m5 12 4 4L19 6\"/></svg></button>",
-      "css": ".ds-theme-option{display:flex;align-items:center;gap:.6rem;width:100%;min-height:36px;padding:.45rem .65rem;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--ink,#24352e);font-size:.8rem;text-align:left;cursor:pointer}.ds-theme-option svg{margin-left:auto}.ds-theme-option:hover,.ds-theme-option[aria-pressed=true]{background:var(--accent-soft,#edf2ea);color:var(--accent,#176a54)}.ds-theme-option:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
+      "name": "Declaration table row",
+      "kind": "list",
+      "refersTo": "",
+      "description": "Package page row: name | kind | one-line summary.",
+      "html": "<table class=\"ds-dt\"><tr><td><a>packageOperation(Int64)</a></td><td><span>function</span></td><td>Returns a value.</td></tr></table>",
+      "css": ".ds-dt{width:36rem;border-collapse:collapse;font:.875rem system-ui,-apple-system,'Segoe UI',sans-serif}.ds-dt td{padding:.45rem .75rem .45rem .35rem;border-top:1px solid var(--cj-border,#e3e6eb);border-bottom:1px solid var(--cj-border,#e3e6eb)}.ds-dt a{color:var(--cj-accent,#2952c4);font:600 .8125rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.ds-dt span{padding:.05rem .42rem;border-radius:4px;background:var(--cj-surface-2,#eceef2);color:var(--cj-muted,#565c66);font:600 .6875rem system-ui,-apple-system,'Segoe UI',sans-serif}.ds-dt td:last-child{color:var(--cj-muted,#565c66)}"
     }
   ],
   "narrative": {
-    "northStar": "技术书页 / The Technical Book",
-    "overview": "cjdoc presents source-backed documentation as a technical book: warm paper, deep ink, teal links, continuous explanation, and light divisions. Readers can follow an author's introduction, read a usable example, and continue into a guide or a complete API contract without the interface competing for attention.\n\nReading and reference share one visual system. Narrative pages use a controlled measure and serif titles; API pages keep identifiers, signatures, and complete member contracts easy to inspect. Structure, typography, and spacing carry hierarchy. Search, filters, themes, and generation evidence remain available as supporting tools.",
+    "northStar": "The Reference Desk",
+    "overview": "A quiet, dense reference surface: gray neutrals, one accent, system fonts, a three-column frame (tree, document, outline). Every page is complete without scripts; search, the lazy tree, filters, copy and display settings are enhancements.",
     "keyCharacteristics": [
-      "Warm white paper with deep green ink and restrained teal wayfinding.",
-      "Continuous prose, complete reference material, and lightweight separators.",
-      "Distinct reading, summary, and code roles with local font fallbacks.",
-      "Static routes, native disclosures, and progressively enhanced navigation."
+      "Neutral ramp with one accent per theme",
+      "System font stacks; monospace only for code and identifiers",
+      "Navigation tree with bounded server window",
+      "Native dialogs for search and display settings"
     ],
     "rules": [
-      {
-        "name": "The Semantic Color Rule",
-        "body": "A theme changes the palette while preserving link, selection, focus, syntax, and diagnostic roles.",
-        "section": "colors"
-      },
-      {
-        "name": "The Full Text Rule",
-        "body": "Member signatures and descriptions wrap without line clamps or ellipses. Compact navigation and search-result labels may truncate; the contract remains readable in full.",
-        "section": "typography"
-      },
-      {
-        "name": "The Reading Order Rule",
-        "body": "Supporting controls and evidence must not displace the author's explanation or remove complete API content. Use disclosure to manage density, retaining a direct route to the full material.",
-        "section": "layout"
-      },
-      {
-        "name": "The Paper Surface Rule",
-        "body": "Keep the reading plane continuous; reserve raised surfaces for tools that temporarily overlap it.",
-        "section": "elevation"
-      }
+      "One accent rule: no new hues for emphasis",
+      "ARIA state first, classes second",
+      "Shadows only on overlays",
+      "Bounded per-page navigation"
     ],
     "dos": [
-      "**Do** use shared semantic tokens across all eight theme choices.",
-      "**Do** preserve the 16px body, 15px summary, and 14px code roles for their established purposes.",
-      "**Do** keep prose continuous and member contracts complete, with lightweight separators.",
-      "**Do** retain visible focus, native disclosures, honest semantic states, and static source-backed links.",
-      "**Do** let mobile search, filters, navigation, and themes reveal tools progressively."
+      "Reuse shared roles across all eight themes",
+      "Keep signatures complete; wrap, never clip",
+      "Keep every page complete without scripts"
     ],
     "donts": [
-      "**Don't** clip API signatures, explanations, or behavioral conditions to make rows smaller.",
-      "**Don't** make every paragraph, example, or member a raised card.",
-      "**Don't** give individual packages independent accent palettes or decorative status colors.",
-      "**Don't** invent source destinations or promote incomplete semantic evidence into a definite claim.",
-      "**Don't** replace reading flow with repeated indexes, generation metadata, or decorative statistics."
+      "No web fonts, CDN assets, inline styles or inline scripts",
+      "No per-package colors",
+      "No card elevation on rows or prose"
     ]
   }
 }
