@@ -164,6 +164,12 @@ async function visualTasks(browser, index, manifest, base, output, locale, recor
   return records;
 }
 
+// A measurement pairs the current generator with a pinned older baseline, so
+// the observer addresses both markup generations by contract.
+const SIGNATURE_SELECTOR = '[data-cjdoc-member] summary .cj-signature-inline, ' +
+  '[data-cjdoc-member] summary .declaration-signature';
+const BODY_SELECTOR = '.cj-member__body, .member-detail-body';
+
 async function noScriptAndPrint(browser, index, manifest, base) {
   const ownerName = manifest.overloads[0]?.owner || manifest.visuals?.[0]?.qualifiedName;
   if (!ownerName) return { status: 'not-applicable', reason: 'external corpus defines no type-page task' };
@@ -181,7 +187,7 @@ async function noScriptAndPrint(browser, index, manifest, base) {
     const noScript = { memberCount: count, independentlyOpen: count >= 2 ? await page.locator('[data-cjdoc-member][open]').count() === 2 : null,
       accessibleTree: await page.locator('main').ariaSnapshot() };
     await page.emulateMedia({ media: 'print' });
-    const observePrint = () => page.evaluate(() => {
+    const observePrint = () => page.evaluate(([SIGNATURE, BODY]) => {
       const visible = element => {
         if (!element) return false;
         for (let node = element; node; node = node.parentElement) {
@@ -191,8 +197,8 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         }
         return [...element.getClientRects()].some(rect => rect.width > 0 && rect.height > 0);
       };
-      const signatures = [...document.querySelectorAll('[data-cjdoc-member] summary .cj-signature-inline')];
-      const bodies = [...document.querySelectorAll('.cj-member__body')];
+      const signatures = [...document.querySelectorAll(SIGNATURE)];
+      const bodies = [...document.querySelectorAll(BODY)];
       const ids = nodes => nodes.filter(visible).map(node => node.closest('[data-cjdoc-member]').id);
       const visibleSignatureIds = ids(signatures), visibleDetailIds = ids(bodies);
       return { contentVisible: visible(document.querySelector('main')),
@@ -201,7 +207,7 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         visibleSignatureIds, visibleDetailIds,
         overflowPx: Math.max(0, document.documentElement.scrollWidth - innerWidth),
         semantics: 'computed ancestor visibility and rendered boxes under print media, not paper pagination' };
-    });
+    }, [SIGNATURE_SELECTOR, BODY_SELECTOR]);
     const print = await observePrint();
     const printCounterexamples = [];
     if (count >= 2) {
@@ -212,13 +218,13 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         await route.fulfill({ response, body: await response.text() +
           '\n@media print{' + hiddenSelector + '{display:none!important}}' });
       });
-      for (const selector of ['.cj-member__body', '[data-cjdoc-member] summary .cj-signature-inline', 'main']) {
+      for (const selector of [BODY_SELECTOR, SIGNATURE_SELECTOR, 'main']) {
         hiddenSelector = selector;
         await page.reload();
         await rows.evaluateAll(nodes => { nodes[0].open = true; nodes[nodes.length - 1].open = true; });
         const hidden = await observePrint();
         const detected = selector === 'main' ? !hidden.contentVisible && !hidden.signatures && !hidden.detailBodies
-          : selector === '.cj-member__body' ? hidden.detailBodies === 0 : hidden.signatures === 0;
+          : selector === BODY_SELECTOR ? hidden.detailBodies === 0 : hidden.signatures === 0;
         if (!detected) throw new Error('print observer missed CSS counterexample: ' + selector);
         printCounterexamples.push({ selector, detected, observation: hidden });
       }

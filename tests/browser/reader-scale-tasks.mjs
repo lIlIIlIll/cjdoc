@@ -3,6 +3,10 @@ import { distribution, frame, matchEntry, pageMetrics, timedQuery, typeEntry } f
 
 export const anchorFor = entry => 'symbol-' + Buffer.from(entry.id, 'utf8').toString('hex');
 const locationKey = (value, base) => { const url = new URL(value, base); return url.pathname + url.hash; };
+// A capture pairs the current generator with a pinned older baseline, so the
+// harness addresses both markup generations by contract, not by one class set.
+export const MEMBER_BODY = '.cj-member__body, .member-detail-body';
+export const MEMBER_SIGNATURE = '.cj-signature-inline, .declaration-signature';
 const matching = (hrefs, expected, base) => expected.every(entry => hrefs.some(href => locationKey(href, base) === locationKey(entry.href, base)));
 
 export async function instrumentedPage(context, url, cacheDisabled = false) {
@@ -19,19 +23,27 @@ export async function instrumentedPage(context, url, cacheDisabled = false) {
 }
 
 // The generated reader exposes search through a modal palette: the control is
-// attached but not visible until the header trigger opens it.
+// attached but not visible until the header trigger opens it. A capture may
+// still be paired with an older generator whose search was an inline field, so
+// both shapes are accepted rather than assuming the palette exists.
+const paletteOpen = page => page.evaluate(() => {
+  const dialog = document.querySelector('[data-cjdoc-search-dialog]');
+  return dialog ? Boolean(dialog.open) : null;
+});
+
 export async function openSearch(page) {
-  const dialog = page.locator('[data-cjdoc-search-dialog]');
-  if (await dialog.evaluate(node => node.open)) return;
+  const state = await paletteOpen(page);
+  if (state === null || state) return;
   await page.locator('[data-cjdoc-search-trigger]').click();
-  await dialog.evaluate(node => node.open);
+  await page.waitForFunction(() =>
+    document.querySelector('[data-cjdoc-search-dialog]')?.open === true);
 }
 
 export async function closeSearch(page) {
-  const dialog = page.locator('[data-cjdoc-search-dialog]');
-  if (!await dialog.evaluate(node => node.open)) return;
+  if (!await paletteOpen(page)) return;
   await page.keyboard.press('Escape');
-  await dialog.evaluate(node => node.open || true);
+  await page.waitForFunction(() =>
+    document.querySelector('[data-cjdoc-search-dialog]')?.open !== true);
 }
 
 export async function queryTasks(page, index, manifest, samples, base) {
@@ -136,8 +148,8 @@ export async function memberTasks(context, index, manifest, base, samples) {
         const state = await page.evaluate(() => ({
           filter: document.querySelector('[data-cjdoc-member-filter]')?.value,
           visibleMembers: [...document.querySelectorAll('[data-cjdoc-member]')].filter(row => !row.hidden).length,
-          sidebarTruncated: Boolean(document.querySelector('.cj-tree__more')),
-          contextItems: document.querySelectorAll('[data-cjdoc-tree-item]').length,
+          sidebarTruncated: Boolean(document.querySelector('.cj-tree__more, .sidebar-limit')),
+          contextItems: document.querySelectorAll('[data-cjdoc-tree-item], [data-cjdoc-context-item]').length,
         }));
         records.push({ id: task.id, owner, expectedId: expected.id, ordinal: task.ordinal,
           foundByBodyFilter, deepLink, state, pass: foundByBodyFilter && deepLink,
@@ -190,7 +202,7 @@ export async function overloadTasks(context, index, manifest, base) {
         const row = page.locator('#' + anchorFor(target));
         await row.locator(':scope > summary').click();
         details.push({ id: target.id, signature: await row.locator(':scope > summary code').first().textContent(),
-          authoredDetails: await row.locator('.cj-member__body').innerText() });
+          authoredDetails: await row.locator(MEMBER_BODY).innerText() });
       }
       const openIds = await page.locator('[data-cjdoc-member][open]').evaluateAll(rows => rows.map(row => row.id));
       const simultaneouslyOpen = targets.every(target => target && openIds.includes(anchorFor(target)));
