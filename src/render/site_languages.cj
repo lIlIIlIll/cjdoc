@@ -3,55 +3,97 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-internal func languagePageIdentity(documentation: DocumentationSet, route: String, locale: String): String {
+private func appendLanguageSwitcherStart(w: HtmlWriter, locale: String): Unit {
+    let current = if (locale == "zh-CN") { "中文" } else { "English" }
+    let title = label(locale, "Documentation language", "文档语言")
+    w.open("details", attrs: [htmlClass("cj-lang-toggle")])
+    w.open("summary", attrs: [htmlClass("cj-lang-toggle__summary"),
+        htmlAttr("aria-label", title + ": " + current)])
+    w.icon("language")
+    w.textElement("span", current, attrs: [htmlClass("cj-lang-toggle__current")])
+    w.close("summary")
+    w.open("nav", attrs: [htmlClass("cj-lang-toggle__menu"), htmlAttr("aria-label", title)])
+}
+
+private func appendLanguageSwitcherEnd(w: HtmlWriter): Unit {
+    w.close("nav")
+    w.close("details")
+}
+
+internal func languagePageIdentity(documentation: DocumentationSet, route: String,
+    locale: String): String {
     for (page in selectedDocumentationPages(documentation, locale)) {
         if (page.route == route) { return "page:" + page.id }
     }
     route
 }
 
-private func appendLanguageSwitcherStart(out: RenderTextBuffer, locale: String): Unit {
-    let current = if (locale == "zh-CN") { "中文" } else { "English" }
-    let title = label(locale, "Documentation language", "文档语言")
-    out.append("<details class=\"language-switcher\"><summary class=\"language-label\" aria-label=\"" + title + ": " + current + "\">" + current)
-    out.append("<svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" aria-hidden=\"true\"><path d=\"m3 4.5 3 3 3-3\"/></svg></summary>")
-    out.append("<nav class=\"language-options\" aria-label=\"" + title + "\">")
-}
-
-private func replaceLanguageLabel(content: String, locale: String, switcher: String): String {
-    let placeholder = "<span class=\"language-label\" lang=\"" + escapeHtml(locale) + "\">" +
-        label(locale, "English", "中文") + "</span>"
-    content.replace(placeholder, switcher)
-}
-
 private func languageHomeNotice(locale: String): String {
     label(locale, "This page is unavailable; open the language home", "该语言无此页面，打开语言首页")
 }
 
-private func appendLanguageOption(out: RenderTextBuffer, locale: String, target: String,
+private func replaceLanguageLabel(content: String, locale: String, switcher: String): String {
+    let marker = "<span class=\"language-label\" lang=\"" + escapeHtml(locale) + "\">" +
+        label(locale, "English", "中文") + "</span>"
+    content.replace(marker, switcher)
+}
+
+private func appendLanguageOption(w: HtmlWriter, locale: String, target: String,
     href: String, routes: String, current!: Bool, homeFallback!: Bool): Unit {
     let name = if (target == "zh-CN") { "中文" } else { "English" }
     let notice = languageHomeNotice(locale)
-    out.append("<a href=\"" + escapeHtml(href) + "\" hreflang=\"" + target + "\" lang=\"" + target + "\"")
-    out.append(" data-language-routes=\"" + escapeHtml(routes) + "\"")
-    if (current) { out.append(" aria-current=\"page\"") }
+    let attrs = ArrayList<HtmlAttr>([htmlClass("cj-lang-toggle__option")])
+    // Language routes are generated page routes; characters an attribute
+    // cannot carry are percent-encoded so the same page stays the target.
+    attrs.add(htmlHref(documentationRouteHref(href)))
+    attrs.add(htmlAttr("hreflang", target))
+    attrs.add(htmlAttr("lang", target))
+    attrs.add(htmlAttr("data-language-routes", routes))
+    if (current) { attrs.add(htmlAttr("aria-current", "page")) }
     if (homeFallback) {
-        out.append(" data-switch-state=\"language-home\" data-position-state=\"language-home\" title=\"" +
-            escapeHtml(notice) + "\"")
+        attrs.add(htmlAttr("data-switch-state", "language-home"))
+        attrs.add(htmlAttr("data-position-state", "language-home"))
+        attrs.add(htmlAttr("title", notice))
     }
-    out.append("><span class=\"language-name\" lang=\"" + target + "\">" + name +
-        "</span><span class=\"language-position-notice\" lang=\"" + locale + "\"")
-    if (!homeFallback) { out.append(" hidden") }
-    out.append(">")
-    if (homeFallback) { out.append(escapeHtml(notice)) }
-    out.append("</span></a>")
+    w.open("a", attrs: attrs.toArray())
+    w.textElement("span", name, attrs: [htmlClass("cj-lang-toggle__name"),
+        htmlAttr("lang", target)])
+    let noticeAttrs = ArrayList<HtmlAttr>([htmlClass("cj-lang-toggle__notice"),
+        htmlAttr("lang", locale)])
+    if (!homeFallback) { noticeAttrs.add(htmlFlag("hidden")) }
+    w.open("span", attrs: noticeAttrs.toArray())
+    if (homeFallback) { w.text(notice) }
+    w.close("span")
+    w.close("a")
 }
 
+internal func appendLanguageToggle(w: HtmlWriter, locale: String, languages: Array<String>,
+    routes: HashMap<String, String>, route: String, identity: String,
+    published: ArrayList<PublishedLanguageRoute>): Unit {
+    appendLanguageSwitcherStart(w, locale)
+    for (target in languages) {
+        let same = routes.get(target + ":" + identity)
+        let destination = same.getOrDefault({ => "index.html" })
+        let href = pageRootPrefix(route) + "../" + target + "/" + destination
+        appendLanguageOption(w, locale, target, href,
+            languagePositionRoutes(published, locale, route, target),
+            current: target == locale, homeFallback: same.isNone())
+    }
+    appendLanguageSwitcherEnd(w)
+}
 
+internal func languageToggleHtml(locale: String, languages: Array<String>,
+    routes: HashMap<String, String>, route: String, identity: String,
+    published: ArrayList<PublishedLanguageRoute>): String {
+    TrustedHtml.capture({ w =>
+        appendLanguageToggle(w, locale, languages, routes, route, identity, published)
+    }).value
+}
 
 internal func renderAllDocumentationLanguages(documentation: DocumentationSet, formats: Array<String>,
     version: ?String, agentFull!: Bool = false,
-    reports!: Array<DocumentationReportAttachment> = []): Array<RenderArtifact> {
+    reports!: Array<DocumentationReportAttachment> = [],
+    htmlFonts!: HtmlFontOptions = HtmlFontOptions()): Array<RenderArtifact> {
     let options = match (documentation.languageOptions) {
         case Some(value) => value
         case None => throw IllegalArgumentException("--all-languages requires explicit [i18n] languages")
@@ -60,8 +102,9 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
     let routes = HashMap<String, String>()
     let rendered = HashMap<String, Array<RenderArtifact>>()
     for (language in options.languages) {
-        let values = renderDocumentationFormatsWithOptions(documentation, formats, locale: language,
-            docVersion: version, agentFull: agentFull, reports: reports)
+        let values = renderDocumentationFormatsWithOptions(documentation, formats,
+            locale: language, docVersion: version, agentFull: agentFull, reports: reports,
+            htmlFonts: htmlFonts)
         rendered[language] = values
         for (artifact in values) {
             if (artifact.path.startsWith("html/") && artifact.path.endsWith(".html")) {
@@ -70,7 +113,8 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
             }
         }
     }
-    let publishedRoutes = publishedLanguageRoutes(documentation, options.languages.toArray(), rendered)
+    let languages = options.languages.toArray()
+    let publishedRoutes = publishedLanguageRoutes(documentation, languages, rendered)
     var firstLanguage = true
     for (language in options.languages) {
         for (artifact in rendered[language]) {
@@ -88,18 +132,9 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
             if (parts[0] == "html" && path.endsWith(".html") && content.contains("id=\"cjdoc-main\"")) {
                 let route = parts[1]
                 let identity = languagePageIdentity(documentation, route, language)
-                let nav = RenderTextBuffer()
-                appendLanguageSwitcherStart(nav, language)
-                for (target in options.languages) {
-                    let same = routes.get(target + ":" + identity)
-                    let destination = same.getOrDefault({ => "index.html" })
-                    let href = pageRootPrefix(route) + "../" + target + "/" + destination
-                    appendLanguageOption(nav, language, target, href,
-                        languagePositionRoutes(publishedRoutes, language, route, target),
-                        current: target == language, homeFallback: same.isNone())
-                }
-                nav.append("</nav></details>")
-                content = replaceLanguageLabel(content, language, nav.toString())
+                let switcher = languageToggleHtml(language, languages, routes, route,
+                    identity, publishedRoutes)
+                content = replaceLanguageLabel(content, language, switcher)
             }
             if (artifact.isBinary) { artifacts.addOwnedBytes(path, artifact.mediaType, artifact.bytes) }
             else { artifacts.addText(path, artifact.mediaType, content) }
@@ -150,24 +185,15 @@ public func finalizeDocumentationLanguageArtifacts(documentation: DocumentationS
         if (artifact.path == "site-manifest.json") { continue }
         var content = artifact.content
         if (artifact.path.endsWith(".html") && content.contains("id=\"cjdoc-main\"") &&
-            !content.contains("class=\"language-switcher\"")) {
+            !content.contains("class=\"cj-lang-toggle\"")) {
             for (language in languages) {
                 let prefix = "html/" + language + "/"
                 if (!artifact.path.startsWith(prefix)) { continue }
                 let route = artifact.path.removePrefix(prefix)
                 let identity = languagePageIdentity(documentation, route, language)
-                let nav = RenderTextBuffer()
-                appendLanguageSwitcherStart(nav, language)
-                for (target in languages) {
-                    let same = routes.get(target + ":" + identity)
-                    let destination = same.getOrDefault({ => "index.html" })
-                    let href = pageRootPrefix(route) + "../" + target + "/" + destination
-                    appendLanguageOption(nav, language, target, href,
-                        languagePositionRoutes(published, language, route, target),
-                        current: target == language, homeFallback: same.isNone())
-                }
-                nav.append("</nav></details>")
-                content = replaceLanguageLabel(content, language, nav.toString())
+                let switcher = languageToggleHtml(language, languages, routes, route,
+                    identity, published)
+                content = replaceLanguageLabel(content, language, switcher)
             }
         }
         if (artifact.isBinary) { artifacts.addOwnedBytes(artifact.path, artifact.mediaType, artifact.bytes) }

@@ -3,6 +3,38 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+internal let HTML_PAGE_CSP = "default-src 'none'; script-src 'self' file:; style-src 'self' file:; " +
+    "img-src 'self' file:; base-uri 'none'; form-action 'none'"
+
+// Every page repeats its server-rendered branch, so a branch is a fixed window
+// around the active entry: total output stays linear in the declaration count.
+// The tree script replaces a partial branch with the complete index.
+private let SIDEBAR_SERVER_WINDOW: Int64 = 12
+
+private func sidebarWindow(size: Int64, activeIndex: Int64): (Int64, Int64) {
+    if (size <= SIDEBAR_SERVER_WINDOW) { return (0, size) }
+    var start = if (activeIndex < 0) { 0 } else { activeIndex - SIDEBAR_SERVER_WINDOW / 2 }
+    if (start < 0) { start = 0 }
+    if (start > size - SIDEBAR_SERVER_WINDOW) { start = size - SIDEBAR_SERVER_WINDOW }
+    (start, start + SIDEBAR_SERVER_WINDOW)
+}
+
+private func sidebarChildrenAttrs(id: String, partial: Bool): Array<HtmlAttr> {
+    let attrs = ArrayList<HtmlAttr>([htmlClass("cj-tree__children"), htmlAttr("id", id),
+        htmlFlag("data-cjdoc-tree-children")])
+    if (partial) { attrs.add(htmlFlag("data-cjdoc-tree-partial")) }
+    attrs.toArray()
+}
+
+private func appendSidebarMore(w: HtmlWriter, url: String, text: String): Unit {
+    w.open("li", attrs: [htmlClass("cj-tree__item cj-tree__item--more")])
+    w.open("a", attrs: [htmlClass("cj-tree__more"), htmlFlag("data-cjdoc-sidebar-more"),
+        htmlHref(SafeUrl.siteRoute(url))])
+    w.text(text)
+    w.close("a")
+    w.close("li")
+}
+
 internal func label(locale: String, english: String, chinese: String): String {
     if (locale == "zh-CN") { chinese } else { english }
 }
@@ -31,7 +63,6 @@ private func sidebarTopLevelContext(projection: RenderProjection,
     current
 }
 
-
 internal func sidebarPageIsCurrent(targetPath: String, currentPagePath: ?String): Bool {
     if (targetPath.isEmpty() || targetPath.contains("#") || !targetPath.endsWith(".html")) { return false }
     match (currentPagePath) {
@@ -40,217 +71,564 @@ internal func sidebarPageIsCurrent(targetPath: String, currentPagePath: ?String)
     }
 }
 
-internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: DocumentationSet,
-    projection: RenderProjection, rootPrefix: String, locale: String,
+// Ids pair a bounded readable slug with the full key so a deep tree never
+// produces an unbounded id or a collision between two keys.
+private func treeChildrenId(key: String): String {
+    "cjdoc-tree-${boundedHtmlSlug(key)}"
+}
+
+private func treeLinkAttrs(linkClass: String, isCurrent: Bool,
+    url: String): Array<HtmlAttr> {
+    let attrs = ArrayList<HtmlAttr>([htmlClass(linkClass), htmlFlag("data-cjdoc-nav-link")])
+    if (isCurrent) { attrs.add(htmlAttr("aria-current", "page")) }
+    attrs.add(htmlHref(SafeUrl.siteRoute(url)))
+    attrs.toArray()
+}
+
+private func treeLinkClass(isAncestor: Bool): String {
+    if (isAncestor) { "cj-tree__link cj-tree__link--ancestor" } else { "cj-tree__link" }
+}
+
+private func appendScriptElement(w: HtmlWriter, url: String, deferred!: Bool): Unit {
+    let attrs = ArrayList<HtmlAttr>()
+    if (deferred) { attrs.add(htmlFlag("defer")) }
+    attrs.add(htmlSrc(SafeUrl.siteRoute(url)))
+    w.open("script", attrs: attrs.toArray())
+    w.close("script")
+}
+
+private func appendTreeKind(w: HtmlWriter, kind: String): Unit {
+    w.open("span", attrs: [htmlClass("cj-tree__kind"), htmlAttr("data-kind", kind),
+        htmlAttr("aria-hidden", "true")])
+    w.close("span")
+}
+
+// The chevron is drawn by CSS from aria-expanded; the button only needs an
+// accessible name for readers who navigate by control list. Only a branch
+// rendered on this page is named by aria-controls; the tree script binds lazy
+// branches when it builds them.
+private func appendTreeToggle(w: HtmlWriter, controlsId: String, name: String,
+    expanded: Bool, locale: String): Unit {
+    let attrs = ArrayList<HtmlAttr>([htmlClass("cj-tree__toggle"), htmlAttr("type", "button"),
+        htmlFlag("data-cjdoc-tree-toggle"),
+        htmlAttr("aria-expanded", if (expanded) { "true" } else { "false" })])
+    if (expanded) { attrs.add(htmlAttr("aria-controls", controlsId)) }
+    attrs.add(htmlAttr("aria-label", label(locale, "Toggle ", "展开或收起 ") + name))
+    attrs.add(htmlFlag("hidden"))
+    w.open("button", attrs: attrs.toArray())
+    w.close("button")
+}
+
+private func appendSidebarMember(w: HtmlWriter, owner: SymbolDoc, member: SymbolDoc,
+    rootPrefix: String): Unit {
+    w.open("li", attrs: [htmlClass("cj-tree__item"),
+        htmlAttr("data-cjdoc-tree-item", "member"),
+        htmlAttr("data-cjdoc-tree-key", member.id)])
+    w.element("div", [htmlClass("cj-tree__row")], { row =>
+        row.open("a", attrs: [htmlClass("cj-tree__link"), htmlHref(SafeUrl.siteRoute(
+            rootPrefix + symbolPagePath(owner) + "#" + symbolAnchor(member)))])
+        appendTreeKind(row, member.kind)
+        row.textElement("span", htmlContextLabel(member),
+            attrs: [htmlClass("cj-tree__label")])
+        row.close("a")
+    })
+    w.close("li")
+}
+
+private func appendSidebarMembers(w: HtmlWriter, projection: RenderProjection,
+    owner: SymbolDoc, rootPrefix: String, locale: String, currentPagePath: ?String): Unit {
+    let entries = projection.members(owner).entries
+    if (entries.isEmpty()) { return }
+    var active: Int64 = -1
+    for (index in 0..entries.size) {
+        if (sidebarPageIsCurrent(symbolPagePath(entries[index].symbol), currentPagePath)) {
+            active = index
+            break
+        }
+    }
+    let (start, end) = sidebarWindow(entries.size, active)
+    let partial = end - start < entries.size
+    w.open("ul", attrs: sidebarChildrenAttrs(treeChildrenId(owner.id), partial))
+    for (index in start..end) {
+        appendSidebarMember(w, owner, entries[index].symbol, rootPrefix)
+    }
+    if (partial) {
+        appendSidebarMore(w, rootPrefix + symbolPagePath(owner),
+            label(locale, "All members", "全部成员"))
+    }
+    w.close("ul")
+}
+
+private func appendSidebarType(w: HtmlWriter, projection: RenderProjection,
+    symbol: SymbolDoc, labels: HashMap<String, String>, rootPrefix: String,
+    currentId: String, currentPagePath: ?String, locale: String): Unit {
+    let path = symbolPagePath(symbol)
+    let isCurrent = sidebarPageIsCurrent(path, currentPagePath)
+    let isAncestor = !isCurrent && !currentId.isEmpty() && symbol.id == currentId
+    let labelText = labels.get(symbol.id).getOrDefault({ => htmlContextLabel(symbol) })
+    let hasMembers = !projection.members(symbol).entries.isEmpty()
+    w.open("li", attrs: [htmlClass("cj-tree__item"),
+        htmlAttr("data-cjdoc-tree-item", "type"),
+        htmlAttr("data-cjdoc-tree-key", symbol.id)])
+    w.element("div", [htmlClass("cj-tree__row")], { row =>
+        // Children are server-rendered for the current type only, so the toggle
+        // must not claim an expanded state for a branch it does not own yet.
+        if (hasMembers) {
+            appendTreeToggle(row, treeChildrenId(symbol.id), labelText, symbol.id == currentId,
+                locale)
+        }
+        row.open("a", attrs: treeLinkAttrs(treeLinkClass(isAncestor), isCurrent,
+            rootPrefix + path))
+        appendTreeKind(row, symbol.kind)
+        row.textElement("span", labelText, attrs: [htmlClass("cj-tree__label")])
+        row.close("a")
+    })
+    if (symbol.id == currentId) {
+        appendSidebarMembers(w, projection, symbol, rootPrefix, locale, currentPagePath)
+    }
+    w.close("li")
+}
+
+private func appendSidebarPackageChildren(w: HtmlWriter, projection: RenderProjection,
+    pkg: ProjectedPackage, rootPrefix: String, locale: String, currentId: String,
+    currentPagePath: ?String): Unit {
+    let symbols = match (projection.topLevelByPackage.get(
+        routeKey(pkg.source.moduleId, pkg.source.name))) {
+        case Some(values) => values
+        case None => return
+    }
+    if (symbols.isEmpty()) { return }
+    let labels = sidebarPackageLabels(projection, pkg.source.moduleId, pkg.source.name)
+    let packagePath = packagePagePath(pkg.source.moduleId, pkg.source.name)
+    w.open("ul", attrs: sidebarChildrenAttrs(treeChildrenId(packagePath),
+        symbols.size > SIDEBAR_SERVER_WINDOW))
+    var active: Int64 = -1
+    for (index in 0..symbols.size) {
+        if (symbols[index].id == currentId) {
+            active = index
+            break
+        }
+    }
+    let (start, end) = sidebarWindow(symbols.size, active)
+    for (index in start..end) {
+        appendSidebarType(w, projection, symbols[index], labels, rootPrefix, currentId,
+            currentPagePath, locale)
+    }
+    appendSidebarMore(w, rootPrefix + packagePath + "#declarations",
+        label(locale, "Full package index", "查看完整包索引"))
+    w.close("ul")
+}
+
+private func appendSidebarPackage(w: HtmlWriter, projection: RenderProjection,
+    pkg: ProjectedPackage, rootPrefix: String, locale: String,
+    currentPackagePath: ?String, currentId: String, currentPagePath: ?String): Unit {
+    let packagePath = packagePagePath(pkg.source.moduleId, pkg.source.name)
+    let isContext = match (currentPackagePath) {
+        case Some(currentPath) => currentPath == packagePath
+        case None => false
+    }
+    let isCurrent = sidebarPageIsCurrent(packagePath, currentPagePath)
+    w.open("li", attrs: [htmlClass("cj-tree__item"),
+        htmlAttr("data-cjdoc-tree-item", "package"),
+        htmlAttr("data-cjdoc-tree-key", packagePath)])
+    w.element("div", [htmlClass("cj-tree__row")], { row =>
+        appendTreeToggle(row, treeChildrenId(packagePath), pkg.source.name, isContext, locale)
+        row.open("a", attrs: treeLinkAttrs(treeLinkClass(isContext && !isCurrent),
+            isCurrent, rootPrefix + packagePath))
+        row.textElement("span", pkg.source.name, attrs: [htmlClass("cj-tree__label")])
+        row.textElement("span", pkg.symbols.size.toString(),
+            attrs: [htmlClass("cj-tree__count")])
+        row.close("a")
+    })
+    if (isContext) {
+        appendSidebarPackageChildren(w, projection, pkg, rootPrefix, locale, currentId,
+            currentPagePath)
+    }
+    w.close("li")
+}
+
+internal func appendSidebarTree(w: HtmlWriter, projection: RenderProjection,
+    rootPrefix: String, locale: String, currentPackagePath: ?String,
+    currentSymbol: ?SymbolDoc, currentPagePath: ?String): Unit {
+    let currentId = match (currentSymbol) {
+        case Some(symbol) => symbol.id
+        case None => ""
+    }
+    w.open("nav", attrs: [htmlClass("cj-tree"),
+        htmlAttr("aria-label", label(locale, "Package reference", "包参考")),
+        htmlFlag("data-cjdoc-sidebar-tree")])
+    if (!projection.modules.isEmpty()) {
+        let showModuleLabel = projection.modules.size > 1
+        for (projected in projection.modules) {
+            w.open("section", attrs: [htmlClass("cj-tree__module"),
+                htmlFlag("data-cjdoc-tree-module")])
+            if (showModuleLabel) {
+                w.textElement("p", projected.source.name,
+                    attrs: [htmlClass("cj-tree__module-label")])
+            }
+            w.open("ul", attrs: [htmlClass("cj-tree__list")])
+            for (pkg in projected.packages) {
+                appendSidebarPackage(w, projection, pkg, rootPrefix, locale,
+                    currentPackagePath, currentId, currentPagePath)
+            }
+            w.close("ul")
+            w.close("section")
+        }
+    }
+    w.close("nav")
+}
+
+internal func appendHtmlSidebar(w: HtmlWriter, projection: RenderProjection,
+    rootPrefix: String, locale: String,
     currentPackagePath!: ?String = None, currentRoute!: String = "overview",
     currentSymbol!: ?SymbolDoc = None, currentPagePath!: ?String = None): Unit {
     let sidebarSymbol: ?SymbolDoc = match (currentSymbol) {
         case Some(symbol) => Some(sidebarTopLevelContext(projection, symbol))
         case None => None
     }
-    let currentId = match (sidebarSymbol) { case Some(symbol) => symbol.id case None => "" }
-    out.append("<aside id=\"cjdoc-sidebar\" class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\" tabindex=\"-1\" data-cjdoc-root-prefix=\"${escapeHtml(rootPrefix)}\" data-cjdoc-current-symbol=\"${escapeHtml(currentId)}\" data-cjdoc-current-page=\"${escapeHtml(currentPagePath.getOrDefault({ => "" }))}\">")
-    out.append("<button class=\"sidebar-close\" type=\"button\" data-cjdoc-sidebar-close aria-label=\"${label(locale, "Close navigation", "关闭导航")}\">${label(locale, "Close", "关闭")}</button>")
-    out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Documentation", "文档")}</p>")
-    let overviewIsCurrent = sidebarPageIsCurrent("index.html", currentPagePath)
-    let overviewClass = if (overviewIsCurrent) { " is-current" } else { "" }
-    let overviewCurrent = if (overviewIsCurrent) { " aria-current=\"page\"" } else { "" }
-    let apiClass = if (currentRoute == "api") { " is-ancestor" } else { "" }
-    out.append("<a class=\"sidebar-link${overviewClass}\" data-cjdoc-nav-link${overviewCurrent} href=\"${rootPrefix}index.html\">${label(locale, "Overview", "总览")}</a>")
-    out.append("<a class=\"sidebar-link${apiClass}\" data-cjdoc-nav-link href=\"${rootPrefix}index.html#packages\">${label(locale, "API Reference", "API 参考")}</a></div>")
-    if (!projection.modules.isEmpty()) {
-        out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Package reference", "包参考")}</p>")
-        out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">${label(locale, "Filter packages", "筛选包")}</span><input class=\"sidebar-filter\" type=\"search\" placeholder=\"${label(locale, "Filter packages", "筛选包")}\" data-cjdoc-sidebar-filter></label>")
-        out.append("<p class=\"sidebar-no-results\" data-cjdoc-sidebar-no-results role=\"status\" hidden>${label(locale, "No matching packages.", "没有匹配的包。")}</p>")
-        for (projected in projection.modules) {
-            let module = projected.source
-            var isCurrentModule = false
-            for (candidate in projected.packages) {
-                if (currentPackagePath.isSome() && currentPackagePath.getOrThrow() ==
-                    packagePagePath(candidate.source.moduleId, candidate.source.name)) { isCurrentModule = true }
-            }
-            let openAttribute = if (isCurrentModule) { " open" } else { "" }
-            out.append("<details class=\"sidebar-group\"${openAttribute}><summary><span>${escapeHtml(module.name)}</span><span class=\"sidebar-count\">${projected.packages.size}</span></summary><div class=\"sidebar-packages\">")
-            for (pkg in projected.packages) {
-                let packagePath = packagePagePath(pkg.source.moduleId, pkg.source.name)
-                let isContext = match (currentPackagePath) {
-                    case Some(currentPath) => currentPath == packagePath
-                    case None => false
-                }
-                let isCurrent = sidebarPageIsCurrent(packagePath, currentPagePath)
-                let currentClass = if (isCurrent) { " is-current" } else if (isContext) { " is-ancestor" } else { "" }
-                let currentAttribute = if (isCurrent) { " aria-current=\"page\"" } else { "" }
-                out.append("<div class=\"sidebar-package-entry\">")
-                out.append("<a class=\"sidebar-package${currentClass}\" data-cjdoc-nav-link${currentAttribute} href=\"${rootPrefix}${escapeHtml(packagePath)}\"><span>${escapeHtml(pkg.source.name)}</span><span class=\"sidebar-package-count\">${pkg.symbols.size}</span></a>")
-                if (isContext && currentSymbol.isSome()) {
-                    appendSidebarActiveSymbols(out, projection, pkg.source.moduleId,
-                        pkg.source.name, rootPrefix, locale, sidebarSymbol, currentPagePath)
-                }
-                out.append("</div>")
-            }
-            out.append("</div></details>")
-        }
-        out.append("</div>")
+    let currentId = match (sidebarSymbol) {
+        case Some(symbol) => symbol.id
+        case None => ""
     }
-    appendContextSidebar(out, projection, rootPrefix, locale, currentPackagePath, currentSymbol)
-    out.append("</aside>")
+    w.open("aside", attrs: [htmlAttr("id", "cjdoc-sidebar"), htmlClass("cj-sidebar"),
+        htmlAttr("aria-label", label(locale, "Documentation navigation", "文档导航")),
+        htmlAttr("tabindex", "-1"),
+        htmlAttr("data-cjdoc-root-prefix", rootPrefix),
+        htmlAttr("data-cjdoc-current-symbol", currentId),
+        htmlAttr("data-cjdoc-current-page", currentPagePath.getOrDefault({ => "" }))])
+    w.element("div", [htmlClass("cj-sidebar__head")], { head =>
+        head.open("button", attrs: [htmlClass("cj-button cj-button--icon cj-sidebar__close"),
+            htmlAttr("type", "button"), htmlFlag("data-cjdoc-sidebar-close"),
+            htmlAttr("aria-label", label(locale, "Close navigation", "关闭导航"))])
+        head.icon("close")
+        head.close("button")
+    })
+    w.element("nav", [htmlClass("cj-sidebar__primary"),
+        htmlAttr("aria-label", label(locale, "Documentation", "文档"))], { nav =>
+        nav.open("a", attrs: treeLinkAttrs("cj-sidebar__link",
+            sidebarPageIsCurrent("index.html", currentPagePath), rootPrefix + "index.html"))
+        nav.text(label(locale, "Overview", "总览"))
+        nav.close("a")
+        let apiClass = if (currentRoute == "api") {
+            "cj-sidebar__link cj-sidebar__link--ancestor"
+        } else {
+            "cj-sidebar__link"
+        }
+        nav.open("a", attrs: [htmlClass(apiClass), htmlFlag("data-cjdoc-nav-link"),
+            htmlHref(SafeUrl.siteRoute(rootPrefix + "index.html#packages"))])
+        nav.text(label(locale, "API Reference", "API 参考"))
+        nav.close("a")
+    })
+    if (!projection.modules.isEmpty()) {
+        w.element("div", [htmlClass("cj-sidebar__filter"),
+            htmlFlag("data-cjdoc-sidebar-filter-wrap")], { filter =>
+            filter.textElement("label", label(locale, "Filter API", "筛选 API"),
+                attrs: [htmlClass("cj-sr-only"), htmlAttr("for", "cjdoc-sidebar-filter")])
+            filter.void("input", attrs: [htmlAttr("id", "cjdoc-sidebar-filter"),
+                htmlClass("cj-input cj-sidebar__filter-input"), htmlAttr("type", "search"),
+                htmlAttr("placeholder", label(locale, "Filter API", "筛选 API")),
+                htmlAttr("autocomplete", "off"), htmlFlag("data-cjdoc-sidebar-filter")])
+        })
+        w.textElement("p", label(locale, "No matches.", "没有匹配项。"),
+            attrs: [htmlClass("cj-sidebar__empty"), htmlFlag("data-cjdoc-sidebar-no-results"),
+                htmlAttr("role", "status"), htmlFlag("hidden")])
+    }
+    appendSidebarTree(w, projection, rootPrefix, locale, currentPackagePath,
+        sidebarSymbol, currentPagePath)
+    w.close("aside")
 }
 
-
-internal func appendSidebarActiveSymbols(out: RenderTextBuffer, projection: RenderProjection,
-    moduleId: String, packageName: String, rootPrefix: String,
-    locale: String, currentSymbol: ?SymbolDoc, currentPagePath: ?String): Unit {
-    let symbols = match (projection.topLevelByPackage.get(routeKey(moduleId, packageName))) {
-        case Some(values) => values
-        case None => return
-    }
-    if (symbols.isEmpty()) { return }
-    let packagePath = packagePagePath(moduleId, packageName)
-    out.append("<nav class=\"sidebar-symbols\" aria-label=\"" +
-        label(locale, "Declarations in this package", "当前包声明") +
-        "\" data-cjdoc-sidebar-package=\"" + escapeHtml(packagePath) + "\">")
-    // The active declaration and complete index work even when scripts are
-    // unavailable. Shared data restores the unchanged bounded window offline.
-    match (currentSymbol) {
-        case Some(selected) =>
-            match (sidebarPackageLabels(projection, moduleId, packageName).get(selected.id)) {
-                case Some(name) =>
-                    let isCurrent = sidebarPageIsCurrent(symbolPagePath(selected), currentPagePath)
-                    let state = if (isCurrent) { "is-current\" aria-current=\"page" } else { "is-ancestor" }
-                    out.append("<a class=\"sidebar-symbol ${state}\" href=\"" +
-                        rootPrefix + escapeHtml(symbolPagePath(selected)) +
-                        "\"><span class=\"sidebar-symbol-name\">" + escapeHtml(name) +
-                        "</span><span class=\"sidebar-symbol-kind\">" +
-                        escapeHtml(htmlKindLabel(selected.kind, locale)) + "</span></a>")
-                case None => ()
-            }
+private func appendShellHeader(w: HtmlWriter, documentation: DocumentationSet,
+    rootPrefix: String, locale: String, docVersion: ?String): Unit {
+    w.open("header", attrs: [htmlClass("cj-header")])
+    w.open("div", attrs: [htmlClass("cj-header__inner")])
+    w.open("button", attrs: [htmlClass("cj-button cj-button--icon cj-header__menu"),
+        htmlAttr("type", "button"), htmlFlag("data-cjdoc-menu"),
+        htmlAttr("aria-controls", "cjdoc-sidebar"), htmlAttr("aria-expanded", "false"),
+        htmlAttr("aria-label", label(locale, "Open navigation", "打开导航"))])
+    w.icon("menu")
+    w.close("button")
+    w.element("a", [htmlClass("cj-header__brand"),
+        htmlHref(SafeUrl.siteRoute(rootPrefix + "index.html"))], { brand =>
+        brand.textElement("span", documentation.project.name,
+            attrs: [htmlClass("cj-header__project")])
+    })
+    w.open("button", attrs: [htmlClass("cj-search-trigger"), htmlAttr("type", "button"),
+        htmlFlag("data-cjdoc-search-trigger"), htmlAttr("aria-haspopup", "dialog"),
+        htmlAttr("aria-controls", "cjdoc-search-dialog"), htmlAttr("aria-expanded", "false"),
+        htmlFlag("hidden")])
+    w.icon("search")
+    w.textElement("span", label(locale, "Search docs", "搜索文档"),
+        attrs: [htmlClass("cj-search-trigger__label")])
+    w.textElement("kbd", "Ctrl K", attrs: [htmlClass("cj-kbd"),
+        htmlFlag("data-cjdoc-search-shortcut")])
+    w.close("button")
+    w.open("div", attrs: [htmlClass("cj-header__actions")])
+    match (docVersion) {
+        case Some(value) => w.textElement("span", value, attrs: [htmlClass("cj-header__version")])
         case None => ()
     }
-    out.append("<a class=\"sidebar-symbol-more\" data-cjdoc-sidebar-more href=\"" +
-        rootPrefix + escapeHtml(packagePath) + "#declarations\">" +
-        label(locale, "Full package index", "查看完整包索引") + "</a></nav>")
+    // Byte-exact replacement marker: site_languages.cj swaps this span for the
+    // finished language toggle, and single-language pages keep it as a label.
+    w.open("span", attrs: [htmlClass("language-label"), htmlAttr("lang", locale)])
+    w.text(label(locale, "English", "中文"))
+    w.close("span")
+    w.open("button", attrs: [htmlClass("cj-button cj-button--icon cj-header__settings"),
+        htmlAttr("type", "button"), htmlFlag("data-cjdoc-theme-toggle"),
+        htmlAttr("aria-haspopup", "dialog"), htmlAttr("aria-controls", "cjdoc-theme-popover"),
+        htmlAttr("aria-expanded", "false"),
+        htmlAttr("aria-label", label(locale, "Display settings", "显示设置")),
+        htmlFlag("hidden")])
+    w.icon("settings")
+    w.textElement("span", label(locale, "Theme: System", "主题：跟随系统"),
+        attrs: [htmlClass("cj-sr-only"), htmlFlag("data-cjdoc-theme-label")])
+    w.close("button")
+    w.close("div")
+    w.close("div")
+    w.close("header")
 }
 
-internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProjection,
-    rootPrefix: String, locale: String, currentPackagePath: ?String,
-    currentSymbol: ?SymbolDoc): Unit {
-    // The left rail owns package/type context; members belong to the document.
-    if (currentSymbol.isSome() || currentPackagePath.isNone()) { return }
-    let route = currentPackagePath.getOrThrow()
-    var targetCount: Int64 = 0
-    for (pkg in projection.packages where packagePagePath(pkg.source.moduleId, pkg.source.name) == route) {
-        if (let Some(values) <- projection.topLevelByPackage.get(routeKey(pkg.source.moduleId, pkg.source.name))) {
-            targetCount = values.size
+private func appendSearchFilter(w: HtmlWriter, attribute: String,
+    labelText: String, allLabel: String): Unit {
+    w.element("label", [htmlClass("cj-search__filter")], { field =>
+        field.textElement("span", labelText, attrs: [htmlClass("cj-sr-only")])
+        field.open("select", attrs: [htmlClass("cj-select"), htmlFlag(attribute),
+            htmlAttr("aria-label", labelText)])
+        field.textElement("option", allLabel, attrs: [htmlAttr("value", "")])
+        field.close("select")
+    })
+}
+
+private func appendSearchDialog(w: HtmlWriter, rootPrefix: String, locale: String): Unit {
+    w.open("dialog", attrs: [htmlAttr("id", "cjdoc-search-dialog"), htmlClass("cj-search"),
+        htmlFlag("data-cjdoc-search-dialog"),
+        htmlAttr("aria-label", label(locale, "Search documentation", "搜索文档"))])
+    w.open("div", attrs: [htmlClass("cj-search__bar")])
+    w.icon("search")
+    w.textElement("label", label(locale, "Search API", "搜索 API"),
+        attrs: [htmlClass("cj-sr-only"), htmlAttr("for", "cjdoc-search-input")])
+    w.void("input", attrs: [htmlAttr("id", "cjdoc-search-input"),
+        htmlClass("cj-search__input"), htmlAttr("type", "search"),
+        htmlAttr("placeholder", label(locale, "Search docs", "搜索文档")),
+        htmlAttr("autocomplete", "off"), htmlAttr("role", "combobox"),
+        htmlAttr("aria-autocomplete", "list"),
+        htmlAttr("aria-controls", "cjdoc-search-results"),
+        htmlAttr("aria-expanded", "false"), htmlFlag("data-cjdoc-search"),
+        htmlAttr("data-root", rootPrefix)])
+    w.open("button", attrs: [htmlClass("cj-button cj-button--quiet cj-search__close"),
+        htmlAttr("type", "button"), htmlFlag("data-cjdoc-search-close"),
+        htmlAttr("aria-label", label(locale, "Close search", "关闭搜索"))])
+    w.textElement("kbd", "Esc", attrs: [htmlClass("cj-kbd")])
+    w.close("button")
+    w.close("div")
+    w.open("div", attrs: [htmlAttr("id", "cjdoc-search-filters"),
+        htmlClass("cj-search__filters")])
+    appendSearchFilter(w, "data-cjdoc-kind", label(locale, "Filter by kind", "按类别筛选"),
+        label(locale, "All kinds", "全部类别"))
+    appendSearchFilter(w, "data-cjdoc-package", label(locale, "Filter by package", "按包筛选"),
+        label(locale, "All packages", "全部包"))
+    w.close("div")
+    w.open("div", attrs: [htmlClass("cj-search__facets"),
+        htmlFlag("data-cjdoc-search-facets"), htmlAttr("role", "group"),
+        htmlAttr("aria-label", label(locale, "Tag filters", "标签筛选")), htmlFlag("hidden")])
+    w.close("div")
+    w.open("ul", attrs: [htmlAttr("id", "cjdoc-search-results"),
+        htmlClass("cj-search__results"), htmlAttr("role", "listbox"),
+        htmlFlag("data-cjdoc-results"), htmlAttr("aria-live", "polite")])
+    w.close("ul")
+    w.open("p", attrs: [htmlClass("cj-search__status"), htmlFlag("data-cjdoc-search-status"),
+        htmlAttr("role", "status"), htmlFlag("hidden")])
+    w.close("p")
+    w.open("div", attrs: [htmlClass("cj-search__pages"), htmlFlag("data-cjdoc-search-pages"),
+        htmlFlag("hidden")])
+    w.open("button", attrs: [htmlClass("cj-button"), htmlAttr("type", "button"),
+        htmlFlag("data-cjdoc-search-previous")])
+    w.text(label(locale, "Previous", "上一页"))
+    w.close("button")
+    w.open("button", attrs: [htmlClass("cj-button"), htmlAttr("type", "button"),
+        htmlFlag("data-cjdoc-search-next")])
+    w.text(label(locale, "Next", "下一页"))
+    w.close("button")
+    w.close("div")
+    w.textElement("p", label(locale,
+        "Search covers names, structured fields and up to 2,000 characters of body text " +
+            "per entry. No match does not prove absence from the full documentation.",
+        "检索覆盖名称、结构化字段及每项最多 2,000 字符的正文摘录；没有命中不代表完整文档中不存在。"),
+        attrs: [htmlClass("cj-search__note")])
+    w.close("dialog")
+}
+
+private let SETTINGS_THEMES: Array<(String, String, String)> = [
+    ("system", "System", "跟随系统"), ("light", "Light", "浅色"), ("dark", "Dark", "深色"),
+    ("paper", "Paper", "纸色"), ("ocean", "Ocean", "海洋"), ("forest", "Forest", "森林"),
+    ("terminal", "Terminal", "终端"), ("violet", "Violet", "紫罗兰")
+]
+
+private let SETTINGS_FONTS: Array<(String, String, String)> = [
+    ("system", "System", "系统"), ("serif", "Serif", "衬线"), ("mono-ui", "Monospace", "等宽")
+]
+
+private let SETTINGS_SIZES: Array<(String, String, String)> = [
+    ("s", "S", "S"), ("m", "M", "M"), ("l", "L", "L")
+]
+
+private func appendSettingsGroup(w: HtmlWriter, locale: String, legend: String,
+    options: Array<(String, String, String)>, attribute: String, themed!: Bool = false): Unit {
+    w.open("fieldset", attrs: [htmlClass("cj-settings__group")])
+    w.textElement("legend", legend, attrs: [htmlClass("cj-settings__legend")])
+    let groupClass = if (themed) {
+        "cj-settings__options cj-settings__options--themes"
+    } else {
+        "cj-settings__options"
+    }
+    w.open("div", attrs: [htmlClass(groupClass)])
+    for ((value, english, chinese) in options) {
+        w.open("button", attrs: [htmlClass("cj-settings__option"), htmlAttr("type", "button"),
+            htmlAttr(attribute, value), htmlAttr("aria-pressed", "false")])
+        if (themed) {
+            w.open("span", attrs: [htmlClass("cj-settings__swatch"),
+                htmlAttr("data-cjdoc-swatch", value), htmlAttr("aria-hidden", "true")])
+            w.close("span")
+        }
+        w.textElement("span", label(locale, english, chinese))
+        w.close("button")
+    }
+    w.close("div")
+    w.close("fieldset")
+}
+
+private func appendSettingsDialog(w: HtmlWriter, locale: String): Unit {
+    w.open("dialog", attrs: [htmlAttr("id", "cjdoc-theme-popover"), htmlClass("cj-settings"),
+        htmlFlag("data-cjdoc-theme-popover"),
+        htmlAttr("aria-labelledby", "cjdoc-settings-title")])
+    w.open("div", attrs: [htmlClass("cj-settings__head")])
+    w.textElement("h2", label(locale, "Display", "显示"),
+        attrs: [htmlAttr("id", "cjdoc-settings-title"), htmlClass("cj-settings__title")])
+    w.open("button", attrs: [htmlClass("cj-button cj-button--icon"),
+        htmlAttr("type", "button"), htmlFlag("data-cjdoc-theme-close"),
+        htmlAttr("aria-label", label(locale, "Close", "关闭"))])
+    w.icon("close")
+    w.close("button")
+    w.close("div")
+    appendSettingsGroup(w, locale, label(locale, "Theme", "主题"), SETTINGS_THEMES,
+        "data-cjdoc-theme-value", themed: true)
+    appendSettingsGroup(w, locale, label(locale, "Font", "字体"), SETTINGS_FONTS,
+        "data-cjdoc-font-value")
+    appendSettingsGroup(w, locale, label(locale, "Text size", "字号"), SETTINGS_SIZES,
+        "data-cjdoc-size-value")
+    w.textElement("p", label(locale, "System follows your device appearance.",
+        "跟随系统会采用设备的外观设置。"), attrs: [htmlClass("cj-settings__hint")])
+    w.close("dialog")
+}
+
+private func pageRole(currentRoute: String, currentSymbol: ?SymbolDoc): String {
+    if (currentSymbol.isSome()) { return "symbol" }
+    match (currentRoute) {
+        case "overview" => "home"
+        case "concept" => "guide"
+        case "api" => "package"
+        case _ => "utility"
+    }
+}
+
+private func appendHeadLinks(w: HtmlWriter, rootPrefix: String, title: String,
+    agentReadable: Bool, alternateMarkdown: ?String): Unit {
+    w.void("meta", attrs: [htmlAttr("charset", "utf-8")])
+    w.void("meta", attrs: [htmlAttr("name", "viewport"),
+        htmlAttr("content", "width=device-width,initial-scale=1")])
+    w.void("meta", attrs: [htmlAttr("http-equiv", "Content-Security-Policy"),
+        htmlAttr("content", HTML_PAGE_CSP)])
+    w.textElement("title", title)
+    appendScriptElement(w, rootPrefix + "theme-bootstrap.js", deferred: false)
+    w.void("link", attrs: [htmlAttr("rel", "stylesheet"),
+        htmlHref(SafeUrl.siteRoute(rootPrefix + "style.css"))])
+    if (agentReadable) {
+        w.void("link", attrs: [htmlAttr("rel", "describedby"), htmlAttr("type", "text/plain"),
+            htmlHref(SafeUrl.siteRoute(rootPrefix + "llms.txt"))])
+        w.void("link", attrs: [htmlAttr("rel", "describedby"),
+            htmlAttr("type", "application/json"),
+            htmlHref(SafeUrl.siteRoute(rootPrefix + "agent/manifest.json"))])
+        match (alternateMarkdown) {
+            case Some(path) =>
+                w.void("link", attrs: [htmlAttr("rel", "alternate"),
+                    htmlAttr("type", "text/markdown"),
+                    htmlHref(SafeUrl.siteRoute(rootPrefix + path))])
+            case None => ()
         }
     }
-    if (targetCount == 0) { return }
-    let contextTitle = label(locale, "In this package", "当前包")
-    let moreHref = rootPrefix + route
-    out.append("<section class=\"sidebar-section sidebar-context\" aria-label=\"" +
-        contextTitle + "\"><p class=\"sidebar-label\">" + contextTitle + "</p>")
-    out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">" +
-        label(locale, "Filter this context", "筛选当前条目") +
-        "</span><input type=\"search\" class=\"sidebar-filter\" data-cjdoc-context-filter placeholder=\"" +
-        label(locale, "Filter declarations", "筛选声明") + "\"></label>")
-    out.append("<nav class=\"context-links\" data-cjdoc-context-key=\"" +
-        escapeHtml(route) + "\" data-cjdoc-context-source=\"packages\" data-cjdoc-context-local=\"false\"></nav>")
-    out.append("<p class=\"sidebar-limit\" data-cjdoc-context-fallback><a href=\"" +
-        escapeHtml(moreHref) + "\">" + label(locale, "Full index", "完整索引") + "</a></p>")
-    out.append("<p class=\"sidebar-no-results\" data-cjdoc-context-empty role=\"status\" hidden>" +
-        label(locale, "No matching declarations.", "没有匹配的声明。") + "</p>")
-    out.append("<p class=\"sidebar-limit\" data-cjdoc-context-limit hidden>" +
-        label(locale, "Showing the first 256 entries.", "显示前 256 个条目。") +
-        " <a href=\"" + escapeHtml(moreHref) + "\">" +
-        label(locale, "Full index", "完整索引") + "</a></p></section>")
 }
 
-internal func appendHtmlThemeControl(out: RenderTextBuffer, locale: String, version: String): Unit {
-    out.append("<div class=\"top-actions\">")
-    if (!version.isEmpty()) {
-        out.append("<span class=\"version-label\">${escapeHtml(version)}</span>")
-    }
-    out.append("<span class=\"language-label\" lang=\"${escapeHtml(locale)}\">" +
-        label(locale, "English", "中文") + "</span><div class=\"theme-control\">")
-    out.append("<button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-controls=\"cjdoc-theme-popover\" aria-expanded=\"false\" aria-label=\"${label(locale, "Select theme: System", "选择主题：跟随系统")}\">")
-    out.append("<svg class=\"theme-palette-icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 2-4l-.7-.9a1.7 1.7 0 0 1 1.4-2.7h1.6a3.5 3.5 0 0 0 3.5-3.5A9 9 0 0 0 12 3Z\"></path><circle cx=\"13.5\" cy=\"6.5\" r=\"1\"></circle><circle cx=\"17.8\" cy=\"10.2\" r=\"1\"></circle><circle cx=\"7.7\" cy=\"8\" r=\"1\"></circle><circle cx=\"6.1\" cy=\"13.4\" r=\"1\"></circle></svg>")
-    out.append("<span class=\"theme-trigger-label\" data-cjdoc-theme-label>${label(locale, "Theme: System", "主题：跟随系统")}</span><span class=\"theme-chevron\" aria-hidden=\"true\">⌄</span></button>")
-    out.append("<button type=\"button\" class=\"theme-backdrop\" data-cjdoc-theme-backdrop tabindex=\"-1\" hidden aria-label=\"${label(locale, "Close theme selector", "关闭主题选择器")}\"></button>")
-    out.append("<div id=\"cjdoc-theme-popover\" class=\"theme-popover\" data-cjdoc-theme-popover role=\"group\" aria-label=\"${label(locale, "Choose theme", "选择主题")}\" hidden>")
-    out.append("<div class=\"theme-popover-header\"><strong>${label(locale, "Appearance", "外观主题")}</strong><button type=\"button\" class=\"theme-popover-close\" data-cjdoc-theme-close aria-label=\"${label(locale, "Close", "关闭")}\">×</button></div>")
-    out.append("<p class=\"theme-section-title\">${label(locale, "Basic modes", "基础模式")}</p>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"system\" aria-pressed=\"false\">${label(locale, "System", "跟随系统")}</button>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"light\" aria-pressed=\"false\">${label(locale, "Light", "浅色")}</button>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"dark\" aria-pressed=\"false\">${label(locale, "Dark", "深色")}</button>")
-    out.append("<p class=\"theme-section-title theme-presets-title\">${label(locale, "Color presets", "配色预设")}</p>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"paper\" aria-pressed=\"false\">${label(locale, "Paper", "纸色")}</button>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"ocean\" aria-pressed=\"false\">${label(locale, "Ocean", "海洋")}</button>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"forest\" aria-pressed=\"false\">${label(locale, "Forest", "森林")}</button>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"terminal\" aria-pressed=\"false\">${label(locale, "Terminal", "终端")}</button>")
-    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"violet\" aria-pressed=\"false\">${label(locale, "Violet", "紫罗兰")}</button>")
-    out.append("<p class=\"theme-help\">${label(locale, "System follows your device appearance.", "跟随系统会采用设备的外观设置。")}</p></div></div></div>")
-}
-
-internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String,
+internal func appendPageStart(w: HtmlWriter, title: String, rootPrefix: String,
     documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", currentPackagePath!: ?String = None,
     currentRoute!: String = "overview", docVersion!: ?String = None,
     currentSymbol!: ?SymbolDoc = None, agentReadable!: Bool = false,
     alternateMarkdown!: ?String = None, currentPagePath!: ?String = None): Unit {
-    out.append("<!doctype html>\n<html lang=\"${locale}\"><head><meta charset=\"utf-8\">")
-    out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
-    out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
-    out.append("<title>${escapeHtml(title)}</title><script src=\"${rootPrefix}theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
-    if (agentReadable) {
-        out.append("<link rel=\"describedby\" type=\"text/plain\" href=\"${rootPrefix}llms.txt\">")
-        out.append("<link rel=\"describedby\" type=\"application/json\" href=\"${rootPrefix}agent/manifest.json\">")
-        if (let Some(path) <- alternateMarkdown) {
-            out.append("<link rel=\"alternate\" type=\"text/markdown\" href=\"${escapeHtml(rootPrefix + path)}\">")
-        }
-    }
-    out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
-    out.append("<script defer src=\"${rootPrefix}sidebar-index.js\"></script>")
-    out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body data-cjdoc-route=\"${escapeHtml(currentRoute)}\"")
+    w.doctype()
+    w.open("html", attrs: [htmlAttr("lang", locale)])
+    w.open("head")
+    appendHeadLinks(w, rootPrefix, title, agentReadable, alternateMarkdown)
+    appendScriptElement(w, rootPrefix + "search-index.js", deferred: true)
+    appendScriptElement(w, rootPrefix + "sidebar-index.js", deferred: true)
+    appendScriptElement(w, rootPrefix + "search.js", deferred: true)
+    w.close("head")
+    let bodyAttrs = ArrayList<HtmlAttr>([htmlClass("cj-page"),
+        htmlAttr("data-cjdoc-route", currentRoute)])
     match (docVersion) {
-        case Some(value) => out.append(" data-cjdoc-doc-version=\"${escapeHtml(value)}\"")
+        case Some(value) => bodyAttrs.add(htmlAttr("data-cjdoc-doc-version", value))
         case None => ()
     }
-    let pageRole = if (currentSymbol.isSome()) { "symbol" } else {
-        match (currentRoute) {
-            case "overview" => "home"
-            case "concept" => "guide"
-            case "api" => "package"
-            case _ => "utility"
-        }
-    }
-    out.append(" data-cjdoc-page=\"${pageRole}\"")
-    out.append(">\n<a class=\"skip-link\" href=\"#cjdoc-main\">${label(locale, "Skip to content", "跳到正文")}</a>\n")
-    out.append("<header class=\"site-nav\"><div class=\"site-nav-inner\">")
-    out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-controls=\"cjdoc-sidebar\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open navigation", "打开导航")}\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M4 6h16M4 12h16M4 18h16\"/></svg></button>")
-    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-logo\">${escapeHtml(documentation.project.name)}</span></a>")
-    out.append("<button type=\"button\" class=\"mobile-search-trigger\" data-cjdoc-search-trigger aria-controls=\"cjdoc-search-input\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open search", "打开搜索")}\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-4-4\"/></svg></button>")
-    out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">${label(locale, "Search API", "搜索 API")}</label>")
-    out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl + K</kbd></div>")
-    out.append("<div class=\"search-popover\" data-cjdoc-search-popover hidden><div class=\"search-facets\" data-cjdoc-search-facets role=\"group\" aria-label=\"${label(locale, "Tag filters", "标签筛选")}\" hidden></div><ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul><p class=\"search-status-note\" data-cjdoc-search-status role=\"status\" hidden></p>")
-    out.append("<div class=\"search-pagination\" data-cjdoc-search-pages hidden><button type=\"button\" data-cjdoc-search-previous>${label(locale, "Previous", "上一页")}</button><button type=\"button\" data-cjdoc-search-next>${label(locale, "Next", "下一页")}</button></div>")
-    out.append("<p class=\"search-index-note\">${label(locale, "Search covers names, structured fields and up to 2,000 characters of body text per entry. No match does not prove absence from the full documentation.", "检索覆盖名称、结构化字段及每项最多 2,000 字符的正文摘录；没有命中不代表完整文档中不存在。")}</p></div></div>")
-    out.append("<button type=\"button\" class=\"search-filter-toggle\" data-cjdoc-filter-toggle aria-controls=\"cjdoc-search-filters\" aria-expanded=\"false\">${label(locale, "Search filters", "检索筛选")}</button>")
-    out.append("<div id=\"cjdoc-search-filters\" class=\"search-filters\"><label><span class=\"sr-only\">${label(locale, "Filter by kind", "按类别筛选")}</span><select data-cjdoc-kind aria-label=\"${label(locale, "Filter by kind", "按类别筛选")}\"><option value=\"\">${label(locale, "All kinds", "全部类别")}</option></select></label>")
-    out.append("<label><span class=\"sr-only\">${label(locale, "Filter by package", "按包筛选")}</span><select data-cjdoc-package aria-label=\"${label(locale, "Filter by package", "按包筛选")}\"><option value=\"\">${label(locale, "All packages", "全部包")}</option></select></label></div></div>")
-    let headerVersion = match (docVersion) {
-        case Some(value) => value
-        case None => ""
-    }
-    appendHtmlThemeControl(out, locale, headerVersion)
-    out.append("<span class=\"sr-only\" aria-label=\"${label(locale, "Theme", "主题")}\"></span>")
-    out.append("</div></header>\n<div class=\"docs-layout\"><button class=\"nav-backdrop\" type=\"button\" data-cjdoc-menu-backdrop hidden aria-label=\"${label(locale, "Close navigation", "关闭导航")}\"></button>")
-    appendHtmlSidebar(out, documentation, projection, rootPrefix, locale,
+    bodyAttrs.add(htmlAttr("data-cjdoc-page", pageRole(currentRoute, currentSymbol)))
+    w.open("body", attrs: bodyAttrs.toArray())
+    w.element("a", [htmlClass("cj-skip-link"), htmlHref(SafeUrl.fragment("cjdoc-main"))],
+        { skip => skip.text(label(locale, "Skip to content", "跳到正文")) })
+    appendShellHeader(w, documentation, rootPrefix, locale, docVersion)
+    appendSearchDialog(w, rootPrefix, locale)
+    appendSettingsDialog(w, locale)
+    w.open("div", attrs: [htmlClass("cj-layout")])
+    w.open("button", attrs: [htmlClass("cj-drawer-backdrop"), htmlAttr("type", "button"),
+        htmlFlag("data-cjdoc-menu-backdrop"), htmlFlag("hidden"),
+        htmlAttr("aria-label", label(locale, "Close navigation", "关闭导航"))])
+    w.close("button")
+    appendHtmlSidebar(w, projection, rootPrefix, locale,
         currentPackagePath: currentPackagePath, currentRoute: currentRoute,
         currentSymbol: currentSymbol, currentPagePath: currentPagePath)
-    out.append("<main id=\"cjdoc-main\" class=\"docs-main\" data-cjdoc-content tabindex=\"-1\"><div class=\"content-column\"><details class=\"mobile-toc\" data-cjdoc-mobile-toc hidden><summary>${label(locale, "On this page", "本页目录")}</summary><ol></ol></details>\n")
+    w.open("main", attrs: [htmlAttr("id", "cjdoc-main"), htmlClass("cj-main"),
+        htmlFlag("data-cjdoc-content"), htmlAttr("tabindex", "-1")])
+    w.open("div", attrs: [htmlClass("cj-content")])
+    w.open("details", attrs: [htmlClass("cj-toc-mobile"),
+        htmlFlag("data-cjdoc-mobile-toc"), htmlFlag("hidden")])
+    w.textElement("summary", label(locale, "On this page", "本页目录"),
+        attrs: [htmlClass("cj-toc-mobile__summary")])
+    w.open("ol", attrs: [htmlClass("cj-toc__list")])
+    w.close("ol")
+    w.close("details")
 }
 
-internal func appendPageEnd(out: RenderTextBuffer, documentation: DocumentationSet,
+internal func appendPageEnd(w: HtmlWriter, documentation: DocumentationSet,
     locale!: String = "en"): Unit {
-    out.append("</div></main><aside class=\"toc-panel\" data-cjdoc-toc aria-label=\"${label(locale, "On this page", "本页目录")}\" hidden><p class=\"toc-title\">${label(locale, "On this page", "本页目录")}</p><nav><ol></ol></nav></aside></div>")
-    out.append("<footer class=\"site-footer\"><div class=\"footer-inner\"><span><span class=\"footer-mark\">cjdoc</span> · ${label(locale, "Generated from Doc IR", "由 Doc IR 生成")}</span><span>${escapeHtml(documentation.generator.version)} · ${escapeHtml(documentation.schemaVersion)}</span></div></footer></body></html>\n")
+    w.close("div")
+    w.close("main")
+    w.open("aside", attrs: [htmlClass("cj-toc"), htmlFlag("data-cjdoc-toc"),
+        htmlAttr("aria-label", label(locale, "On this page", "本页目录")), htmlFlag("hidden")])
+    w.textElement("p", label(locale, "On this page", "本页目录"),
+        attrs: [htmlClass("cj-toc__title")])
+    w.open("nav")
+    w.open("ol", attrs: [htmlClass("cj-toc__list")])
+    w.close("ol")
+    w.close("nav")
+    w.close("aside")
+    w.close("div")
+    w.open("footer", attrs: [htmlClass("cj-footer")])
+    w.open("div", attrs: [htmlClass("cj-footer__inner")])
+    w.open("span")
+    w.textElement("span", "cjdoc", attrs: [htmlClass("cj-footer__mark")])
+    w.text(" · " + label(locale, "Generated from Doc IR", "由 Doc IR 生成"))
+    w.close("span")
+    w.textElement("span", "${documentation.generator.version} · ${documentation.schemaVersion}")
+    w.close("div")
+    w.close("footer")
+    w.close("body")
+    w.close("html")
+    w.newline()
 }
