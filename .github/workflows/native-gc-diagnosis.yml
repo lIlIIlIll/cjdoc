@@ -1,6 +1,8 @@
 name: Native GC diagnostic capture
 
-# This observes a frozen candidate; it does not retry or qualify a release.
+# This replays the original Release Linux precursor workload against the frozen
+# candidate in today's environment and observes whether the fault reproduces.
+# It is not a Release workflow, never retries and never qualifies a release.
 on:
   push:
     branches: [diagnostic/linux-gc-0.7.8-capture]
@@ -19,6 +21,9 @@ env:
   PYTHONUTF8: "1"
   DIAGNOSTIC_SUBJECT_COMMIT: d0fb6d3e4646bfda005502d845a1f551f239bf9e
   DIAGNOSTIC_SUBJECT_TREE: 644953a988995309dc9006d15308a7ef51ee29e8
+  DIAGNOSTIC_CANDIDATE_ARTIFACT_ID: "13712324192"
+  DIAGNOSTIC_CANDIDATE_RUN_ID: "42704455770"
+  DIAGNOSTIC_CANDIDATE_TAR_BYTES: "27637760"
   DIAGNOSTIC_CANDIDATE_TAR_SHA256: 05a424f712603feff3b76a2f7d43d0fa1a88a42c65259062971a92ea455e38da
   DIAGNOSTIC_CERTIFICATE_SHA256: 7f97b417287e770f3c880a9b24b8709fd0942af8536fd1d067153fd93d7f42f2
   CANGJIE_SDK_URL: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
@@ -28,22 +33,16 @@ env:
 
 jobs:
   capture:
-    name: Pinned Linux GC capture (not release acceptance)
+    name: Original-context Linux GC capture (not release acceptance)
     if: github.ref == 'refs/heads/diagnostic/linux-gc-0.7.8-capture'
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    # The original Release Linux job ran its whole acceptance workload under
+    # this timeout; the collector bounds its own replay below it (6900s).
+    timeout-minutes: 120
     steps:
       - name: Check out the diagnostic harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Check out the immutable subject
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: d0fb6d3e4646bfda005502d845a1f551f239bf9e
-          path: subject
           fetch-depth: 0
           persist-credentials: false
 
@@ -52,6 +51,92 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Prepare private task directories and the harness checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          root="${RUNNER_TEMP}/native-gc-diagnosis"
+          harness="${root}/harness"
+          test ! -e "${root}"
+          install -d -m 0700 "${root}" "${root}/tmp" "${root}/candidate" \
+            "${root}/core-spool"
+          # The workspace is about to become the immutable subject, so the
+          # harness must live outside it. A full no-hardlink clone keeps the
+          # diagnostic helpers and their revision intact while the subject tree
+          # takes over the workspace, and copies tracked files only: no
+          # bytecode, caches or local fixtures travel with it.
+          git clone --quiet --no-hardlinks "${GITHUB_WORKSPACE}" "${harness}"
+          # Bind the clone to the exact revision that triggered the run rather
+          # than to whatever branch the source checkout happened to have, then
+          # prove it with the repository's own exact identity check.
+          git -C "${harness}" -c advice.detachedHead=false \
+            checkout --quiet --detach "${GITHUB_SHA}"
+          test "$(git -C "${harness}" rev-parse HEAD)" = "${GITHUB_SHA}"
+          python - "${harness}" "${GITHUB_SHA}" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
+          from worktree_identity import exact_worktree_identity
+          exact_worktree_identity(Path(sys.argv[1]), expected_commit=sys.argv[2])
+          PY
+          test -f "${harness}/scripts/native_gc_context_replay.py"
+          test -f "${harness}/scripts/native_gc_diagnosis.py"
+          test -f "${harness}/scripts/worktree_identity.py"
+          test -f "${harness}/scripts/with_stdx.py"
+          test -f "${harness}/scripts/install_cangjie_sdk.py"
+          test -f "${harness}/.github/diagnostics/native-gc-capture.pem"
+          {
+            echo "DIAGNOSTIC_ROOT=${root}"
+            echo "DIAGNOSTIC_HARNESS=${harness}"
+            echo "DIAGNOSTIC_OUTPUT=${root}/output"
+            echo "TMPDIR=${root}/tmp"
+            echo "TMP=${root}/tmp"
+            echo "TEMP=${root}/tmp"
+          } >> "${GITHUB_ENV}"
+
+      - name: Check out the immutable subject at the workspace root
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d0fb6d3e4646bfda005502d845a1f551f239bf9e
+          fetch-depth: 0
+          persist-credentials: false
+          clean: true
+
+      - name: Verify the frozen source before installing the SDK
+        shell: bash
+        env:
+          DIAGNOSTIC_WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # The subject keeps the original Release path shape: it is the Git
+          # top-level at the workspace root, and its own check.sh, perf gate,
+          # smoke and stdx wrapper are what the collector drives.
+          test "$(git rev-parse --show-toplevel)" = "$(realpath -e "${GITHUB_WORKSPACE}")"
+          test "$(git rev-parse HEAD)" = "${DIAGNOSTIC_SUBJECT_COMMIT}"
+          test "$(git rev-parse 'HEAD^{tree}')" = "${DIAGNOSTIC_SUBJECT_TREE}"
+          python - "${DIAGNOSTIC_HARNESS}" "${GITHUB_WORKSPACE}" "${DIAGNOSTIC_SUBJECT_COMMIT}" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
+          from worktree_identity import exact_worktree_identity
+          exact_worktree_identity(Path(sys.argv[2]), expected_commit=sys.argv[3])
+          PY
+          test -f scripts/check.sh
+          test -f scripts/perf_gate.py
+          test -f scripts/real_repository_smoke.py
+          test -f scripts/with_stdx.py
+          test -f scripts/with_sts_cjpm.sh
+          # The harness, not the subject, holds the collector and certificate;
+          # neither may leak into the exact-source input.
+          test ! -e scripts/native_gc_context_replay.py
+          test ! -e .github/diagnostics/native-gc-capture.pem
+          certificate="${DIAGNOSTIC_HARNESS}/.github/diagnostics/native-gc-capture.pem"
+          test "$(git -C "${DIAGNOSTIC_HARNESS}" rev-parse HEAD)" = "${DIAGNOSTIC_WORKFLOW_SHA}"
+          printf '%s  %s\n' "${DIAGNOSTIC_CERTIFICATE_SHA256}" "${certificate}" | sha256sum -c -
+          echo "DIAGNOSTIC_WORKFLOW_SHA=${DIAGNOSTIC_WORKFLOW_SHA}" >> "${GITHUB_ENV}"
+
       - name: Install the diagnostic debugger
         shell: bash
         run: |
@@ -59,60 +144,78 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends gdb
           gdb --version
+          command -v openssl
+          command -v taskset
 
-      - name: Prepare private task directories and diagnostic tools
+      - name: Configure the private core spool
         shell: bash
         run: |
           set -euo pipefail
-          umask 077
-          command -v gdb
-          command -v openssl
-          command -v taskset
-          root="${RUNNER_TEMP}/native-gc-diagnosis"
-          test ! -e "${root}"
-          install -d -m 0700 "${root}" "${root}/tmp"
-          {
-            echo "DIAGNOSTIC_ROOT=${root}"
-            echo "DIAGNOSTIC_OUTPUT=${root}/output"
-            echo "TMPDIR=${root}/tmp"
-            echo "TMP=${root}/tmp"
-            echo "TEMP=${root}/tmp"
-          } >> "${GITHUB_ENV}"
+          # Self performance samples run natively and must be able to drop a
+          # real core for offline debugger analysis. The spool is private to
+          # this task and outside every source tree, so the original Release
+          # predecessor stages — which keep their own core limit disabled and
+          # contain expected unit-level fault probes — cannot fill the disk.
+          # Any failure here is a prerequisite failure: a cohort sample with no
+          # core is not worth spending the run on.
+          # The collector derives the same directory as
+          # ``Path(abspath(--output)).parent / "core-spool"``, so this must be
+          # the identical location even if RUNNER_TEMP is reached through a
+          # symlink; resolve it once and use the resolved value for the kernel.
+          spool="$(realpath -e "${DIAGNOSTIC_ROOT}/core-spool")"
+          test "$(dirname "${spool}")" = "$(realpath -e "${DIAGNOSTIC_ROOT}")"
+          expected="${spool}/core.%p.%t"
+          sudo -n sysctl -q -w "kernel.core_pattern=${expected}"
+          observed="$(sysctl -n kernel.core_pattern)"
+          # Equality with the literal template already excludes a piped
+          # pattern and any directory other than the resolved private spool.
+          if [ "${observed}" != "${expected}" ]; then
+            echo 'kernel.core_pattern did not take the required private spool value' >&2
+            exit 1
+          fi
+          test -d "${spool}"
+          test "$(stat -c '%a' "${spool}")" = "700"
+          if [ -n "$(find "${spool}" -mindepth 1 -print -quit)" ]; then
+            echo 'the private core spool must start empty' >&2
+            exit 1
+          fi
+          # A zero hard limit makes every core capture impossible, so the run
+          # would burn the cohort for nothing. The collector raises only the
+          # soft limit for self samples; it cannot invent a hard one.
+          hard_core="$(ulimit -Hc)"
+          if [ "${hard_core}" != "unlimited" ] && [ "${hard_core}" -eq 0 ]; then
+            echo 'the hard core-file limit is zero, so no sample could drop a core' >&2
+            exit 1
+          fi
+          echo 'Private core spool configured.'
 
       - name: Download the original candidate without rebuilding it
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          artifact-ids: "13712324192"
+          artifact-ids: ${{ env.DIAGNOSTIC_CANDIDATE_ARTIFACT_ID }}
           repository: lIlIIlIll/cjdoc
-          run-id: "42704455770"
+          run-id: ${{ env.DIAGNOSTIC_CANDIDATE_RUN_ID }}
           github-token: ${{ github.token }}
-          path: ${{ env.DIAGNOSTIC_ROOT }}/candidate
+          path: ${{ runner.temp }}/native-gc-diagnosis/candidate
           merge-multiple: true
           digest-mismatch: error
 
-      - name: Verify the frozen inputs before installing the SDK
+      - name: Verify the frozen candidate archive
         shell: bash
-        env:
-          DIAGNOSTIC_WORKFLOW_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${DIAGNOSTIC_WORKFLOW_SHA}"
-          test "$(git -C subject rev-parse HEAD)" = "${DIAGNOSTIC_SUBJECT_COMMIT}"
-          test "$(git -C subject rev-parse 'HEAD^{tree}')" = "${DIAGNOSTIC_SUBJECT_TREE}"
-          test -f scripts/native_gc_diagnosis.py
-          certificate="${GITHUB_WORKSPACE}/.github/diagnostics/native-gc-capture.pem"
           candidate="${DIAGNOSTIC_ROOT}/candidate/cjdoc-linux-candidate.tar"
-          printf '%s  %s\n' "${DIAGNOSTIC_CERTIFICATE_SHA256}" "${certificate}" | sha256sum -c -
-          test "$(wc -c < "${candidate}")" = "27637760"
+          test "$(wc -c < "${candidate}")" = "${DIAGNOSTIC_CANDIDATE_TAR_BYTES}"
           printf '%s  %s\n' "${DIAGNOSTIC_CANDIDATE_TAR_SHA256}" "${candidate}" | sha256sum -c -
-          echo "DIAGNOSTIC_WORKFLOW_SHA=${DIAGNOSTIC_WORKFLOW_SHA}" >> "${GITHUB_ENV}"
 
       - name: Install the authenticated SDK and stdx sidecar
         id: sdk
         shell: bash
         run: |
           set -euo pipefail
-          python subject/scripts/install_cangjie_sdk.py \
+          # The harness checkout owns the installer so the SDK install matches
+          # the collector revision that will verify the same pins.
+          python "${DIAGNOSTIC_HARNESS}/scripts/install_cangjie_sdk.py" \
             --url "${CANGJIE_SDK_URL}" \
             --sha256 "${CANGJIE_SDK_SHA256}" \
             --stdx-url "${CANGJIE_STDX_URL}" \
@@ -120,7 +223,7 @@ jobs:
             --destination "${DIAGNOSTIC_ROOT}/sdk" \
             --github-output "${GITHUB_OUTPUT}"
 
-      - name: Capture the single original-recipe native invocation
+      - name: Capture in the original Release context
         shell: bash
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
@@ -129,15 +232,23 @@ jobs:
         run: |
           set -euo pipefail
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          # The harness is the sole authority for full input binding, native
-          # credential isolation, the original recipe, and encrypted evidence.
+          # The collector is the sole authority for the staged prelude (the
+          # subject's own preflight, build precursor, native/python-tools/cli/
+          # provider stages, real-repository smoke and the 512MB basic/self
+          # performance sequence), for input and revision binding, for
+          # credential-free child environments, and for encrypted private
+          # evidence. Self performance samples run natively with a core limit
+          # into the private spool above; the collector analyses a real fault
+          # core with offline GDB and leaves ordinary precursor children with
+          # their core limit disabled. This workflow runs no stage itself and
+          # sets no heap: the collector applies the original recipes.
           set +e
-          python subject/scripts/with_stdx.py --variant static -- \
-            python scripts/native_gc_diagnosis.py \
-              --subject "${GITHUB_WORKSPACE}/subject" \
+          python "${DIAGNOSTIC_HARNESS}/scripts/with_stdx.py" --variant static -- \
+            python "${DIAGNOSTIC_HARNESS}/scripts/native_gc_context_replay.py" \
+              --subject "${GITHUB_WORKSPACE}" \
               --candidate-tar "${DIAGNOSTIC_ROOT}/candidate/cjdoc-linux-candidate.tar" \
               --sdk-root "${CANGJIE_SDK_ROOT}" \
-              --certificate "${GITHUB_WORKSPACE}/.github/diagnostics/native-gc-capture.pem" \
+              --certificate "${DIAGNOSTIC_HARNESS}/.github/diagnostics/native-gc-capture.pem" \
               --output "${DIAGNOSTIC_OUTPUT}" \
               --workflow-sha "${DIAGNOSTIC_WORKFLOW_SHA}" \
               --run-id "${DIAGNOSTIC_RUN_ID}" \
@@ -153,17 +264,24 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo '### Native GC diagnostic — not release acceptance'
+            echo '### Native GC original-context capture — not release acceptance'
             echo 'Successful collection is not evidence that the original defect is fixed.'
-            echo "Capture exit status: ${DIAGNOSTIC_EXIT_CODE:-not started}"
-            if [ -f "${DIAGNOSTIC_OUTPUT:-}/public/diagnosis.txt" ]; then
+            echo "Collector exit status: ${DIAGNOSTIC_EXIT_CODE:-not started}"
+            if [ -z "${DIAGNOSTIC_EXIT_CODE:-}" ]; then
+              echo 'The collector never started: a prerequisite step above failed. Fix that step first; no capture evidence was produced.'
+            elif [ -f "${DIAGNOSTIC_OUTPUT:-}/public/diagnosis.txt" ]; then
               printf '\n```text\n'
               cat "${DIAGNOSTIC_OUTPUT}/public/diagnosis.txt"
               printf '\n```\n'
             else
-              echo 'No capture summary was produced; inspect the failed prerequisite step.'
+              echo 'The collector did not publish a summary; inspect its private log for the first failing stage.'
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
+          if [ "${DIAGNOSTIC_EXIT_CODE:-}" = "0" ]; then
+            test -s "${DIAGNOSTIC_OUTPUT}/public/manifest.json"
+            test -s "${DIAGNOSTIC_OUTPUT}/public/diagnosis.txt"
+            test -s "${DIAGNOSTIC_OUTPUT}/public/private-evidence.p7m"
+          fi
 
       - name: Upload only summaries and encrypted private evidence
         if: always()
@@ -174,7 +292,12 @@ jobs:
             ${{ runner.temp }}/native-gc-diagnosis/output/public/manifest.json
             ${{ runner.temp }}/native-gc-diagnosis/output/public/diagnosis.txt
             ${{ runner.temp }}/native-gc-diagnosis/output/public/private-evidence.p7m
-          if-no-files-found: error
+          if-no-files-found: warn
+          # Availability, not a second gate: the collector's exit status is the
+          # definitive outcome, and any subset it did publish (for example a
+          # manifest without a summary after an incomplete run) is still
+          # retained. A successful collection missing a file is caught above by
+          # the exit-0-only three-file check, so this never weakens the result.
           retention-days: 7
           overwrite: false
           compression-level: 0

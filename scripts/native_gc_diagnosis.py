@@ -909,6 +909,244 @@ def summarize_gdb_log(path: Path) -> dict[str, object]:
     }
 
 
+CORE_PRINT_COMMANDS = (
+    "info program",
+    "p $_siginfo",
+    "info threads",
+    "thread apply all bt 200",
+    "info sharedlibrary",
+    "info proc mappings",
+)
+# A kernel core is taken either at the fault itself or after the Cangjie runtime's
+# own signal handler re-raises it, so the newest frame is not always the faulting
+# frame. These name fragments identify the handler frames that must not be read as
+# the crashed call.
+HANDLER_FRAME_MARKERS = (
+    "raise", "abort", "kill", "__restore_rt", "sigaction", "signal handler",
+    "pthread_kill", "terminate", "UnhandledException", "CJ_Signal", "::Signal",
+)
+FRAME_DUMP_COMMANDS = (
+    "info frame",
+    "info registers",
+    "x/32i $pc-32",
+    "x/32gx $rdi-32",
+    "p *(void**)$rdi",
+)
+
+
+def core_script_text(capture_path: Path) -> str:
+    """GDB commands that explain an already-written kernel core offline.
+
+    The newest frame is always dumped, every thread's stack is dumped, and when the
+    newest frame is a signal handler that sits above a ``GetSize`` frame, the
+    ``GetSize`` frame is selected and named before any register or header dump, so
+    a handler's calling convention is never read as the faulting call's.
+    """
+    return f"""set pagination off
+set confirm off
+set print thread-events off
+python
+import gdb
+import json
+
+CAPTURE_PATH = {str(capture_path)!r}
+HANDLER_MARKERS = {list(HANDLER_FRAME_MARKERS)!r}
+BASE_COMMANDS = {list(CORE_PRINT_COMMANDS)!r}
+FRAME_COMMANDS = {list(FRAME_DUMP_COMMANDS)!r}
+state = {{
+    "loaded": False,
+    "inferiorPid": 0,
+    "threads": 0,
+    "threadFrameCounts": {{}},
+    "crashThread": None,
+    "frameCount": 0,
+    "handlerFrameAtTop": None,
+    "selectedThread": None,
+    "selectedFrameIndex": None,
+    "selectedFrameName": None,
+    "newestFrameName": None,
+    "getSizeFrames": [],
+    "readErrors": 0,
+    "zeroBytesAtRdi": None,
+    "headerBytes": None,
+    "unreadableAtRdi": None,
+    "notes": [],
+}}
+
+
+def emit(label, text):
+    print("DIAGNOSTIC_CORE_" + label, flush=True)
+    print(text, flush=True)
+
+
+def run(command):
+    try:
+        return gdb.execute(command, to_string=True)
+    except gdb.error as error:
+        state["readErrors"] += 1
+        print("DIAGNOSTIC_CORE_READ_ERROR " + str(error), flush=True)
+        return ""
+
+
+def walk():
+    frame = gdb.newest_frame()
+    records = []
+    index = 0
+    while frame is not None:
+        try:
+            name = frame.name() or ""
+        except Exception:
+            name = ""
+        records.append({{"index": index, "name": name}})
+        frame = frame.older()
+        index += 1
+    return records
+
+
+fault_thread = None
+try:
+    inferior = gdb.selected_inferior()
+    state["loaded"] = True
+    state["inferiorPid"] = int(inferior.pid or 0)
+    fault_thread = gdb.selected_thread()
+    state["crashThread"] = int(fault_thread.num)
+except Exception as error:
+    print("DIAGNOSTIC_CORE_LOAD_ERROR " + str(error), flush=True)
+for command in BASE_COMMANDS:
+    emit("COMMAND " + command, run(command))
+threads = gdb.selected_inferior().threads()
+state["threads"] = len(threads)
+best = None
+newest = None
+if fault_thread is not None:
+    fault_thread.switch()
+    records = walk()
+    newest = (fault_thread, records[0]["name"] if records else "")
+    emit("NEWEST_FRAME", run("bt 1"))
+    emit("NEWEST_REGISTERS", run("info registers"))
+for thread in threads:
+    try:
+        thread.switch()
+        records = walk()
+    except gdb.error as error:
+        state["readErrors"] += 1
+        print("DIAGNOSTIC_CORE_READ_ERROR " + str(error), flush=True)
+        continue
+    state["frameCount"] = max(state["frameCount"], len(records))
+    state["threadFrameCounts"][str(int(thread.num))] = len(records)
+    top = records[0]["name"] if records else ""
+    get_size = [record for record in records if "GetSize" in record["name"]]
+    if get_size:
+        state["getSizeFrames"].append(
+            {{"thread": int(thread.num), "names": [record["name"] for record in get_size]}})
+        if thread == fault_thread:
+            best = (thread, top, get_size[0])
+if newest is not None:
+    state["newestFrameName"] = newest[1]
+if best is not None:
+    thread, top, frame = best
+    handler = any(marker in top for marker in HANDLER_MARKERS)
+    state["handlerFrameAtTop"] = handler
+    state["selectedThread"] = int(thread.num)
+    state["selectedFrameIndex"] = frame["index"]
+    state["selectedFrameName"] = frame["name"]
+    if handler:
+        print("DIAGNOSTIC_CORE_FRAME_SELECT " + json.dumps(
+            {{"skippedHandlerFrame": top, "selectedFrame": frame["name"],
+              "reason": "GetSize frame below a signal handler frame"}}, sort_keys=True),
+            flush=True)
+    elif frame["index"] != 0:
+        print("DIAGNOSTIC_CORE_FRAME_SELECT " + json.dumps(
+            {{"skippedNewestFrame": top, "selectedFrame": frame["name"],
+              "reason": "innermost GetSize frame"}}, sort_keys=True), flush=True)
+    try:
+        gdb.execute("thread " + str(int(thread.num)))
+        gdb.execute("frame " + str(frame["index"]))
+    except gdb.error as error:
+        state["readErrors"] += 1
+        print("DIAGNOSTIC_CORE_READ_ERROR " + str(error), flush=True)
+    for command in FRAME_COMMANDS:
+        emit("FRAME_COMMAND " + command, run(command))
+else:
+    state["notes"].append("no GetSize frame was present in any thread")
+    if newest is not None:
+        thread, top = newest
+        thread.switch()
+        gdb.execute("frame 0")
+        state["selectedThread"] = int(thread.num)
+        state["selectedFrameIndex"] = 0
+        state["selectedFrameName"] = top
+        for command in FRAME_COMMANDS:
+            emit("FRAME_COMMAND " + command, run(command))
+memory = run("x/8bx $rdi")
+emit("FRAME_COMMAND x/8bx $rdi", memory)
+if not memory or "Cannot access memory" in memory:
+    state["unreadableAtRdi"] = True
+    state["notes"].append("the faulting frame's RDI memory is not in the core")
+else:
+    values = []
+    for line in memory.splitlines():
+        _address, _separator, tail = line.partition(":")
+        for token in tail.split():
+            if token.startswith("0x") and len(token) == 4:
+                try:
+                    values.append(int(token, 16))
+                except ValueError:
+                    continue
+    if len(values) == 8:
+        state["headerBytes"] = values
+        state["zeroBytesAtRdi"] = all(value == 0 for value in values)
+        if state["zeroBytesAtRdi"]:
+            state["notes"].append(
+                "RDI memory reads as zeros; zeros are not by themselves lifecycle "
+                "proof and may belong to a sparse core region")
+with open(CAPTURE_PATH, "x", encoding="utf-8") as stream:
+    json.dump(state, stream, indent=2, sort_keys=True)
+    stream.write("\\n")
+end
+quit
+"""
+
+
+def summarize_core_dump(log_path: Path,
+                        capture_path: Path) -> dict[str, object]:
+    """Normalize what the offline dump actually recorded."""
+    state: dict[str, object] = {}
+    if capture_path.is_file() and capture_path.stat().st_size > 0:
+        try:
+            loaded = json.loads(capture_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            loaded = {}
+        if isinstance(loaded, dict):
+            state = loaded
+    text = log_path.read_text(encoding="utf-8", errors="replace") \
+        if log_path.is_file() else ""
+    # `p $_siginfo` prints `si_signo = 11`; only that field is a signal number.
+    signal_pattern = re.compile(r"si_signo\s*=\s*(-?\d+)")
+    signals = sorted({int(match) for match in signal_pattern.findall(text)})
+    notes = state.get("notes")
+    return {
+        "loaded": bool(state.get("loaded")),
+        "inferiorPid": state.get("inferiorPid"),
+        "threads": state.get("threads"),
+        "frameCount": state.get("frameCount"),
+        "crashThread": state.get("crashThread"),
+        "threadFrameCounts": state.get("threadFrameCounts") or {},
+        "newestFrameName": state.get("newestFrameName"),
+        "selectedThread": state.get("selectedThread"),
+        "selectedFrameIndex": state.get("selectedFrameIndex"),
+        "selectedFrameName": state.get("selectedFrameName"),
+        "handlerFrameAtTop": state.get("handlerFrameAtTop"),
+        "getSizeFrames": state.get("getSizeFrames") or [],
+        "readErrors": state.get("readErrors"),
+        "zeroBytesAtRdi": state.get("zeroBytesAtRdi"),
+        "unreadableAtRdi": state.get("unreadableAtRdi"),
+        "notes": [sanitize_detail(str(note)) for note in notes]
+        if isinstance(notes, list) else [],
+        "signalNumbers": signals,
+    }
+
+
 def write_public(output: Path, manifest: dict[str, object],
                  diagnosis: str) -> None:
     public = output / "public"
