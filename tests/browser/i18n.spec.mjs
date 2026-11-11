@@ -73,8 +73,9 @@ for (const scenario of [
       const detail = page.locator(`details[id="${context.href.split('#')[1]}"]`);
       await expect(detail).toHaveJSProperty('open', true);
       await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
-      await page.locator('.site-nav .language-label').press('Enter');
-      const english = page.locator('.language-switcher a[hreflang="en"]');
+      await page.locator('.cj-header .cj-lang-toggle__summary').focus();
+      await page.keyboard.press('Enter');
+      const english = page.locator('.cj-lang-toggle a[hreflang="en"]');
       await expect(english).toHaveAttribute('href', new RegExp(translated.href.split('#')[1] + '$'));
       await english.focus();
       await expect(english).toBeFocused();
@@ -98,11 +99,11 @@ for (const scenario of [
 
 test('current language is the header toggle, with keyboard and outside dismissal', async ({ page }) => {
   await page.goto(base + 'html/zh-CN/index.html');
-  const switcher = page.locator('.site-nav .top-actions > .language-switcher');
-  const toggle = switcher.locator('.language-label');
+  const switcher = page.locator('.cj-header .cj-lang-toggle');
+  const toggle = switcher.locator('.cj-lang-toggle__summary');
   await expect(toggle).toHaveText('中文');
-  await expect(page.locator('.site-nav .language-label')).toHaveCount(1);
-  await expect(page.locator('main .language-switcher')).toHaveCount(0);
+  await expect(page.locator('.cj-header .cj-lang-toggle__current')).toHaveCount(1);
+  await expect(page.locator('main .cj-lang-toggle')).toHaveCount(0);
   await expect(switcher).toHaveJSProperty('open', false);
   await toggle.focus();
   await page.keyboard.press('Enter');
@@ -120,7 +121,10 @@ test('current language is the header toggle, with keyboard and outside dismissal
 
 test('search English author text, read the fallback and follow the guide binding', async ({ page }) => {
   await page.goto(base + 'html/en/index.html');
+  // Search lives in a modal dialog opened by its header trigger.
+  await page.locator('[data-cjdoc-search-trigger]').click();
   const input = page.locator('[data-cjdoc-search]');
+  await expect(input).toBeVisible();
   await input.fill('Sapphire');
   const hit = page.locator('[data-cjdoc-results] a').first();
   await expect(hit).toBeVisible();
@@ -141,8 +145,8 @@ test('guide section identity survives translated headings', async ({ page }) => 
   const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'usage');
   const target = manifest.routes.find(x => x.language === 'en' && x.pageId === guidePageId && x.sectionId === 'usage');
   await page.goto(base + source.href);
-  await page.locator('.language-label').click();
-  await page.locator('.language-switcher a[hreflang="en"]').click();
+  await page.locator('.cj-lang-toggle__current').click();
+  await page.locator('.cj-lang-toggle a[hreflang="en"]').click();
   expect(decodeURIComponent(page.url())).toContain(target.href);
   await expect(page.getByRole('heading', { name: 'Usage', exact: true })).toBeVisible();
 });
@@ -154,9 +158,9 @@ test('a missing translated chapter recovers across mapped, empty-hash and browse
   const targetPage = manifest.routes.find(x => x.language === 'en' && x.pageId === guidePageId && !x.sectionId);
   await page.goto(base + source.href);
   await expect(page.getByRole('heading', { name: '高级用法', exact: true })).toBeVisible();
-  await page.locator('.language-label').click();
-  const english = page.locator('.language-switcher a[hreflang=\"en\"]');
-  const notice = english.locator('.language-position-notice');
+  await page.locator('.cj-lang-toggle__current').click();
+  const english = page.locator('.cj-lang-toggle a[hreflang=\"en\"]');
+  const notice = english.locator('.cj-lang-toggle__notice');
   await expect(english).toHaveAttribute('data-position-state', 'page-start');
   await expect(notice).toBeVisible();
   await expect(english).toHaveAttribute('title', '该语言没有对应章节，打开同一页面的开头');
@@ -191,13 +195,13 @@ test('a language-home fallback is visible in server-rendered main-page navigatio
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await page.goto(versionsBase + 'v1/html/en/concepts/guides/legacy.html');
-  const switcher = page.locator('details.language-switcher');
+  const switcher = page.locator('details.cj-lang-toggle');
   await switcher.evaluate(element => { element.open = true; });
   const fallback = switcher.locator('a[hreflang=\"zh-CN\"]');
   await expect(fallback).toHaveAttribute('data-switch-state', 'language-home');
   await expect(fallback).toHaveAttribute('data-position-state', 'language-home');
   await expect(fallback).toHaveAttribute('title', 'This page is unavailable; open the language home');
-  const notice = fallback.locator('.language-position-notice');
+  const notice = fallback.locator('.cj-lang-toggle__notice');
   await expect(notice).toBeVisible();
   await expect(notice).toHaveText('This page is unavailable; open the language home');
   const noticeBox = await notice.boundingBox();
@@ -211,9 +215,9 @@ test('a language-home fallback is visible in server-rendered main-page navigatio
 
 test('hash updates preserve a page-level language-home fallback', async ({ page }) => {
   await page.goto(versionsBase + 'v1/html/en/concepts/guides/legacy.html');
-  await page.locator('.language-label').click();
-  const fallback = page.locator('.language-switcher a[hreflang=\"zh-CN\"]');
-  const notice = fallback.locator('.language-position-notice');
+  await page.locator('.cj-lang-toggle__current').click();
+  const fallback = page.locator('.cj-lang-toggle a[hreflang=\"zh-CN\"]');
+  const notice = fallback.locator('.cj-lang-toggle__notice');
   const home = new URL(await fallback.getAttribute('href'), page.url()).href;
   await expect(fallback).toHaveAttribute('data-position-state', 'language-home');
   await expect(notice).toBeVisible();
@@ -259,8 +263,8 @@ test('real version switching exposes exact and fallback reasons, then navigates 
 
 test('Ctrl or Command click opens the exact overload and parameter in a new tab', async ({ page, context: browserContext }) => {
   await page.goto(base + parameter.href);
-  await page.locator('.language-label').click();
-  const english = page.locator('.language-switcher a[hreflang="en"]');
+  await page.locator('.cj-lang-toggle__current').click();
+  const english = page.locator('.cj-lang-toggle a[hreflang="en"]');
   await expect(english).toHaveAttribute('href', new RegExp(translated.href.split('#')[1] + '$'));
   const [opened] = await Promise.all([
     browserContext.waitForEvent('page'),
@@ -278,8 +282,8 @@ test.describe('static offline reading', () => {
   test('read authored text and switch language using a real file link', async ({ page }) => {
     await page.goto(destination('file', 'html/zh-CN/concepts/guides/start.html'));
     await expect(page.getByText('这份指南演示双语算术 API。')).toBeVisible();
-    await page.locator('.language-label').click();
-    await page.locator('.language-switcher a[hreflang="en"]').click();
+    await page.locator('.cj-lang-toggle__current').click();
+    await page.locator('.cj-lang-toggle a[hreflang="en"]').click();
     await expect(page.getByText('This guide demonstrates the bilingual arithmetic API.')).toBeVisible();
   });
 });
@@ -293,14 +297,14 @@ for (const mode of ['file', 'http']) {
       const target = manifest.routes.find(route => route.language === 'en' &&
         route.symbolId === member.id && route.pageId === context.pageId && !route.sectionId);
       await page.goto(destination(mode, context.href.split('#')[0]));
-      const directory = width === 390 ? page.locator('[data-cjdoc-mobile-toc]') : page.locator('.toc-panel');
+      const directory = width === 390 ? page.locator('[data-cjdoc-mobile-toc]') : page.locator('.cj-toc');
       if (width === 390) await directory.locator('summary').click();
       const link = directory.locator(`a[data-toc-target="${memberId}"]`);
       await expect(link).toHaveAttribute('href', `#${memberId}`);
       await link.click();
       await expect(page.locator(`details[id="${memberId}"]`)).toHaveJSProperty('open', true);
-      await page.locator('.language-label').click();
-      const english = page.locator('.language-switcher a[hreflang="en"]');
+      await page.locator('.cj-lang-toggle__current').click();
+      const english = page.locator('.cj-lang-toggle a[hreflang="en"]');
       await expect(english).toHaveAttribute('data-position-state', 'mapped');
       await english.click();
       expect(page.url()).toBe(destination(mode, target.href));

@@ -191,8 +191,8 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         }
         return [...element.getClientRects()].some(rect => rect.width > 0 && rect.height > 0);
       };
-      const signatures = [...document.querySelectorAll('[data-cjdoc-member] summary .declaration-signature')];
-      const bodies = [...document.querySelectorAll('.member-detail-body')];
+      const signatures = [...document.querySelectorAll('[data-cjdoc-member] summary .cj-signature-inline')];
+      const bodies = [...document.querySelectorAll('.cj-member__body')];
       const ids = nodes => nodes.filter(visible).map(node => node.closest('[data-cjdoc-member]').id);
       const visibleSignatureIds = ids(signatures), visibleDetailIds = ids(bodies);
       return { contentVisible: visible(document.querySelector('main')),
@@ -212,13 +212,13 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         await route.fulfill({ response, body: await response.text() +
           '\n@media print{' + hiddenSelector + '{display:none!important}}' });
       });
-      for (const selector of ['.member-detail-body', '[data-cjdoc-member] summary .declaration-signature', 'main']) {
+      for (const selector of ['.cj-member__body', '[data-cjdoc-member] summary .cj-signature-inline', 'main']) {
         hiddenSelector = selector;
         await page.reload();
         await rows.evaluateAll(nodes => { nodes[0].open = true; nodes[nodes.length - 1].open = true; });
         const hidden = await observePrint();
         const detected = selector === 'main' ? !hidden.contentVisible && !hidden.signatures && !hidden.detailBodies
-          : selector === '.member-detail-body' ? hidden.detailBodies === 0 : hidden.signatures === 0;
+          : selector === '.cj-member__body' ? hidden.detailBodies === 0 : hidden.signatures === 0;
         if (!detected) throw new Error('print observer missed CSS counterexample: ' + selector);
         printCounterexamples.push({ selector, detected, observation: hidden });
       }

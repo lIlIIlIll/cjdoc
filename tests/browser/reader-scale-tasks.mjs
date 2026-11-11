@@ -118,8 +118,8 @@ export async function memberTasks(context, index, manifest, base, samples) {
         const state = await page.evaluate(() => ({
           filter: document.querySelector('[data-cjdoc-member-filter]')?.value,
           visibleMembers: [...document.querySelectorAll('[data-cjdoc-member]')].filter(row => !row.hidden).length,
-          sidebarTruncated: Boolean(document.querySelector('.sidebar-limit')),
-          contextItems: document.querySelectorAll('[data-cjdoc-context-item]').length,
+          sidebarTruncated: Boolean(document.querySelector('.cj-tree__more')),
+          contextItems: document.querySelectorAll('[data-cjdoc-tree-item]').length,
         }));
         records.push({ id: task.id, owner, expectedId: expected.id, ordinal: task.ordinal,
           foundByBodyFilter, deepLink, state, pass: foundByBodyFilter && deepLink,
@@ -171,7 +171,7 @@ export async function overloadTasks(context, index, manifest, base) {
         const row = page.locator('#' + anchorFor(target));
         await row.locator(':scope > summary').click();
         details.push({ id: target.id, signature: await row.locator(':scope > summary code').first().textContent(),
-          authoredDetails: await row.locator('.member-detail-body').innerText() });
+          authoredDetails: await row.locator('.cj-member__body').innerText() });
       }
       const openIds = await page.locator('[data-cjdoc-member][open]').evaluateAll(rows => rows.map(row => row.id));
       const simultaneouslyOpen = targets.every(target => target && openIds.includes(anchorFor(target)));

@@ -47,7 +47,7 @@ class VersionLinks(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list) -> None:
         values = dict(attrs)
         if tag == "nav":
-            self.active = "cjdoc-version-selector" in values.get("class", "").split()
+            self.active = "cj-version-select" in values.get("class", "").split()
         if tag == "a" and self.active:
             self.anchor = (self.position(), values)
 

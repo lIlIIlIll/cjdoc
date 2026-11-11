@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   for (const name of await readdir(path.join(root, 'symbols'))) {
     if (!name.endsWith('.html')) continue;
     const html = await readFile(path.join(root, 'symbols', name), 'utf8');
-    if (html.includes('data-language="python"') && html.includes('api-page-header')) {
+    if (html.includes('data-language="python"') && html.includes('cj-page-header--api')) {
       sample = 'symbols/' + name; break;
     }
   }
@@ -55,13 +55,13 @@ test('file and HTTP subpath show static colors with JavaScript disabled', async 
     const requests = [];
     page.on('request', request => requests.push(request.url()));
     await page.goto(url);
-    await expect(page.locator('pre code[data-language="python"] .code-keyword').first()).toBeVisible();
-    const staticColors = await page.locator('pre code[data-language="python"] .code-keyword').first().evaluate(element => ({
+    await expect(page.locator('pre code[data-language="python"] .cj-tok-keyword').first()).toBeVisible();
+    const staticColors = await page.locator('pre code[data-language="python"] .cj-tok-keyword').first().evaluate(element => ({
       token: getComputedStyle(element).color, plain: getComputedStyle(element.closest('code')).color,
     }));
     expect(staticColors.token).not.toBe(staticColors.plain);
     for (const language of ['cangjie', 'python', 'json', 'bash', 'toml', 'yaml']) {
-      const colors = await page.locator(`pre code[data-language="${language}"] [class^="code-"]`).evaluateAll(elements => elements.map(element => ({
+      const colors = await page.locator(`pre code[data-language="${language}"] [class^="cj-tok-"]`).evaluateAll(elements => elements.map(element => ({
         token: getComputedStyle(element).color, plain: getComputedStyle(element.closest('code')).color,
       })));
       expect(colors.some(color => color.token !== color.plain), language).toBe(true);
@@ -84,7 +84,7 @@ test('copy reads original extracted bytes and leaves colored DOM intact', async 
     const original = JSON.parse(await code.getAttribute('data-cjdoc-source'));
     originals.push(original);
     const before = await code.innerHTML();
-    await code.locator('xpath=..').locator('.code-copy').click();
+    await code.locator('xpath=..').locator('.cj-code__copy').click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(original);
     expect(await code.innerHTML()).toBe(before);
     // HTML normalizes newlines; clipboard must preserve the bound source bytes.
@@ -112,7 +112,7 @@ test('real execCommand fallback preserves original CRLF rather than textarea nor
       trusted: event.isTrusted, prevented: event.defaultPrevented, text: event.clipboardData.getData('text/plain'),
     }));
   });
-  await code.locator('xpath=..').locator('.code-copy').click();
+  await code.locator('xpath=..').locator('.cj-code__copy').click();
   await expect.poll(() => page.evaluate(() => globalThis.readRealClipboard())).toBe(original);
   expect(await page.evaluate(() => globalThis.realCopyEvents)).toEqual([{ trusted: true, prevented: true, text: original }]);
   expect(await code.innerHTML()).toBe(before);
@@ -121,25 +121,25 @@ test('real execCommand fallback preserves original CRLF rather than textarea nor
 test('all theme states retain contrast and token metrics on desktop/mobile', async ({ page, browser }, info) => {
   await page.goto(origin + '/reference/' + sample);
   const contrastReport = [];
-  const geometry = () => page.locator('pre code, .declaration-signature').evaluateAll(elements => elements.map(element => {
+  const geometry = () => page.locator('pre code, .cj-signature-inline').evaluateAll(elements => elements.map(element => {
     const box = element.getBoundingClientRect();
     return { width: box.width, height: box.height, font: getComputedStyle(element).fontFamily };
   }));
   const initialGeometry = await geometry();
-  const originalMarkup = await page.locator('pre code, .declaration-signature').evaluateAll(elements => elements.map(element => element.innerHTML));
+  const originalMarkup = await page.locator('pre code, .cj-signature-inline').evaluateAll(elements => elements.map(element => element.innerHTML));
   for (const theme of themes) {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.evaluate(theme => {
       if (theme === 'system') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.dataset.theme = theme;
     }, theme);
-    const tokens = await page.locator('pre code [class^="code-"], .declaration-signature [class^="code-"]').evaluateAll(elements => elements.map(element => {
+    const tokens = await page.locator('pre code [class^="cj-tok-"], .cj-signature-inline [class^="cj-tok-"]').evaluateAll(elements => elements.map(element => {
       const style = getComputedStyle(element);
       const code = getComputedStyle(element.closest('code'));
       let background = element;
       while (background.parentElement && getComputedStyle(background).backgroundColor === 'rgba(0, 0, 0, 0)') background = background.parentElement;
       return { kind: element.className, color: style.color, background: getComputedStyle(background).backgroundColor,
-        signature: !!element.closest('.signature-block, .declaration-signature'), font: style.fontFamily, parentFont: code.fontFamily,
+        signature: !!element.closest('.cj-signature, .cj-signature-inline'), font: style.fontFamily, parentFont: code.fontFamily,
         weight: style.fontWeight, parentWeight: code.fontWeight, fontStyle: style.fontStyle };
     }));
     expect(tokens.length).toBeGreaterThan(10);
@@ -152,7 +152,9 @@ test('all theme states retain contrast and token metrics on desktop/mobile', asy
     for (const token of tokens) {
       expect(contrast(token.color, token.background), `${theme} ${token.kind}`).toBeGreaterThanOrEqual(4.5);
       expect(token.weight).toBe(token.parentWeight);
-      expect(token.fontStyle).toBe('normal');
+      // Colour alone must not disturb the code typography. Comments are the one
+      // documented exception: the stylesheet italicises cj-tok-comment.
+      expect(token.fontStyle).toBe(token.kind.split(' ').includes('cj-tok-comment') ? 'italic' : 'normal');
       expect(token.font).toBe(token.parentFont);
     }
     const signatureKinds = [...new Set(tokens.filter(token => token.signature).map(token => token.kind))];
@@ -164,7 +166,7 @@ test('all theme states retain contrast and token metrics on desktop/mobile', asy
     }
     await page.screenshot({ path: info.outputPath('theme-' + theme + '.png') });
     expect(await geometry()).toEqual(initialGeometry);
-    expect(await page.locator('pre code, .declaration-signature').evaluateAll(elements => elements.map(element => element.innerHTML))).toEqual(originalMarkup);
+    expect(await page.locator('pre code, .cj-signature-inline').evaluateAll(elements => elements.map(element => element.innerHTML))).toEqual(originalMarkup);
   }
   await writeFile(info.outputPath('contrast.json'), JSON.stringify({
     browser: browser.version(), font: await page.locator('pre code').first().evaluate(element => getComputedStyle(element).fontFamily),
@@ -214,7 +216,10 @@ test('native browser 200% zoom retains layout, source text and link identity', a
     const snapshot = (targetPage = page) => targetPage.evaluate(() => ({
       width: innerWidth, dpr: devicePixelRatio, scroll: document.documentElement.scrollWidth,
       text: [...document.querySelectorAll('pre code')].map(code => code.textContent),
-      links: [...document.querySelectorAll('.signature-type-link')].map(link => ({ text: link.textContent, href: link.href })),
+      // Scope to the signature: parameter/return definition lists repeat the
+      // same type links outside the declaration itself.
+      links: [...document.querySelectorAll('.cj-signature code .cj-type-link[data-doc-match="exact"]')]
+        .map(link => ({ text: link.textContent, href: link.href })),
       font: getComputedStyle(document.querySelector('pre code')).fontFamily,
     }));
     const before = await snapshot();
@@ -251,9 +256,9 @@ test('native browser 200% zoom retains layout, source text and link identity', a
     let exactTypeClickedAt200Percent = false;
     if (expectedTypeLinks) {
       const target = search.entries.find(entry => entry.name === 'Token' && entry.kind === 'class');
-      await linkedPage.locator('.signature-block code .signature-type-link').first().click();
+      await linkedPage.locator('.cj-signature code .cj-type-link[data-doc-match="exact"]').first().click();
       await expect(linkedPage).toHaveURL(origin + '/reference/' + target.href);
-      await expect(linkedPage.locator('.api-page-header h1')).toHaveText('Token');
+      await expect(linkedPage.locator('.cj-page-header--api h1')).toHaveText('Token');
       exactTypeClickedAt200Percent = true;
     }
     await writeFile(info.outputPath('native-zoom.json'), JSON.stringify({ zoom, before, after, linkedBefore, linkedAfter, exactTypeClickedAt200Percent }, null, 2));
@@ -270,11 +275,13 @@ test('reliable signature type links navigate exact identity without linking defa
   expect(subject).toBeTruthy();
   expect(target).toBeTruthy();
   await page.goto(origin + '/reference/' + subject.href);
-  const signature = page.locator('.signature-block code');
+  const signature = page.locator('.cj-signature code');
   expect(await signature.textContent()).toBe(signatureSource);
-  await expect(signature.locator('.code-string a')).toHaveCount(0);
+  await expect(signature.locator('.cj-tok-string a')).toHaveCount(0);
   await expect(signature.locator('a a')).toHaveCount(0);
-  const links = signature.locator('.signature-type-link');
+  // The oracle counts exact identity links; standard-library documentation
+  // routes carry data-doc-match="manual" and are not identity evidence.
+  const links = signature.locator('.cj-type-link[data-doc-match="exact"]');
   const expected = expectedTypeLinks;
   await expect(links).toHaveCount(expected);
   const linkOffsets = await links.evaluateAll(anchors => anchors.map(anchor => {
@@ -301,11 +308,11 @@ test('reliable signature type links navigate exact identity without linking defa
     await expect(links.first()).toBeFocused();
     await links.first().press('Enter');
     expect(page.url()).toBe(origin + '/reference/' + target.href);
-    await expect(page.locator('.api-page-header h1')).toHaveText('Token');
+    await expect(page.locator('.cj-page-header--api h1')).toHaveText('Token');
     await page.goBack();
-    await expect(page.locator('.signature-block code .signature-type-link')).toHaveCount(2);
+    await expect(page.locator('.cj-signature code .cj-type-link[data-doc-match="exact"]')).toHaveCount(2);
     await page.reload();
-    await expect(page.locator('.signature-block code .signature-type-link')).toHaveCount(2);
+    await expect(page.locator('.cj-signature code .cj-type-link[data-doc-match="exact"]')).toHaveCount(2);
     await page.screenshot({ path: info.outputPath('reliable-type-links.png') });
   }
 });

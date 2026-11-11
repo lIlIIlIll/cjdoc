@@ -42,8 +42,7 @@ private func packageRowsHtml(documentation: DocumentationSet, locale: String): S
 // link keeps resolving whichever shape a package projects.
 private func declarationRowsHtml(html: String): String {
     let marker = html.indexOf("id=\"declarations\"").getOrThrow()
-    let sectionStart = html[0..marker].lastIndexOf("<section").getOrThrow()
-    html[sectionStart..html.indexOf("</main>").getOrThrow()]
+    html[marker..html.indexOf("</main>").getOrThrow()]
 }
 
 @Test
@@ -67,14 +66,14 @@ class HtmlPackageDeclarationTest {
         let links = HtmlTypeLinkIndex(documentation, projection)
         @Expect(links.reverseUsages(target.id).size, kinds.size)
         for (locale in ["en", "zh-CN"]) {
-            let out = RenderTextBuffer()
+            let out = HtmlWriter()
             appendReverseTypeUsages(out, projection.visibleIndex, links, target, "../", locale)
             let html = out.toString()
-            @Expect(html.split("<li>").size - 1, kinds.size)
+            @Expect(html.split("class=\"cj-usages__item\"").size - 1, kinds.size)
             @Expect(!html.contains("provider<&>"))
             @Expect(html.contains("provider&lt;&amp;&gt;"))
             for (usage in links.reverseUsages(target.id)) {
-                @Expect(html.contains("../" + escapeHtml(symbolUrl(projection.visibleIndex, usage.source))))
+                @Expect(html.contains("../" + symbolUrl(projection.visibleIndex, usage.source)))
             }
         }
     }
@@ -96,11 +95,15 @@ class HtmlPackageDeclarationTest {
             @Expect(html.contains("<code>Map&lt;K, V&gt;</code>"))
             @Expect(html.contains("<code>Unknown</code>"))
             @Expect(!html.contains("<code>Unknown&lt;NotInModel&gt;</code>"))
-            @Expect(html.contains("public class Unknown&lt;NotInModel&gt;"))
-            @Expect(html.contains("public class Map&lt;K,V&gt; where K &lt;: Hashable&lt;K&gt;"))
             @Expect(html.contains("<code>Entry&lt;String&gt;</code>"))
             @Expect(!html.contains("Entry&lt;String&gt;&lt;T&gt;"))
-            @Expect(!html.contains("class=\"declaration-kind\""))
+            // Rows link to the stable declaration routes and never inline the
+            // captured source header; the kind is the badge, not a heading.
+            for (symbol in documentation.declarations) {
+                @Expect(html.contains("href=\"../" + symbolPagePath(symbol) + "\""))
+            }
+            @Expect(!html.contains("where K &lt;: Hashable"))
+            @Expect(html.contains("class=\"cj-kind\" data-kind=\"class\""))
             @Expect(html.contains(if (locale == "en") { "Classes (3)" } else { "类（3）" }))
         }
         @Expect(encodeDocIr(documentation), original)
@@ -127,9 +130,11 @@ class HtmlPackageDeclarationTest {
                     CodeSpan(raw.indexOf("\"Entry\"").getOrThrow(),
                         raw.indexOf("\"Entry\"").getOrThrow() + 7, "string")])))
         let html = declarationRowsHtml(packageRowsHtml(rowDocumentation([target, function]), "en"))
-        @Expect(html.split("class=\"type-link signature-type-link\"").size, 3)
-        @Expect(html.contains("<span class=\"code-keyword\">public</span>"))
-        @Expect(html.contains("<span class=\"code-string\">&quot;Entry&quot;</span>"))
+        // Package rows are a compact table: the signature stays on the declaration page.
+        @Expect(!html.contains("cj-signature"))
+        @Expect(html.contains("class=\"cj-decl-table__link\""))
+        @Expect(!html.contains("cj-signature-inline"))
+        @Expect(html.split("class=\"cj-decl-table__row\"").size - 1, 2)
         @Expect(!html.contains("&quot;<a"))
     }
 
@@ -155,8 +160,8 @@ class HtmlPackageDeclarationTest {
         @Expect(external.contains("类（1）"))
         @Expect(external.contains("函数（1）"))
         @Expect(external.contains("宏（1）"))
-        @Expect(external.contains("class=\"declaration-kind\">类</span>"))
-        @Expect(external.contains("class=\"declaration-kind\">函数</span>"))
+        @Expect(external.contains("class=\"cj-kind\" data-kind=\"class\">类</span>"))
+        @Expect(external.contains("class=\"cj-kind\" data-kind=\"function\">函数</span>"))
         @Expect(htmlKindLabel("macro", "zh-CN"), "宏")
         @Expect(external.contains("Quoted"))
         @Expect(!external.contains("Hidden"))
@@ -186,13 +191,15 @@ class HtmlPackageDeclarationTest {
             rowSymbol("class:Empty#g0()", "Empty", "class", "")
         ])
         let html = declarationRowsHtml(packageRowsHtml(documentation, "en"))
-        @Expect(html.contains("<code>&lt;&gt;&amp;&quot;&#39;</code>"))
+        // Rows show the navigation label, which keeps the parameter list of a
+        // function distinguishable; the escaped source name is still escaped.
+        @Expect(html.contains("<code>&lt;&gt;&amp;&quot;&#39;()</code>"), true)
         @Expect(html.contains("中文摘要 &lt;&gt;&amp;&quot;&#39; English summary &amp; details"))
         @Expect(!html.contains("<code><>&"))
-        @Expect(html.contains("public func read(value: Int64 = 42): Unit"))
-        @Expect(html.contains("public func read(value: String = &quot;&lt;&gt;&amp;&quot;): Unit"))
-        @Expect(!html.contains("<p class=\"declaration-description\"></p>"))
-        @Expect(!html.contains("class=\"declaration-classification\""))
+        // Overloads stay distinct rows even though the table drops signatures.
+        @Expect(html.split("data-member-name=\"read\"").size - 1, 2)
+        @Expect(html.contains("<td class=\"cj-decl-table__summary\"></td>"))
+        @Expect(!html.contains("class=\"cj-badges\""))
     }
 
     @TestCase
@@ -225,7 +232,7 @@ class HtmlPackageDeclarationTest {
         @Expect(!html.contains("<img src=x onerror=alert(1)>"))
         @Expect(!html.contains("<svg onload=alert(1)>"))
         @Expect(!html.contains(unusedSentinel))
-        @Expect(html.contains("</a><div class=\"declaration-classification\">"))
+        @Expect(html.contains("</a><div class=\"cj-badges\">"))
         @Expect(html.contains("data-cjdoc-tag-id=\"stream\""))
         @Expect(html.contains("href=\"../index.html?tag=stream&amp;moduleId=cjdoc%3Amodule%3Av1%3Apackage-rows&amp;snapshotId="))
     }
@@ -245,6 +252,7 @@ class HtmlPackageDeclarationTest {
             let count = cases[index][2]
             let html = packageRowsHtml(onlyFunctions, locale)
             @Expect(html.split("id=\"declarations\"").size, 2)
+            @Expect(html.contains("<span class=\"cj-anchor-alias\" id=\"functions\" aria-hidden=\"true\"></span>"))
             @Expect(html.contains("<h2 id=\"declarations\" data-cjdoc-toc-role=\"group\">" + heading + count + "</h2>"))
             @Expect(!html.contains("<h2 id=\"functions\""))
             @Expect(!html.contains("<h2 id=\"declarations\">" + if (locale == "en") { "Declarations" } else { "声明" }))
@@ -298,7 +306,7 @@ class HtmlPackageDeclarationTest {
             let heading = cases[index][1]
             let html = packageRowsHtml(document, locale)
             @Expect(html.contains("<h2 id=\"declarations\" data-cjdoc-toc-role=\"group\">" + heading + "</h2>"))
-            @Expect(html.contains("class=\"empty-state\""))
+            @Expect(html.contains("class=\"cj-empty\""))
         }
     }
 }

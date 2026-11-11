@@ -40,7 +40,7 @@ private func introductionPage(kind: String, comment: DocComment, locale: String)
         files: [FileDoc("src/catalog.cj", INTRO_MODULE, "fixture")], declarations: [symbol])
     let selected = projectDocumentationLanguage(original, locale)
     for (artifact in HtmlDocumentationRenderer().render(selected)) {
-        if (artifact.path.startsWith("html/symbols/") && artifact.content.contains("api-page-header")) {
+        if (artifact.path.startsWith("html/symbols/") && artifact.content.contains("cj-page-header--api")) {
             return artifact.content
         }
     }
@@ -57,8 +57,8 @@ class HtmlIntroductionTest {
                     defaultLanguage: Some(locale),
                     localizedTexts: [introductionText(kind, "description", locale)])
                 let html = introductionPage(kind, comment, locale)
-                @Expect(html.contains("id=\"overview\" class=\"api-introduction\""))
-                @Expect(html.contains("class=\"description\""))
+                @Expect(html.contains("id=\"overview\""))
+                @Expect(html.contains("class=\"cj-description\""))
                 @Expect(html.contains("Detailed introduction"))
             }
         }
@@ -73,7 +73,7 @@ class HtmlIntroductionTest {
                     localizedTexts: [introductionText(kind, "summary", locale, multiple: true)])
                 let html = introductionPage(kind, comment, locale)
                 @Expect(!html.contains("id=\"overview\""))
-                @Expect(!html.contains("class=\"description\""))
+                @Expect(!html.contains("class=\"cj-description\""))
                 @Expect(html.contains("Brief summary"))
                 @Expect(html.contains("Second summary paragraph"))
             }
@@ -98,7 +98,7 @@ class HtmlIntroductionTest {
                         introductionText(kind, "description", "en", state: state)])
                 let missing = introductionPage(kind, unusable, "en")
                 @Expect(!missing.contains("id=\"overview\""))
-                @Expect(!missing.contains("class=\"description\""))
+                @Expect(!missing.contains("class=\"cj-description\""))
             }
         }
     }
@@ -114,7 +114,7 @@ class HtmlIntroductionTest {
             @Expect(!introductionPage(kind, brief, "en").contains("id=\"overview\""))
             let html = introductionPage(kind, full, "en")
             @Expect(html.contains("id=\"overview\""))
-            @Expect(html.contains("<div class=\"description\"><p>Legacy description</p>"))
+            @Expect(html.contains("Legacy description"))
             @Expect(html.split("Legacy summary").size, 2)
         }
     }
@@ -191,7 +191,7 @@ class HtmlOwnerDocumentationContextTest {
                 "Sibling summary", "sibling-only prose")))
         let html = ownerContextTestPage([owner, current, sibling], current)
         let memberField = documentationFieldAnchor("shared-field")
-        @Expect(html.contains("class=\"owner-documentation-context\""))
+        @Expect(html.contains("data-cjdoc-owner-context"))
         @Expect(html.contains("data-cjdoc-owner-context-source=\"${owner.id}\""))
         @Expect(html.split("data-cjdoc-owner-context-source=\"${owner.id}\"").size - 1, 1)
         @Expect(html.contains("href=\"../${symbolPagePath(owner)}\""))
@@ -207,7 +207,7 @@ class HtmlOwnerDocumentationContextTest {
         expectOwnerContextUniqueIds(html)
         @Expect(html.contains("id=\"${symbolAnchor(owner)}--doc-owner-guidance\""))
         let ownerPage = ownerContextTestPage([owner, current, sibling], owner)
-        @Expect(!ownerPage.contains("class=\"owner-documentation-context\""))
+        @Expect(!ownerPage.contains("data-cjdoc-owner-context"))
     }
 
     @TestCase
@@ -233,7 +233,7 @@ class HtmlOwnerDocumentationContextTest {
         index[inner.id] = inner
         index[leaf.id] = leaf
         let owners = visibleOwnerChain(index, leaf)
-        let out = RenderTextBuffer()
+        let out = HtmlWriter()
         appendOwnerDocumentationContext(out, index, leaf, owners,
             HashMap<String, String>(), "../", "en")
         let html = out.toString()

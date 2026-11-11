@@ -87,9 +87,9 @@ class Signature(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        if tag == 'pre' and not self.finished and 'signature-block' in attrs.get('class', '').split():
+        if tag == 'pre' and not self.finished and 'cj-signature' in attrs.get('class', '').split():
             self.active = True
-        if self.active and tag == 'a' and 'signature-type-link' in attrs.get('class', '').split():
+        if self.active and tag == 'a' and 'cj-type-link' in attrs.get('class', '').split():
             self.anchor = [attrs.get('href', ''), '']
 
     def handle_data(self, data):

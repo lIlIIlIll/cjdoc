@@ -32,6 +32,13 @@ LANGUAGES = {
     "toml": '[app]\nname = "中"\nenabled = true\n',
     "yaml": 'app:\n  enabled: true\n  name: "中"\n',
 }
+
+
+def has_token_class(classes):
+    """True when a span carries a highlight token class from the cjdoc vocabulary."""
+    return any(name.startswith('cj-tok-') for name in classes.split())
+
+
 CANGJIE_CORPUS = [
     "let text = \"normal\\n\\\"quoted\\\"\"\nlet empty = \"\"\n",
     "let raw = ##\"a #\" b\"##\n",
@@ -363,7 +370,7 @@ class CodeSurface(HTMLParser):
             self.current = {'source': json.loads(attrs['data-cjdoc-source']), 'links': [], 'colors': []}
         elif self.current is not None and tag == 'a':
             self.current['links'].append(attrs.get('href'))
-        elif self.current is not None and tag == 'span' and attrs.get('class', '').startswith('code-'):
+        elif self.current is not None and tag == 'span' and has_token_class(attrs.get('class', '')):
             self.current['colors'].append(attrs['class'])
 
     def handle_endtag(self, tag):
@@ -470,7 +477,7 @@ class SiteCost(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         self.nodes += 1
-        if tag == 'span' and any(key == 'class' and value.startswith('code-') for key, value in attrs):
+        if tag == 'span' and any(key == 'class' and has_token_class(value) for key, value in attrs):
             self.spans += 1
 
 

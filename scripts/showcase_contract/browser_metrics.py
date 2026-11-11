@@ -20,7 +20,7 @@ def layout(page) -> dict:
       const summaries = rows.map(row => row.querySelector("summary")).filter(shown);
       const visible = summaries.filter(node => { const r=rect(node); return r.bottom > 0 && r.top < innerHeight; });
       const list = rect(document.querySelector("[data-cjdoc-member-browser]"));
-      const main = rect(document.querySelector(".docs-main"));
+      const main = rect(document.querySelector(".cj-main"));
       return {memberCount: rows.length, firstScreenMembers: visible.length,
         listHeight: list ? Math.round(list.height) : 0,
         compactRowHeight: Math.max(0, ...rows.filter(row => !row.open).map(row => rect(row).height)),

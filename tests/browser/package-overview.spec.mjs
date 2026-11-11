@@ -39,7 +39,7 @@ for (const mode of ['file', 'http']) {
       await expect(page.locator('main h1')).toContainText('pocketkit');
       await expect(page.locator('main')).toContainText(fixture.apiMarker);
       await expect(page.locator('main')).not.toContainText(fixture.forbiddenApiMarker);
-      const overview = page.locator('.package-overview');
+      const overview = page.locator('.cj-package-overview');
       if (fixture.authored) {
         await expect(overview).toBeVisible();
         await expect(overview).toContainText(fixture.summary);
@@ -47,7 +47,7 @@ for (const mode of ['file', 'http']) {
         await expect(overview.locator('pre')).toHaveCount(0);
         await expect(overview.locator('h1, h2')).toHaveCount(0);
         if (shots && fixture.name === 'authored-en') await page.screenshot({ path: path.join(shots, test.info().project.name + '-' + mode + '-authored.png') });
-        await overview.locator('.package-overview-link').click();
+        await overview.locator('.cj-package-overview__link').click();
         const expectedGuide = mode === 'file' ? pathToFileURL(path.join(root, fixture.guide)).href : base + fixture.guide;
         await expect(page).toHaveURL(expectedGuide);
         await expect(page.locator('html')).toHaveAttribute('lang', fixture.locale);
@@ -55,7 +55,7 @@ for (const mode of ['file', 'http']) {
         for (const marker of fixture.forbiddenBodyMarkers) await expect(page.locator('main')).not.toContainText(marker);
         await expect(page.locator('main h1')).toHaveCount(1);
         await expect(page.locator('main pre')).toBeVisible();
-        await page.locator('.package-api-return a').click();
+        await page.locator('.cj-package-return a').click();
         await expect(page).toHaveURL(destination + '#declarations');
         await expect(page.locator('#declarations')).toBeInViewport();
         await expect(page.locator('main h1')).toContainText('pocketkit');
@@ -66,11 +66,11 @@ for (const mode of ['file', 'http']) {
         await expect(page.locator('#declarations')).toBeInViewport();
       } else {
         await expect(overview).toHaveCount(0);
-        await expect(page.locator('.package-overview-link')).toHaveCount(0);
+        await expect(page.locator('.cj-package-overview__link')).toHaveCount(0);
         await expect(page.locator('main')).not.toContainText('This page describes');
         await expect(page.locator('#declarations')).toBeInViewport();
         // Follow the first real API entry, not only its href, then browser-back.
-        const entry = page.locator('main .declaration-index a, main .package-declarations a, main a').filter({ hasText: 'Entry' }).first();
+        const entry = page.locator('main .cj-package-index a, main .cj-decl-table a, main a').filter({ hasText: 'Entry' }).first();
         await entry.click();
         await expect(page.locator('main h1')).toContainText('Entry');
         await page.goBack();

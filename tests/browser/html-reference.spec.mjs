@@ -74,6 +74,10 @@ async function setTheme(page, theme) {
   await page.locator('[data-cjdoc-theme-toggle]').click();
   await page.locator(`[data-cjdoc-theme-value="${theme}"]`).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  // The settings dialog is modal; leaving it open would put an inert backdrop
+  // between the pointer and every later hit-area measurement.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-cjdoc-theme-popover]')).toBeHidden();
 }
 
 async function expectBadgeOwnsHitPoint(page, badge) {
@@ -82,9 +86,9 @@ async function expectBadgeOwnsHitPoint(page, badge) {
     const rect = element.getBoundingClientRect();
     const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
     return {
-      badge: Boolean(target && target.closest('.declaration-tag-badge[data-cjdoc-tag-link]') === element),
-      primaryLink: Boolean(target && target.closest('.declaration-row-link')),
-      detailOrActions: Boolean(target && target.closest('details, .member-detail-actions')),
+      badge: Boolean(target && target.closest('.cj-badge--tag[data-cjdoc-tag-link]') === element),
+      primaryLink: Boolean(target && target.closest('.cj-decl-table__link')),
+      detailOrActions: Boolean(target && target.closest('details, .cj-member-actions')),
       bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
     };
   });
@@ -108,9 +112,9 @@ async function expectSearchRows(page, expectedCount) {
   const rows = page.locator('[data-cjdoc-results] [role="option"]');
   await expect(rows).toHaveCount(expectedCount);
   return rows.evaluateAll(elements => elements.map(element => ({
-    name: element.querySelector('.search-result-name')?.textContent.trim() || '',
-    context: element.querySelector('.search-context')?.textContent.trim() || '',
-    signature: element.querySelector('.search-result-signature')?.textContent.trim() || '',
+    name: element.querySelector('.cj-search__hit-name')?.textContent.trim() || '',
+    context: element.querySelector('.cj-search__hit-context')?.textContent.trim() || '',
+    signature: element.querySelector('.cj-search__hit-signature')?.textContent.trim() || '',
     href: element.querySelector('a')?.getAttribute('href') || '',
   })));
 }
@@ -150,6 +154,13 @@ async function gotoFile(page, url) {
   await page.goto(url);
   await expectStable(page);
 }
+async function openSearchDialog(page) {
+  const dialog = page.locator('[data-cjdoc-search-dialog]');
+  if (await dialog.isVisible()) return;
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await expect(dialog).toBeVisible();
+}
+
 async function clickOutside(page) {
   const viewport = page.viewportSize();
   await page.mouse.click(5, (viewport?.height || 720) - 5);
@@ -157,7 +168,7 @@ async function clickOutside(page) {
 
 function referenceBoxClassLink(page) {
   return page.locator(
-    'article[data-cjdoc-member][data-member-name="ReferenceBox"][data-member-kind="class"] > .declaration-row-link'
+    'tr.cj-decl-table__row[data-member-name="ReferenceBox"][data-member-kind="class"] .cj-decl-table__link'
   );
 }
 
@@ -170,12 +181,12 @@ async function referenceBoxClassHref(page) {
 // The member controls are siblings of native <details>, never children
 // of its hidden body or its interactive <summary>.
 function memberActions(member) {
-  return member.locator('xpath=..').locator(':scope > .member-detail-actions');
+  return member.locator('xpath=..').locator(':scope > .cj-member-actions');
 }
 
 async function openReferenceBox(page) {
   await openIndex(page);
-  const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+  const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
   const packageUrl = new URL(packageHref, indexUrl).href;
   await gotoFile(page, packageUrl);
   const classHref = await referenceBoxClassHref(page);
@@ -191,13 +202,13 @@ async function expectMemberSectionCounts(page, chinese) {
       total: rows.length,
       matches: rows.filter(row => !row.hidden).length,
       hidden: group.hidden,
-      text: group.querySelector('.member-group-count').textContent,
+      text: group.querySelector('.cj-member-group__count').textContent,
     };
   }));
   expect(groups.length).toBeGreaterThan(0);
   for (const group of groups) {
     const count = group.matches === group.total ? String(group.total) : `${group.matches} / ${group.total}`;
-    expect(group.text).toBe(count + (chinese ? ' 个成员' : ' members'));
+    expect(group.text).toBe(count + (chinese ? ' 个成员' : group.total === 1 ? ' member' : ' members'));
     expect(group.hidden).toBe(group.matches === 0);
   }
   return groups;
@@ -280,11 +291,17 @@ test.describe('generated HTML reference', () => {
       const popover = page.locator('[data-cjdoc-theme-popover]');
       for (const theme of ['system', 'light', 'dark', 'paper', 'ocean', 'forest', 'terminal', 'violet']) {
         await trigger.click();
+        await expect(popover).toBeVisible();
         await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
         await popover.locator(`[data-cjdoc-theme-value="${theme}"]`).click();
+        // The settings dialog stays open while the reader tries options.
+        await expect(popover).toBeVisible();
+        await expect(popover.locator(`[data-cjdoc-theme-value="${theme}"]`))
+          .toHaveAttribute('aria-pressed', 'true');
+        expect(await page.evaluate(() => localStorage.getItem('cjdoc-theme'))).toBe(theme);
+        await page.keyboard.press('Escape');
         await expect(popover).toBeHidden();
         await expect(trigger).toBeFocused();
-        expect(await page.evaluate(() => localStorage.getItem('cjdoc-theme'))).toBe(theme);
         await page.reload();
         if (theme === 'system') await expect(page.locator('html')).not.toHaveAttribute('data-theme');
         else await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -298,26 +315,38 @@ test.describe('generated HTML reference', () => {
       await page.keyboard.press('Escape');
       await expect(popover).toBeHidden();
       await expect(trigger).toBeFocused();
+      await trigger.click();
+      await expect(popover).toBeVisible();
+      await page.mouse.click(3, 3);
+      await expect(popover).toBeHidden();
+      await expect(trigger).toBeFocused();
       if (width === 390) {
+        // On a phone viewport the settings dialog is a modal bottom sheet, so
+        // the page behind it is inert for keyboard and pointer input.
         await trigger.click();
-        await expect(popover).toHaveAttribute('aria-modal', 'true');
+        expect(await popover.evaluate(element => element.matches(':modal'))).toBe(true);
         const buttons = popover.locator('button');
         await buttons.last().focus();
-        await page.keyboard.press('Tab');
-        await expect(buttons.first()).toBeFocused();
-        await page.keyboard.press('Shift+Tab');
         await expect(buttons.last()).toBeFocused();
-        await page.locator('[data-cjdoc-theme-backdrop]').click({position: {x: 5, y: 5}});
+        await page.keyboard.press('Shift+Tab');
+        expect(await page.evaluate(() => {
+          const active = document.activeElement;
+          return active !== document.body && active !== document.documentElement;
+        })).toBe(true);
+        await page.keyboard.press('Escape');
         await expect(popover).toBeHidden();
-        await expect(trigger).toBeFocused();
       }
       for (const shortcut of ['Control+k', 'Meta+k']) {
         await trigger.click();
         await page.keyboard.press(shortcut);
-        await expect(popover).toBeHidden();
         await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
-        await expect(page.locator('.site-search')).not.toHaveAttribute('inert', '');
+        await expect(page.locator('[data-cjdoc-search-dialog]'))
+          .not.toHaveAttribute('inert', '');
         await page.keyboard.press('Escape');
+        await expect(page.locator('[data-cjdoc-search-dialog]')).toBeHidden();
+        if (await popover.isVisible()) await page.keyboard.press('Escape');
+        await expect(popover).toBeHidden();
+        await expect(trigger).toBeFocused();
       }
       await expectStable(page);
     });
@@ -332,13 +361,13 @@ test.describe('generated HTML reference', () => {
     await openIndex(page);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'overview');
     await expect(page.locator('main h1')).toHaveText('html_reference');
-    await expect(page.locator('.home-introduction')).toContainText('This guide is the starting point');
-    await expect(page.locator('.reading-paths')).toContainText('Getting started');
-    await expect(page.locator('.package-index a')).toHaveCount(2);
-    await expect(page.locator('.sidebar-link[aria-current="page"]')).toContainText('Overview');
+    await expect(page.locator('.cj-home-intro')).toContainText('This guide is the starting point');
+    await expect(page.locator('.cj-reading-paths')).toContainText('Getting started');
+    await expect(page.locator('ul.cj-package-index > li > a')).toHaveCount(2);
+    await expect(page.locator('.cj-sidebar__link[aria-current="page"]')).toContainText('Overview');
     await gotoFile(page, indexUrl + '#packages');
-    await expect(page.locator('.sidebar-link[href*="#packages"]')).not.toHaveAttribute('aria-current');
-    await expect(page.locator('.sidebar-link[href$="index.html"]')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.cj-sidebar__link[href*="#packages"]')).not.toHaveAttribute('aria-current');
+    await expect(page.locator('.cj-sidebar__link[href$="index.html"]')).toHaveAttribute('aria-current', 'page');
     await gotoFile(page, indexUrl);
 
     const fontMetrics = await page.evaluate(() => {
@@ -351,7 +380,8 @@ test.describe('generated HTML reference', () => {
     });
     expect(fontMetrics.button).toBe(fontMetrics.body);
     expect(fontMetrics.input).toBe(fontMetrics.body);
-    expect(fontMetrics.heading).not.toBe(fontMetrics.body);
+    // One system sans stack for prose and headings, one monospace stack for code.
+    expect(fontMetrics.heading).toBe(fontMetrics.body);
     expect(fontMetrics.code).not.toBe(fontMetrics.body);
 
     const mutedContrast = await page.evaluate(() => {
@@ -360,7 +390,7 @@ test.describe('generated HTML reference', () => {
         const rgb = channels(color).map(channel => channel / 255).map(channel => channel <= .03928 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
         return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
       };
-      const text = getComputedStyle(document.querySelector('.sidebar-label')).color;
+      const text = getComputedStyle(document.querySelector('.cj-tree__module-label')).color;
       const background = getComputedStyle(document.body).backgroundColor;
       const foregroundLuminance = luminance(text);
       const backgroundLuminance = luminance(background);
@@ -368,15 +398,23 @@ test.describe('generated HTML reference', () => {
     });
     expect(mutedContrast).toBeGreaterThanOrEqual(4.5);
 
+    // Search lives in a modal dialog opened by its header trigger.
     const search = page.locator('[data-cjdoc-search]');
+    const searchDialog = page.locator('[data-cjdoc-search-dialog]');
+    const searchTrigger = page.locator('[data-cjdoc-search-trigger]');
     const results = page.locator('[data-cjdoc-results] [role="option"]');
+    await expect(searchDialog).toBeHidden();
+    await expect(searchTrigger).toBeVisible();
+    await searchTrigger.click();
+    await expect(searchDialog).toBeVisible();
+    await expect(search).toBeFocused();
     await expect(search).toHaveAttribute('aria-expanded', 'false');
     await search.fill('ReferenceBox');
     await expect(results).not.toHaveCount(0);
     const referenceBoxResultCount = await results.count();
     expect(referenceBoxResultCount).toBeGreaterThanOrEqual(2);
     await expect(results.first()).toContainText('ReferenceBox');
-    await expect(results.first().locator('.search-result-signature')).toBeVisible();
+    await expect(results.first().locator('.cj-search__hit-signature')).toBeVisible();
     await expect(results.first()).not.toContainText('cjdoc:v2');
     await search.press('ArrowDown');
     await expect(search).toHaveAttribute('aria-activedescendant', /cjdoc-search-result-/);
@@ -392,18 +430,26 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-search-status]')).toBeVisible();
     await search.fill('ReferenceBox');
     await clickOutside(page);
+    await expect(searchDialog).toBeHidden();
     await expect(results).toHaveCount(0);
     await expect(search).toHaveAttribute('aria-expanded', 'false');
-    await search.click();
+    await searchTrigger.click();
     await expect(results).toHaveCount(referenceBoxResultCount);
     await page.keyboard.press('Escape');
-    await expect(search).toHaveValue('');
+    await expect(searchDialog).toBeHidden();
     await expect(results).toHaveCount(0);
-    await search.fill('ReferenceBox');
+    await expect(searchTrigger).toBeFocused();
+    // A dismissed dialog keeps the typed query but drops the result list.
+    await searchTrigger.click();
+    await expect(search).toHaveValue('ReferenceBox');
     await clickOutside(page);
+    await expect(searchDialog).toBeHidden();
     await page.keyboard.press('Control+k');
+    await expect(searchDialog).toBeVisible();
     await expect(search).toBeFocused();
     await expect(results).toHaveCount(referenceBoxResultCount);
+    await page.keyboard.press('Escape');
+    await expect(searchDialog).toBeHidden();
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.evaluate(() => localStorage.removeItem('cjdoc-theme'));
@@ -412,32 +458,35 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('html')).not.toHaveAttribute('data-theme');
     const systemDarkTokens = await page.evaluate(() => {
       const style = getComputedStyle(document.documentElement);
-      return ['--surface', '--surface-raised', '--ink', '--muted', '--accent', '--accent-soft'].map(name => style.getPropertyValue(name));
+      return ['--cj-bg', '--cj-surface', '--cj-fg', '--cj-muted', '--cj-accent', '--cj-accent-soft']
+        .map(name => style.getPropertyValue(name));
     });
     await page.locator('[data-cjdoc-theme-toggle]').click();
     await page.locator('[data-cjdoc-theme-value="dark"]').click();
     const explicitDarkTokens = await page.evaluate(() => {
       const style = getComputedStyle(document.documentElement);
-      return ['--surface', '--surface-raised', '--ink', '--muted', '--accent', '--accent-soft'].map(name => style.getPropertyValue(name));
+      return ['--cj-bg', '--cj-surface', '--cj-fg', '--cj-muted', '--cj-accent', '--cj-accent-soft']
+        .map(name => style.getPropertyValue(name));
     });
     expect(explicitDarkTokens).toEqual(systemDarkTokens);
+    await page.keyboard.press('Escape');
 
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'api');
-    await expect(page.locator('.sidebar-link[href*="#packages"][aria-current="page"]')).toHaveCount(0);
-    await expect(page.locator('.sidebar-package[aria-current="page"]')).toHaveCount(1);
-    await expect(page.locator('.declaration-row-link')).not.toHaveCount(0);
+    await expect(page.locator('.cj-sidebar__link[href*="#packages"][aria-current="page"]')).toHaveCount(0);
+    await expect(page.locator('.cj-tree__link[aria-current="page"]')).toHaveCount(1);
+    await expect(page.locator('.cj-decl-table__link')).not.toHaveCount(0);
     const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
-    await expect(page.locator('.breadcrumbs')).toContainText('Package');
+    await expect(page.locator('.cj-breadcrumbs')).toContainText('Package');
     // Select the owner-level guide section by its reader-facing heading, not a layout parent.
-    const classUsages = page.locator('main .api-usages').filter({
+    const classUsages = page.locator('main .cj-usages').filter({
       has: page.getByRole('heading', { level: 2 }),
     });
-    const classExternalDocs = page.locator('.content-column > .external-documentation');
+    const classExternalDocs = page.locator('.cj-external');
     await expect(classUsages).toContainText('Getting started');
     await expect(classUsages).toHaveCount(1);
     const classGuide = classUsages.getByRole('link', { name: 'Getting started', exact: true });
@@ -445,7 +494,7 @@ test.describe('generated HTML reference', () => {
     await expect(classGuide).toHaveAttribute('href', '../concepts/guides/getting-started.html');
     await classGuide.click();
     await expect(page).toHaveURL(new URL('../concepts/guides/getting-started.html', classUrl).href);
-    await expect(page.locator('.page-header h1')).toHaveText('Getting started');
+    await expect(page.locator('.cj-page-header h1')).toHaveText('Getting started');
     await page.goBack();
     await expect(page).toHaveURL(classUrl);
     await expect(classExternalDocs.locator('a')).toHaveAttribute('href', 'https://docs.example.test/1.1.3/libs/std/core/reference-box.html#referencebox');
@@ -453,17 +502,21 @@ test.describe('generated HTML reference', () => {
     await expect(classExternalDocs).toContainText('format: cjdoc.symbol-index/1');
     await expect(classExternalDocs).toContainText('index: docs/std-symbol-index.json');
     await gotoFile(page, packageUrl);
-    const stateHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceState' }).getAttribute('href');
+    const stateHref = await page.locator('.cj-decl-table__link').filter({ hasText: 'ReferenceState' }).getAttribute('href');
     expect(stateHref).toBeTruthy();
     const stateUrl = new URL(stateHref, packageUrl).href;
     await gotoFile(page, stateUrl);
-    await expect(page.locator('.external-documentation')).toHaveCount(0);
+    await expect(page.locator('.cj-external')).toHaveCount(0);
     await gotoFile(page, classUrl);
-    await expect(page.locator('.sidebar-context')).toHaveCount(0);
-    await expect(page.locator('.sidebar-symbol.is-current')).toContainText('ReferenceBox');
-    await expect(page.locator('.toc-panel .toc-link').filter({hasText:'normalize'})).toHaveCount(1);
+    await expect(page.locator('.cj-tree__link[aria-current="page"]')).toContainText('ReferenceBox');
+    await expect(page.locator('.cj-toc .cj-toc__link').filter({hasText:'normalize'})).toHaveCount(1);
     const memberFilter = page.locator('[data-cjdoc-member-filter]');
     const originFilter = page.locator('[data-cjdoc-member-origin]');
+    // The member toolbar collapses behind one disclosure on narrow layouts.
+    if (!(await memberFilter.isVisible())) {
+      await page.locator('[data-cjdoc-member-filter-toggle]').click();
+    }
+    await expect(memberFilter).toBeVisible();
     await expect(originFilter).toHaveCount(1);
     await expect(originFilter.locator('option[value="declared"]')).toHaveCount(1);
     await expect(originFilter.locator('option[value="extension"]')).toHaveCount(1);
@@ -472,7 +525,7 @@ test.describe('generated HTML reference', () => {
     await expect(extensionMember).not.toHaveCount(0);
     await expect(extensionMember.first()).toContainText('extensionMarker');
     await extensionMember.first().locator('summary').click({position:{x:6,y:12}});
-    await expect(extensionMember.first().locator('.extension-conditions')).toContainText('extension target');
+    await expect(extensionMember.first().locator('.cj-member__conditions')).toContainText('extension target');
     await originFilter.selectOption('');
     await memberFilter.fill('normalize');
     await expect(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).toBeVisible();
@@ -480,12 +533,11 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member-filter-status]')).toContainText('matching member');
     const normalizeForRestore = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
     await normalizeForRestore.locator('summary').click({position:{x:6,y:12}});
-    const restoreHref = await memberActions(normalizeForRestore).locator('.member-permalink').getAttribute('href');
+    const restoreHref = await memberActions(normalizeForRestore).locator('.cj-member-actions__item--standalone').getAttribute('href');
     expect(restoreHref).toBeTruthy();
     await page.evaluate(() => window.scrollTo(0, Math.min(520, document.documentElement.scrollHeight - innerHeight)));
     const readingY = await page.evaluate(() => window.scrollY);
-    await memberActions(normalizeForRestore).locator('.member-permalink').click();
-    await expect(page.locator('.sidebar-context')).toHaveCount(0);
+    await memberActions(normalizeForRestore).locator('.cj-member-actions__item--standalone').click();
     await expect(page.locator('main h1')).toContainText('normalize');
     await page.goBack();
     await page.waitForTimeout(50);
@@ -506,56 +558,57 @@ test.describe('generated HTML reference', () => {
     const typePageUrl = page.url();
     await normalizeDetail.locator('summary').click({position:{x:6,y:12}});
     await expect(normalizeDetail).toHaveAttribute('open', '');
-    await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Parameters');
-    await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Returns');
-    await expect(normalizeDetail.locator('.member-detail-body')).toContainText('precondition');
+    await expect(normalizeDetail.locator('.cj-member__body')).toContainText('Parameters');
+    await expect(normalizeDetail.locator('.cj-member__body')).toContainText('Returns');
+    await expect(normalizeDetail.locator('.cj-member__body')).toContainText('precondition');
     expect(page.url()).toBe(typePageUrl);
     await labelDetail.locator('summary').click({position:{x:6,y:12}});
     await expect(labelDetail).toHaveAttribute('open', '');
-    await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
+    await expect(labelDetail.locator('.cj-usages')).toContainText('Getting started');
     const actions = memberActions(labelDetail);
     await expect(actions).toHaveAttribute('role', 'group');
     await expect(actions).toHaveAttribute('aria-label', 'Member actions');
-    const labelSummaryId = await labelDetail.locator('.member-detail-summary').getAttribute('id');
+    const labelSummaryId = await labelDetail.locator('.cj-member__summary').getAttribute('id');
     expect(labelSummaryId).toMatch(/-summary$/);
     await expect(actions).toHaveAttribute('aria-labelledby', new RegExp(labelSummaryId + '$'));
     await expect(actions).toHaveAccessibleName(/Member actions for.*label/);
     for (const selector of [
-      '.member-actions-toggle', '.member-permalink', '.member-source-link', '.member-action-copy',
+      '.cj-member-actions__toggle', '.cj-member-actions__item--standalone', '.cj-member-actions__item--source', '.cj-member-actions__item--copy',
     ]) {
       await expect(actions.locator(selector)).toHaveAttribute(
         'aria-labelledby', new RegExp(labelSummaryId + '$')
       );
     }
-    await expect(actions.locator('.member-permalink'))
+    await expect(actions.locator('.cj-member-actions__item--standalone'))
       .toHaveAccessibleName(/Open standalone API page.*label/);
-    await expect(actions.locator('.member-source-link'))
+    await expect(actions.locator('.cj-member-actions__item--source'))
       .toHaveAccessibleName(/View source code.*label/);
-    await expect(actions.locator('.member-action')).toHaveCount(3);
+    await expect(actions.locator('.cj-member-actions__item')).toHaveCount(3);
     // The touch disclosure contributes one extra decorative glyph.
-    await expect(actions.locator('.member-action-glyph[aria-hidden="true"]')).toHaveCount(4);
-    await expect(actions.locator('.member-permalink')).toHaveAttribute('aria-label', 'Open standalone API page');
-    await expect(actions.locator('.member-permalink')).toHaveAttribute('title', 'Open standalone API page');
-    await expect(actions.locator('.member-source-link')).toHaveAttribute('aria-label', 'View source code');
-    await expect(actions.locator('.member-source-link')).toHaveAttribute('title', 'View source code');
-    await expect(actions.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
-    await expect(actions.locator('.member-action-copy')).toHaveAttribute('aria-label', 'Copy link');
-    await expect(actions.locator('.member-action-copy')).toHaveAttribute('title', 'Copy link');
-    await expect(actions.locator('.member-action-label')).toHaveText(['Open standalone API page', 'View source code', 'Copy link']);
-    const minActionHeight = await actions.locator('.member-action').evaluateAll(
-      (elements) => Math.min(...elements.map(element => element.getBoundingClientRect().height))
+    await expect(actions.locator('.cj-icon[aria-hidden="true"]')).toHaveCount(4);
+    await expect(actions.locator('.cj-member-actions__item--standalone')).toHaveAttribute('aria-label', 'Open standalone API page');
+    await expect(actions.locator('.cj-member-actions__item--standalone')).toHaveAttribute('title', 'Open standalone API page');
+    await expect(actions.locator('.cj-member-actions__item--source')).toHaveAttribute('aria-label', 'View source code');
+    await expect(actions.locator('.cj-member-actions__item--source')).toHaveAttribute('title', 'View source code');
+    await expect(actions.locator('.cj-member-actions__item--source')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
+    await expect(actions.locator('.cj-member-actions__item--copy')).toHaveAttribute('aria-label', 'Copy link');
+    await expect(actions.locator('.cj-member-actions__item--copy')).toHaveAttribute('title', 'Copy link');
+    await expect(actions.locator('.cj-member-actions__label')).toHaveText(['Open standalone API page', 'View source code', 'Copy link']);
+    const minActionSize = await actions.locator('.cj-member-actions__item').evaluateAll(
+      (elements) => Math.min(...elements.map(element => Math.min(
+        element.getBoundingClientRect().height, element.getBoundingClientRect().width)))
     );
-    expect(minActionHeight).toBeGreaterThanOrEqual(36);
-    await actions.locator('.member-action-copy').focus();
-    await expect(actions.locator('.member-action-copy')).toBeFocused();
-    await actions.locator('.member-action-copy').click();
-    await expect(actions.locator('.member-action-copy')).toHaveAttribute('data-copied', 'true');
-    await expect(actions.locator('.member-action-copy')).toHaveAttribute('aria-label', 'Link copied');
+    expect(minActionSize).toBeGreaterThanOrEqual(24);
+    await actions.locator('.cj-member-actions__item--copy').focus();
+    await expect(actions.locator('.cj-member-actions__item--copy')).toBeFocused();
+    await actions.locator('.cj-member-actions__item--copy').click();
+    await expect(actions.locator('.cj-member-actions__item--copy'))
+      .toHaveAttribute('data-cjdoc-copy-state', 'copied');
     await expect(actions.locator('[data-cjdoc-copy-status]')).toHaveText('Link copied');
     // Copy feedback must not replace the copy icon with a text button.
-    await expect(actions.locator('.member-action-copy .member-action-glyph')).toHaveCount(1);
+    await expect(actions.locator('.cj-member-actions__item--copy .cj-icon')).toHaveCount(1);
     await expect(normalizeDetail).toHaveAttribute('open', '');
-    await expect(page.locator('.overload-group-label')).toHaveCount(2);
+    await expect(page.locator('.cj-overloads__title')).toHaveCount(2);
     const overloadGroups = page.locator('[data-cjdoc-overload-group]');
     await expect(overloadGroups).toHaveCount(2);
     const pingDetails = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
@@ -563,7 +616,7 @@ test.describe('generated HTML reference', () => {
     await expect(pingGroup).toHaveCount(1);
     await expect(pingGroup).toHaveAttribute('data-overload-total', '2');
     await expect(pingGroup.locator('details[data-cjdoc-member][data-member-name="ping"]')).toHaveCount(2);
-    const pingSummaryIds = await pingDetails.locator(':scope > .member-detail-summary').evaluateAll(nodes => nodes.map(node => node.id));
+    const pingSummaryIds = await pingDetails.locator(':scope > .cj-member__summary').evaluateAll(nodes => nodes.map(node => node.id));
     expect(pingSummaryIds).toHaveLength(2);
     expect(new Set(pingSummaryIds).size).toBe(2);
     for (let index = 0; index < 2; index += 1) {
@@ -604,7 +657,7 @@ test.describe('generated HTML reference', () => {
 
     const longDetail = page.locator('details[data-cjdoc-member][data-member-name="veryLongOperation"]');
     await expect(longDetail).toHaveCount(1);
-    const longSummary = longDetail.locator('summary .declaration-signature');
+    const longSummary = longDetail.locator('summary .cj-signature-inline');
     await expect(longSummary).toContainText('destination!: String');
     const longStyle = await longSummary.evaluate(element => ({
       whiteSpace: getComputedStyle(element).whiteSpace,
@@ -612,13 +665,13 @@ test.describe('generated HTML reference', () => {
     }));
     expect(longStyle.whiteSpace).not.toBe('nowrap');
     expect(longStyle.text).toContain('enabled!: Bool = true');
-    await longDetail.locator('.member-detail-summary').focus();
+    await longDetail.locator('.cj-member__summary').focus();
     await page.keyboard.press('Enter');
     await expect(longDetail).toHaveAttribute('open', '');
-    await expect(longDetail.locator('summary .declaration-signature')).toContainText('timeoutMs!: Int64 = 1000');
+    await expect(longDetail.locator('summary .cj-signature-inline')).toContainText('timeoutMs!: Int64 = 1000');
 
     const useDetail = page.locator('details[data-cjdoc-member][data-member-name="use"]');
-    const useSummary = useDetail.locator('summary .declaration-signature');
+    const useSummary = useDetail.locator('summary .cj-signature-inline');
     await expect(useSummary).toHaveText('public func use(label!: String = "Token", item!: Token): Unit');
     const localTypeLink = useSummary.getByRole('link', { name: 'Token', exact: true });
     await expect(localTypeLink).toHaveCount(1);
@@ -627,58 +680,61 @@ test.describe('generated HTML reference', () => {
     await localTypeLink.focus();
     await expect(localTypeLink).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(page.locator('.page-header h1')).toHaveText('Token');
+    await expect(page.locator('.cj-page-header h1')).toHaveText('Token');
     await page.goBack();
     await expect(page).toHaveURL(beforeTypeNavigation);
     await expect(useDetail).not.toHaveAttribute('open', '');
     await useDetail.locator('summary').click({position:{x:6,y:12}});
-    await expect(useDetail.locator('summary .declaration-signature'))
+    await expect(useDetail.locator('summary .cj-signature-inline'))
       .toContainText('label!: String = "Token", item!: Token');
-    const useHref = await memberActions(useDetail).locator('.member-permalink').getAttribute('href');
+    const useHref = await memberActions(useDetail).locator('.cj-member-actions__item--standalone').getAttribute('href');
     await gotoFile(page, new URL(useHref, classUrl).href);
-    const useSignature = page.locator('.signature-block code');
+    const useSignature = page.locator('.cj-signature code');
     await expect(useSignature).toContainText('label!: String = "Token", item!: Token');
     await page.goBack();
     await expectStable(page);
 
-    await expect(page.locator('.source-action')).not.toHaveCount(0);
-    await expect(page.locator('.source-action a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
-    const memberHref = await memberActions(normalizeDetail).locator('.member-permalink').getAttribute('href');
+    await expect(page.locator('.cj-page-header__source')).not.toHaveCount(0);
+    await expect(page.locator('.cj-page-header__source a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
+    const memberHref = await memberActions(normalizeDetail).locator('.cj-member-actions__item--standalone').getAttribute('href');
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);
-    await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
-    await expect(page.locator('.sidebar-context')).toHaveCount(0);
+    await expect(page.locator('.cj-breadcrumbs')).toContainText('ReferenceBox');
     await expect(page.locator('#cjdoc-sidebar [aria-current="page"]')).toHaveCount(0);
-    await expect(page.locator('.sidebar-symbol.is-ancestor')).toContainText('ReferenceBox');
-    await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
+    // Both the package row and the type row mark themselves as ancestors; the
+    // type row nests inside the package row, so match each row's own link.
+    await expect(page.locator('[data-cjdoc-tree-item="package"] > .cj-tree__row > .cj-tree__link--ancestor')).toHaveCount(1);
+    await expect(page.locator('[data-cjdoc-tree-item="type"] > .cj-tree__row > .cj-tree__link--ancestor')).toContainText('ReferenceBox');
+    await expect(page.locator('.cj-breadcrumbs')).toContainText('ReferenceBox');
     await expect(page.locator('main h1')).toContainText('normalize');
-    await expect(page.locator('.behavior-contracts h3')).toHaveText('Behavioral constraints');
-    await expect(page.locator('.behavior-contracts')).toContainText('precondition');
-    await expect(page.locator('.behavior-contracts')).toContainText('performance');
+    await expect(page.locator('.cj-contracts h3')).toHaveText('Behavioral constraints');
+    await expect(page.locator('.cj-contracts')).toContainText('precondition');
+    await expect(page.locator('.cj-contracts')).toContainText('performance');
     const hiddenTarget = page.locator('dt').filter({ hasText: 'HiddenGuideTarget' });
     await expect(hiddenTarget).toHaveText('HiddenGuideTarget');
     await expect(hiddenTarget.locator('a')).toHaveCount(0);
-    await expect(page.locator('.toc-panel')).toContainText('Parameters');
-    await expect(page.locator('.toc-panel')).toContainText('Returns');
-    const copyButton = page.locator('.code-copy').first();
+    await expect(page.locator('.cj-toc')).toContainText('Parameters');
+    await expect(page.locator('.cj-toc')).toContainText('Returns');
+    const copyButton = page.locator('.cj-code__copy').first();
     await expect(copyButton).toHaveCount(1);
     await copyButton.click();
-    await expect(copyButton).toHaveAttribute('data-copied', 'true');
+    await expect(copyButton).toHaveAttribute('data-cjdoc-copy-state', 'copied');
 
     await gotoFile(page, classUrl);
-    const labelHref = await memberActions(page.locator('details[data-cjdoc-member][data-member-name="label"]')).locator('.member-permalink').getAttribute('href');
+    const labelHref = await memberActions(page.locator('details[data-cjdoc-member][data-member-name="label"]')).locator('.cj-member-actions__item--standalone').getAttribute('href');
     expect(labelHref).toBeTruthy();
     await gotoFile(page, new URL(labelHref, classUrl).href);
-    await expect(page.locator('.api-usages:not(.conceptual-bindings)')).toContainText('Getting started');
+    await expect(page.locator('.cj-usages:not(.cj-bindings)')).toContainText('Getting started');
     await expectStable(page);
   });
 
   test('package filter never creates an empty selectable option for conceptual entries', async ({ page }) => {
     await openIndex(page);
 
-    await page.locator('[data-cjdoc-filter-toggle]').click();
+    await page.locator('[data-cjdoc-search-trigger]').click();
     const packageFilter = page.locator('[data-cjdoc-package]');
     const kindFilter = page.locator('[data-cjdoc-kind]');
+    await expect(packageFilter).toBeVisible();
     await expect(packageFilter).toHaveAttribute('aria-label', 'Filter by package');
     await expect(packageFilter.locator('option').first()).toHaveText('All packages');
     await expect(packageFilter.locator('option[value=""]')).toHaveCount(1);
@@ -708,7 +764,7 @@ test.describe('generated HTML reference', () => {
     page.on('pageerror', error => pageErrors.get(page).push(String(error)));
     await page.goto(zhIndexUrl);
     await expectStable(page);
-    await page.locator('[data-cjdoc-filter-toggle]').click();
+    await page.locator('[data-cjdoc-search-trigger]').click();
     const packageFilter = page.locator('[data-cjdoc-package]');
     await expect(packageFilter.locator('option').first()).toHaveText('全部包');
     await expect(packageFilter.locator('option[value=""]')).toHaveCount(1);
@@ -722,29 +778,31 @@ test.describe('generated HTML reference', () => {
 
   test('package rows expose generic identity and projected counts', async ({ page }) => {
     await openIndex(page);
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
-    const row = page.locator('article[data-member-name="ReferenceBox"][data-member-kind="class"]');
-    await expect(row.locator('.declaration-summary-head code')).toHaveText('ReferenceBox<T>');
-    await expect(row.locator('.declaration-signature')).toHaveText('public class ReferenceBox<T>');
-    await expect(row.locator('.declaration-kind')).toHaveCount(0);
-    await expect(row.locator('p')).toHaveCount(0);
+    const row = page.locator('tr.cj-decl-table__row[data-member-name="ReferenceBox"][data-member-kind="class"]');
+    await expect(row).toHaveCount(1);
+    // Package rows carry the navigation label, the kind and a one-line summary.
+    await expect(row.locator('.cj-decl-table__link code')).toHaveText('ReferenceBox<T>');
+    await expect(row.locator('.cj-decl-table__kind .cj-kind')).toHaveText('class');
+    await expect(row.locator('.cj-decl-table__kind .cj-kind')).toHaveAttribute('data-kind', 'class');
+    // No signature, badges or nested links survive on package rows.
+    await expect(row.locator('.cj-signature-inline')).toHaveCount(0);
+    await expect(row.locator('a a')).toHaveCount(0);
     await expect(page.locator('#classes')).toHaveText('Classes (2)');
-    const overloads = page.locator('article[data-member-name="packageOperation"]');
+    const overloads = page.locator('tr.cj-decl-table__row[data-member-name="packageOperation"]');
     await expect(overloads).toHaveCount(2);
-    const signatures = await overloads.locator('.declaration-signature').allTextContents();
-    expect(signatures[0]).not.toBe(signatures[1]);
-    await expect(overloads.filter({hasText: 'SourceValue'}).locator('.declaration-summary-head code')).toHaveText(
-      'packageOperation<SourceValue, DestinationValue>');
-    await expect(overloads.filter({hasText: 'value!: Int64'}).locator('.declaration-signature')).toHaveText(
-      'public func packageOperation(value!: Int64 = 42): Unit');
-    expect(await page.locator('article a a').count()).toBe(0);
-    const href = await row.locator('.declaration-row-link').getAttribute('href');
-    await row.locator('.declaration-row-link').focus();
+    const labels = await overloads.locator('.cj-decl-table__link code').allTextContents();
+    expect(labels[0]).not.toBe(labels[1]);
+    await expect(overloads.filter({hasText: 'SourceValue'}).locator('.cj-decl-table__link code')).toHaveText(
+      'packageOperation<SourceValue, DestinationValue>(ReferenceBox<SourceValue>, ReferenceBox<DestinationValue>, String)');
+    expect(await overloads.filter({hasText: 'value!: Int64'}).count()).toBe(0);
+    const href = await row.locator('.cj-decl-table__link').getAttribute('href');
+    await row.locator('.cj-decl-table__link').focus();
     await page.keyboard.press('Tab');
     await page.keyboard.press('Shift+Tab');
-    await expect(row.locator('.declaration-row-link')).toBeFocused();
+    await expect(row.locator('.cj-decl-table__link')).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new URL(href, packageUrl).href);
     for (const viewport of [{width: 1440, height: 900}, {width: 1024, height: 768}, {width: 390, height: 844}]) {
@@ -752,21 +810,17 @@ test.describe('generated HTML reference', () => {
       await gotoFile(page, packageUrl);
       const metrics = await page.evaluate(() => ({
         width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth,
-        signatures: [...document.querySelectorAll('article .declaration-signature')].every(node => {
+        names: [...document.querySelectorAll('.cj-decl-table__link code')].every(node => {
           const style = getComputedStyle(node);
           return style.overflow !== 'hidden' && node.scrollWidth <= node.clientWidth + 1;
         }),
+        summariesFull: [...document.querySelectorAll('.cj-decl-table__summary')].every(node =>
+          node.scrollHeight <= node.clientHeight + 1),
       }));
-      const descriptions = await overloads.locator('p').evaluateAll(nodes => nodes.map(node => ({
-        height: node.clientHeight, line: parseFloat(getComputedStyle(node).lineHeight),
-        clipped: node.scrollHeight > node.clientHeight,
-      })));
-      for (const description of descriptions) {
-        expect(description.height).toBeGreaterThan(0);
-        expect(description.clipped).toBe(false);
-      }
       expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
-      expect(metrics.signatures).toBe(true);
+      expect(metrics.names).toBe(true);
+      // Summaries are never clamped: the complete authored text stays readable.
+      expect(metrics.summariesFull).toBe(true);
     }
     await expectStable(page);
   });
@@ -776,31 +830,34 @@ test.describe('generated HTML reference', () => {
     const conceptUrl = new URL('concepts/index.html', indexUrl).href;
     await gotoFile(page, conceptUrl);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'concept');
-    await expect(page.locator('.page-header h1')).toContainText('Project guide');
+    await expect(page.locator('.cj-page-header h1')).toContainText('Project guide');
     await expect(page.locator('[data-cjdoc-search]')).toHaveCount(1);
-    await expect(page.locator('.code-copy')).toHaveCount(1);
+    await expect(page.locator('.cj-code__copy')).toHaveCount(1);
+    await page.locator('[data-cjdoc-search-trigger]').click();
     await page.locator('[data-cjdoc-search]').fill('ReferenceBox');
     await expect(page.locator('[data-cjdoc-results] [role="option"]')).not.toHaveCount(0);
+    await page.locator('[data-cjdoc-search-dialog]').press('body', {key: 'Escape'});
     await page.locator('[data-cjdoc-theme-toggle]').click();
     await expect(page.locator('[data-cjdoc-theme-popover]')).toBeVisible();
+    await page.keyboard.press('Escape');
     const guideUrl = new URL('concepts/guides/getting-started.html', indexUrl).href;
     await gotoFile(page, guideUrl);
-    await expect(page.locator('.page-header h1')).toContainText('Getting started');
-    await expect(page.locator('.breadcrumbs')).toContainText('Concepts');
-    await expect(page.locator('.conceptual-bindings')).toContainText('Linked');
-    const boundApiLinks = page.locator('.conceptual-bindings a[href*="symbols/symbol-"]');
+    await expect(page.locator('.cj-page-header h1')).toContainText('Getting started');
+    await expect(page.locator('.cj-breadcrumbs')).toContainText('Concepts');
+    await expect(page.locator('.cj-bindings')).toContainText('Linked');
+    const boundApiLinks = page.locator('.cj-bindings a[href*="symbols/symbol-"]');
     await expect(boundApiLinks).toHaveCount(2);
     expect(await boundApiLinks.nth(0).getAttribute('href')).not.toBe(
       await boundApiLinks.nth(1).getAttribute('href')
     );
     // Captured binding languages are machine metadata; the reader exposes the version.
-    await expect(page.locator('.conceptual-bindings')).toContainText('fixture-v1');
-    await expect(page.locator('.conceptual-bindings a[href="phish"]')).toHaveCount(0);
-    await expect(page.locator('.conceptual-bindings')).toContainText('Not available in this audience');
+    await expect(page.locator('.cj-bindings')).toContainText('fixture-v1');
+    await expect(page.locator('.cj-bindings a[href="phish"]')).toHaveCount(0);
+    await expect(page.locator('.cj-bindings')).toContainText('Not available in this audience');
     await expect(page.locator('pre').filter({ hasText: 'cjdoc-bind target="html_reference_extra.ExtraBox"' })).toHaveCount(1);
     const placement = await page.evaluate(() => {
-      const index = document.querySelector('main .conceptual-bindings');
-      const chips = [...document.querySelectorAll('main .inline-binding')].filter(chip => !index.contains(chip));
+      const index = document.querySelector('main .cj-bindings');
+      const chips = [...document.querySelectorAll('main .cj-binding')].filter(chip => !index.contains(chip));
       const paragraph = [...document.querySelectorAll('main p')].find(node => node.textContent.includes('Choose a package from the API index'));
       const fenced = [...document.querySelectorAll('main pre')].find(node => node.textContent.includes('cjdoc-bind target="html_reference_extra.ExtraBox"'));
       const follows = (first, second) => !!(first && second && (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING));
@@ -822,21 +879,23 @@ test.describe('generated HTML reference', () => {
     const sidebar = page.locator('#cjdoc-sidebar');
     await expect(sidebar).toHaveAttribute('role', 'dialog');
     await expect(sidebar).toHaveAttribute('aria-modal', 'true');
-    await expect(page.locator('.docs-main')).toHaveAttribute('inert', '');
+    await expect(page.locator('.cj-main')).toHaveAttribute('inert', '');
     await expect(page.locator('[data-cjdoc-sidebar-close]')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(menu).toBeFocused();
-    await expect(page.locator('.docs-main')).not.toHaveAttribute('inert', '');
+    await expect(page.locator('.cj-main')).not.toHaveAttribute('inert', '');
 
     await page.setViewportSize({ width: 1180, height: 1000 });
     await openIndex(page);
-    await expect(page.locator('.toc-panel')).toBeHidden();
+    await expect(page.locator('.cj-toc')).toBeHidden();
     await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeVisible();
-    await expect(page.locator('[data-cjdoc-filter-toggle]')).toBeVisible();
-    await page.locator('[data-cjdoc-filter-toggle]').click();
+    // Kind and package filters live inside the search dialog at every width.
+    await page.locator('[data-cjdoc-search-trigger]').click();
     await expect(page.locator('#cjdoc-search-filters')).toBeVisible();
-    await clickOutside(page);
-    await expect(page.locator('#cjdoc-search-filters')).toBeHidden();
+    await expect(page.locator('[data-cjdoc-kind]')).toBeVisible();
+    await expect(page.locator('[data-cjdoc-package]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-cjdoc-search-dialog]')).toBeHidden();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await openIndex(page);
@@ -855,7 +914,7 @@ test.describe('generated HTML reference', () => {
   test('dense type member cards retain complete signatures and bounded height', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openIndex(page);
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
     const classHref = await referenceBoxClassHref(page);
@@ -871,7 +930,7 @@ test.describe('generated HTML reference', () => {
     // The redesigned cards show name, complete signature and summary on separate rows.
     expect(metrics.max).toBeLessThan(145);
     expect(metrics.average).toBeLessThan(132);
-    await expect(page.locator('details[data-cjdoc-member] > summary .declaration-signature'))
+    await expect(page.locator('details[data-cjdoc-member] > summary .cj-signature-inline'))
       .toHaveCount(metrics.count);
   });
 
@@ -880,7 +939,7 @@ test.describe('generated HTML reference', () => {
     for (const start of [indexUrl, httpBaseUrl + 'index.html']) {
       await page.goto(start);
       await expectStable(page);
-      await page.locator('.package-index a').first().click();
+      await page.locator('ul.cj-package-index > li > a').first().click();
       await referenceBoxClassLink(page).click();
       const typeUrl = page.url();
       const extensionMember = page.locator(
@@ -888,19 +947,19 @@ test.describe('generated HTML reference', () => {
       );
       await expect(extensionMember).toHaveCount(1);
       await extensionMember.locator('summary').click({position:{x:6,y:12}});
-      await extensionMember.locator('.member-origin a').click();
+      await extensionMember.locator('.cj-member__origin a').click();
       const extensionUrl = page.url();
       if (start === indexUrl) offlineExtensionUrl = extensionUrl;
       await expect(page.locator('main h1')).toContainText('Extension ReferenceBox<T>');
-      await expect(page.locator('.breadcrumbs li[aria-current="page"]')).toContainText('Extension');
+      await expect(page.locator('.cj-breadcrumbs li[aria-current="page"]')).toContainText('Extension');
       const ownMember = page.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
       await expect(ownMember).toHaveCount(1);
-      await expect(page.locator('.toc-panel .toc-link').filter({hasText:'extensionMarker'})).toHaveCount(1);
+      await expect(page.locator('.cj-toc .cj-toc__link').filter({hasText:'extensionMarker'})).toHaveCount(1);
       await ownMember.locator('summary').click({position:{x:6,y:12}});
-      await expect(ownMember.locator('.member-detail-body')).toBeVisible();
+      await expect(ownMember.locator('.cj-member__body')).toBeVisible();
       await expect(ownMember).toContainText('Member supplied by an extension.');
-      await expect(memberActions(ownMember).locator('.member-permalink')).toHaveAttribute('href', /symbol-/);
-      const target = page.locator('.symbol-relationships a.relation-target');
+      await expect(memberActions(ownMember).locator('.cj-member-actions__item--standalone')).toHaveAttribute('href', /symbol-/);
+      const target = page.locator('.cj-relations a.cj-relations__target');
       await expect(target).toHaveCount(1);
       await target.click();
       await expect(page).toHaveURL(typeUrl);
@@ -909,11 +968,13 @@ test.describe('generated HTML reference', () => {
       if (!(await ownMember.evaluate(node => node.open))) {
         await ownMember.locator('summary').click({position:{x:6,y:12}});
       }
-      // Desktop actions become actionable when the pointer enters their member row.
+      // Row actions stay pointer-reachable when the pointer enters the row.
       await ownMember.hover();
       await expect(memberActions(ownMember)).toHaveCSS('pointer-events', 'auto');
-      await memberActions(ownMember).locator('.member-permalink').click();
-      await expect(page.locator('.breadcrumbs a').filter({ hasText: 'Extension ReferenceBox<T>' })).toHaveCount(1);
+      await expect(memberActions(ownMember).locator('.cj-member-actions__list'))
+        .toHaveCSS('opacity', '1');
+      await memberActions(ownMember).locator('.cj-member-actions__item--standalone').click();
+      await expect(page.locator('.cj-breadcrumbs a').filter({ hasText: 'Extension ReferenceBox<T>' })).toHaveCount(1);
       await page.goBack();
       await expectStable(page);
     }
@@ -924,8 +985,8 @@ test.describe('generated HTML reference', () => {
       const member = offlinePage.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
       await expect(member).toHaveCount(1);
       await member.locator('summary').click({position:{x:6,y:12}});
-      await expect(member.locator('.member-detail-body')).toBeVisible();
-      await expect(offlinePage.locator('.symbol-relationships a.relation-target')).toHaveCount(1);
+      await expect(member.locator('.cj-member__body')).toBeVisible();
+      await expect(offlinePage.locator('.cj-relations a.cj-relations__target')).toHaveCount(1);
     } finally {
       await context.close();
     }
@@ -934,15 +995,15 @@ test.describe('generated HTML reference', () => {
   test('tablet reference content is visible without a viewport-sized blank row', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await openIndex(page);
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
     const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
-    const top = await page.locator('.docs-main .breadcrumbs').evaluate(element => element.getBoundingClientRect().top);
+    const top = await page.locator('.cj-main .cj-breadcrumbs').evaluate(element => element.getBoundingClientRect().top);
     expect(top).toBeLessThan(768);
-    await expect(page.locator('.docs-main h1')).toBeVisible();
+    await expect(page.locator('.cj-main h1')).toBeVisible();
   });
 
   test('breakpoint layouts stay inside the viewport', async ({ page }) => {
@@ -959,7 +1020,7 @@ test.describe('generated HTML reference', () => {
     await page.goto(zhIndexUrl);
     await expectStable(page);
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, zhIndexUrl).href;
     await gotoFile(page, packageUrl);
     const classHref = await referenceBoxClassHref(page);
@@ -970,7 +1031,7 @@ test.describe('generated HTML reference', () => {
     const convert = page.locator('[data-cjdoc-member][data-member-name="convert"]').first();
     await expect(convert).toContainText('将整数转换为文本');
     await convert.locator('summary').click({position:{x:6,y:12}});
-    await expect(convert.locator('.member-detail-body')).toContainText('返回值');
+    await expect(convert.locator('.cj-member__body')).toContainText('返回值');
   });
 
   test('HTTP subpath preserves assets, contextual navigation, and member deep links', async ({ page }) => {
@@ -978,7 +1039,7 @@ test.describe('generated HTML reference', () => {
     page.on('pageerror', error => pageErrors.get(page).push(String(error)));
     await page.goto(httpBaseUrl + 'index.html');
     await expectStable(page);
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     await page.goto(new URL(packageHref, page.url()).href);
     const classHref = await referenceBoxClassHref(page);
     await page.goto(new URL(classHref, page.url()).href);
@@ -986,7 +1047,7 @@ test.describe('generated HTML reference', () => {
     const anchor = await normalize.getAttribute('id');
     await page.goto(page.url().split('#')[0] + '#' + anchor);
     await expect(normalize).toHaveAttribute('open', '');
-    await expect(page.locator('.sidebar-symbol.is-current')).toContainText('ReferenceBox');
+    await expect(page.locator('.cj-tree__link[aria-current="page"]')).toContainText('ReferenceBox');
     await expect(page.locator('link[href="../style.css"]')).toHaveCount(1);
     await expectStable(page);
   });
@@ -994,13 +1055,13 @@ test.describe('generated HTML reference', () => {
   test('reference routes remain usable around responsive breakpoints', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openIndex(page);
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
     const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
-    const memberHref = await memberActions(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).locator('.member-permalink').getAttribute('href');
+    const memberHref = await memberActions(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).locator('.cj-member-actions__item--standalone').getAttribute('href');
     const memberUrl = new URL(memberHref, classUrl).href;
     const urls = [
       packageUrl,
@@ -1015,7 +1076,7 @@ test.describe('generated HTML reference', () => {
         await gotoFile(page, url);
         expect(await page.evaluate(() => document.documentElement.scrollWidth))
           .toBeLessThanOrEqual(width + 1);
-        const mainTop = await page.locator('.docs-main').evaluate(element => element.getBoundingClientRect().top);
+        const mainTop = await page.locator('.cj-main').evaluate(element => element.getBoundingClientRect().top);
         expect(mainTop).toBeLessThan(page.viewportSize().height);
       }
     }
@@ -1028,16 +1089,20 @@ test.describe('generated HTML reference', () => {
     const actions = memberActions(member);
     await expect(member).not.toHaveAttribute('open', '');
     await expect(actions).toHaveCount(1);
-    await expect(actions.locator('.member-action')).toHaveCount(3);
-    await expect(actions).toHaveCSS('opacity', '0');
+    await expect(actions.locator('.cj-member-actions__item')).toHaveCount(3);
+    // Row actions are dimmed until the row is hovered or focused.
+    const actionList = actions.locator('.cj-member-actions__list');
+    expect(parseFloat(await actionList.evaluate(node => getComputedStyle(node).opacity)))
+      .toBeLessThan(1);
     const before = await summary.boundingBox();
     await summary.hover();
-    await expect(actions).toHaveCSS('opacity', '1');
+    await expect(actionList).toHaveCSS('opacity', '1');
     const after = await summary.boundingBox();
     expect(Math.abs(after.width - before.width)).toBeLessThan(1);
     expect(Math.abs(after.height - before.height)).toBeLessThan(1);
-    await actions.locator('.member-action-copy').click();
-    await expect(actions.locator('.member-action-copy')).toHaveAttribute('data-copied', 'true');
+    await actions.locator('.cj-member-actions__item--copy').click();
+    await expect(actions.locator('.cj-member-actions__item--copy'))
+      .toHaveAttribute('data-cjdoc-copy-state', 'copied');
     await expect(member).not.toHaveAttribute('open', '');
     expect(page.url()).toBe(classUrl);
 
@@ -1046,29 +1111,30 @@ test.describe('generated HTML reference', () => {
     const signatureTypeLink = summary.getByRole('link', { name: 'String', exact: true });
     await expect(signatureTypeLink).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(actions.locator('.member-permalink')).toBeFocused();
+    await expect(actions.locator('.cj-member-actions__item--standalone')).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(actions.locator('.member-source-link')).toBeFocused();
+    await expect(actions.locator('.cj-member-actions__item--source')).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(actions.locator('.member-action-copy')).toBeFocused();
-    await expect(actions).toHaveCSS('opacity', '1');
+    await expect(actions.locator('.cj-member-actions__item--copy')).toBeFocused();
+    await expect(actionList).toHaveCSS('opacity', '1');
 
     await summary.click({position:{x:6,y:12}});
     await expect(member).toHaveAttribute('open', '');
-    await expect(member.locator('.member-detail-body')).toBeVisible();
-    await expect(member.locator('.member-detail-actions')).toHaveCount(0);
+    await expect(member.locator('.cj-member__body')).toBeVisible();
+    // The action menu is a sibling of the disclosure and never moves into it.
+    await expect(member.locator('.cj-member-actions')).toHaveCount(0);
     await expect(actions).toHaveCount(1);
-    await actions.locator('.member-action-copy').focus();
+    await actions.locator('.cj-member-actions__item--copy').focus();
     await expect(member).toHaveAttribute('open', '');
 
     // Each overload must retain its own permanent and copy target.
     const ping = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
     const first = memberActions(ping.nth(0));
     const second = memberActions(ping.nth(1));
-    expect(await first.locator('.member-permalink').getAttribute('href'))
-      .not.toBe(await second.locator('.member-permalink').getAttribute('href'));
-    expect(await first.locator('.member-action-copy').getAttribute('data-cjdoc-copy-link'))
-      .not.toBe(await second.locator('.member-action-copy').getAttribute('data-cjdoc-copy-link'));
+    expect(await first.locator('.cj-member-actions__item--standalone').getAttribute('href'))
+      .not.toBe(await second.locator('.cj-member-actions__item--standalone').getAttribute('href'));
+    expect(await first.locator('.cj-member-actions__item--copy').getAttribute('data-cjdoc-copy-link'))
+      .not.toBe(await second.locator('.cj-member-actions__item--copy').getAttribute('data-cjdoc-copy-link'));
     await expectStable(page);
   });
 
@@ -1078,7 +1144,7 @@ test.describe('generated HTML reference', () => {
     pageErrors.set(page, []);
     page.on('pageerror', error => pageErrors.get(page).push(String(error)));
     await page.goto(indexUrl);
-    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
     await page.goto(new URL(packageHref, indexUrl).href);
     const classHref = await referenceBoxClassHref(page);
     await page.goto(new URL(classHref, page.url()).href);
@@ -1090,10 +1156,10 @@ test.describe('generated HTML reference', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await toggle.tap();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(actions.locator('.member-permalink')).toBeVisible();
-    await expect(actions.locator('.member-source-link')).toBeVisible();
-    await expect(actions.locator('.member-action-copy')).toBeVisible();
-    await actions.locator('.member-action-copy').tap();
+    await expect(actions.locator('.cj-member-actions__item--standalone')).toBeVisible();
+    await expect(actions.locator('.cj-member-actions__item--source')).toBeVisible();
+    await expect(actions.locator('.cj-member-actions__item--copy')).toBeVisible();
+    await actions.locator('.cj-member-actions__item--copy').tap();
     await expect(detail).not.toHaveAttribute('open', '');
     await toggle.focus();
     await page.keyboard.press('Escape');
@@ -1103,17 +1169,17 @@ test.describe('generated HTML reference', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await page.touchscreen.tap(5, 830);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await detail.locator('.member-detail-summary .declaration-signature').tap();
+    await detail.locator('.cj-member__summary .cj-signature-inline').tap();
     await expect(detail).toHaveAttribute('open', '');
     expect(page.url()).toBe(before);
     const last = page.locator('details[data-cjdoc-member]').last();
     const lastActions = memberActions(last);
     await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
-    const lastMenu = lastActions.locator('.member-action-list');
+    const lastMenu = lastActions.locator('.cj-member-actions__list');
     await expect(lastMenu).toBeVisible();
     const edges = await lastMenu.evaluate(node => ({
       menuBottom: node.getBoundingClientRect().bottom,
-      columnBottom: node.closest('.content-column').getBoundingClientRect().bottom,
+      columnBottom: node.closest('.cj-content').getBoundingClientRect().bottom,
     }));
     expect(edges.menuBottom).toBeLessThanOrEqual(edges.columnBottom + 1);
     await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
@@ -1123,7 +1189,7 @@ test.describe('generated HTML reference', () => {
     await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
     const narrow = await lastMenu.evaluate(node => {
       const popup = node.getBoundingClientRect();
-      const column = node.closest('.content-column').getBoundingClientRect();
+      const column = node.closest('.cj-content').getBoundingClientRect();
       return {
         left: popup.left, right: popup.right, bottom: popup.bottom,
         columnLeft: column.left, columnRight: column.right, columnBottom: column.bottom,
@@ -1144,25 +1210,25 @@ test.describe('generated HTML reference', () => {
     try {
       const page = await context.newPage();
       await page.goto(indexUrl);
-      const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+      const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
       await page.goto(new URL(packageHref, indexUrl).href);
       const classHref = await referenceBoxClassHref(page);
       await page.goto(new URL(classHref, page.url()).href);
       const member = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
       const actions = memberActions(member);
       await expect(member).not.toHaveAttribute('open', '');
-      await expect(actions.locator('.member-actions-toggle')).toBeHidden();
-      await expect(actions.locator('.member-action-list')).toBeVisible();
-      await expect(actions.locator('.member-permalink')).toBeVisible();
-      await expect(actions.locator('.member-source-link')).toBeVisible();
-      await expect(actions).toHaveCSS('position', 'static');
+      await expect(actions.locator('.cj-member-actions__toggle')).toBeHidden();
+      await expect(actions.locator('.cj-member-actions__list')).toBeVisible();
+      await expect(actions.locator('.cj-member-actions__item--standalone')).toBeVisible();
+      await expect(actions.locator('.cj-member-actions__item--source')).toBeVisible();
+      await expect(actions.locator('.cj-member-actions__list')).toHaveCSS('position', 'static');
       expect(await page.evaluate(() => document.documentElement.scrollWidth))
         .toBeLessThanOrEqual(391);
       const origin = page.url();
-      const href = await actions.locator('.member-permalink').getAttribute('href');
-      await actions.locator('.member-permalink').tap();
+      const href = await actions.locator('.cj-member-actions__item--standalone').getAttribute('href');
+      await actions.locator('.cj-member-actions__item--standalone').tap();
       await expect(page).toHaveURL(new URL(href, origin).href);
-      await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
+      await expect(page.locator('.cj-breadcrumbs')).toContainText('ReferenceBox');
     } finally {
       await context.close();
     }
@@ -1176,13 +1242,13 @@ test.describe('generated HTML reference', () => {
     await expectStable(page);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'version-root');
     await expect(page.locator('h1')).toContainText('Choose a version');
-    await expect(page.locator('.version-card')).toHaveCount(2);
-    const latestHref = await page.locator('.version-card').filter({ hasText: '1.3.0' }).getAttribute('href');
+    await expect(page.locator('.cj-version-card')).toHaveCount(2);
+    const latestHref = await page.locator('.cj-version-card').filter({ hasText: '1.3.0' }).getAttribute('href');
     await gotoFile(page, new URL(latestHref, versionIndexUrl).href);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'overview');
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-doc-version', '1.3.0');
-    await expect(page.locator('.top-actions .version-label')).toContainText('1.3.0');
-    await expect(page.locator('.cjdoc-version-selector [aria-current="page"]')).toContainText('1.3.0');
+    await expect(page.locator('.cj-header__actions .cj-header__version')).toContainText('1.3.0');
+    await expect(page.locator('.cj-version-select [aria-current="page"]')).toContainText('1.3.0');
   });
 });
 
@@ -1193,7 +1259,7 @@ for (const chinese of [false, true]) {
     page.on('pageerror', error => pageErrors.get(page).push(String(error)));
     const rootUrl = chinese ? zhIndexUrl : indexUrl;
     await gotoFile(page, rootUrl);
-    const packageUrl = new URL(await page.locator('.package-index a').first().getAttribute('href'), rootUrl).href;
+    const packageUrl = new URL(await page.locator('ul.cj-package-index > li > a').first().getAttribute('href'), rootUrl).href;
     await gotoFile(page, packageUrl);
     const classUrl = new URL(await referenceBoxClassHref(page), packageUrl).href;
     await gotoFile(page, classUrl);
@@ -1238,16 +1304,16 @@ test.describe('authored declaration groups', () => {
               await openDeclarationPage(page, root, transport);
               await setTheme(page, theme);
               const packageUrl = new URL(
-                await page.locator('.package-index a').first().getAttribute('href'), root).href;
+                await page.locator('ul.cj-package-index > li > a').first().getAttribute('href'), root).href;
               await openDeclarationPage(page, packageUrl, transport);
               await expect(page.locator('img[src="x"], [onerror]')).toHaveCount(0);
-              const packageGroups = await page.locator('section.api-declaration-group')
+              const packageGroups = await page.locator('section.cj-api-group')
                 .evaluateAll(nodes => nodes.map(node => ({
                   id: node.dataset.cjdocDeclarationGroup,
-                  names: [...node.querySelectorAll('article[data-cjdoc-member]')]
+                  names: [...node.querySelectorAll('tr.cj-decl-table__row[data-cjdoc-member]')]
                     .map(row => row.dataset.memberName).sort(),
                   kindHeadings: [...node.querySelectorAll(
-                    ':scope > .declaration-group > h3[data-cjdoc-toc-role="group"]')]
+                    ':scope > .cj-decl-group > h3[data-cjdoc-toc-role="group"]')]
                     .map(heading => heading.id),
                   count: Number(node.querySelector('[data-cjdoc-group-count]')?.dataset.groupTotal),
                   groupHeading: node.querySelector(':scope > h2')?.id || null,
@@ -1263,7 +1329,7 @@ test.describe('authored declaration groups', () => {
                   '40-text': ['escapedTitle'],
                   '': ['fenced', 'ungrouped'],
                 });
-              await expect(page.locator('article[data-cjdoc-member]:visible')).toHaveCount(8);
+              await expect(page.locator('tr.cj-decl-table__row[data-cjdoc-member]:visible')).toHaveCount(8);
               expect(packageGroups.map(group => group.kindHeadings.length))
                 .toEqual([2, 2, 0, 0, 0]);
               expect(packageGroups.every(group => Boolean(group.groupHeading))).toBe(true);
@@ -1300,7 +1366,7 @@ test.describe('authored declaration groups', () => {
                   ? `api-kind-${groupId.length}-${groupId}-${kindId}`
                   : `api-kind-0--${kindId}`;
                 await expect(page.locator(`[id="${kindAnchor}"]`))
-                  .toHaveClass(/section-anchor-alias/);
+                  .toHaveClass(/cj-anchor-alias/);
                 expect(packageTocTargets).not.toContain(kindAnchor);
               }
               expect(await page.evaluate(() => document.documentElement.scrollWidth))
@@ -1309,7 +1375,7 @@ test.describe('authored declaration groups', () => {
                 const packageGeometry = await page.evaluate(() => ({
                   viewport: {width: innerWidth, height: innerHeight},
                   documentWidth: document.documentElement.scrollWidth,
-                  groups: [...document.querySelectorAll('section.api-declaration-group')]
+                  groups: [...document.querySelectorAll('section.cj-api-group')]
                     .map(group => ({
                       id: group.dataset.cjdocDeclarationGroup,
                       headings: [...group.querySelectorAll('h2, h3')]
@@ -1326,14 +1392,14 @@ test.describe('authored declaration groups', () => {
                 });
               }
               const classLink = page.locator(
-                '.declaration-row[data-member-name="Application"] > .declaration-row-link');
+                '.cj-decl-table__row[data-member-name="Application"] .cj-decl-table__link');
               const classUrl = new URL(await classLink.getAttribute('href'), packageUrl).href;
               await openDeclarationPage(page, classUrl, transport);
               const single = page.locator('section[data-cjdoc-declaration-group="10-application"]');
               const mixed = page.locator('section[data-cjdoc-declaration-group="20-generated-spi"]');
               await expect(page.locator('[data-cjdoc-member]')).toHaveCount(6);
-              await expect(single.locator('.member-group-heading')).toHaveCount(0);
-              await expect(mixed.locator('.member-group-heading > h3')).toHaveCount(2);
+              await expect(single.locator('.cj-member-group__head')).toHaveCount(0);
+              await expect(mixed.locator('.cj-member-group__head > h3')).toHaveCount(2);
               await expect(single.locator('h3[data-cjdoc-toc-role="overload"]')).toHaveCount(1);
               await expect(mixed.locator('h4[data-cjdoc-toc-role="overload"]')).toHaveCount(1);
               const plain = page.locator('[data-cjdoc-member][data-member-name="zLast"]');
@@ -1347,13 +1413,13 @@ test.describe('authored declaration groups', () => {
                 await expect(page.locator(`[id="${anchor}"]`)).toHaveCount(1);
               }
               await page.locator('[data-cjdoc-members-expand]').click();
-              await expect(single.locator('.member-detail-body h4').first()).toBeVisible();
-              await expect(mixed.locator('.member-detail-body h5').first()).toBeVisible();
+              await expect(single.locator('.cj-member__body h4').first()).toBeVisible();
+              await expect(mixed.locator('.cj-member__body h5').first()).toBeVisible();
               const outline = await page.locator('[data-cjdoc-toc] [data-toc-target]')
                 .evaluateAll(links => links.map(link => ({
                   target: link.dataset.tocTarget,
                   internal: !!document.getElementById(link.dataset.tocTarget)
-                    ?.closest('.member-detail-body'),
+                    ?.closest('.cj-member__body'),
                 })));
               expect(outline.every(item => !item.internal)).toBe(true);
               const filter = page.locator('[data-cjdoc-member-filter]');
@@ -1376,7 +1442,7 @@ test.describe('authored declaration groups', () => {
               await page.locator('[data-cjdoc-members-collapse]').click();
               const geometry = await page.evaluate(() => {
                 const rows = [...document.querySelectorAll('[data-cjdoc-member]')];
-                const list = document.querySelector('.member-browser');
+                const list = document.querySelector('.cj-members');
                 const ids = [...document.querySelectorAll('[id]')].map(node => node.id);
                 return {width: innerWidth, height: innerHeight, rows: rows.length,
                   firstY: rows[0].getBoundingClientRect().top,
@@ -1410,15 +1476,15 @@ test.describe('declaration tag navigation and filtering', () => {
           const indexUrl = declarationIndexUrl('tags', locale, transport);
           await openDeclarationPage(page, indexUrl, transport);
           const packageUrl = new URL(
-            await page.locator('.package-index a').first().getAttribute('href'), indexUrl).href;
+            await page.locator('ul.cj-package-index > li > a').first().getAttribute('href'), indexUrl).href;
           await openDeclarationPage(page, packageUrl, transport);
 
           const streamReader = page.locator(
-            'article[data-member-name="StreamReader"][data-member-kind="class"]');
+            'tr.cj-decl-table__row[data-member-name="StreamReader"][data-member-kind="class"]');
           await expect(streamReader).toHaveCount(1);
           await expect(streamReader.locator('a a')).toHaveCount(0);
           const packageBadge = streamReader.locator(
-            ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+            ':scope .cj-badges > a.cj-badge--tag[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
           await expect(packageBadge).toHaveCount(1);
           await expectBadgeOwnsHitPoint(page, packageBadge);
           await expect(packageBadge.locator('xpath=ancestor::a')).toHaveCount(0);
@@ -1435,8 +1501,16 @@ test.describe('declaration tag navigation and filtering', () => {
           await packageBadge.click();
           await expect(page).toHaveURL(badgeUrl.href);
           assertDeclarationPageRequests(page);
+          // A tag URL seeds the search; results are rendered before the
+          // dialog is opened, and opening it must keep them.
           const resultRows = await expectSearchRows(page, 4);
+          // A tag URL opens the dialog itself; activating its trigger again
+          // would hit an inert button behind the modal.
+          await openSearchDialog(page);
+          await expectSearchRows(page, 4);
+          await page.keyboard.press('Escape');
           await page.reload();
+          await expect(page.locator('[data-cjdoc-search-dialog]')).toBeVisible();
           await expect(page).toHaveURL(badgeUrl.href);
           await expectSearchRows(page, 4);
           assertDeclarationPageRequests(page);
@@ -1456,14 +1530,14 @@ test.describe('declaration tag navigation and filtering', () => {
             .toBe(false);
 
           const facets = page.locator('[data-cjdoc-search-facets]');
+          await openSearchDialog(page);
           await expect(facets).toBeVisible();
           const streamFacet = facets.locator(
-            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stream"]');
+            'button[data-cjdoc-search-facet][data-cjdoc-tag-id="stream"]');
           const stableFacet = facets.locator(
-            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]');
-          await expect(streamFacet).toHaveAttribute('class', /is-selected/);
-          await expect(streamFacet).toHaveAttribute('aria-current', 'true');
-          await expect(stableFacet).not.toHaveAttribute('aria-current', 'true');
+            'button[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]');
+          await expect(streamFacet).toHaveAttribute('aria-pressed', 'true');
+          await expect(stableFacet).toHaveAttribute('aria-pressed', 'false');
           for (const facet of [streamFacet, stableFacet]) {
             await expect(facet).toHaveAttribute('data-cjdoc-facet-module-id', moduleId);
             await expect(facet).toHaveAttribute('data-cjdoc-facet-snapshot-id', snapshotId);
@@ -1475,21 +1549,15 @@ test.describe('declaration tag navigation and filtering', () => {
           };
           expect(await facetCount(streamFacet)).toBe(4);
           expect(await facetCount(stableFacet)).toBe(2);
-          const combinedHref = new URL(await stableFacet.getAttribute('href'), page.url());
-          expect(combinedHref.pathname).toBe(new URL(indexUrl).pathname);
-          expect(queryTags(combinedHref.href)).toEqual(['stable', 'stream']);
-          expect(combinedHref.searchParams.get('moduleId')).toBe(moduleId);
-          expect(combinedHref.searchParams.get('snapshotId')).toBe(snapshotId);
-
           // Facet activation ANDs exact IDs; activating the selected link
           // removes only that ID, then reactivating restores the two-tag case.
           await stableFacet.click();
           await expect(page).toHaveURL(actual => {
             const current = new URL(actual);
-            const expected = new URL(combinedHref);
-            current.searchParams.sort();
-            expected.searchParams.sort();
-            return current.href === expected.href;
+            return current.pathname === new URL(indexUrl).pathname &&
+              queryTags(current.href).slice().sort().join(',') === 'stable,stream' &&
+              current.searchParams.get('moduleId') === moduleId &&
+              current.searchParams.get('snapshotId') === snapshotId;
           });
           const bothRows = await expectSearchRows(page, 2);
           expect(bothRows.some(row => row.name === 'StreamReader' &&
@@ -1498,21 +1566,22 @@ test.describe('declaration tag navigation and filtering', () => {
             row.context.includes('StreamReader') && /count.*Int64/.test(row.signature))).toBe(true);
           expect(bothRows.some(row => row.context.includes('OtherReader'))).toBe(false);
           await expect(facets.locator(
-            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]'))
-            .toHaveAttribute('aria-current', 'true');
+            'button[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]'))
+            .toHaveAttribute('aria-pressed', 'true');
           await facets.locator(
-            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]').click();
+            'button[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]').click();
           await expect(page).toHaveURL(new RegExp('[?&]tag=stream(?:&|$)'));
           expect(queryTags(page.url())).toEqual(['stream']);
           await expectSearchRows(page, 4);
           await facets.locator(
-            'a[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]').click();
+            'button[data-cjdoc-search-facet][data-cjdoc-tag-id="stable"]').click();
           expect(queryTags(page.url())).toEqual(['stable', 'stream']);
           await expectSearchRows(page, 2);
 
           // Typed and URL-backed tags form one predicate set. A facet toggle
           // must update the visible input before another input event occurs.
           await openDeclarationPage(page, indexUrl, transport);
+          await openSearchDialog(page);
           const searchInput = page.locator('[role="combobox"]');
           await searchInput.fill('kind:function name:read tag:stream TAG:stream');
           await expectSearchRows(page, 3);
@@ -1523,21 +1592,23 @@ test.describe('declaration tag navigation and filtering', () => {
           expect(withoutTag.some(row => /bytes.*Array/.test(row.signature))).toBe(true);
           await searchInput.fill('kind:function name:read ');
           await expectSearchRows(page, 5);
-          await expect(streamFacet).not.toHaveAttribute('aria-current', 'true');
+          await expect(streamFacet).toHaveAttribute('aria-pressed', 'false');
           await streamFacet.click();
           expect(queryTags(page.url())).toEqual(['stream']);
           await expectSearchRows(page, 3);
           await searchInput.fill('kind:function name:read  ');
           await expectSearchRows(page, 3);
           await openDeclarationPage(page, badgeUrl.href, transport);
+          await openSearchDialog(page);
           await stableFacet.click();
           await expectSearchRows(page, 2);
 
           // Locale navigation retains every repeated tag and module identity,
           // but intentionally drops the source locale's snapshot binding.
           const otherLocale = locale === 'en' ? 'zh-CN' : 'en';
-          const switcher = page.locator('.language-switcher');
-          await switcher.locator('.language-label').click();
+          await page.keyboard.press('Escape');
+          const switcher = page.locator('.cj-lang-toggle');
+          await switcher.locator('.cj-lang-toggle__summary').click();
           const languageLink = switcher.locator(`a[hreflang="${otherLocale}"]`);
           const languageUrl = new URL(await languageLink.getAttribute('href'), page.url());
           expect(queryTags(languageUrl.href)).toEqual(['stable', 'stream']);
@@ -1551,7 +1622,7 @@ test.describe('declaration tag navigation and filtering', () => {
           await expectSearchRows(page, 2);
           const localizedFacet = page.locator(
             '[data-cjdoc-search-facets] [data-cjdoc-search-facet][data-cjdoc-tag-id="stream"]');
-          await expect(localizedFacet).toHaveAttribute('aria-current', 'true');
+          await expect(localizedFacet).toHaveAttribute('aria-pressed', 'true');
           expect(await localizedFacet.getAttribute('data-cjdoc-facet-module-id')).toBe(moduleId);
           expect(await localizedFacet.getAttribute('data-cjdoc-facet-snapshot-id')).not.toBe(snapshotId);
 
@@ -1567,10 +1638,10 @@ test.describe('declaration tag navigation and filtering', () => {
           const localizedIndexUrl = declarationIndexUrl('tags', otherLocale, transport);
           await openDeclarationPage(page, localizedIndexUrl, transport);
           const localizedPackageUrl = new URL(
-            await page.locator('.package-index a').first().getAttribute('href'), localizedIndexUrl).href;
+            await page.locator('ul.cj-package-index > li > a').first().getAttribute('href'), localizedIndexUrl).href;
           await openDeclarationPage(page, localizedPackageUrl, transport);
           const readerHref = await page.locator(
-            'article[data-member-name="StreamReader"][data-member-kind="class"] > .declaration-row-link')
+            'tr.cj-decl-table__row[data-member-name="StreamReader"][data-member-kind="class"] .cj-decl-table__link')
             .getAttribute('href');
           const readerUrl = new URL(readerHref, localizedPackageUrl).href;
           await openDeclarationPage(page, readerUrl, transport);
@@ -1581,9 +1652,9 @@ test.describe('declaration tag navigation and filtering', () => {
           const originalIds = await page.locator('[id]').evaluateAll(nodes => nodes.map(node => node.id));
           expect(new Set(originalIds).size).toBe(originalIds.length);
           const originalReads = await readMembers.evaluateAll(nodes => nodes.map(node => {
-            const signature = node.querySelector('.declaration-signature')?.textContent.trim() || '';
+            const signature = node.querySelector('.cj-signature-inline')?.textContent.trim() || '';
             const tags = [...node.parentElement.querySelectorAll(
-              ':scope > .declaration-classification [data-cjdoc-tag-id]')]
+              ':scope .cj-badges [data-cjdoc-tag-id]')]
               .map(tag => tag.getAttribute('data-cjdoc-tag-id')).sort();
             const overload = node.closest('[data-cjdoc-overload-group]');
             return { id: node.id, symbolId: node.dataset.memberSymbolId,
@@ -1606,7 +1677,7 @@ test.describe('declaration tag navigation and filtering', () => {
           const untagged = page.locator('[data-cjdoc-member][data-member-name="untagged"]');
           await expect(untagged).toHaveCount(1);
           expect(await untagged.locator('xpath=..')
-            .locator(':scope > .declaration-classification [data-cjdoc-tag-id]').count()).toBe(0);
+            .locator(':scope .cj-badges [data-cjdoc-tag-id]').count()).toBe(0);
 
           const queryGroup = page.locator(
             '[data-cjdoc-declaration-group="10-query"]');
@@ -1672,16 +1743,17 @@ test.describe('declaration tag navigation and filtering', () => {
           const countMember = readMembers.nth(countReadIndex);
           const memberRow = countMember.locator('xpath=..');
           const memberBadge = memberRow.locator(
-            ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+            ':scope .cj-badges > a.cj-badge--tag[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
           await expect(memberBadge).toHaveCount(1);
           await expect(memberBadge.locator('xpath=ancestor::details')).toHaveCount(0);
           await expectBadgeOwnsHitPoint(page, memberBadge);
           const memberStructure = await memberBadge.evaluate(element => ({
-            row: element.parentElement.parentElement === element.closest('.member-row'),
-            detailsSibling: Array.from(element.closest('.member-row').children)
+            row: element.closest('.cj-badges').parentElement.parentElement ===
+              element.closest('.cj-member-row'),
+            detailsSibling: Array.from(element.closest('.cj-member-row').children)
               .some(child => child.matches('details[data-cjdoc-member]')),
-            actionsSibling: Array.from(element.closest('.member-row').children)
-              .some(child => child.matches('.member-detail-actions')),
+            actionsSibling: Array.from(element.closest('.cj-member-row').children)
+              .some(child => child.matches('.cj-member-actions')),
           }));
           expect(memberStructure).toEqual({row: true, detailsSibling: true, actionsSibling: true});
 
@@ -1693,9 +1765,9 @@ test.describe('declaration tag navigation and filtering', () => {
               await openDeclarationPage(page, packageUrl, transport);
               await setTheme(page, theme);
               const row = page.locator(
-                'article[data-member-name="StreamReader"][data-member-kind="class"]');
+                'tr.cj-decl-table__row[data-member-name="StreamReader"][data-member-kind="class"]');
               const badge = row.locator(
-                ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+                ':scope .cj-badges > a.cj-badge--tag[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
               const bounds = await expectBadgeOwnsHitPoint(page, badge);
               const geometry = await page.evaluate(({width, height, bounds}) => ({
                 viewport: {width, height},
@@ -1712,13 +1784,13 @@ test.describe('declaration tag navigation and filtering', () => {
               await testInfo.attach(`tag-${transport}-${locale}-${width}-${theme}-screen`, {
                 body: await page.screenshot(), contentType: 'image/png',
               });
-              const primaryLink = row.locator(':scope > .declaration-row-link');
+              const primaryLink = row.locator('.cj-decl-table__name > .cj-decl-table__link');
               await primaryLink.click();
               await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'api');
               await expect(page.locator('main h1')).toContainText('StreamReader');
               await openDeclarationPage(page, packageUrl, transport);
               await page.locator(
-                'article[data-member-name="StreamReader"] a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]')
+                'tr.cj-decl-table__row[data-member-name="StreamReader"] a.cj-badge--tag[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]')
                 .click();
               const clickedUrl = new URL(page.url());
               expect(clickedUrl.pathname).toBe(new URL(indexUrl).pathname);
@@ -1734,7 +1806,7 @@ test.describe('declaration tag navigation and filtering', () => {
           await page.setViewportSize({width: 1440, height: 900});
           await openDeclarationPage(page, packageUrl, transport);
           const keyboardBadge = page.locator(
-            'article[data-member-name="StreamReader"] a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+            'tr.cj-decl-table__row[data-member-name="StreamReader"] a.cj-badge--tag[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
           const keyboardTarget = new URL(await keyboardBadge.getAttribute('href'), packageUrl).href;
           await keyboardBadge.focus();
           await expect(keyboardBadge).toBeFocused();
@@ -1759,7 +1831,7 @@ test.describe('declaration tag navigation and filtering', () => {
             const touchRead = touchReads.nth(countReadIndex);
             const touchRow = touchRead.locator('xpath=..');
             const touchBadge = touchRow.locator(
-              ':scope > .declaration-classification > a.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
+              ':scope .cj-badges > a.cj-badge--tag[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]');
             const touchTarget = new URL(await touchBadge.getAttribute('href'), readerUrl).href;
             await expectBadgeOwnsHitPoint(touchPage, touchBadge);
             await touchBadge.tap();
@@ -1777,8 +1849,8 @@ test.describe('declaration tag navigation and filtering', () => {
             const actionToggle = actions.locator('[data-cjdoc-member-actions-toggle]');
             await actionToggle.tap();
             await expect(actionMember).toHaveAttribute('open', '');
-            await expect(actions.locator('.member-action-list')).toBeVisible();
-            const sourceLink = actions.locator('.member-source-link');
+            await expect(actions.locator('.cj-member-actions__list')).toBeVisible();
+            const sourceLink = actions.locator('.cj-member-actions__item--source');
             await expect(sourceLink).toHaveCount(1);
             await expect(sourceLink).toBeVisible();
             await sourceLink.scrollIntoViewIfNeeded();
@@ -1787,28 +1859,30 @@ test.describe('declaration tag navigation and filtering', () => {
               const target = document.elementFromPoint(rect.left + rect.width / 2,
                 rect.top + rect.height / 2);
               return {
-                ownLink: Boolean(target && target.closest('.member-source-link') === element),
-                inBadge: Boolean(target && target.closest('.declaration-tag-badge[data-cjdoc-tag-link]')),
+                ownLink: Boolean(target && target.closest('.cj-member-actions__item--source') === element),
+                inBadge: Boolean(target && target.closest('.cj-badge--tag[data-cjdoc-tag-link]')),
                 inDetails: Boolean(element.closest('details')),
-                inClassification: Boolean(element.closest('.declaration-classification')),
+                inClassification: Boolean(element.closest('.cj-badges')),
               };
             });
             expect(sourceHit).toEqual({
               ownLink: true, inBadge: false, inDetails: false, inClassification: false,
             });
-            const copy = actions.locator('.member-action-copy');
+            const copy = actions.locator('.cj-member-actions__item--copy');
             await expect(copy).toBeVisible();
             const beforeCopyUrl = touchPage.url();
             await copy.tap();
-            await expect(copy).toHaveAttribute('data-copy-link-result', /^(copied|manual)$/);
+            // The unified copy hook reports the transient outcome; a blocking
+            // clipboard still leaves the button in one of the two states.
+            await expect(copy).toHaveAttribute('data-cjdoc-copy-state', /^(copied|failed)$/);
             expect(touchPage.url()).toBe(beforeCopyUrl);
             await expect(actionMember).toHaveAttribute('open', '');
-            expect(await actionRow.locator(':scope > .declaration-classification').count()).toBe(1);
+            expect(await actionRow.locator(':scope .cj-badges').count()).toBe(1);
             if (await actionToggle.getAttribute('aria-expanded') !== 'true') {
               await actionToggle.tap();
             }
-            await expect(actions.locator('.member-action-list')).toBeVisible();
-            const permalink = actions.locator('.member-permalink');
+            await expect(actions.locator('.cj-member-actions__list')).toBeVisible();
+            const permalink = actions.locator('.cj-member-actions__item--standalone');
             const permalinkUrl = new URL(await permalink.getAttribute('href'), readerUrl).href;
             await permalink.tap();
             await expect(touchPage).toHaveURL(permalinkUrl);

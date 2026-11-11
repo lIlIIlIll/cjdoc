@@ -54,7 +54,7 @@ private func navigationRenderType(url: String): TypeRef {
 }
 
 private func navigationRenderSignature(html: String): String {
-    let blocks = html.split("class=\"signature-block\"", 2)
+    let blocks = html.split("class=\"cj-signature\"", 2)
     @Assert(blocks.size == 2)
     let code = blocks[1].split("<code", 2)
     @Assert(code.size == 2)
@@ -64,7 +64,7 @@ private func navigationRenderSignature(html: String): String {
 }
 
 private func navigationRenderPage(artifacts: Array<RenderArtifact>, prefix: String): RenderArtifact {
-    for (artifact in artifacts where artifact.path.startsWith(prefix) && artifact.content.contains("signature-block")) {
+    for (artifact in artifacts where artifact.path.startsWith(prefix) && artifact.content.contains("cj-signature")) {
         let signature = navigationRenderSignature(artifact.content)
         if (navigationRenderText(signature).startsWith("public func accept")) { return artifact }
     }
@@ -106,7 +106,7 @@ class DependencyNavigationRenderTest {
                 if (!allowed) {
                     let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
                     let signature = navigationRenderSignature(html)
-                    @Expect(!signature.contains("class=\"type-link\""))
+                    @Expect(!signature.contains("cj-type-link"))
                     let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(
                         document, ["markdown"], locale: "en"))
                     @Expect(!markdown.contains("[`Token`]("))
@@ -172,7 +172,7 @@ class DependencyNavigationRenderTest {
             let document = navigationRenderDocument(TypeRef("named", "Token", SemanticType("unavailable")),
                 markdown: Some(MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])])))
             let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
-            @Expect(html.contains("href=\"../dependencies/category.html#" + fragment + "\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a><span class=\"reference-state-note\" data-reference-state=\"unresolved\">"))
+            @Expect(html.contains("href=\"../dependencies/category.html#" + fragment + "\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a><span class=\"cj-state-note\" data-reference-state=\"unresolved\">"))
             let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en"))
             @Expect(markdown.contains("[member](../../html/dependencies/category.html#" + fragment + " \"manual: explicit documentation\")"))
             @Expect(node.metadata.getOrThrow().semanticState, Some("unresolved"))
@@ -191,9 +191,9 @@ class DependencyNavigationRenderTest {
             let document = navigationRenderDocument(TypeRef("named", "Token", SemanticType("unavailable")),
                 markdown: Some(MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])])))
             let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
-            @Expect(html.contains("href=\"../dependencies/category.html#member\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a><span class=\"reference-state-note\" data-reference-state=\"" + state + "\">"))
+            @Expect(html.contains("href=\"../dependencies/category.html#member\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a><span class=\"cj-state-note\" data-reference-state=\"" + state + "\">"))
             @Expect(html.contains("data-reference-state=\"" + state + "\""))
-            @Expect(!html.contains("class=\"reference-state-note\" data-reference-state=\"resolved\""))
+            @Expect(!html.contains("cj-state-note\" data-reference-state=\"resolved\""))
         }
     }
 
@@ -203,8 +203,8 @@ class DependencyNavigationRenderTest {
             navigation: Some(TypeNavigation("ambiguous", "none", "Conflicting <script> indexes")))
         let document = navigationRenderDocument(typeRef)
         let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
-        let signature = html.split("class=\"signature-block\"", 2)[1].split("</pre>", 2)[0]
-        @Expect(!signature.contains("signature-type-link"))
+        let signature = html.split("class=\"cj-signature\"", 2)[1].split("</pre>", 2)[0]
+        @Expect(!signature.contains("cj-type-link"))
         @Expect(signature.contains("Conflicting &lt;script&gt; indexes"))
         @Expect(!signature.contains("<script> indexes"))
         let markdown = navigationRenderMarkdown(MarkdownDocumentationRenderer().render(document))
@@ -230,7 +230,7 @@ class DependencyNavigationRenderTest {
         @Expect(navigationRenderText(signature), raw)
         @Expect(signature.split("href=\"https://docs.example.test/Token.html\"").size - 1, 6)
         @Expect(signature.split("href=\"../dependencies/Box.html\"").size - 1, 2)
-        @Expect(!signature.contains("<a class=\"type-link signature-type-link\" href=\"https://docs.example.test/Token.html\">T</a>"))
+        @Expect(!signature.contains("<a class=\"cj-type-link\" href=\"https://docs.example.test/Token.html\">T</a>"))
         let markdown = navigationRenderMarkdown(MarkdownDocumentationRenderer().render(document))
         @Expect(markdown.contains("?[`Token`](https://docs.example.test/Token.html \"manual: Explicit documentation reference\")"))
         @Expect(markdown.contains("[`Box`](../../html/dependencies/Box.html \"manual: Explicit box documentation\")"))
@@ -278,7 +278,7 @@ class DependencyNavigationRenderTest {
         let initial = navigationRenderDocument(TypeRef("named", "Token", SemanticType("unavailable")))
         var route = ""
         for (artifact in HtmlDocumentationRenderer().render(initial) where artifact.path.startsWith("html/symbols/symbol-") &&
-            artifact.content.contains("signature-block")) {
+            artifact.content.contains("cj-signature")) {
             let signature = navigationRenderSignature(artifact.content)
             if (navigationRenderText(signature) == "public class Token") { route = artifact.path.removePrefix("html/") }
         }
@@ -296,8 +296,9 @@ class DependencyNavigationRenderTest {
         @Expect(typeRef.semantic.state, "unavailable")
         let filtered = navigationRenderDocument(typeRef, tokenVisibility: "private")
         let filteredHtml = navigationRenderPage(HtmlDocumentationRenderer().render(filtered), "html/symbols/").content
-        let filteredSignature = filteredHtml.split("class=\"signature-block\"", 2)[1].split("</pre>", 2)[0]
-        @Expect(!filteredSignature.contains("signature-type-link"))
+        let filteredSignature = filteredHtml.split("class=\"cj-signature\"", 2)[1].split("</pre>", 2)[0]
+        @Expect(!filteredSignature.contains("cj-type-link"))
+        @Expect(!filteredSignature.contains("<a "))
         @Expect(!navigationRenderMarkdown(MarkdownDocumentationRenderer().render(filtered)).contains("[`Token`]("))
     }
 
@@ -309,8 +310,8 @@ class DependencyNavigationRenderTest {
             try {
                 let document = navigationRenderDocument(navigationRenderType(url))
                 let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
-                let signature = html.split("class=\"signature-block\"", 2)[1].split("</pre>", 2)[0]
-                @Expect(!signature.contains("signature-type-link"))
+                let signature = html.split("class=\"cj-signature\"", 2)[1].split("</pre>", 2)[0]
+                @Expect(!signature.contains("cj-type-link"))
                 @Expect(!signature.contains("onclick="))
                 let markdown = navigationRenderMarkdown(MarkdownDocumentationRenderer().render(document))
                 @Expect(!markdown.contains("[`Token`]("))

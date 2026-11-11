@@ -87,20 +87,22 @@ CONTRAST_PROBE = r"""() => {
     const dark = Math.min(lum(foreground), lum(behind));
     return { ratio: (light + 0.05) / (dark + 0.05), size: parseFloat(style.fontSize) };
   };
-  // Audit the elements that actually paint glyphs. A signature container holds
-  // `.code-*` syntax spans and `.type-link` anchors whose colours differ from the
-  // container's own `--muted`, so measuring only the container would miss a
-  // low-contrast keyword or link colour.
+  // Audit the elements that actually paint glyphs. Declaration tables carry a
+  // muted summary cell, a kind badge and classification badges whose colours
+  // differ from the group heading, so measuring only the heading would miss a
+  // low-contrast cell.
   const candidates = [
-    ...document.querySelectorAll('.declaration-group h2, .declaration-group h3'),
-    ...document.querySelectorAll('.declaration-row-link code'),
-    ...document.querySelectorAll('.declaration-signature, .declaration-signature .code-keyword,' +
-      ' .declaration-signature .code-type, .declaration-signature .code-string,' +
-      ' .declaration-signature .code-number, .declaration-signature .code-comment,' +
-      ' .declaration-signature .type-link, .declaration-row-link .type-link'),
-    ...document.querySelectorAll('.declaration-description'),
-    ...document.querySelectorAll('.declaration-tag-badge, .declaration-group-badge'),
-    ...document.querySelectorAll('.page-header h1 code, .badge'),
+    ...document.querySelectorAll('[data-cjdoc-declaration-group] > h2,' +
+      ' h3[data-cjdoc-toc-role="group"]'),
+    ...document.querySelectorAll('.cj-decl-table__link code'),
+    ...document.querySelectorAll('.cj-signature, .cj-signature .cj-tok-keyword,' +
+      ' .cj-signature .cj-tok-type, .cj-signature .cj-tok-string,' +
+      ' .cj-signature .cj-tok-number, .cj-signature .cj-tok-comment,' +
+      ' .cj-signature .cj-type-link'),
+    ...document.querySelectorAll('.cj-decl-table__summary'),
+    ...document.querySelectorAll('.cj-kind'),
+    ...document.querySelectorAll('.cj-badge--tag, .cj-badge--group'),
+    ...document.querySelectorAll('.cj-page-header__title code, .cj-badge'),
   ];
   return candidates.map(node => {
     const value = ratio(node);
@@ -114,17 +116,18 @@ CONTRAST_PROBE = r"""() => {
 }"""
 
 LAYOUT_PROBE = r"""() => {
-  const rows = [...document.querySelectorAll('.declaration-row')];
+  const rows = [...document.querySelectorAll('.cj-decl-table__row')];
   const firstScreen = rows.filter(row => {
     const r = row.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
   }).length;
-  const list = document.querySelector('.declaration-list');
+  const tables = [...document.querySelectorAll('.cj-decl-table')];
+  const height = tables.reduce((total, table) => total + table.getBoundingClientRect().height, 0);
   return {
     overflow: document.documentElement.scrollWidth > innerWidth + 1,
     scrollWidth: document.documentElement.scrollWidth,
     innerWidth, rows: rows.length, firstScreen,
-    listHeight: list ? Math.round(list.getBoundingClientRect().height) : 0,
+    listHeight: Math.round(height),
   };
 }"""
 
@@ -156,8 +159,8 @@ TAG_SEARCH_PROBE = r"""() => {
       kind: entry.kind, qualifiedName: entry.qualifiedName, parameterTypes: entry.parameterTypes,
       returnType: entry.returnType || '',
       tagIds: (entry.classification?.tags || []).map(tag => tag.id),
-      renderedName: item.querySelector('.search-result-name')?.textContent.trim() || '',
-      renderedSignature: item.querySelector('.search-result-signature')?.textContent.trim() || ''
+      renderedName: item.querySelector('.cj-search__hit-name')?.textContent.trim() || '',
+      renderedSignature: item.querySelector('.cj-search__hit-signature')?.textContent.trim() || ''
     } : null;
   });
   const facets = [...document.querySelectorAll('[data-cjdoc-search-facets] [data-cjdoc-search-facet]')]
@@ -165,7 +168,7 @@ TAG_SEARCH_PROBE = r"""() => {
       const match = link.textContent.match(/\((\d+)\)$/);
       return {
         id: link.dataset.cjdocTagId, count: match ? Number(match[1]) : null,
-        selected: link.getAttribute('aria-current') === 'true',
+        selected: link.getAttribute('aria-pressed') === 'true',
         moduleId: link.dataset.cjdocFacetModuleId,
         snapshotId: link.dataset.cjdocFacetSnapshotId
       };
@@ -187,7 +190,7 @@ TAG_MEMBER_PROBE = r"""() => {
   const symbolAnchor = symbolId => "symbol-" +
     [...new TextEncoder().encode(symbolId)].map(byte => byte.toString(16).padStart(2, "0")).join("");
   const rows = [...document.querySelectorAll('[data-cjdoc-member-browser] [data-cjdoc-member]')];
-  const visible = row => !row.hidden && !row.closest('.member-row')?.hidden;
+  const visible = row => !row.hidden && !row.closest('.cj-member-row')?.hidden;
   const identity = row => {
     const id = row.dataset.memberSymbolId;
     const entry = index.entries.find(candidate => candidate.canonicalId === id);
@@ -221,7 +224,7 @@ TAG_MEMBER_PROBE = r"""() => {
     .map(id => {
       const node = document.getElementById(id);
       return !!node && node.tagName === 'SPAN' &&
-        node.classList.contains('section-anchor-alias') &&
+        node.classList.contains('cj-anchor-alias') &&
         !node.hasAttribute('data-cjdoc-toc-role');
     });
   return {
@@ -417,9 +420,12 @@ def check_anchors(page, pages, transport: str = "file",
             state = page.evaluate(
                 """anchor => {
                   const target = document.getElementById(anchor);
-                  const list = target && target.parentElement
-                    ? target.parentElement.querySelector('.declaration-list') : null;
-                  return { found: !!target, rows: list ? list.querySelectorAll('.declaration-row').length : 0 };
+                  const group = target && target.closest('[data-cjdoc-declaration-group]');
+                  // A group anchor owns its own table; a legacy kind alias may sit
+                  // beside the group, so fall back to the page's declaration rows.
+                  const scope = group || document;
+                  return { found: !!target,
+                           rows: scope.querySelectorAll('.cj-decl-table__row').length };
                 }""",
                 anchor,
             )
@@ -498,8 +504,8 @@ def check_native_zoom(browser, pages) -> list[str]:  # noqa: ANN001 - Playwright
                 """() => ({
                   innerWidth, dpr: devicePixelRatio,
                   overflow: document.documentElement.scrollWidth > innerWidth + 1,
-                  rows: document.querySelectorAll('.declaration-row').length,
-                  visibleRows: [...document.querySelectorAll('.declaration-row')]
+                  rows: document.querySelectorAll('.cj-decl-table__row').length,
+                  visibleRows: [...document.querySelectorAll('.cj-decl-table__row')]
                     .filter(row => { const r = row.getBoundingClientRect();
                                      return r.width > 0 && r.height > 0; }).length,
                   anchor: !!document.getElementById('declarations'),
@@ -536,7 +542,7 @@ def check_native_zoom(browser, pages) -> list[str]:  # noqa: ANN001 - Playwright
 def check_keyboard(page, entry) -> list[str]:  # noqa: ANN001 - Playwright Page
     page.set_viewport_size({"width": 1440, "height": 900})
     page.goto(page_url(entry))
-    page.locator(".declaration-row-link").first.focus()
+    page.locator(".cj-decl-table__link").first.focus()
     state = page.evaluate(
         """() => {
           const active = document.activeElement;
@@ -544,7 +550,7 @@ def check_keyboard(page, entry) -> list[str]:  # noqa: ANN001 - Playwright Page
           const after = getComputedStyle(active, '::after');
           const own = getComputedStyle(active);
           return {
-            link: active.classList.contains('declaration-row-link'),
+            link: active.classList.contains('cj-decl-table__link'),
             outline: own.outlineStyle !== 'none' || after.outlineStyle !== 'none',
           };
         }"""
@@ -563,19 +569,18 @@ def check_accessible_names(page, pages) -> list[str]:  # noqa: ANN001 - Playwrig
         page.goto(page_url(entry))
         audit = page.evaluate(
             """() => {
-              const rows = [...document.querySelectorAll('.declaration-row')];
+              const rows = [...document.querySelectorAll('.cj-decl-table__row')];
               return {
                 rows: rows.length,
                 nested: rows.filter(row => row.querySelector('a a, a button, button a')).length,
                 missing: rows.filter(row => {
-                  const link = row.querySelector('.declaration-row-link');
+                  const link = row.querySelector('.cj-decl-table__link');
                   return !link || !(link.getAttribute('aria-label') || link.textContent || '').trim();
                 }).length,
-                leaked: rows.filter(row => {
-                  const link = row.querySelector('.declaration-row-link');
-                  const signature = row.querySelector('.declaration-signature');
-                  return !!link && !!signature && link.contains(signature);
-                }).length,
+                // Package rows are a compact index: a signature must never be
+                // pulled into the row link or repeated in the table.
+                leaked: rows.filter(row =>
+                  row.querySelector('.cj-decl-table__link .cj-signature-inline, .cj-decl-table__summary .cj-signature')).length,
               };
             }"""
         )
@@ -617,12 +622,19 @@ def check_grouped_members(page, entry: dict, transport: str,
     failures += check_structure(page, where + "/Application", require_declarations=False)
     failures += check_expanded_detail_structure(page, where + "/Application")
     state = page.evaluate(r"""() => {
-      const group = id => document.getElementById('api-group-' + id).parentElement;
       const rows = [...document.querySelectorAll('[data-cjdoc-member]')];
       const symbolAnchor = symbolId => "symbol-" +
         [...new TextEncoder().encode(symbolId)].map(byte => byte.toString(16).padStart(2, "0")).join("");
-      const single = group('10-application');
-      const mixed = group('20-generated-spi');
+      const groupFor = id => {
+        const heading = document.getElementById('api-group-' + id);
+        return heading ? heading.closest('section') : null;
+      };
+      const memberGroups = id => {
+        const group = groupFor(id);
+        return group ? [...group.querySelectorAll('[data-cjdoc-member-group]')] : [];
+      };
+      const single = groupFor('10-application');
+      const mixed = groupFor('20-generated-spi');
       const levels = section => [...section.querySelectorAll('[data-cjdoc-toc-role="overload"]')]
         .map(node => Number(node.tagName.slice(1)));
       const member = name => document.querySelector('[data-member-name="' + name + '"]');
@@ -637,24 +649,24 @@ def check_grouped_members(page, entry: dict, transport: str,
         memberAnchors: rows.every(row => !!row.dataset.memberSymbolId &&
           row.id === symbolAnchor(row.dataset.memberSymbolId) &&
           document.getElementById(row.id) === row),
-        singleKindHeadings: single.querySelectorAll('.member-group-heading').length,
-        mixedKindHeadings: mixed.querySelectorAll('.member-group-heading').length,
+        singleKindHeadings: single ? single.querySelectorAll('.cj-member-group__head').length : -1,
+        mixedKindHeadings: mixed ? mixed.querySelectorAll('.cj-member-group__head').length : -1,
         singleOverloads: levels(single), mixedOverloads: levels(mixed),
         plainDepth: target ? Number(target.dataset.cjdocTocDepth) : null,
         plainTocDepth: toc ? Number(toc.closest('li').dataset.depth) : null,
-        singleDetails: [...single.querySelectorAll('.member-detail-body h4')].length,
-        mixedDetails: [...mixed.querySelectorAll('.member-detail-body h5')].length,
+        singleDetails: [...single.querySelectorAll('.cj-member__body h4')].length,
+        mixedDetails: [...mixed.querySelectorAll('.cj-member__body h5')].length,
         legacyGroupAnchors: ['api-group-10-application','api-group-20-generated-spi']
           .every(id => !!document.getElementById(id)),
         legacyKindAnchors: ['functions','properties','api-kind-14-10-application-functions',
           'api-kind-16-20-generated-spi-functions'].every(id => !!document.getElementById(id)),
         singleKindAlias: !!singleKind && singleKind.tagName === 'SPAN' &&
-          singleKind.classList.contains('section-anchor-alias') &&
+          singleKind.classList.contains('cj-anchor-alias') &&
           !singleKind.hasAttribute('data-cjdoc-toc-role'),
         mixedKindHeading: !!mixedKind && mixedKind.tagName === 'H3',
         memberAnchor: !!plain && !!plain.id && document.getElementById(plain.id) === plain,
         internalToc: [...document.querySelectorAll('[data-cjdoc-toc] a')].some(link =>
-          document.getElementById(link.dataset.tocTarget)?.closest('.member-detail-body')),
+          document.getElementById(link.dataset.tocTarget)?.closest('.cj-member__body')),
       };
     }""")
     expected = {
@@ -758,8 +770,8 @@ def check_tagged_global(page, entry: dict, transport: str,
     page.set_viewport_size({"width": 1440, "height": 900})
     page.goto(transport_url(entry, transport, server_base))
     badge_selector = (
-        '.declaration-row[data-member-name="StreamReader"] '
-        '.declaration-tag-badge[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]'
+        '.cj-decl-table__row[data-member-name="StreamReader"] '
+        '.cj-badge--tag[data-cjdoc-tag-link][data-cjdoc-tag-id="stream"]'
     )
     badge = page.locator(badge_selector)
     if badge.count() != 1:
@@ -767,8 +779,8 @@ def check_tagged_global(page, entry: dict, transport: str,
     badge_state = page.evaluate(
         """selector => {
           const badge = document.querySelector(selector);
-          const row = badge?.closest('.declaration-row');
-          const primary = row?.querySelector('.declaration-row-link');
+          const row = badge?.closest('.cj-decl-table__row');
+          const primary = row?.querySelector('.cj-decl-table__link');
           return {
             id: badge?.dataset.cjdocTagId || '',
             isLink: badge?.tagName === 'A',
@@ -785,7 +797,7 @@ def check_tagged_global(page, entry: dict, transport: str,
         failures.append(f"{where}: the declaration's primary link lost its own destination")
 
     primary = page.locator(
-        '.declaration-row[data-member-name="StreamReader"] .declaration-row-link'
+        '.cj-decl-table__row[data-member-name="StreamReader"] .cj-decl-table__link'
     )
     if primary.count() != 1:
         failures.append(f"{where}: the source declaration row link is missing")
@@ -878,6 +890,8 @@ def check_tagged_global(page, entry: dict, transport: str,
         ("tag:streaming", TAG_STREAMING_IDENTITIES, 1),
     ):
         page.goto(index_url)
+        # Search lives in a dialog; the reader opens it from the header.
+        page.locator("[data-cjdoc-search-trigger]").click()
         page.locator("[data-cjdoc-search]").fill(query)
         page.wait_for_function(
             "count => document.querySelectorAll('[data-cjdoc-results] > li').length === count",
@@ -887,7 +901,7 @@ def check_tagged_global(page, entry: dict, transport: str,
         failures += check_search_rows(exact_state, expected, where + " " + query)
     page.goto(transport_url(entry, transport, server_base))
     page.locator(
-        '.declaration-row[data-member-name="StreamReader"] .declaration-row-link'
+        '.cj-decl-table__row[data-member-name="StreamReader"] .cj-decl-table__link'
     ).click()
     page.wait_for_function(
         "() => document.querySelector('[data-cjdoc-member-browser]') && " +

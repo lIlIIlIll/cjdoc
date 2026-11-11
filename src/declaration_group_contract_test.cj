@@ -149,7 +149,7 @@ class DeclarationGroupingContracts {
                 @Expect(doc.declarations.size, 1)
                 @Expect(publicHasDiagnostic(doc, diagnostic))
                 let html = renderedHtmlContent(api_render.HtmlDocumentationRenderer().render(doc))
-                @Expect(!html.contains("class=\"api-declaration-group\""))
+                @Expect(!html.contains("data-cjdoc-declaration-group="))
             } finally { let _ = removeIfExists(project, recursive: true) }
         }
     }

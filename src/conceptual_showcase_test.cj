@@ -125,15 +125,15 @@ class CapturedPageShowcaseTest {
                 }
                 @Expect(concepts, documentation.pages.size)
                 let guide = artifactContent(artifacts, "html/concepts/guides/overload.html")
-                @Expect(guide.contains("class=\"conceptual-bindings\""))
+                @Expect(guide.contains("class=\"cj-bindings cj-disclosure\""))
                 @Expect(guide.contains(if (locale == "en") { "Linked" } else { "已关联" }))
                 let stringPage = showcaseSymbolPage(artifacts, documentation.declarations[1].id)
                 let integerPage = showcaseSymbolPage(artifacts, documentation.declarations[2].id)
                 let ownerPage = showcaseSymbolPage(artifacts, documentation.declarations[0].id)
-                @Expect(stringPage.contains("class=\"api-usages\""))
+                @Expect(stringPage.contains("class=\"cj-usages\""))
                 @Expect(stringPage.contains("Exact String overload"))
-                @Expect(!integerPage.contains("class=\"api-usages\""))
-                @Expect(ownerPage.contains("class=\"api-usages\""))
+                @Expect(!integerPage.contains("class=\"cj-usages\""))
+                @Expect(ownerPage.contains("class=\"cj-usages\""))
             }
         } finally { let _ = removeIfExists(root, recursive: true) }
     }
@@ -180,11 +180,11 @@ class CapturedPageShowcaseTest {
             let documentation = captureDocumentationPages(showcaseBindingFixture(), GenerationRequest(root.toString()))
             let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
             let guide = artifactContent(artifacts, "html/concepts/guides/overload.html")
-            @Expect(guide.split("<table>").size, 2)
+            @Expect(guide.split("<table class=\"cj-table\">").size, 2)
             @Expect(guide.contains("id=\"standalone--doc-table-binding\""))
             @Expect(guide.contains("<td>one</td>"))
             @Expect(guide.contains("<td>three</td>"))
-            @Expect(guide.contains("class=\"inline-binding\""))
+            @Expect(guide.contains("<div class=\"cj-binding\">"), true)
             @Expect(!guide.contains("cjdoc-inline-binding"))
             let stringPage = showcaseSymbolPage(artifacts, documentation.declarations[1].id)
             @Expect(stringPage.contains("href=\"../concepts/guides/overload.html#standalone--doc-table-binding\""))

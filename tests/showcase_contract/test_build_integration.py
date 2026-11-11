@@ -467,7 +467,7 @@ class BuildIntegrationTests(unittest.TestCase):
         sections = "".join(f'<section id="{name}"><p>{name}</p></section>'
                            for name in ("native-check", "api-diff", "coverage", "quality", "diagnostics", "provenance"))
         self.write("view/validation.html", '<html><head><title>Validation</title></head><body>'
-                   '<div class="validation-page"><h1>Validation</h1>' + sections + '</div></body></html>')
+                   '<div class="cj-validation"><h1>Validation</h1>' + sections + '</div></body></html>')
         self.write("view/report-provenance.json", {"locale": "en"})
         publish_report_pages(self.root / "view")
         self.assertIn('<section id="native-check">', (self.root / "view/report-native-check.html").read_text())
@@ -486,7 +486,7 @@ class BuildIntegrationTests(unittest.TestCase):
         self.assertIn("<td>33</td>", rendered)
 
     def test_native_report_component_positions_do_not_shadow_htmlparser_offset(self) -> None:
-        source = '<html>\n<div class="validation-page"><section id="coverage"><div>value</div></section></div></html>'
+        source = '<html>\n<div class="cj-validation"><section id="coverage"><div>value</div></section></div></html>'
         start, end = UtilityRegion(source).regions[0]
         component = source[start:end]
         left, right = Sections(component).regions["coverage"]

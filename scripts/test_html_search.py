@@ -41,10 +41,16 @@ class Element {
   focus() { this.focused = true; }
   blur() { this.blurred = true; }
   click() { this.clicked = true; }
+  showModal() { this.open = true; }
+  close() { this.open = false; }
 }
+const childByClass = (node, name) => node.children.find(child => (child.className || "") === name);
 const input = new Element("input"), results = new Element("ul"), kind = new Element("select"), pkg = new Element("select");
-const searchFacets = new Element("div"), searchPopover = new Element("div"), searchPages = new Element("div");
+const searchFacets = new Element("div"), searchPages = new Element("div");
+const searchDialog = new Element("dialog"), searchTrigger = new Element("button");
+searchDialog.addEventListener = (name, handler) => addListener(searchDialog.events, name, handler);
 const previousPage = new Element("button"), nextPage = new Element("button"), searchStatus = new Element("div");
+const memberBrowser = new Element("section");
 const memberFilter = new Element("input"), originFilter = new Element("select"), memberStatus = new Element("div");
 const memberBuilder = new Element("details"), memberSend = new Element("details");
 memberBuilder.dataset.memberSymbolId = "cjdoc:v2:net%3AHttpClientBuilder";
@@ -53,6 +59,12 @@ memberSend.dataset.memberSymbolId = "cjdoc:v2:net%3Asend";
 memberSend.dataset.memberOrigin = "reexport";
 memberSend.textContent = "Streaming tag shown only in member text";
 const memberRows = [memberBuilder, memberSend];
+const memberGroup = new Element("section");
+memberGroup.setAttribute("data-cjdoc-member-group", "");
+memberGroup.querySelectorAll = selector => selector === "[data-cjdoc-member]" ? memberRows : [];
+memberRows.forEach(row => {
+  row.closest = selector => selector === "[data-cjdoc-member-group]" ? memberGroup : null;
+});
 const languageLink = new Element("a");
 languageLink.setAttribute("href", "zh-CN/index.html");
 languageLink.dataset.languageRoutes = "{}";
@@ -60,15 +72,18 @@ input.dataset.root = "/fixture/";
 kind.value = "";
 const controls = {"[data-cjdoc-search]": input, "[data-cjdoc-results]": results,
   "[data-cjdoc-kind]": kind, "[data-cjdoc-package]": pkg,
-  "[data-cjdoc-search-facets]": searchFacets, "[data-cjdoc-search-popover]": searchPopover,
+  "[data-cjdoc-search-facets]": searchFacets,
+  "[data-cjdoc-search-dialog]": searchDialog, "[data-cjdoc-search-trigger]": searchTrigger,
   "[data-cjdoc-search-pages]": searchPages, "[data-cjdoc-search-previous]": previousPage,
   "[data-cjdoc-search-next]": nextPage,
   "[data-cjdoc-search-status]": searchStatus,
+  "[data-cjdoc-member-browser]": memberBrowser,
   "[data-cjdoc-member-filter]": memberFilter, "[data-cjdoc-member-origin]": originFilter,
   "[data-cjdoc-member-filter-status]": memberStatus};
 const document = {querySelector: key => controls[key] || null,
   querySelectorAll: key => key === "[data-cjdoc-member]" ? memberRows :
-    key === "[data-language-routes]" ? [languageLink] : [],
+    key === "[data-language-routes]" ? [languageLink] :
+    key === "[data-cjdoc-member-group]" ? [memberGroup] : [],
   createElement: tag => new Element(tag), createTextNode: text => Object.assign(new Element("#text"), {textContent:text}),
   documentElement: {lang: "en", dataset: {}},
   body: {dataset: {}},
@@ -447,24 +462,21 @@ previousPage.events.click();
 assert.equal(results.children[0].children[0].children[0].children[0].textContent, firstMassPage);
 search("Http");
 assert.equal(searchFacets.hidden, false);
-const streamFacet = searchFacets.children.find(link =>
-  link.dataset.cjdocTagId === "stream" && link.dataset.cjdocFacetModuleId === "cjdoc:module:net");
+const streamFacet = searchFacets.children.find(button =>
+  button.dataset.cjdocTagId === "stream" && button.dataset.cjdocFacetModuleId === "cjdoc:module:net");
 assert(streamFacet);
-assert(streamFacet.href.includes("tag=stream"));
-assert(streamFacet.href.includes("moduleId=cjdoc%3Amodule%3Anet"));
-assert(streamFacet.href.includes("snapshotId=snap"));
-const clickFacet = link => searchFacets.events.click({
-  target:link, button:0, defaultPrevented:false, metaKey:false, ctrlKey:false, shiftKey:false, altKey:false,
-  preventDefault() { this.defaultPrevented = true; }
-});
+assert.equal(streamFacet.className, "cj-search__facet");
+assert.equal(streamFacet.dataset.cjdocFacetSnapshotId, "snap");
+assert.equal(streamFacet.getAttribute("aria-pressed"), "false");
+const clickFacet = button => button.events.click();
 clickFacet(streamFacet);
 assert.equal(input.value, "Http");
 assert.equal(results.children.length, 2);
-assert(searchFacets.children.find(link => link.dataset.cjdocTagId === "stream" &&
-  link.dataset.cjdocFacetModuleId === "cjdoc:module:net").attrs["aria-current"] === "true");
+assert(searchFacets.children.find(button => button.dataset.cjdocTagId === "stream" &&
+  button.dataset.cjdocFacetModuleId === "cjdoc:module:net").getAttribute("aria-pressed") === "true");
 assert(new URLSearchParams(window.location.search).getAll("tag").includes("stream"));
-clickFacet(searchFacets.children.find(link => link.dataset.cjdocTagId === "stream" &&
-  link.dataset.cjdocFacetModuleId === "cjdoc:module:net"));
+clickFacet(searchFacets.children.find(button => button.dataset.cjdocTagId === "stream" &&
+  button.dataset.cjdocFacetModuleId === "cjdoc:module:net"));
 assert.equal(results.children.length, 3);
 assert.equal(new URLSearchParams(window.location.search).getAll("tag").length, 0);
 const setSearchUrl = query => {
@@ -500,12 +512,18 @@ window.popstate();
 window.hashchange();
 pkg.value = "other"; input.value = ""; pkg.events.change();
 assert.deepEqual(results.children.map(x => x.children[0].children[0].children[0].textContent), ["HttpClientBuilder"]);
+searchTrigger.events.click();
+assert.equal(searchDialog.open, true);
+assert.equal(searchTrigger.getAttribute("aria-expanded"), "true");
+// Escape closes the dialog and restores trigger focus.
 keydown({key:"Escape", preventDefault() {}});
 assert.equal(pkg.value, "other");
-assert.equal(searchPopover.hidden, true);
 assert.equal(results.children.length, 0);
-input.events.focus();
-assert.deepEqual(results.children.map(x => x.children[0].children[0].children[0].textContent), ["HttpClientBuilder"]);
+assert.equal(searchDialog.open, false);
+assert.equal(searchTrigger.focused, true);
+assert.equal(searchTrigger.getAttribute("aria-expanded"), "false");
+searchTrigger.events.click();
+assert.equal(searchDialog.open, true);
 pkg.value = ""; pkg.events.change();
 originFilter.value = "reexport"; originFilter.events.change();
 assert.equal(memberBuilder.hidden, true);
@@ -548,7 +566,8 @@ document.keydown({key: "k", ctrlKey: true, preventDefault() {}}); assert(input.f
 assert.equal(search("overloaded").length, 2);
 const moduleLinks = results.children.map(item => item.children[0]);
 assert.deepEqual(moduleLinks.map(link => link.children[1].textContent), ["net.Client · sdk-a", "net.Client · sdk-b"]);
-assert.equal(moduleLinks[0].children[1].title, "net.overloaded · sdk-a · cjdoc:module:a");
+assert.equal(moduleLinks[0].children[1].getAttribute("title"),
+  "net.overloaded · sdk-a · cjdoc:module:a");
 assert.notEqual(moduleLinks[0].children[2].textContent, moduleLinks[1].children[2].textContent);
 // An input method editor must not drive results with intermediate text, and
 // Enter during composition commits instead of opening a result.

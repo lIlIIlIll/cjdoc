@@ -104,7 +104,7 @@ try {
   await query('kind:function');
   await next.click();
   await page.keyboard.press('Escape');
-  assert.equal(await page.locator('[data-cjdoc-search-popover]').isVisible(), false,
+  assert.equal(await page.locator('[data-cjdoc-search-dialog]').isVisible(), false,
     'Escape from a paged result must dismiss the search');
   assert.equal(await keyboardField.evaluate(input => input === document.activeElement), true,
     'dismissing a focused result must return focus to the search control');
@@ -156,7 +156,7 @@ try {
   await tailActions.locator('[data-cjdoc-member-actions-toggle]').click();
   // An off-viewport popup is not paint clipping. Expose the actual menu before
   // independently checking that native pointer hit-testing reaches its action.
-  await tailActions.locator('.member-action-list').scrollIntoViewIfNeeded();
+  await tailActions.locator('.cj-member-actions__list').scrollIntoViewIfNeeded();
   const menuHit = await tailActions.locator('a').first().evaluate(link => {
     const box = link.getBoundingClientRect();
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
@@ -182,7 +182,7 @@ try {
   assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
     .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
-    const sidebar = document.querySelector('.docs-sidebar');
+    const sidebar = document.querySelector('.cj-sidebar');
     sidebar.scrollTop = 160;
     // Navigate in the same task, before the scroll event can update the cache.
     location.href = destination;
@@ -192,7 +192,7 @@ try {
     historyQuery);
   assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
     .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
-  assert.ok(Math.abs(await page.locator('.docs-sidebar').evaluate(node => node.scrollTop) - 160) <= 2,
+  assert.ok(Math.abs(await page.locator('.cj-sidebar').evaluate(node => node.scrollTop) - 160) <= 2,
     'pagehide must capture sidebar scroll even before its queued scroll event');
   await page.locator('[data-cjdoc-member-filter]').fill('');
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
@@ -222,7 +222,7 @@ try {
         // after ResizeObserver updates the viewport budget used by the popup.
         await frame(visualPage);
         const layout = await visualPage.evaluate(() => {
-          const popup = document.querySelector('[data-cjdoc-search-popover]');
+          const popup = document.querySelector('[data-cjdoc-search-dialog]');
           const box = popup.getBoundingClientRect();
           const buttons = [...popup.querySelectorAll('button')].map(button => {
             const bounds = button.getBoundingClientRect();
