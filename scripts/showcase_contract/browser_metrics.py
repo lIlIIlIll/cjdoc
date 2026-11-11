@@ -51,6 +51,10 @@ def screenshots(journey, key: tuple, output: Path) -> list[dict]:
         if native.count():
             journey.click(native)
             journey.click(page.locator(f'[data-cjdoc-theme-value="{theme}"]'))
+            # The settings dialog stays open while the reader tries options, and a
+            # modal dialog would sit between the pointer and the next capture.
+            page.keyboard.press("Escape")
+            expect(page.locator("[data-cjdoc-theme-popover]")).to_be_hidden()
         else:
             trigger = page.locator("[data-showcase-theme]")
             expect(trigger).to_have_count(1)

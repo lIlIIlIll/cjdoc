@@ -15,7 +15,16 @@ from .site import Site, load_json
 from showcase_build.manifest import roots
 
 
+def _dismiss_search(page):
+    """The search palette is a modal dialog, so nothing else on the page is
+    reachable while it is open; a reader closes it before reading on."""
+    dialog = page.locator("[data-cjdoc-search-dialog]")
+    if dialog.count() and dialog.evaluate("node => node.open"):
+        page.locator("[data-cjdoc-search]").press("Escape")
+
+
 def _drawer(page, open: bool):
+    _dismiss_search(page)
     if page.viewport_size["width"] > 760:
         return
     menu = page.locator("[data-cjdoc-menu]")
@@ -197,6 +206,7 @@ def check_member_filters_and_actions(page):
 
 
 def _member_round_trip(page, member):
+    _dismiss_search(page)
     origin = page.url
     summary = member.locator("summary").first
     if member.get_attribute("open") is None:
@@ -258,7 +268,6 @@ def check_search_and_sidebar_history(page, member_url):
     signatures = page.locator(".cj-search__hit-signature").all_text_contents()
     if len(set(signatures)) != 2:
         raise AssertionError("search no longer distinguishes the two find overloads")
-    search.press("Escape")
     _drawer(page, True)
     page.locator("[data-cjdoc-sidebar-filter]").fill("cjdoc_no_match_72fb")
     _drawer(page, False)
@@ -300,8 +309,18 @@ def check_filtered_hash_and_header(page, member_url):
       const header = document.querySelector('.cj-header').getBoundingClientRect().bottom;
       return top >= header - 1 && top < innerHeight;
     }""", arg=anchor)
-    measured = page.evaluate("""() => ({actual: Math.ceil(document.querySelector('.cj-header').getBoundingClientRect().height),
-      variable: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cj-header-height'))})""")
+    # The declared offset is a CSS length, not a bare number; resolve it through
+    # the same layout engine that places the header before comparing.
+    measured = page.evaluate("""() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position: absolute; visibility: hidden; height:' +
+        getComputedStyle(document.documentElement).getPropertyValue('--cj-header-height');
+      document.body.append(probe);
+      const variable = probe.getBoundingClientRect().height;
+      probe.remove();
+      return {actual: Math.ceil(document.querySelector('.cj-header').getBoundingClientRect().height),
+        variable: Math.round(variable)};
+    }""")
     if measured["actual"] != measured["variable"]:
         raise AssertionError("anchor offset did not track the real header height")
 

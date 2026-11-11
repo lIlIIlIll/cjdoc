@@ -547,7 +547,11 @@ class RendererSafetyTest {
         // Member action labels stay available to assistive technology while the
         // compact row shows only their glyphs.
         @Expect(symbolHtml.contains("<span class=\"cj-member-actions__label\""), true)
-        @Expect(css.contains("(pointer: coarse)"), true)
+        // The compact row is chosen by width alone; a coarse pointer on a wide
+        // viewport must not swap the inline tray for the popup.
+        @Expect(css.contains("@media (min-width: 761px)"), true)
+        @Expect(css.contains("@media (max-width: 760px)"), true)
+        @Expect(css.contains("(pointer: coarse)"), false)
         @Expect(searchJs.contains("row.hidden = !matches"), true)
         @Expect(searchJs.contains("if (iconOnly) {"), true)
         @Expect(searchJs.contains("if (status) status.textContent = message;"), true)

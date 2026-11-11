@@ -300,7 +300,8 @@ const document = {
   createElement: tag => new Node(tag),
 };
 const window = {location: {hash: ""}, matchMedia: () => ({matches: false})};
-const context = vm.createContext({document, window, tree, data, packages: undefined});
+const context = vm.createContext({document, window, location: window.location,
+  tree, data, packages: undefined});
 vm.runInContext(SOURCE + "\ninitSidebarTree();\nfilterSidebar();", context);
 assert.equal(alphaItem.hidden, false);
 assert.equal(copperItem.hidden, false);

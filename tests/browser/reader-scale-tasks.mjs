@@ -18,8 +18,25 @@ export async function instrumentedPage(context, url, cacheDisabled = false) {
   return { page, client };
 }
 
+// The generated reader exposes search through a modal palette: the control is
+// attached but not visible until the header trigger opens it.
+export async function openSearch(page) {
+  const dialog = page.locator('[data-cjdoc-search-dialog]');
+  if (await dialog.evaluate(node => node.open)) return;
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await dialog.evaluate(node => node.open);
+}
+
+export async function closeSearch(page) {
+  const dialog = page.locator('[data-cjdoc-search-dialog]');
+  if (!await dialog.evaluate(node => node.open)) return;
+  await page.keyboard.press('Escape');
+  await dialog.evaluate(node => node.open || true);
+}
+
 export async function queryTasks(page, index, manifest, samples, base) {
   const records = [];
+  await openSearch(page);
   const input = page.locator('[data-cjdoc-search]');
   for (const task of manifest.queries) {
     const matchedTargets = task.expected.map(spec => index.entries.filter(entry => matchEntry(entry, spec)));
@@ -73,6 +90,7 @@ export async function queryTasks(page, index, manifest, samples, base) {
       synchronous: distribution(sync), frame: distribution(frames) });
     await input.fill('');
   }
+  await closeSearch(page);
   return records;
 }
 
@@ -147,6 +165,7 @@ export async function overloadTasks(context, index, manifest, base) {
         if (!expected) { selections.push({ callShape: target.callShape, pass: false, reason: 'native structured identity absent' }); continue; }
         const query = 'owner:' + task.owner.split('.').at(-1) + ' param:' + target.parameterTypes[0];
         const started = performance.now();
+        await openSearch(page);
         await page.locator('[data-cjdoc-search]').fill(query);
         await frame(page);
         const first = page.locator('[data-cjdoc-results] li a').first();

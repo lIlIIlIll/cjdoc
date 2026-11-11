@@ -213,7 +213,12 @@ internal let HTML_SIDEBAR_SCRIPT = """
       });
     }
     const filterInput = document.querySelector("[data-cjdoc-sidebar-filter]");
-    if (filterInput) filterInput.addEventListener("input", filterSidebar);
+    if (filterInput) {
+      filterInput.addEventListener("input", () => {
+        filterSidebar();
+        saveFilter();
+      });
+    }
   };
 
   const syncRouteState = () => {
@@ -337,6 +342,57 @@ internal let HTML_SIDEBAR_SCRIPT = """
     if (empty) empty.hidden = total > 0;
   };
 
+  // A navigation filter is reader state: following a member link and coming
+  // back must return to the same narrowed tree, so it is cached per document
+  // and restored only for a history navigation (never over an explicit URL).
+  const filterKey = () => "cjdoc-sidebar-filter:" +
+    [document.body.dataset.cjdocDocVersion || "", document.documentElement.lang,
+      window.location.pathname].join("|");
+  const saveFilter = () => {
+    const input = document.querySelector("[data-cjdoc-sidebar-filter]");
+    if (!input) return;
+    try { sessionStorage.setItem(filterKey(), input.value); } catch (_) { /* optional */ }
+  };
+  const restoreFilter = () => {
+    const input = document.querySelector("[data-cjdoc-sidebar-filter]");
+    if (!input) return;
+    const entry = typeof performance !== "undefined" &&
+      performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+    if (!entry || entry.type !== "back_forward") return;
+    let saved = "";
+    try { saved = sessionStorage.getItem(filterKey()) || ""; } catch (_) { saved = ""; }
+    if (!saved) return;
+    input.value = saved;
+    filterSidebar();
+  };
+
+  // Document scroll belongs to native history restoration, but a sidebar is a
+  // nested scroll box the browser does not restore on its own; take the offset
+  // at pagehide (a navigation can beat the queued scroll event) and put it back
+  // only for a Back/Forward return.
+  let sidebarOffset = 0;
+  const scrollKey = () => "cjdoc-sidebar-scroll:" +
+    [document.body.dataset.cjdocDocVersion || "", document.documentElement.lang,
+      window.location.pathname].join("|");
+  if (sidebar) {
+    sidebar.addEventListener("scroll", () => { sidebarOffset = sidebar.scrollTop; }, {passive: true});
+  }
+  const saveScroll = () => {
+    try { sessionStorage.setItem(scrollKey(), String(sidebar ? sidebar.scrollTop : 0)); }
+    catch (_) { /* optional */ }
+  };
+  const restoreScroll = () => {
+    if (!sidebar) return;
+    const entry = typeof performance !== "undefined" &&
+      performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+    if (!entry || entry.type !== "back_forward") return;
+    let saved = NaN;
+    try { saved = Number(sessionStorage.getItem(scrollKey())); } catch (_) { saved = NaN; }
+    if (!Number.isFinite(saved) || saved < 0) return;
+    sidebarOffset = saved;
+    sidebar.scrollTop = saved;
+  };
+
   const initDrawer = () => {
     const menu = document.querySelector("[data-cjdoc-menu]");
     const backdrop = document.querySelector("[data-cjdoc-menu-backdrop]");
@@ -405,10 +461,21 @@ internal let HTML_SIDEBAR_SCRIPT = """
   };
 
   initSidebarTree();
+  restoreFilter();
+  restoreScroll();
   initDrawer();
   syncRouteState();
   window.addEventListener("hashchange", syncRouteState);
   window.addEventListener("popstate", syncRouteState);
-  if (typeof requestAnimationFrame === "function") requestAnimationFrame(positionSidebar);
+  window.addEventListener("pagehide", () => {
+    saveFilter();
+    saveScroll();
+  });
+  // The size of the tree settles after the deferred scripts run, so the resting
+  // position is computed in a frame unless history restoration already won.
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => {
+    if (sidebarOffset > 0) return;
+    positionSidebar();
+  });
 })();
 """

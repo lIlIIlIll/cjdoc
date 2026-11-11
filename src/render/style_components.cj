@@ -135,6 +135,10 @@ private let HTML_CHROME_STYLE = """
 .cj-search__status, .cj-search__note { margin: 0; padding: .5rem .95rem; border-top: 1px solid var(--cj-border); color: var(--cj-muted); font-size: .75rem; }
 .cj-search__note { background: var(--cj-surface); }
 .cj-search__pages { display: flex; justify-content: space-between; gap: .5rem; padding: .45rem .95rem; border-top: 1px solid var(--cj-border); }
+/* Every palette control is a touch target: the close button and the page
+   continuations are the ones a reader hits with a thumb. */
+.cj-search .cj-button { min-height: 2.5rem; }
+.cj-search .cj-button--icon { width: 2.5rem; height: 2.5rem; }
 @media (max-width: 760px) {
   .cj-search { width: 100vw; max-width: 100vw; height: 100%; max-height: none; margin: 0; border: 0; border-radius: 0; }
 }

@@ -163,7 +163,7 @@ def copy_code(journey: Journey, button=None):
         attribute, expected = "data-copy-result", "copied"
     else:
         code = button.locator("..").locator("code").first.inner_text()
-        attribute, expected = "data-copied", "true"
+        attribute, expected = "data-cjdoc-copy-state", "copied"
     journey.click(button)
     expect(button).to_have_attribute(attribute, expected)
     if page.evaluate("Boolean(navigator.clipboard && window.isSecureContext)"):
