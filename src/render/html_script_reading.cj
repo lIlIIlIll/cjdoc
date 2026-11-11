@@ -9,6 +9,9 @@ internal let HTML_READING_SCRIPT = """
   const text = (english, chinese) => isChinese ? chinese : english;
 
   // ---- on-page table of contents ------------------------------------------
+  // Wheel, touch and key scrolling all mean the reader took over from a TOC
+  // click; `scroll` alone would fire for the click's own jump.
+  const CLICK_RELEASE_EVENTS = ["wheel", "touchstart", "keydown"];
   // Filtering hides document sections; the outline follows so it never offers
   // a jump to a hidden member or an emptied group.
   let syncTocVisibility = () => {};
@@ -98,11 +101,12 @@ internal let HTML_READING_SCRIPT = """
     };
     for (let index = 0; index < headings.length; index += 1) ensureId(headings[index], index);
     tocList.replaceChildren();
-    // A member nests under the overload family, kind group or declaration group
-    // that structurally contains it; otherwise under the closest preceding
-    // section heading. A single-kind declaration group has no kind heading, so
-    // its own H2 is the parent. A page without sections keeps a flat list so
-    // every entry stays one click away.
+    // A member nests under the kind group or declaration group that contains it;
+    // otherwise under the closest preceding section heading. An overload family
+    // title is a sibling of the other member entries of that group, not an extra
+    // level above them, so a group reads as one flat list of members. A
+    // single-kind declaration group has no kind heading, so its own H2 is the
+    // parent; a page without sections stays flat.
     const headingSet = new Set(headings);
     const containerHeading = (heading, containerSelector, titleSelector) => {
       const container = heading.closest(containerSelector);
@@ -118,12 +122,8 @@ internal let HTML_READING_SCRIPT = """
       const role = heading.dataset.cjdocTocRole;
       if (role === "api-root" || role === "api" || role === "group") {
         section = heading;
-      } else if (role === "overload") {
+      } else if (role === "overload" || role === "member") {
         const parent = enclosingGroup(heading) || section;
-        if (parent) parentOf.set(heading, parent);
-      } else if (role === "member") {
-        const parent = containerHeading(heading, "[data-cjdoc-overload-group]",
-          "[data-cjdoc-toc-role='overload']") || enclosingGroup(heading) || section;
         if (parent) parentOf.set(heading, parent);
       }
     }
@@ -167,8 +167,37 @@ internal let HTML_READING_SCRIPT = """
         link.classList.toggle("cj-toc__link--active", link.dataset.tocTarget === targetIdValue);
       }
     };
+    // A jump scrolls the target to the top of the scrollport, above the
+    // observer's band, so the observer never reports it and the highlight would
+    // stay on the previous entry. Clicking records the target and wins until the
+    // reader scrolls or types again; a timer covers readers who never do.
+    let clickedTarget = null;
+    let releaseTimer = 0;
+    const releaseClick = () => {
+      clickedTarget = null;
+      if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
+      for (const type of CLICK_RELEASE_EVENTS) {
+        window.removeEventListener(type, releaseClick, true);
+      }
+    };
+    for (const list of [tocList, mobileList]) {
+      if (!list) continue;
+      list.addEventListener("click", event => {
+        const link = event.target && event.target.closest
+          ? event.target.closest("a[data-toc-target]") : null;
+        if (!link) return;
+        clickedTarget = link.dataset.tocTarget;
+        setActive(clickedTarget);
+        for (const type of CLICK_RELEASE_EVENTS) {
+          window.addEventListener(type, releaseClick, {capture: true, passive: true});
+        }
+        if (releaseTimer) clearTimeout(releaseTimer);
+        releaseTimer = setTimeout(releaseClick, 2500);
+      });
+    }
     if ("IntersectionObserver" in window) {
       const observer = new IntersectionObserver(entries => {
+        if (clickedTarget !== null) return;
         for (const entry of entries) {
           if (entry.isIntersecting) setActive(targetId(entry.target));
         }
@@ -176,6 +205,16 @@ internal let HTML_READING_SCRIPT = """
       for (const heading of headings) observer.observe(heading);
     }
     setActive(targetId(headings[0]));
+    // A #fragment link (deep link, back/forward, or a click outside the TOC)
+    // also lands above the observer's band; follow the hash there too.
+    const syncHash = () => {
+      if (!window.location.hash || window.location.hash.length <= 1) return;
+      let id = window.location.hash.slice(1);
+      try { id = decodeURIComponent(id); } catch (_) { /* keep raw */ }
+      if (links.some(link => link.dataset.tocTarget === id)) setActive(id);
+    };
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
     syncTocVisibility = () => {
       const visible = headings.filter(heading => !heading.closest("[hidden]"));
       const visibleIds = new Set(visible.map(targetId));
@@ -637,12 +676,18 @@ internal let HTML_READING_SCRIPT = """
         }));
       } catch (_) { /* storage is optional */ }
     };
+    // An explicit hash names the target the reader asked for, but a
+    // back/forward return to a page the reader already filtered must keep their
+    // filters; the browser restored that URL, they did not pick it again.
+    const navigationEntry = typeof performance !== "undefined" &&
+      performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+    const isHistoryNavigation = Boolean(navigationEntry && navigationEntry.type === "back_forward");
     const restoreState = () => {
       let stored = null;
       try { stored = JSON.parse(sessionStorage.getItem(stateKey) || "null"); }
       catch (_) { stored = null; }
       if (!stored || typeof stored !== "object") return false;
-      if (window.location.hash && window.location.hash.length > 1) return false;
+      if (window.location.hash && window.location.hash.length > 1 && !isHistoryNavigation) return false;
       if (filter && typeof stored.filter === "string") filter.value = stored.filter;
       if (origin && typeof stored.origin === "string" &&
           [...origin.options].some(option => option.value === stored.origin)) {
@@ -668,7 +713,9 @@ internal let HTML_READING_SCRIPT = """
     if (origin) origin.addEventListener("change", saveState);
     window.addEventListener("pagehide", saveState);
     if (!restored) applyFilter();
-    revealHashTarget(true);
+    // Restored reader state already reopened the members it had open; revealing
+    // the hash on top of it would clear the filter the reader kept across Back.
+    if (!restored) revealHashTarget(true);
     window.addEventListener("hashchange", () => revealHashTarget(true));
     // Following a link to the fragment that is already current fires no
     // hashchange; reopen (and unfilter) the collapsed target all the same.

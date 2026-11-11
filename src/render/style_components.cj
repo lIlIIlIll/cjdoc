@@ -481,8 +481,23 @@ private let HTML_REFERENCE_STYLE = """
 .cj-member__origin, .cj-member__conditions { color: var(--cj-muted); font-size: .875rem; }
 .cj-member__extension { font-size: .8125rem; }
 .cj-member-actions__toggle { display: none; }
-.cj-member-actions__list { display: flex; gap: .1rem; opacity: .6; transition: opacity .12s; }
-.cj-member-row:hover .cj-member-actions__list, .cj-member-actions__list:focus-within { opacity: 1; }
+.cj-member-actions__list { display: flex; gap: .1rem; }
+/* Without scripts the tray is plain inline content: no hover state to rely on. */
+html:not([data-cj-js]) .cj-member-actions { position: static; }
+/* With scripts the tray stays rendered but transparent at rest, revealed by the
+   row's hover or by keyboard focus, so it never covers the signature and its
+   links stay in the tab order. A wide viewport keeps this inline tray even when
+   the pointer cannot hover (headless, touch-screen laptops); only a narrow row
+   swaps it for the toggle popup below. */
+@media (min-width: 761px) {
+  html[data-cj-js] .cj-member-actions {
+    opacity: 0; pointer-events: none; transition: opacity .12s;
+  }
+  html[data-cj-js] .cj-member-row:hover .cj-member-actions,
+  html[data-cj-js] .cj-member-row:focus-within .cj-member-actions {
+    opacity: 1; pointer-events: auto;
+  }
+}
 .cj-member-actions__item {
   display: inline-grid; place-items: center; width: 1.875rem; height: 1.875rem; padding: 0;
   border: 0; border-radius: var(--cj-radius); background: none; color: var(--cj-muted); cursor: pointer;
@@ -491,7 +506,10 @@ private let HTML_REFERENCE_STYLE = """
 .cj-member-actions__label {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
 }
-@media (hover: none), (pointer: coarse), (max-width: 760px) {
+/* The compact popup exists because a narrow row has no room for the inline
+   tray, so only width decides it: a wide viewport keeps the inline tray even
+   when the pointer cannot hover (headless, touch-screen laptops). */
+@media (max-width: 760px) {
   html[data-cj-js] .cj-member-actions__toggle { display: inline-flex; }
   html[data-cj-js] .cj-member-actions__list {
     position: absolute; z-index: 20; top: 2.4rem; right: 0; display: none; flex-direction: column;

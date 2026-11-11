@@ -64,7 +64,18 @@ def check_sidebar_filters(page):
     # The old "in this package" context sidebar is gone; only the tree remains.
     expect(page.locator("[data-cjdoc-sidebar-package], .cj-sidebar__context,"
                         " [data-cjdoc-context-item]")).to_have_count(0)
-    expect(page.locator(".cj-tree__link--ancestor").first).to_contain_text("TextCatalog")
+    # Both the containing package row and the type row are ancestors on a member
+    # page; the type row is the one that names the declaration being read. On the
+    # type's own page that row is the current page instead, and a page without
+    # members has no type row at all.
+    expect(page.locator('[data-cjdoc-tree-item="package"] > .cj-tree__row >'
+                        ' .cj-tree__link--ancestor')).to_have_count(1)
+    if page.locator("[data-cjdoc-member]").count():
+        expect(page.locator('[data-cjdoc-tree-item="type"] > .cj-tree__row >'
+                            ' .cj-tree__link--ancestor,'
+                            ' [data-cjdoc-tree-item="type"] > .cj-tree__row >'
+                            ' .cj-tree__link[aria-current="page"]')
+               .first).to_contain_text("TextCatalog")
     field = page.locator("[data-cjdoc-sidebar-filter]")
     bounds = field.evaluate("""node => {
       const parent = node.closest('#cjdoc-sidebar').getBoundingClientRect();
