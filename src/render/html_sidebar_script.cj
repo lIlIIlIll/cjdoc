@@ -374,15 +374,22 @@ internal let HTML_SIDEBAR_SCRIPT = """
   const scrollKey = () => "cjdoc-sidebar-scroll:" +
     [document.body.dataset.cjdocDocVersion || "", document.documentElement.lang,
       window.location.pathname].join("|");
-  if (sidebar) {
-    sidebar.addEventListener("scroll", () => { sidebarOffset = sidebar.scrollTop; }, {passive: true});
-  }
+  // Resolve the panel locally so these helpers also run in the extracted
+  // script harness, which only carries the slice under test.
+  const scrollPanel = () => document.querySelector("#cjdoc-sidebar");
+  const initScroll = () => {
+    const panel = scrollPanel();
+    if (!panel) return;
+    panel.addEventListener("scroll", () => { sidebarOffset = panel.scrollTop; }, {passive: true});
+  };
   const saveScroll = () => {
-    try { sessionStorage.setItem(scrollKey(), String(sidebar ? sidebar.scrollTop : 0)); }
+    const panel = scrollPanel();
+    try { sessionStorage.setItem(scrollKey(), String(panel ? panel.scrollTop : 0)); }
     catch (_) { /* optional */ }
   };
   const restoreScroll = () => {
-    if (!sidebar) return;
+    const panel = scrollPanel();
+    if (!panel) return;
     const entry = typeof performance !== "undefined" &&
       performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
     if (!entry || entry.type !== "back_forward") return;
@@ -390,7 +397,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     try { saved = Number(sessionStorage.getItem(scrollKey())); } catch (_) { saved = NaN; }
     if (!Number.isFinite(saved) || saved < 0) return;
     sidebarOffset = saved;
-    sidebar.scrollTop = saved;
+    panel.scrollTop = saved;
   };
 
   const initDrawer = () => {
@@ -461,6 +468,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
   };
 
   initSidebarTree();
+  initScroll();
   restoreFilter();
   restoreScroll();
   initDrawer();
