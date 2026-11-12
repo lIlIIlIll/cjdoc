@@ -126,6 +126,56 @@ for (const transport of ['root','subpath','file']) {
   });
 }
 
+test('cold history restores entry-local search filters, not fresh visits or query text', async ({page}) => {
+  const urls = await routes(page, 'en', 'root');
+  const trigger = page.locator('[data-cjdoc-search-trigger]');
+  const kind = page.locator('[data-cjdoc-kind]');
+  const pack = page.locator('[data-cjdoc-package]');
+  const first = new URL(urls.api);
+  first.searchParams.set('theme', 'light');
+  await page.goto(first.href);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await trigger.click();
+  await page.locator('[data-cjdoc-search]').fill('name:find');
+  await kind.selectOption('class');
+  const packageValue = await pack.locator('option').evaluateAll(
+    options => options.find(option => option.value)?.value);
+  expect(packageValue).toBeTruthy();
+  await pack.selectOption(packageValue);
+  await page.keyboard.press('Escape');
+  // Theme URL replacement must retain this entry's filters.
+  await page.locator('[data-cjdoc-theme-toggle]').click();
+  await page.locator('[data-cjdoc-theme-value="dark"]').click();
+  await page.keyboard.press('Escape');
+
+  const second = new URL(urls.api);
+  second.searchParams.set('visit', 'second');
+  await page.goto(second.href);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await trigger.click();
+  await expect(kind).toHaveValue('');
+  await expect(pack).toHaveValue('');
+  await kind.selectOption('function');
+  await page.keyboard.press('Escape');
+  await page.goto(urls.home);
+  await page.goBack();
+  await trigger.click();
+  await expect(kind).toHaveValue('function');
+  await expect(pack).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await page.goBack();
+  await trigger.click();
+  await expect(kind).toHaveValue('class');
+  await expect(pack).toHaveValue(packageValue);
+  await expect(page.locator('[data-cjdoc-search]')).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await page.goto(urls.api);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await trigger.click();
+  await expect(kind).toHaveValue('');
+  await expect(pack).toHaveValue('');
+});
+
 test('Chinese display labels preserve raw search kind values and query protocol', async ({page}) => {
   const urls = await routes(page,'zh-CN','file');
   await page.goto(urls.home);

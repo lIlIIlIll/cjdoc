@@ -39,6 +39,8 @@ export TMPDIR="$RUNNER_TEMP" TMP="$RUNNER_TEMP" TEMP="$RUNNER_TEMP"
 
 每次单测创建 `RUNNER_TEMP` 下的新 `--target-dir`，结束后清理；wrapper 拒绝调用方另传该选项，防止单测复用或写入产品的 `target/`。测试中启动的产品构建仍选 `-O2 --fno-chir-function-inlining`，嵌套调用结束后恢复外层单测清单。
 
+并发构建或测试的 shell 必须各用独占的 `RUNNER_TEMP`，即使 checkout 和产品 `target/` 已经分开。wrapper 可执行文件和调用日志也位于该目录，不能在运行期间被另一任务覆盖。
+
 `CJDOC_STS_INVOCATION_LOG` 记录实际 argv、完整清单选项、阶段、阶段理由、退出码，以及策略和 wrapper 的源码摘要；只有 `build` 记录绑定产品二进制。发布凭证仍要求使用完整旗标且成功的产品 build 及其二进制摘要，`-O1 test` 记录不能替代产品构建凭证。候选 receipt 读取真实调用日志、核对产品二进制和策略源码，并记录日志摘要；独立调用时使用 `--invocation-log`，CI 默认读取 `RUNNER_TEMP` 下的同一日志。
 
 检查某个清单当前声明的选项：
@@ -190,10 +192,18 @@ python3 scripts/with_stdx.py --variant static -- bash -c '
 
 候选产物包含 `target/release/bin/main`、`target/release/bin/chir-worker-main` 与 `target/ci-build/build-manifest.json`；workflow 用固定 ustar 参数打包后上传，消费方解包后必须重新校验身份。
 
+## 目录输出与故障恢复
+
+目录输出逐项写入父目录锁内的 `.cjdoc-output-parent.lock/spool/`，内存只保留产物元数据。完整 spool 清单封存后，仍按完整 plan → plan 摘要 → marker 的顺序进入原有 stage、提交和恢复流程。渲染或发布门禁失败时保留既有 owned/unowned 文件；资源上限 fallback 先销毁本次私有 spool，再从空清单重试一次。公开数组 API 仍按调用者请求收集产物。
+
+Linux 锁回收先核对同一次 kernel boot、PID namespace 和一致的 procfs PID 视图，再使用原有 PID/start-time 观测或内核明确的 `ESRCH` 缺失证明。权限失败、查询失败、域不匹配和无法确定的 PID 都保留锁与 spool，不把异常当作 owner 已退出。
+
+私有 owner 记录使用 `cjdoc.output-lock/2`，包含可空的 `processDomainSha256`，不保存原始 boot/namespace 标识。缺少域证明的 Linux 记录及旧版 owner 不自动迁移或回收。处理这类遗留锁前，须在原运行环境确认持有者已经退出；`--force-owned` 不绕过锁活性和目录身份守卫。
+
 ## 浏览器回归
 
 完整 Playwright 套件需要真实生成的参考页、双语分组/标签页、版本组合和 PocketKit 阅读站点。
-先完成上述工具链和产品构建准备，使用 CI 固定的 Node 26.11.1 与 `tests/browser/package-lock.json`。
+先完成上述工具链和产品构建准备，使用 CI 固定的 Node 26.12.0 与 `tests/browser/package-lock.json`。
 在仓库根目录执行；`OUT` 必须是本次新建的绝对输出目录，不能复用旧产物。
 fixture 仓库 URL 只用于验证捕获后的源码链接，不表示该示例仓库或 revision 可以远程访问。
 

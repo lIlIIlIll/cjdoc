@@ -353,7 +353,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
         for (const tag of tags) url.searchParams.append("tag", tag);
         url.searchParams.set("moduleId", facet.scope.moduleId);
         url.searchParams.set("snapshotId", facet.scope.snapshotId);
-        window.history.pushState({}, "", url.href);
+        window.history.pushState(window.history.state, "", url.href);
       } catch (_) { /* history can be unavailable */ }
       render();
     };
@@ -600,14 +600,48 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       addOptions(kindFilter, entries.map(entry => entry.kind), kindLabel);
       addOptions(packageFilter, entries.map(entry => entry.packageName));
     }
+    // Static selects used native history restoration. Deferred controls restore
+    // only their selected filters, not the autocomplete-disabled query input.
+    // Keep state on its history entry so repeated visits to one URL stay distinct.
+    const navigation = typeof performance !== "undefined" &&
+      performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+    if (navigation && navigation.type === "back_forward") {
+      try {
+        const saved = window.history.state && window.history.state.cjdocSearchFilters;
+        if (saved && typeof saved === "object") {
+          for (const [control, key] of [[kindFilter, "kind"], [packageFilter, "package"]]) {
+            const value = saved[key];
+            if (control && typeof value === "string" &&
+                Array.from(control.options).some(option => option.value === value)) {
+              control.value = value;
+            }
+          }
+        }
+      } catch (_) { /* history can be unavailable */ }
+    }
+    const saveSelectedFilters = () => {
+      try {
+        const previous = window.history.state;
+        const retained = previous && typeof previous === "object" && !Array.isArray(previous) ?
+          previous : {};
+        window.history.replaceState({...retained, cjdocSearchFilters: {
+          kind: kindFilter ? kindFilter.value : "",
+          package: packageFilter ? packageFilter.value : ""
+        }}, "");
+      } catch (_) { /* history can be unavailable */ }
+    };
+    const selectedFilterChanged = () => { saveSelectedFilters(); render(); };
+    // A theme URL replacement can clear history.state; checkpoint the controls
+    // before departure without changing the immutable prepaint bootstrap.
+    window.addEventListener("pagehide", saveSelectedFilters);
     render();
 
     const isComposing = event => composing || (event && event.isComposing === true);
     input.addEventListener("compositionstart", () => { composing = true; });
     input.addEventListener("compositionend", () => { composing = false; render(); });
     input.addEventListener("input", event => { if (isComposing(event)) return; render(); });
-    if (kindFilter) kindFilter.addEventListener("change", render);
-    if (packageFilter) packageFilter.addEventListener("change", render);
+    if (kindFilter) kindFilter.addEventListener("change", selectedFilterChanged);
+    if (packageFilter) packageFilter.addEventListener("change", selectedFilterChanged);
 
     const focusTarget = () => {
       if (input && typeof input.focus === "function") input.focus();

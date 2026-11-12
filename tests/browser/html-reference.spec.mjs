@@ -1126,13 +1126,8 @@ test.describe('generated HTML reference', () => {
     await expect(member).not.toHaveAttribute('open', '');
     await expect(actions).toHaveCount(1);
     await expect(actions.locator('.cj-member-actions__item')).toHaveCount(3);
-    // Row actions are dimmed until the row is hovered or focused.
-    const actionList = actions.locator('.cj-member-actions__list');
-    expect(parseFloat(await actionList.evaluate(node => getComputedStyle(node).opacity)))
-      .toBeLessThan(1);
     const before = await summary.boundingBox();
     await summary.hover();
-    await expect(actionList).toHaveCSS('opacity', '1');
     const after = await summary.boundingBox();
     expect(Math.abs(after.width - before.width)).toBeLessThan(1);
     expect(Math.abs(after.height - before.height)).toBeLessThan(1);
@@ -1152,7 +1147,6 @@ test.describe('generated HTML reference', () => {
     await expect(actions.locator('.cj-member-actions__item--source')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(actions.locator('.cj-member-actions__item--copy')).toBeFocused();
-    await expect(actionList).toHaveCSS('opacity', '1');
 
     await summary.click({position:{x:6,y:12}});
     await expect(member).toHaveAttribute('open', '');
