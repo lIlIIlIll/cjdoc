@@ -25,6 +25,11 @@ except ImportError:
     from reader_search_identity import compare_search_identities, verify_search_identity
     from test_agent_artifacts import ContractError, document
 
+FONT_INVENTORY_FAMILIES = (
+    "DejaVu Sans", "DejaVu Sans Mono", "Liberation Mono", "Liberation Sans",
+    "Noto Sans CJK SC", "Noto Serif CJK SC", "WenQuanYi Zen Hei",
+)
+
 
 class EvidenceError(ValueError):
     pass
@@ -133,22 +138,15 @@ def presentation_profile(budgets: dict) -> dict | None:
 
 
 def installed_fonts(before: dict, after: dict) -> dict:
-    """One installed environment, keyed by family, from both captures.
-
-    Both captures share one host, but each records the families it knew about:
-    the fixed inventory plus whatever its own pages resolved. A redesign
-    legitimately resolves a family the baseline never sampled, so the union is
-    the host. A family that both sides know must still resolve to one file.
-    """
-    inventory = keyed(before.get("environment", {}).get("fontFiles") or [],
-                      "family", "installed fonts")
-    extra = keyed(after.get("environment", {}).get("fontFiles") or [],
-                  "family", "installed fonts")
-    for family, font in extra.items():
-        known = inventory.get(family)
-        require(known is None or known == font,
-                "installed font identity disagrees between captures: " + family)
-        inventory[family] = font
+    """Require one complete, sorted installed inventory in both observations."""
+    rows = before.get("environment", {}).get("fontFiles") or []
+    require(rows == (after.get("environment", {}).get("fontFiles") or []),
+            "installed font inventory changed between captures")
+    inventory = keyed(rows, "family", "installed fonts")
+    require(tuple(inventory) == FONT_INVENTORY_FAMILIES,
+            "installed font inventory is incomplete or contains unexpected families")
+    require(all(font.get("status") == "measured" for font in inventory.values()),
+            "font file identity unavailable")
     return inventory
 
 
@@ -259,19 +257,9 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
                     failures: list[str], sites: tuple[Path, Path] | None = None) -> list[dict]:
     for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "nativeIndexEntries"):
         require(before.get(key) == after.get(key) and before.get(key) is not None, f"browser {key} changed or missing")
-    # The installed-font inventory is captured knowledge, not the host identity:
-    # each side records the families its own pages resolved plus the fixed set,
-    # so a redesign legitimately lists families the baseline never sampled. The
-    # host is still pinned field by field, and every family must resolve to one
-    # identical file in check_font_usage.
-    before_environment = {key: value for key, value in before.get("environment", {}).items()
-                          if key != "fontFiles"}
-    after_environment = {key: value for key, value in after.get("environment", {}).items()
-                         if key != "fontFiles"}
-    require(before.get("environment") and before_environment == after_environment,
+    require(before.get("environment") and before["environment"] == after.get("environment"),
             "browser environment changed or missing")
     require(before.get("harness") and before["environment"].get("fontFiles"), "missing harness or font identities")
-    require(all(font.get("status") == "measured" for font in before["environment"]["fontFiles"]), "font file identity unavailable")
     profile = presentation_profile(budgets)
     check_font_usage(before, after, profile)
     require(not before["failures"] and not after["failures"], "browser instrumentation failed")

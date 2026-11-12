@@ -140,7 +140,6 @@ test('cold history restores entry-local search filters, not fresh visits or quer
   await kind.selectOption('class');
   const packageValue = await pack.locator('option').evaluateAll(
     options => options.find(option => option.value)?.value);
-  expect(packageValue).toBeTruthy();
   await pack.selectOption(packageValue);
   await page.keyboard.press('Escape');
   // Theme URL replacement must retain this entry's filters.

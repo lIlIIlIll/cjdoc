@@ -65,7 +65,7 @@
 - 查询与成员筛选保留全部原始样本和 nearest-rank P50/P95。成员序列交替清空/精确目标；不能把它写成仅测更容易的同值重复。`frameMs` 是下一次 `requestAnimationFrame` 的时刻，不保证像素已经绘制。
 - `automationDurationMs` 是脚本协议耗时，查询/成员任务包含采样和自动化调度；`operationCount` 是逻辑读者操作数。它们不是人类完成时间，不能用二者相除得到“每次点击成本”。重载选择另记目标调用形状到准确原生链接的操作耗时。
 - 伴随 JSON 的解析采样是隔离的 `JSON.parse`，不是把 JS 索引的实际加载/编译时间改名为 JSON 解析时间。真实页面同时记录导航、脚本 CPU、>50ms 长任务、DOM 与 CDP JavaScript heap；后者不是浏览器进程总 RSS。
-- 字体记录采样节点的实际 family/PostScriptName，并记录 fontconfig 家族默认文件的 SHA-256，而不是仅抄 CSS `font-family`。这不是枚举所有字形、字重或字体文件的声明。不要混合不同字体环境的 before/after。
+- `environment.fontFiles` 只记录固定七家族 `DejaVu Sans`、`DejaVu Sans Mono`、`Liberation Mono`、`Liberation Sans`、`Noto Sans CJK SC`、`Noto Serif CJK SC`、`WenQuanYi Zen Hei` 的 fontconfig 默认文件及真实 SHA-256，并按家族排序。before/after 的完整 environment（包括该安装清单）必须相等，不取两侧并集；缺失、新增、不可用或摘要改变均拒绝。采样节点的实际 family/PostScriptName 与 `fontUsage` 独立记录；只有明确登记的 presentation profile 可以允许实际使用集合变化。这不是枚举所有字形、字重或字体文件的声明。
 
 截图矩阵为 1440×900、960×900、390×844、760/761/1180/1181×900，以及 CSS 720×450 / DPR 2 的 200% 等效内容布局；light/dark、中文/英文。后者对应物理 1440×900，不声称操作了浏览器 chrome 的缩放菜单。所有截图来自原生生成站点，包含长契约、命名参数、泛型约束、500 成员和 16 重载。
 
