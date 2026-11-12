@@ -14,7 +14,7 @@ internal let RENDER_ARTIFACT_LIMIT: Int64 = DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES
 internal let RENDER_ARTIFACT_TOTAL_LIMIT: Int64 = 512 * 1024 * 1024
 internal let RENDER_ARTIFACT_ENTRY_LIMIT: Int64 = 65536
 
-internal func validateRenderArtifactPath(path: String): Unit {
+protected func validateRenderArtifactPath(path: String): Unit {
     if (path.isEmpty() || path.startsWith("/") || path.contains("\\") || path.contains("..")) {
         throw IllegalArgumentException("render artifact path must stay within the output directory")
     }
@@ -99,11 +99,32 @@ internal class RenderTextBuffer {
     }
 }
 
+/**
+ * The single append surface for every render product.
+ *
+ * The in-memory collector keeps payloads; the root package's spool keeps only
+ * metadata and writes payloads to disk. Both obey the same entry ordinals:
+ * entries are addressed by their stable zero-based append ordinal, so duplicate
+ * logical paths stay distinct and keep their published order.
+ */
+protected interface RenderArtifactStore {
+    func addText(path: String, mediaType: String, content: String): Int64
+
+    func addOwnedBytes(path: String, mediaType: String, bytes: Array<Byte>): Int64
+
+    /** Stored text of one text entry, bounded by `limit` bytes. */
+    func readText(entry: Int64, limit: Int64): String
+
+    /** Replace the payload of one text entry, keeping its path, media type and ordinal. */
+    func replaceText(entry: Int64, content: String): Unit
+}
+
 public class RenderArtifact {
     public let path: String
     public let mediaType: String
     public let content: String
     private let bytesStorage: Array<Byte>
+    private let binaryPayload: Bool
 
     public init(path: String, mediaType: String, content: String) {
         validateRenderArtifactPath(path)
@@ -115,6 +136,7 @@ public class RenderArtifact {
         this.mediaType = mediaType
         this.content = content
         this.bytesStorage = Array<Byte>()
+        this.binaryPayload = false
     }
 
     public init(path: String, mediaType: String, bytes: Array<Byte>) {
@@ -127,6 +149,7 @@ public class RenderArtifact {
         this.mediaType = mediaType
         this.content = ""
         this.bytesStorage = bytes.clone()
+        this.binaryPayload = true
     }
 
     protected init(path: String, mediaType: String, ownedBytes: Array<Byte>, takeOwnership: Bool) {
@@ -139,12 +162,18 @@ public class RenderArtifact {
         this.mediaType = mediaType
         this.content = ""
         this.bytesStorage = ownedBytes
+        this.binaryPayload = true
     }
+
+    /** True whenever the artifact was built from a byte payload, even an empty one. */
+    protected prop hasBinaryPayload: Bool { get() { binaryPayload } }
 
     public prop bytes: Array<Byte> { get() {
         if (!content.isEmpty()) { return content.toArray() }
         bytesStorage.clone()
     } }
+    /** Root-package spool hook: the stored binary payload without a defensive copy. */
+    protected prop ownedBytes: Array<Byte> { get() { bytesStorage } }
     public prop byteSize: Int64 { get() {
         if (!content.isEmpty()) { return content.size }
         bytesStorage.size
@@ -152,14 +181,23 @@ public class RenderArtifact {
     public prop isBinary: Bool { get() { content.isEmpty() && !bytesStorage.isEmpty() } }
 }
 
-internal class RenderArtifactCollector {
-    private let artifacts = ArrayList<RenderArtifact>()
+/**
+ * One artifact budget shared by the in-memory collector and the root spool.
+ *
+ * Checks never mutate: they prove that the proposed state fits. Commit is a
+ * separate call that only the storing implementation makes after the payload is
+ * accepted, so a failed append or replacement leaves the previous accounting
+ * and payload intact. Replacement charges `total - oldSize + newSize` and never
+ * charges another entry.
+ */
+protected class RenderArtifactBudget {
     private let artifactLimit: Int64
     private let totalLimit: Int64
     private let entryLimit: Int64
+    private var entries: Int64 = 0
     private var totalBytes: Int64 = 0
 
-    init(artifactLimit!: Int64 = RENDER_ARTIFACT_LIMIT,
+    protected init(artifactLimit!: Int64 = RENDER_ARTIFACT_LIMIT,
         totalLimit!: Int64 = RENDER_ARTIFACT_TOTAL_LIMIT,
         entryLimit!: Int64 = RENDER_ARTIFACT_ENTRY_LIMIT) {
         if (artifactLimit < 0 || artifactLimit > RENDER_ARTIFACT_LIMIT ||
@@ -172,35 +210,118 @@ internal class RenderArtifactCollector {
         this.entryLimit = entryLimit
     }
 
-    private func reserve(size: Int64, path: String): Unit {
-        if (artifacts.size >= entryLimit) {
+    /** Prove one more entry of `size` bytes fits, without changing any accounting. */
+    protected func checkAdd(path: String, size: Int64): Unit {
+        if (entries >= entryLimit) {
             throw RenderResourceLimitException(
                 "render artifacts exceed ${entryLimit} entries")
         }
+        checkPayload(path, size)
+        checkTotal(size, 0)
+    }
+
+    /** Record one accepted entry after its payload is stored. */
+    protected func commitAdd(size: Int64): Unit {
+        totalBytes = reserveRenderBytes(totalBytes, size, totalLimit,
+            "render artifact set")
+        entries++
+    }
+
+    /** Prove replacing `oldSize` bytes with `newSize` bytes fits. */
+    protected func checkReplace(path: String, oldSize: Int64, newSize: Int64): Unit {
+        checkPayload(path, newSize)
+        checkTotal(newSize, oldSize)
+    }
+
+    /** Record an accepted replacement once the new payload is stored. */
+    protected func commitReplace(oldSize: Int64, newSize: Int64): Unit {
+        if (oldSize > totalBytes) {
+            throw IllegalArgumentException("render artifact replacement exceeds the stored payload")
+        }
+        totalBytes = reserveRenderBytes(totalBytes - oldSize, newSize, totalLimit,
+            "render artifact set")
+    }
+
+    private func checkPayload(path: String, size: Int64): Unit {
         if (size < 0 || size > artifactLimit) {
             throw RenderResourceLimitException(
                 "render artifact '${path}' exceeds ${artifactLimit} bytes")
         }
-        totalBytes = reserveRenderBytes(totalBytes, size, totalLimit,
-            "render artifact set")
     }
 
-    func addText(path: String, mediaType: String, content: String): Unit {
-        reserve(content.size, path)
+    private func checkTotal(incoming: Int64, outgoing: Int64): Unit {
+        let base = totalBytes - outgoing
+        if (base < 0) {
+            throw IllegalArgumentException("render artifact replacement exceeds the stored payload")
+        }
+        let _ = reserveRenderBytes(base, incoming, totalLimit, "render artifact set")
+    }
+}
+
+/**
+ * In-memory `RenderArtifactStore`: the array mode every public renderer entry
+ * point still promises. It keeps payloads and metadata per entry, including
+ * whether the payload is owned binary bytes, which the public artifact cannot
+ * report for an empty owned buffer.
+ */
+internal class RenderArtifactCollector <: RenderArtifactStore {
+    private let artifacts = ArrayList<RenderArtifact>()
+    private let budget: RenderArtifactBudget
+
+    init(artifactLimit!: Int64 = RENDER_ARTIFACT_LIMIT,
+        totalLimit!: Int64 = RENDER_ARTIFACT_TOTAL_LIMIT,
+        entryLimit!: Int64 = RENDER_ARTIFACT_ENTRY_LIMIT) {
+        this.budget = RenderArtifactBudget(artifactLimit: artifactLimit,
+            totalLimit: totalLimit, entryLimit: entryLimit)
+    }
+
+    public func addText(path: String, mediaType: String, content: String): Int64 {
+        budget.checkAdd(path, content.size)
         artifacts.add(RenderArtifact(path, mediaType, content))
+        budget.commitAdd(content.size)
+        artifacts.size - 1
     }
 
-    func add(artifact: RenderArtifact): Unit {
-        reserve(artifact.byteSize, artifact.path)
-        artifacts.add(artifact)
-    }
-
-    func addOwnedBytes(path: String, mediaType: String, bytes: Array<Byte>): Unit {
-        reserve(bytes.size, path)
+    public func addOwnedBytes(path: String, mediaType: String, bytes: Array<Byte>): Int64 {
+        budget.checkAdd(path, bytes.size)
         artifacts.add(RenderArtifact(path, mediaType, bytes, true))
+        budget.commitAdd(bytes.size)
+        artifacts.size - 1
+    }
+
+    public func readText(entry: Int64, limit: Int64): String {
+        let index = entryIndex(entry, "read")
+        let artifact = artifacts[index]
+        if (artifact.hasBinaryPayload) {
+            throw IllegalArgumentException("render artifact entry ${entry} is not text")
+        }
+        if (limit < 0 || artifact.content.size > limit) {
+            throw RenderResourceLimitException(
+                "render artifact entry ${entry} exceeds ${limit} UTF-8 bytes")
+        }
+        artifact.content
+    }
+
+    public func replaceText(entry: Int64, content: String): Unit {
+        let index = entryIndex(entry, "replace")
+        let previous = artifacts[index]
+        if (previous.hasBinaryPayload) {
+            throw IllegalArgumentException("render artifact entry ${entry} is not text")
+        }
+        budget.checkReplace(previous.path, previous.byteSize, content.size)
+        artifacts[index] = RenderArtifact(previous.path, previous.mediaType, content)
+        budget.commitReplace(previous.byteSize, content.size)
     }
 
     func toArray(): Array<RenderArtifact> { artifacts.toArray() }
+
+    private func entryIndex(entry: Int64, action: String): Int64 {
+        if (entry < 0 || entry >= artifacts.size) {
+            throw IllegalArgumentException(
+                "cannot ${action} render artifact entry ${entry}")
+        }
+        entry
+    }
 }
 
 protected func validateRenderArtifactBudgetForTest(sizes: Array<Int64>,
@@ -212,7 +333,7 @@ protected func validateRenderArtifactBudgetForTest(sizes: Array<Int64>,
         if (size < 0 || size > RENDER_ARTIFACT_LIMIT) {
             throw IllegalArgumentException("invalid test artifact size")
         }
-        artifacts.addText("test-${index}.txt", "text/plain",
+        let _ = artifacts.addText("test-${index}.txt", "text/plain",
             String.fromUtf8(Array<Byte>(size, repeat: b'x')))
         index++
     }
@@ -239,13 +360,13 @@ public class JsonDocumentationRenderer <: DocumentationRenderer {
     }
 }
 
-internal func appendJsonArtifacts(artifacts: RenderArtifactCollector,
+internal func appendJsonArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet): Unit {
     if (!docIrFitsEncodedBudget(documentation, RENDER_ARTIFACT_LIMIT)) {
         throw RenderResourceLimitException(
             "Doc IR JSON exceeds ${RENDER_ARTIFACT_LIMIT} bytes")
     }
-    artifacts.addText("docs.json", "application/json", encodeDocIr(documentation))
+    let _ = artifacts.addText("docs.json", "application/json", encodeDocIr(documentation))
 }
 
 internal func isVisibleForAudience(declaration: SymbolDoc, audience: String): Bool {

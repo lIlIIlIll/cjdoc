@@ -1,6 +1,7 @@
 package cjdoc.render
 
 import cjdoc.model.*
+import std.collection.*
 
 protected func agentDeclarationMarkdownPath(symbol: SymbolDoc): String {
     "agent/" + markdownSymbolPagePath(symbol)
@@ -120,26 +121,99 @@ protected func agentRepresentationMappings(context: DocumentationReadSnapshot): 
     "[" + out.toString() + "]"
 }
 
-internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactCollector,
+/**
+ * One manifest row: only what the machine manifest publishes. Payloads are
+ * forwarded to the real store, so no declaration, page or report body is kept
+ * live a second time just to describe it.
+ */
+private class AgentManifestResource {
+    let path: String
+    let mediaType: String
+    let bytes: Int64
+    let digest: String
+
+    init(path: String, mediaType: String, bytes: Int64, digest: String) {
+        this.path = path
+        this.mediaType = mediaType
+        this.bytes = bytes
+        this.digest = digest
+    }
+}
+
+/**
+ * Emitting store adapter: forwards every artifact to the real store in append
+ * order and records only the manifest row. Digests already computed by the
+ * caller (docs.json, symbol index) are reused instead of hashing the payload
+ * again.
+ */
+internal class AgentManifestStore <: RenderArtifactStore {
+    private let target: RenderArtifactStore
+    private let knownDigests: HashMap<String, String>
+    private let resources = ArrayList<AgentManifestResource>()
+
+    init(target: RenderArtifactStore, knownDigests!: HashMap<String, String>) {
+        this.target = target
+        this.knownDigests = knownDigests
+    }
+
+    public func addText(path: String, mediaType: String, content: String): Int64 {
+        let digest = knownDigests.get(path).getOrDefault({ => contractFingerprint(content) })
+        // Forward first: a rejected append must not leave a manifest row behind.
+        let entry = target.addText(path, mediaType, content)
+        resources.add(AgentManifestResource(path, mediaType, content.size, digest))
+        entry
+    }
+
+    public func addOwnedBytes(path: String, mediaType: String, bytes: Array<Byte>): Int64 {
+        let digest = contractFingerprintBytes(bytes)
+        let entry = target.addOwnedBytes(path, mediaType, bytes)
+        resources.add(AgentManifestResource(path, mediaType, bytes.size, digest))
+        entry
+    }
+
+    public func readText(entry: Int64, limit: Int64): String {
+        target.readText(entry, limit)
+    }
+
+    public func replaceText(entry: Int64, content: String): Unit {
+        target.replaceText(entry, content)
+    }
+
+    func appendResourceRows(out: StringBuilder): Unit {
+        var first = true
+        for (resource in resources) {
+            if (!first) { out.append(",") }
+            first = false
+            out.append("{\"path\":${escapeJsonString(resource.path.removePrefix("html/"))}," +
+                "\"mediaType\":${escapeJsonString(resource.mediaType)}," +
+                "\"bytes\":${resource.bytes},\"sha256\":${escapeJsonString(resource.digest)}}")
+        }
+    }
+}
+
+internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactStore,
     context: DocumentationReadSnapshot, includeFull!: Bool = false,
     reports!: Array<DocumentationReportAttachment> = []): Unit {
-    let machine = RenderArtifactCollector()
     let docIrText = context.encodedDocumentation
     let docIrDigest = contractFingerprint(docIrText)
     let inventoryText = context.renderSymbolInventory()
     let inventoryDigest = contractFingerprint(inventoryText)
-    machine.addText("html/agent/docs.json", "application/json", docIrText)
-    machine.addText("html/symbol-index.json", "application/json", inventoryText)
+    let knownDigests = HashMap<String, String>()
+    knownDigests["html/agent/docs.json"] = docIrDigest
+    knownDigests["html/symbol-index.json"] = inventoryDigest
+    let machine = AgentManifestStore(artifacts, knownDigests: knownDigests)
+    let _ = machine.addText("html/agent/docs.json", "application/json", docIrText)
+    let _ = machine.addText("html/symbol-index.json", "application/json", inventoryText)
     for (symbol in context.projection.visibleSymbols) {
         let markdownPath = agentDeclarationMarkdownPath(symbol)
         let jsonPath = agentDeclarationJsonPath(symbol)
         let markdown = context.renderDeclarationMarkdown(symbol.id, pagePath: markdownPath).getOrThrow()
-        machine.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
-        machine.addText("html/" + jsonPath, "application/json", renderAgentDeclarationJson(context, symbol, markdown: Some(markdown)))
+        let _ = machine.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
+        let _ = machine.addText("html/" + jsonPath, "application/json",
+            renderAgentDeclarationJson(context, symbol, markdown: Some(markdown)))
     }
     appendAgentPageArtifacts(machine, context)
     let reportRows = appendCapturedReportArtifacts(machine, context, reports)
-    let resources = machine.toArray()
     let out = StringBuilder()
     out.append("{\"schemaVersion\":\"cjdoc.machine-manifest/1\",\"snapshotId\":${escapeJsonString(context.snapshotId)}," +
         "\"pathBase\":\"document-root\",\"projection\":\"cjdoc.read/1\",\"publicationRevision\":" +
@@ -156,22 +230,12 @@ internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactCollector
         }
     }
     out.append("],\"representations\":${agentRepresentationMappings(context)},\"resources\":[")
-    first = true
-    for (resource in resources) {
-        if (!first) { out.append(",") }; first = false
-        let path = resource.path.removePrefix("html/")
-        let digest = if (path == "agent/docs.json") { docIrDigest }
-            else if (path == "symbol-index.json") { inventoryDigest }
-            else { contractFingerprint(resource.content) }
-        out.append("{\"path\":${escapeJsonString(path)},\"mediaType\":${escapeJsonString(resource.mediaType)}," +
-            "\"bytes\":${resource.byteSize},\"sha256\":${escapeJsonString(digest)}}")
-        artifacts.addText(resource.path, resource.mediaType, resource.content)
-    }
+    machine.appendResourceRows(out)
     out.append("],\"reports\":[${reportRows}],\"fullReference\":" +
         if (includeFull) { "\"agent-full-index.json\"" } else { "null" })
     out.append(",\"limits\":{\"navigationPartBytes\":${AGENT_NAVIGATION_LIMIT}," +
         "\"fullPartBytes\":${AGENT_FULL_LIMIT},\"summaryBytes\":${AGENT_FIELD_LIMIT}," +
         "\"artifactBytes\":${RENDER_ARTIFACT_LIMIT},\"totalArtifactBytes\":${RENDER_ARTIFACT_TOTAL_LIMIT}," +
         "\"artifactCount\":${RENDER_ARTIFACT_ENTRY_LIMIT}}}\n")
-    artifacts.addText("html/agent/manifest.json", "application/json", out.toString())
+    let _ = artifacts.addText("html/agent/manifest.json", "application/json", out.toString())
 }

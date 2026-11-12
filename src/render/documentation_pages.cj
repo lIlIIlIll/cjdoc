@@ -184,7 +184,7 @@ private func appendCapturedPageHtmlBody(w: HtmlWriter, documentation: Documentat
     appendCapturedPageBindingsHtml(w, page, documentation, locale)
 }
 
-internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector,
+internal func appendCapturedPageArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet, formats: Array<String>, locale: String,
     version: ?String): Unit {
     let pages = selectedDocumentationPages(documentation, locale)
@@ -201,7 +201,7 @@ internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector,
             let title = if (placeholder && page.kind == "package") {
                 label(locale, "Package ", "包 ") + page.packageName
             } else { page.title }
-            artifacts.addText("html/" + page.route, "text/html; charset=utf-8",
+            let _ = artifacts.addText("html/" + page.route, "text/html; charset=utf-8",
                 renderConceptualHtmlPage(documentation, title, body, prefix,
                     source: Some(page.source), locale: locale, docVersion: version,
                     pageRoute: Some(page.route), agentMarkdown: Some(agentPageMarkdownPath(page))))
@@ -213,7 +213,7 @@ internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector,
             appendMarkdownNodeMarkdown(markdown, markdownTree.getOrThrow(),
                 buildAssetLookup(assets, prefix: prefix), 1, capturedLinks: Some(markdownLinks))
             appendCapturedPageBindingsMarkdown(markdown, page, documentation, locale)
-            artifacts.addText("markdown/" + page.route.removeSuffix(".html") + ".md",
+            let _ = artifacts.addText("markdown/" + page.route.removeSuffix(".html") + ".md",
                 "text/markdown; charset=utf-8",
                 markdown.toString() + "\n\n" + label(locale, "Content language: ", "内容语言：") +
                     page.language.getOrDefault({ => "unknown" }) + "\n")

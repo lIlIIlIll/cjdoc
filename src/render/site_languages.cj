@@ -90,62 +90,43 @@ internal func languageToggleHtml(locale: String, languages: Array<String>,
     }).value
 }
 
-internal func renderAllDocumentationLanguages(documentation: DocumentationSet, formats: Array<String>,
-    version: ?String, agentFull!: Bool = false,
-    reports!: Array<DocumentationReportAttachment> = [],
-    htmlFonts!: HtmlFontOptions = HtmlFontOptions()): Array<RenderArtifact> {
+internal func renderAllDocumentationLanguagesInto(artifacts: RenderArtifactStore,
+    documentation: DocumentationSet, formats: Array<String>, version: ?String,
+    agentFull!: Bool = false, reports!: Array<DocumentationReportAttachment> = [],
+    htmlFonts!: HtmlFontOptions = HtmlFontOptions()): Unit {
     let options = match (documentation.languageOptions) {
         case Some(value) => value
         case None => throw IllegalArgumentException("--all-languages requires explicit [i18n] languages")
     }
-    let artifacts = RenderArtifactCollector()
-    let routes = HashMap<String, String>()
-    let rendered = HashMap<String, Array<RenderArtifact>>()
-    for (language in options.languages) {
-        let values = renderDocumentationFormatsWithOptions(documentation, formats,
-            locale: language, docVersion: version, agentFull: agentFull, reports: reports,
-            htmlFonts: htmlFonts)
-        rendered[language] = values
-        for (artifact in values) {
-            if (artifact.path.startsWith("html/") && artifact.path.endsWith(".html")) {
-                let route = artifact.path.removePrefix("html/")
-                routes[language + ":" + languagePageIdentity(documentation, route, language)] = route
-            }
-        }
-    }
-    let languages = options.languages.toArray()
-    let publishedRoutes = publishedLanguageRoutes(documentation, languages, rendered)
+    let inventory = LanguageHtmlInventory()
     var firstLanguage = true
     for (language in options.languages) {
-        for (artifact in rendered[language]) {
-            let parts = artifact.path.split("/", 2)
-            let reading = parts.size == 2 && ["html", "markdown", "symbol-index"].contains(parts[0])
-            if (!reading) {
-                if (firstLanguage) {
-                    if (artifact.isBinary) { artifacts.addOwnedBytes(artifact.path, artifact.mediaType, artifact.bytes) }
-                    else { artifacts.addText(artifact.path, artifact.mediaType, artifact.content) }
-                }
-                continue
-            }
-            let path = parts[0] + "/" + language + "/" + parts[1]
-            var content = artifact.content
-            if (parts[0] == "html" && path.endsWith(".html") && content.contains("id=\"cjdoc-main\"")) {
-                let route = parts[1]
-                let identity = languagePageIdentity(documentation, route, language)
-                let switcher = languageToggleHtml(language, languages, routes, route,
-                    identity, publishedRoutes)
-                content = replaceLanguageLabel(content, language, switcher)
-            }
-            if (artifact.isBinary) { artifacts.addOwnedBytes(path, artifact.mediaType, artifact.bytes) }
-            else { artifacts.addText(path, artifact.mediaType, content) }
-        }
+        let localized = LanguageArtifactStore(artifacts, documentation, language,
+            firstLanguage, inventory)
+        renderDocumentationInto(localized, documentation, formats, locale: language,
+            docVersion: version, agentFull: agentFull, reports: reports, htmlFonts: htmlFonts)
         firstLanguage = false
     }
-    if (formats.contains("html")) { appendSiteLanguageManifest(artifacts, documentation, publishedRoutes, version) }
-    artifacts.toArray()
+    if (formats.contains("html")) {
+        finalizeLanguageStore(artifacts, documentation, options.languages.toArray(), inventory, version)
+    }
 }
 
-internal func appendSiteLanguageManifest(artifacts: RenderArtifactCollector, documentation: DocumentationSet,
+private func finalizeLanguageStore(artifacts: RenderArtifactStore,
+    documentation: DocumentationSet, languages: Array<String>,
+    inventory: LanguageHtmlInventory, version: ?String): Unit {
+    let published = publishedLanguageRoutes(documentation, languages, inventory)
+    for (page in inventory.pages where page.needsToggle) {
+        let identity = languagePageIdentity(documentation, page.route, page.language)
+        let switcher = languageToggleHtml(page.language, languages, inventory.routes,
+            page.route, identity, published)
+        let content = artifacts.readText(page.entry, RENDER_ARTIFACT_LIMIT)
+        artifacts.replaceText(page.entry, replaceLanguageLabel(content, page.language, switcher))
+    }
+    appendSiteLanguageManifest(artifacts, documentation, published, version)
+}
+
+internal func appendSiteLanguageManifest(artifacts: RenderArtifactStore, documentation: DocumentationSet,
     routes: ArrayList<PublishedLanguageRoute>, version: ?String): Unit {
     let out = RenderTextBuffer()
     let defaultLanguage: ?String = documentation.languageOptions.map({ profile =>
@@ -160,45 +141,31 @@ internal func appendSiteLanguageManifest(artifacts: RenderArtifactCollector, doc
         out.append("{\"language\":${escapeJsonString(route.language)},\"pageId\":${nullableString(route.pageId)},\"symbolId\":${nullableString(route.symbolId)},\"sectionId\":${nullableString(route.sectionId)},\"ownerSymbolId\":${nullableString(route.ownerSymbolId)},\"href\":${escapeJsonString(href)}}")
     }
     out.append("]}\n")
-    artifacts.addText("site-manifest.json", "application/json", out.toString())
+    let _ = artifacts.addText("site-manifest.json", "application/json", out.toString())
 }
 
-/** Include CLI utility pages in the final, actual publication inventory. */
+/** Include caller-appended utility HTML in the actual publication inventory. */
 public func finalizeDocumentationLanguageArtifacts(documentation: DocumentationSet,
     values: Array<RenderArtifact>, docVersion!: ?String = None): Array<RenderArtifact> {
     let languages = documentation.languageOptions.getOrThrow().languages.toArray()
-    let rendered = HashMap<String, Array<RenderArtifact>>()
-    let routes = HashMap<String, String>()
-    for (language in languages) {
-        let selected = ArrayList<RenderArtifact>()
-        let prefix = "html/" + language + "/"
-        for (artifact in values where artifact.path.startsWith(prefix)) {
-            let route = artifact.path.removePrefix(prefix)
-            selected.add(RenderArtifact("html/" + route, artifact.mediaType, artifact.content))
-            if (route.endsWith(".html")) { routes[language + ":" + languagePageIdentity(documentation, route, language)] = route }
-        }
-        rendered[language] = selected.toArray()
-    }
-    let published = publishedLanguageRoutes(documentation, languages, rendered)
+    let inventory = LanguageHtmlInventory()
     let artifacts = RenderArtifactCollector()
     for (artifact in values) {
         if (artifact.path == "site-manifest.json") { continue }
-        var content = artifact.content
-        if (artifact.path.endsWith(".html") && content.contains("id=\"cjdoc-main\"") &&
-            !content.contains("class=\"cj-lang-toggle\"")) {
-            for (language in languages) {
-                let prefix = "html/" + language + "/"
-                if (!artifact.path.startsWith(prefix)) { continue }
-                let route = artifact.path.removePrefix(prefix)
-                let identity = languagePageIdentity(documentation, route, language)
-                let switcher = languageToggleHtml(language, languages, routes, route,
-                    identity, published)
-                content = replaceLanguageLabel(content, language, switcher)
+        let entry = if (artifact.hasBinaryPayload) {
+            artifacts.addOwnedBytes(artifact.path, artifact.mediaType, artifact.ownedBytes)
+        } else {
+            artifacts.addText(artifact.path, artifact.mediaType, artifact.content)
+        }
+        for (language in languages) {
+            let prefix = "html/" + language + "/"
+            if (artifact.path.startsWith(prefix)) {
+                inventory.capture(documentation, language, artifact.path.removePrefix(prefix),
+                    entry, artifact.content)
+                break
             }
         }
-        if (artifact.isBinary) { artifacts.addOwnedBytes(artifact.path, artifact.mediaType, artifact.bytes) }
-        else { artifacts.addText(artifact.path, artifact.mediaType, content) }
     }
-    appendSiteLanguageManifest(artifacts, documentation, published, docVersion)
+    finalizeLanguageStore(artifacts, documentation, languages, inventory, docVersion)
     artifacts.toArray()
 }

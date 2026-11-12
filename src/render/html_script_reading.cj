@@ -243,9 +243,92 @@ internal let HTML_READING_SCRIPT = """
   };
 
   // ---- display settings ----------------------------------------------------
+  // The dialog is built on the first open, so a page whose reader never touches
+  // these controls carries no settings DOM at all. The header label synchronizes
+  // from these stable option labels before any option button exists.
   const THEMES = ["system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"];
   const FONTS = ["system", "serif", "mono-ui"];
   const SIZES = ["s", "m", "l"];
+  const THEME_OPTIONS = [["system", "System", "跟随系统"], ["light", "Light", "浅色"],
+    ["dark", "Dark", "深色"], ["paper", "Paper", "纸色"], ["ocean", "Ocean", "海洋"],
+    ["forest", "Forest", "森林"], ["terminal", "Terminal", "终端"], ["violet", "Violet", "紫罗兰"]];
+  const FONT_OPTIONS = [["system", "System", "系统"], ["serif", "Serif", "衬线"],
+    ["mono-ui", "Monospace", "等宽"]];
+  const SIZE_OPTIONS = [["s", "S", "S"], ["m", "M", "M"], ["l", "L", "L"]];
+  // The close icon mirrors the renderer's fixed icon set; CSS supplies the size.
+  const settingsIcon = () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    for (const [key, value] of Object.entries({class: "cj-icon", width: "16", height: "16",
+      viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.8",
+      "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
+      focusable: "false"})) {
+      svg.setAttribute(key, value);
+    }
+    const shape = document.createElementNS(svg.namespaceURI, "path");
+    shape.setAttribute("d", "M6 6l12 12M18 6 6 18");
+    svg.append(shape);
+    return svg;
+  };
+  const settingsGroup = (english, chinese, options, attribute, themed) => {
+    const group = document.createElement("fieldset");
+    group.className = "cj-settings__group";
+    const legend = document.createElement("legend");
+    legend.className = "cj-settings__legend";
+    legend.textContent = text(english, chinese);
+    const list = document.createElement("div");
+    list.className = themed
+      ? "cj-settings__options cj-settings__options--themes" : "cj-settings__options";
+    for (const [value, optionEnglish, optionChinese] of options) {
+      const button = document.createElement("button");
+      button.className = "cj-settings__option";
+      button.type = "button";
+      button.setAttribute(attribute, value);
+      button.setAttribute("aria-pressed", "false");
+      if (themed) {
+        const swatch = document.createElement("span");
+        swatch.className = "cj-settings__swatch";
+        swatch.setAttribute("data-cjdoc-swatch", value);
+        swatch.setAttribute("aria-hidden", "true");
+        button.append(swatch);
+      }
+      const name = document.createElement("span");
+      name.textContent = text(optionEnglish, optionChinese);
+      button.append(name);
+      list.append(button);
+    }
+    group.append(legend, list);
+    return group;
+  };
+  const buildSettingsDialog = () => {
+    const dialog = document.createElement("dialog");
+    dialog.id = "cjdoc-theme-popover";
+    dialog.className = "cj-settings";
+    dialog.setAttribute("data-cjdoc-theme-popover", "");
+    dialog.setAttribute("aria-labelledby", "cjdoc-settings-title");
+    const head = document.createElement("div");
+    head.className = "cj-settings__head";
+    const title = document.createElement("h2");
+    title.id = "cjdoc-settings-title";
+    title.className = "cj-settings__title";
+    title.textContent = text("Display", "显示");
+    const closeButton = document.createElement("button");
+    closeButton.className = "cj-button cj-button--icon";
+    closeButton.type = "button";
+    closeButton.setAttribute("data-cjdoc-theme-close", "");
+    closeButton.setAttribute("aria-label", text("Close", "关闭"));
+    closeButton.append(settingsIcon());
+    head.append(title, closeButton);
+    dialog.append(head,
+      settingsGroup("Theme", "主题", THEME_OPTIONS, "data-cjdoc-theme-value", true),
+      settingsGroup("Font", "字体", FONT_OPTIONS, "data-cjdoc-font-value", false),
+      settingsGroup("Text size", "字号", SIZE_OPTIONS, "data-cjdoc-size-value", false));
+    const hint = document.createElement("p");
+    hint.className = "cj-settings__hint";
+    hint.textContent = text("System follows your device appearance.",
+      "跟随系统会采用设备的外观设置。");
+    dialog.append(hint);
+    return dialog;
+  };
   const readReader = () => {
     try {
       const value = JSON.parse(localStorage.getItem("cjdoc-reader") || "{}");
@@ -257,21 +340,24 @@ internal let HTML_READING_SCRIPT = """
   };
   const initSettings = () => {
     const root = document.documentElement;
-    const dialog = document.querySelector("[data-cjdoc-theme-popover]");
     const trigger = document.querySelector("[data-cjdoc-theme-toggle]");
-    if (!dialog || !trigger) return;
-    const closeButton = dialog.querySelector("[data-cjdoc-theme-close]");
+    if (!trigger) return;
     const label = document.querySelector("[data-cjdoc-theme-label]");
-    const themeButtons = [...dialog.querySelectorAll("[data-cjdoc-theme-value]")];
-    const fontButtons = [...dialog.querySelectorAll("[data-cjdoc-font-value]")];
-    const sizeButtons = [...dialog.querySelectorAll("[data-cjdoc-size-value]")];
     const persistence = globalThis.__CJDOC_THEME__;
+    const themeLabels = new Map(THEME_OPTIONS.map(([value, english, chinese]) =>
+      [value, text(english, chinese)]));
+    let dialog = null;
+    let themeButtons = [];
+    let fontButtons = [];
+    let sizeButtons = [];
     const currentTheme = () => {
       const value = root.dataset.theme;
       return THEMES.includes(value) ? value : "system";
     };
     const currentFont = () => FONTS.includes(root.dataset.cjFont) ? root.dataset.cjFont : "system";
     const currentSize = () => SIZES.includes(root.dataset.cjSize) ? root.dataset.cjSize : "m";
+    // Runs before the dialog exists: it updates the header label from the
+    // persisted root state, then the created options once they are there.
     const sync = () => {
       const theme = currentTheme();
       for (const button of themeButtons) {
@@ -286,9 +372,8 @@ internal let HTML_READING_SCRIPT = """
         button.setAttribute("aria-pressed",
           button.dataset.cjdocSizeValue === currentSize() ? "true" : "false");
       }
-      const active = themeButtons.find(button => button.dataset.cjdocThemeValue === theme);
-      const name = active ? (active.textContent || "").trim() : "";
-      if (label && name) label.textContent = text("Theme: ", "主题：") + name;
+      if (label) label.textContent = text("Theme: ", "主题：") +
+        (themeLabels.get(theme) || themeLabels.get("system"));
     };
     const applyTheme = next => {
       if (!THEMES.includes(next)) return;
@@ -316,36 +401,62 @@ internal let HTML_READING_SCRIPT = """
       writeReader(reader);
       sync();
     };
+    // Creation binds every listener once, so reopening reuses the same node and
+    // the trigger only points at a dialog that now exists.
+    const ensureDialog = () => {
+      if (dialog) return dialog;
+      const created = buildSettingsDialog();
+      // Same position the static dialog used to occupy, so a non-modal
+      // fallback renders where it always did.
+      const header = trigger.closest("header");
+      if (header && header.parentNode) header.after(created);
+      else document.body.append(created);
+      const closeButton = created.querySelector("[data-cjdoc-theme-close]");
+      themeButtons = [...created.querySelectorAll("[data-cjdoc-theme-value]")];
+      fontButtons = [...created.querySelectorAll("[data-cjdoc-font-value]")];
+      sizeButtons = [...created.querySelectorAll("[data-cjdoc-size-value]")];
+      if (closeButton) closeButton.addEventListener("click", () => close(true));
+      created.addEventListener("close", () => {
+        trigger.setAttribute("aria-expanded", "false");
+        if (typeof trigger.focus === "function") trigger.focus();
+      });
+      created.addEventListener("click", event => {
+        if (event.target === created) close(true);
+      });
+      for (const button of themeButtons) {
+        button.addEventListener("click", () => applyTheme(button.dataset.cjdocThemeValue));
+      }
+      for (const button of fontButtons) {
+        button.addEventListener("click", () => applyFont(button.dataset.cjdocFontValue));
+      }
+      for (const button of sizeButtons) {
+        button.addEventListener("click", () => applySize(button.dataset.cjdocSizeValue));
+      }
+      trigger.setAttribute("aria-controls", created.id);
+      dialog = created;
+      sync();
+      return dialog;
+    };
     const open = () => {
+      const surface = ensureDialog();
       trigger.setAttribute("aria-expanded", "true");
-      if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
-      else dialog.setAttribute("open", "");
-      const active = dialog.querySelector("[aria-pressed='true']");
+      if (typeof surface.showModal === "function" && !surface.open) surface.showModal();
+      else surface.setAttribute("open", "");
+      const active = surface.querySelector("[aria-pressed='true']");
       if (active && typeof active.focus === "function") active.focus();
     };
     const close = (restoreFocus = true) => {
       trigger.setAttribute("aria-expanded", "false");
+      if (!dialog) return;
       if (typeof dialog.close === "function" && dialog.open) dialog.close();
       else dialog.removeAttribute("open");
       if (restoreFocus && typeof trigger.focus === "function") trigger.focus();
     };
+    // The settings trigger lives in the header, which the mobile drawer marks
+    // inert, so a drawer and this modal cannot be opened together. A closed
+    // dialog leaves no inert surface behind.
     trigger.hidden = false;
     trigger.addEventListener("click", open);
-    if (closeButton) closeButton.addEventListener("click", () => close(true));
-    dialog.addEventListener("close", () => {
-      trigger.setAttribute("aria-expanded", "false");
-      if (typeof trigger.focus === "function") trigger.focus();
-    });
-    dialog.addEventListener("click", event => { if (event.target === dialog) close(true); });
-    for (const button of themeButtons) {
-      button.addEventListener("click", () => applyTheme(button.dataset.cjdocThemeValue));
-    }
-    for (const button of fontButtons) {
-      button.addEventListener("click", () => applyFont(button.dataset.cjdocFontValue));
-    }
-    for (const button of sizeButtons) {
-      button.addEventListener("click", () => applySize(button.dataset.cjdocSizeValue));
-    }
     sync();
   };
 

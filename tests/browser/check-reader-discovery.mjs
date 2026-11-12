@@ -30,13 +30,18 @@ const errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 const report = { schemaVersion: 'cjdoc.reader-discovery/1', locale: values.locale, tasks: [], visuals: [] };
 const links = () => page.locator('[data-cjdoc-results] li a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')));
-// Search is a modal palette in the generated reader: it starts closed, and
-// every document navigation closes it again.
-const searchDialog = () => page.locator('[data-cjdoc-search-dialog]');
+// The palette is created on first request, so it is absent on load: an absent
+// dialog is neither open nor a reason to skip opening it.
+const searchSurface = () => page.evaluate(() => {
+  const dialog = document.querySelector('[data-cjdoc-search-dialog]');
+  return { open: Boolean(dialog && dialog.open) };
+});
 const openSearch = async () => {
-  if (await searchDialog().evaluate(dialog => dialog.open)) return;
+  const state = await searchSurface();
+  if (state.open) return;
   await page.locator('[data-cjdoc-search-trigger]').click();
-  await searchDialog().evaluate(dialog => dialog.open || Promise.reject(new Error('search did not open')));
+  await page.waitForFunction(() =>
+    document.querySelector('[data-cjdoc-search-dialog]')?.open === true);
 };
 const query = async value => { await openSearch(); await page.locator('[data-cjdoc-search]').fill(value); };
 const next = page.locator('[data-cjdoc-search-next]');
@@ -123,7 +128,7 @@ try {
   await query('kind:function');
   await next.click();
   await page.keyboard.press('Escape');
-  assert.equal(await searchDialog().isVisible(), false,
+  assert.equal(await page.locator('[data-cjdoc-search-dialog]').isVisible(), false,
     'Escape from a paged result must dismiss the search');
   assert.equal(await page.locator('[data-cjdoc-search-trigger]')
     .evaluate(trigger => trigger === document.activeElement), true,
@@ -234,8 +239,16 @@ try {
       try {
         const visualPage = await visualContext.newPage();
         await visualPage.goto(indexUrl);
-        const mobile = visualPage.locator('[data-cjdoc-search-trigger]');
-        if (await mobile.isVisible()) await mobile.click();
+        // First request creates the palette; every later capture on a fresh page
+        // starts from the same zero-dialog state.
+        assert.equal(await visualPage.locator('[data-cjdoc-search-dialog]').count(), 0,
+          `a normal load must ship no search dialog: ${name}/${theme}`);
+        const inline = visualPage.locator('[data-cjdoc-search]');
+        if (!await inline.count()) {
+          await visualPage.locator('[data-cjdoc-search-trigger]').click();
+          await visualPage.waitForFunction(() =>
+            document.querySelector('[data-cjdoc-search-dialog]')?.open === true);
+        }
         await visualPage.locator('[data-cjdoc-search]').fill('kind:function');
         await visualPage.evaluate(() => document.fonts.ready);
         // Opening mobile search resizes the header. Observe the settled frame,

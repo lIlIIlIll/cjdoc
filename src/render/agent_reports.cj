@@ -47,14 +47,14 @@ private func capturedReportIdentity(value: JsonObject, name: String): ?String {
     }
 }
 
-internal func appendCapturedReportArtifacts(artifacts: RenderArtifactCollector,
+internal func appendCapturedReportArtifacts(artifacts: RenderArtifactStore,
     context: DocumentationReadSnapshot, reports: Array<DocumentationReportAttachment>): String {
     let kinds = HashSet<String>()
     let out = StringBuilder()
     for (report in reports) {
         if (!kinds.add(report.kind)) { throw IllegalArgumentException("duplicate captured report kind") }
         let path = "agent/reports/" + report.kind + ".json"
-        artifacts.addText("html/" + path, "application/json", report.report)
+        let _ = artifacts.addText("html/" + path, "application/json", report.report)
         if (kinds.size > 1) { out.append(",") }
         out.append("{\"kind\":${escapeJsonString(report.kind)},\"path\":${escapeJsonString(path)}," +
             "\"sha256\":${escapeJsonString(report.digest)},\"snapshotId\":${escapeJsonString(context.snapshotId)}," +

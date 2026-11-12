@@ -83,12 +83,19 @@ class Node {
     node.parent = this;
     this.children.unshift(node);
   }
+  replaceChildren(...nodes) {
+    for (const child of this.children) child.parent = null;
+    this.children = [];
+    this.append(...nodes);
+  }
+  get childElementCount() { return this.children.length; }
   setAttribute(name, value) {
     this.attrs[name] = String(value);
     if (name.startsWith("data-")) {
       this.dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = String(value);
     }
   }
+  hasAttribute(name) { return name in this.attrs; }
   removeAttribute(name) { delete this.attrs[name]; }
   getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }
   addEventListener(name, handler) { (this.events = this.events || {})[name] = handler; }
@@ -278,13 +285,15 @@ const data = {
     "type-alpha": {label: "Alpha", kind: "class", kindLabel: "class",
       href: "symbols/alpha.html", members: ["member-alpha"]},
     "type-copper": {label: "Copper", kind: "class", kindLabel: "class",
-      href: "symbols/copper.html", members: ["member-copper"]},
+      href: "symbols/copper.html", members: ["member-copper", "member-copper-extra"]},
   },
   members: {
     "member-alpha": {label: "tone()", kind: "function", kindLabel: "function",
       anchor: "symbol-1"},
     "member-copper": {label: "wire()", kind: "function", kindLabel: "function",
       anchor: "symbol-2"},
+    "member-copper-extra": {label: "wind()", kind: "function", kindLabel: "function",
+      anchor: "symbol-3"},
   },
 };
 const filterInput = build("input", "cj-input");
@@ -305,6 +314,23 @@ const context = vm.createContext({document, window, location: window.location,
 vm.runInContext(SOURCE + "\ninitSidebarTree();\nfilterSidebar();", context);
 assert.equal(alphaItem.hidden, false);
 assert.equal(copperItem.hidden, false);
+filterInput.value = "Copper";
+vm.runInContext("filterSidebar();", context);
+const copperType = copperItem.querySelector("[data-cjdoc-tree-item='type']");
+const copperMembers = copperType.querySelector(":scope > ul");
+assert.equal(copperMembers.querySelectorAll("[data-cjdoc-tree-item='member']").length, 2,
+  "a type-name match must materialize the previously closed member branch");
+assert.equal(copperMembers.hidden, false);
+const more = build("li", "cj-tree__item cj-tree__item--more");
+more.append(build("a", "cj-tree__more", {href: "symbols/copper.html"}));
+copperMembers.replaceChildren(copperMembers.children[0], more);
+copperMembers.setAttribute("data-cjdoc-tree-partial", "");
+filterInput.value = "cop";
+vm.runInContext("filterSidebar();", context);
+assert.equal(copperMembers.querySelectorAll("[data-cjdoc-tree-item='member']").length, 2,
+  "a type-name match must also complete a partial member branch");
+assert.equal(copperMembers.hasAttribute("data-cjdoc-tree-partial"), false);
+assert.equal(more.hidden, false, "filtering keeps the full member-index entry reachable");
 filterInput.value = "wire";
 vm.runInContext("filterSidebar();", context);
 assert.equal(alphaItem.hidden, true, "packages without a match are hidden");
@@ -315,6 +341,10 @@ assert.equal(copperTypes.hidden, false);
 assert.equal(copperItem.querySelector("[data-cjdoc-tree-toggle]")
   .getAttribute("aria-expanded"), "true");
 assert.equal(empty.hidden, true);
+const memberRows = copperMembers.querySelectorAll("[data-cjdoc-tree-item='member']");
+assert.equal(memberRows[0].hidden, false);
+assert.equal(memberRows[1].hidden, true);
+assert.equal(more.hidden, false, "member-name filtering must not hide the full index");
 filterInput.value = "zzzzzz";
 vm.runInContext("filterSidebar();", context);
 assert.equal(alphaItem.hidden, true);
@@ -325,6 +355,9 @@ vm.runInContext("filterSidebar();", context);
 assert.equal(alphaItem.hidden, false);
 assert.equal(copperItem.hidden, false);
 assert.equal(empty.hidden, true);
+assert.equal(copperTypes.hidden, true, "clearing the filter restores the collapsed package");
+assert.equal(copperMembers.hidden, true, "clearing the filter restores the collapsed type");
+assert(memberRows.every(member => !member.hidden));
 """
         self.run_node(source, harness)
 

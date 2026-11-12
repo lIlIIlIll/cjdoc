@@ -17,30 +17,40 @@ export async function instrumentedPage(context, url, cacheDisabled = false) {
   await client.send('Network.setCacheDisabled', { cacheDisabled });
   await client.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   await page.goto(url, { waitUntil: 'load' });
-  await page.waitForSelector('[data-cjdoc-search]', { state: 'attached' });
-  await page.waitForFunction(() => Array.isArray(globalThis.__CJDOC_SEARCH_INDEX__?.entries));
+  // Readiness is the native index plus a search affordance. The current
+  // generator ships only a trigger and creates the field on first request, so
+  // waiting for the field would hang; opening it early would contaminate the
+  // initial DOM and heap measurements. The older generator's inline field
+  // satisfies the same predicate.
+  await page.waitForFunction(() => Array.isArray(globalThis.__CJDOC_SEARCH_INDEX__?.entries) &&
+    Boolean(document.querySelector('[data-cjdoc-search], [data-cjdoc-search-trigger]')));
   return { page, client };
 }
 
-// The generated reader exposes search through a modal palette: the control is
-// attached but not visible until the header trigger opens it. A capture may
-// still be paired with an older generator whose search was an inline field, so
-// both shapes are accepted rather than assuming the palette exists.
-const paletteOpen = page => page.evaluate(() => {
+// Two markup generations are addressed by contract. The older generator renders
+// search as a visible inline field. The current one ships only a hidden trigger
+// and builds the palette on first request, so an absent palette is not "open".
+const searchSurface = page => page.evaluate(() => {
   const dialog = document.querySelector('[data-cjdoc-search-dialog]');
-  return dialog ? Boolean(dialog.open) : null;
+  const inline = document.querySelector('[data-cjdoc-search]');
+  return { open: dialog ? dialog.open === true : false, inline: Boolean(inline) && !dialog };
 });
 
 export async function openSearch(page) {
-  const state = await paletteOpen(page);
-  if (state === null || state) return;
-  await page.locator('[data-cjdoc-search-trigger]').click();
+  const state = await searchSurface(page);
+  if (state.inline) return;
+  if (state.open) return;
+  const trigger = page.locator('[data-cjdoc-search-trigger]');
+  await trigger.waitFor({ state: 'visible' });
+  await trigger.click();
   await page.waitForFunction(() =>
     document.querySelector('[data-cjdoc-search-dialog]')?.open === true);
+  await page.waitForSelector('[data-cjdoc-search]', { state: 'visible' });
 }
 
 export async function closeSearch(page) {
-  if (!await paletteOpen(page)) return;
+  const state = await searchSurface(page);
+  if (!state.open) return;
   await page.keyboard.press('Escape');
   await page.waitForFunction(() =>
     document.querySelector('[data-cjdoc-search-dialog]')?.open !== true);

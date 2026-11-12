@@ -20,10 +20,18 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "4ee2ed6419b9c3eca7ed787107146fd1e4576623a28068f8b7f11765f7e5041f"
+CANONICAL_SEARCH_JS_SHA256 = "996409987eeb6793a35ebab6156879b29ed9fe32ec2902140a3932f80804f6be"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "eb22acb6fbd233c77f87a16317ad5f48d171f13519f9113e3120bf6ab6f48ca7"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# Every ARIA/form attribute whose value names another element by ID. The reader
+# creates its dialogs on first request, so these references are checked in the
+# served markup only for elements that are actually emitted.
+IDREF_ATTRIBUTES = {
+    "aria-controls", "aria-labelledby", "aria-describedby", "aria-owns",
+    "aria-flowto", "aria-activedescendant", "aria-details", "aria-errormessage",
+    "for", "headers", "list", "form",
+}
 CLASSIFICATION_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 CLASSIFICATION_ASCII_WHITESPACE = re.compile(r"[ \t\n\r\f\v]*")
 
@@ -49,9 +57,10 @@ class PageParser(HTMLParser):
         self.csp_policies: list[str] = []
         self.script_sources: list[str] = []
         self.is_alias = False
-        self.dialogs: dict[str, set[str]] = {}
-        self.dialog_depth = 0
         self.has_shell = False
+        self.idrefs: list[tuple[str, str]] = []
+        self.root_prefixes: list[str] = []
+        self.triggers: list[tuple[str, dict[str, str]]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered_tag = tag.lower()
@@ -90,13 +99,17 @@ class PageParser(HTMLParser):
             ):
                 self.errors.append("script must have only defer and src attributes")
         if lowered_tag == "dialog":
-            self.dialog_depth += 1
-            identity = values.get("id")
-            if identity:
-                self.dialogs[identity] = set()
-        elif self.dialog_depth and "id" in values:
-            for dialog in self.dialogs:
-                self.dialogs[dialog].add(values["id"])
+            self.errors.append(
+                "dialogs must be created on first request, not served statically")
+        if lowered_tag == "template":
+            self.errors.append(
+                "hidden dialog templates are forbidden; build the dialog on first request")
+        if "data-cjdoc-search-trigger" in values:
+            self.triggers.append(("search", values))
+        if "data-cjdoc-theme-toggle" in values:
+            self.triggers.append(("settings", values))
+        if "data-cjdoc-root-prefix" in values:
+            self.root_prefixes.append(values["data-cjdoc-root-prefix"] or "")
         if lowered_tag == "meta" and (values.get("http-equiv") or "").lower() == "content-security-policy":
             if self.stack != ["html", "head"]:
                 self.errors.append("CSP meta must be a direct child of head")
@@ -115,6 +128,9 @@ class PageParser(HTMLParser):
                 self.errors.append(f"forbidden event attribute {name!r}")
             elif lowered == "style":
                 self.errors.append("inline style attribute is forbidden")
+            elif lowered in IDREF_ATTRIBUTES:
+                for token in value.split():
+                    self.idrefs.append((lowered, token))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
@@ -131,8 +147,6 @@ class PageParser(HTMLParser):
             expected = self.stack[-1] if self.stack else "none"
             self.errors.append(f"mismatched end tag </{tag}> (expected {expected})")
             return
-        if lowered == "dialog" and self.dialog_depth:
-            self.dialog_depth -= 1
         self.stack.pop()
         if lowered == "script" and self.script_depth:
             self.script_depth -= 1
@@ -187,27 +201,68 @@ def byte_sorted(values: list[str]) -> bool:
     return values == sorted(values, key=lambda value: value.encode("utf-8"))
 
 
-SEARCH_DIALOG_CONTROLS = {
-    "cjdoc-search-input", "cjdoc-search-filters", "cjdoc-search-results"}
-SETTINGS_DIALOG_CONTROLS = {"cjdoc-settings-title"}
+SEARCH_DIALOG_ID = "cjdoc-search-dialog"
+SETTINGS_DIALOG_ID = "cjdoc-theme-popover"
+# A served page must not carry either dialog: the controllers create one only
+# when the reader first asks for it. The triggers stay in the shell, initially
+# hidden, and gain aria-controls only after their dialog exists in the DOM.
+LAZY_DIALOGS = {"search": SEARCH_DIALOG_ID, "settings": SETTINGS_DIALOG_ID}
+LAZY_DIALOG_REFERENCES = {
+    SEARCH_DIALOG_ID, SETTINGS_DIALOG_ID,
+    "cjdoc-search-input", "cjdoc-search-filters", "cjdoc-search-results",
+    "cjdoc-settings-title",
+}
 
 
-def validate_dialogs(pages: dict[Path, PageParser]) -> None:
-    """Both scripted dialogs must keep their control ids on every page."""
+def validate_shell_contract(root: Path, pages: dict[Path, PageParser]) -> None:
+    """Check the lazy dialog triggers, their root prefix, and ID references."""
     for page, parser in pages.items():
-        if parser.is_alias or not parser.has_shell:
+        if not page.is_relative_to(root):
+            # Linked pages of another language are validated by their own run.
             continue
-        expected = {
-            "cjdoc-search-dialog": SEARCH_DIALOG_CONTROLS,
-            "cjdoc-theme-popover": SETTINGS_DIALOG_CONTROLS,
-        }
-        for identity, controls in expected.items():
-            if identity not in parser.dialogs:
-                raise ValueError(f"{page.name}: missing dialog {identity}")
-            missing = controls - parser.dialogs[identity]
-            if missing:
+        relative = page.relative_to(root)
+        name = relative.as_posix()
+        if parser.is_alias:
+            continue
+        for attribute, target in parser.idrefs:
+            if target in LAZY_DIALOG_REFERENCES:
                 raise ValueError(
-                    f"{page.name}: dialog {identity} is missing {sorted(missing)}")
+                    f"{name}: {attribute} must not reference {target} "
+                    "before first creation")
+            if target not in parser.ids:
+                raise ValueError(f"{name}: dangling {attribute} reference {target}")
+        if not parser.has_shell:
+            if parser.triggers:
+                raise ValueError(
+                    f"{name}: lazy dialog triggers must only appear on a shell page")
+            continue
+        expected_prefix = "../" * len(relative.parent.parts)
+        if len(set(parser.root_prefixes)) != 1:
+            raise ValueError(
+                f"{name}: shell controls must share one data-cjdoc-root-prefix")
+        if parser.root_prefixes[0] != expected_prefix:
+            raise ValueError(
+                f"{name}: root prefix {parser.root_prefixes[0]!r} must address "
+                f"the site root as {expected_prefix!r}")
+        for kind, values in parser.triggers:
+            dialog_id = LAZY_DIALOGS[kind]
+            hook = "data-cjdoc-search-trigger" if kind == "search" else \
+                "data-cjdoc-theme-toggle"
+            if values.get("aria-haspopup") != "dialog":
+                raise ValueError(f"{name}: {hook} must declare aria-haspopup=dialog")
+            if values.get("aria-expanded") != "false":
+                raise ValueError(f"{name}: {hook} must start with aria-expanded=false")
+            if "hidden" not in values:
+                raise ValueError(
+                    f"{name}: {hook} must stay hidden until its controller runs")
+            if "aria-controls" in values:
+                raise ValueError(
+                    f"{name}: {hook} must not reference {dialog_id} before creation")
+        for kind in LAZY_DIALOGS:
+            count = sum(1 for name_, _ in parser.triggers if name_ == kind)
+            if count != 1:
+                raise ValueError(
+                    f"{name}: expected one {kind} trigger, found {count}")
 
 
 def validate_sidebar_index(root: Path, pages: dict[Path, PageParser]) -> None:
@@ -529,7 +584,7 @@ def main() -> int:
     expected_signature_ids = api_canonical_ids | exposure_ids
     if set(signatures) != expected_signature_ids:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")
-    validate_dialogs(pages)
+    validate_shell_contract(root, pages)
     validate_sidebar_index(root, pages)
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0

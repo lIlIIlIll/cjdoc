@@ -228,7 +228,7 @@ public func renderAgentReadableArtifacts(documentation: DocumentationSet,
     artifacts.toArray()
 }
 
-internal func appendAgentReadableArtifacts(artifacts: RenderArtifactCollector,
+internal func appendAgentReadableArtifacts(artifacts: RenderArtifactStore,
     context: DocumentationReadSnapshot, includeFull!: Bool = false,
     version!: ?String = None, includeValidation!: Bool = false,
     reports!: Array<DocumentationReportAttachment> = []): Unit {
@@ -237,7 +237,7 @@ internal func appendAgentReadableArtifacts(artifacts: RenderArtifactCollector,
     appendAgentNavigationArtifacts(artifacts, context, pages, version,
         includeValidation: includeValidation)
     appendAgentDeclarationArtifacts(artifacts, context, includeFull: includeFull, reports: reports)
-    artifacts.addText("html/llms.txt", "text/plain; charset=utf-8",
+    let _ = artifacts.addText("html/llms.txt", "text/plain; charset=utf-8",
         renderAgentLlms(context, pages, version, includeFull))
     if (includeFull) { appendAgentFullArtifacts(artifacts, context, concepts) }
 }

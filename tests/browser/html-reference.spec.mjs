@@ -154,11 +154,16 @@ async function gotoFile(page, url) {
   await page.goto(url);
   await expectStable(page);
 }
+// The palette is created on first request: the served page has no dialog at
+// all, so this asserts the real creation instead of tolerating a missing node.
 async function openSearchDialog(page) {
   const dialog = page.locator('[data-cjdoc-search-dialog]');
-  if (await dialog.isVisible()) return;
+  await page.locator('[data-cjdoc-search-trigger]').waitFor({ state: 'visible' });
+  if (await dialog.count() && await dialog.isVisible()) return dialog;
   await page.locator('[data-cjdoc-search-trigger]').click();
+  await expect(dialog).toHaveCount(1);
   await expect(dialog).toBeVisible();
+  return dialog;
 }
 
 async function clickOutside(page) {
@@ -289,9 +294,18 @@ test.describe('generated HTML reference', () => {
       await openIndex(page);
       const trigger = page.locator('[data-cjdoc-theme-toggle]');
       const popover = page.locator('[data-cjdoc-theme-popover]');
+      // Both surfaces are created on request: the served page has neither.
+      expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(0);
+      await expect(popover).toHaveCount(0);
+      await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(0);
+      await expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(await trigger.getAttribute('aria-controls')).toBeNull();
       for (const theme of ['system', 'light', 'dark', 'paper', 'ocean', 'forest', 'terminal', 'violet']) {
         await trigger.click();
+        await expect(popover).toHaveCount(1);
         await expect(popover).toBeVisible();
+        await expect(trigger).toHaveAttribute('aria-controls', 'cjdoc-theme-popover');
         await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
         await popover.locator(`[data-cjdoc-theme-value="${theme}"]`).click();
         // The settings dialog stays open while the reader tries options.
@@ -373,13 +387,11 @@ test.describe('generated HTML reference', () => {
     const fontMetrics = await page.evaluate(() => {
       const body = getComputedStyle(document.body);
       const button = getComputedStyle(document.querySelector('[data-cjdoc-theme-toggle]'));
-      const input = getComputedStyle(document.querySelector('[data-cjdoc-search]'));
       const heading = getComputedStyle(document.querySelector('main h1'));
       const code = getComputedStyle(document.querySelector('code'));
-      return {body: body.fontFamily, button: button.fontFamily, input: input.fontFamily, heading: heading.fontFamily, code: code.fontFamily};
+      return {body: body.fontFamily, button: button.fontFamily, heading: heading.fontFamily, code: code.fontFamily};
     });
     expect(fontMetrics.button).toBe(fontMetrics.body);
-    expect(fontMetrics.input).toBe(fontMetrics.body);
     // One system sans stack for prose and headings, one monospace stack for code.
     expect(fontMetrics.heading).toBe(fontMetrics.body);
     expect(fontMetrics.code).not.toBe(fontMetrics.body);
@@ -398,15 +410,34 @@ test.describe('generated HTML reference', () => {
     });
     expect(mutedContrast).toBeGreaterThanOrEqual(4.5);
 
-    // Search lives in a modal dialog opened by its header trigger.
+    // Search lives in a modal dialog that the page creates on first request.
     const search = page.locator('[data-cjdoc-search]');
     const searchDialog = page.locator('[data-cjdoc-search-dialog]');
     const searchTrigger = page.locator('[data-cjdoc-search-trigger]');
     const results = page.locator('[data-cjdoc-results] [role="option"]');
-    await expect(searchDialog).toBeHidden();
-    await expect(searchTrigger).toBeVisible();
+    // Nothing is served for the dialogs themselves, and the trigger only gains
+    // aria-controls once its dialog really exists.
+    expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(0);
+    await expect(searchDialog).toHaveCount(0);
+    await expect(search).toHaveCount(0);
+    await expect(searchTrigger).toHaveAttribute('aria-haspopup', 'dialog');
+    await expect(searchTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(await searchTrigger.getAttribute('aria-controls')).toBeNull();
     await searchTrigger.click();
+    await expect(searchDialog).toHaveCount(1);
     await expect(searchDialog).toBeVisible();
+    await expect(searchTrigger).toHaveAttribute('aria-controls', 'cjdoc-search-dialog');
+    await expect(searchTrigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(searchDialog).toHaveAttribute('id', 'cjdoc-search-dialog');
+    await expect(searchDialog).toHaveAttribute('data-cjdoc-search-dialog', '');
+    await expect(page.locator('#cjdoc-search-filters')).toHaveCount(1);
+    await expect(page.locator('#cjdoc-search-results')).toHaveCount(1);
+    await expect(page.locator('#cjdoc-search-input')).toHaveCount(1);
+    // The created field inherits the root prefix from its trigger.
+    expect(await search.evaluate(node => node.dataset.root)).toBe(
+      await searchTrigger.evaluate(node => node.dataset.cjdocRootPrefix));
+    const searchFont = await search.evaluate(node => getComputedStyle(node).fontFamily);
+    expect(searchFont).toBe(fontMetrics.body);
     await expect(search).toBeFocused();
     await expect(search).toHaveAttribute('aria-expanded', 'false');
     await search.fill('ReferenceBox');
@@ -435,6 +466,8 @@ test.describe('generated HTML reference', () => {
     await expect(search).toHaveAttribute('aria-expanded', 'false');
     await searchTrigger.click();
     await expect(results).toHaveCount(referenceBoxResultCount);
+    // Reopening reuses the one created dialog instead of building another.
+    expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(1);
     await page.keyboard.press('Escape');
     await expect(searchDialog).toBeHidden();
     await expect(results).toHaveCount(0);
@@ -831,9 +864,12 @@ test.describe('generated HTML reference', () => {
     await gotoFile(page, conceptUrl);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'concept');
     await expect(page.locator('.cj-page-header h1')).toContainText('Project guide');
-    await expect(page.locator('[data-cjdoc-search]')).toHaveCount(1);
+    // Conceptual pages keep the same lazy shell: no search DOM until asked.
+    await expect(page.locator('[data-cjdoc-search]')).toHaveCount(0);
+    await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(0);
     await expect(page.locator('.cj-code__copy')).toHaveCount(1);
     await page.locator('[data-cjdoc-search-trigger]').click();
+    await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(1);
     await page.locator('[data-cjdoc-search]').fill('ReferenceBox');
     await expect(page.locator('[data-cjdoc-results] [role="option"]')).not.toHaveCount(0);
     await page.locator('[data-cjdoc-search-dialog]').press('body', {key: 'Escape'});
@@ -1501,11 +1537,13 @@ test.describe('declaration tag navigation and filtering', () => {
           await packageBadge.click();
           await expect(page).toHaveURL(badgeUrl.href);
           assertDeclarationPageRequests(page);
-          // A tag URL seeds the search; results are rendered before the
-          // dialog is opened, and opening it must keep them.
+          // A tag URL seeds the search: the controller creates the palette and
+          // opens it on load, so its results must already be complete.
           const resultRows = await expectSearchRows(page, 4);
-          // A tag URL opens the dialog itself; activating its trigger again
-          // would hit an inert button behind the modal.
+          await expect(page.locator('[data-cjdoc-search-dialog]')).toBeVisible();
+          expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(1);
+          // The palette is already open; activating its trigger again would hit
+          // an inert button behind the modal, so only reuse is asserted.
           await openSearchDialog(page);
           await expectSearchRows(page, 4);
           await page.keyboard.press('Escape');
@@ -1513,6 +1551,7 @@ test.describe('declaration tag navigation and filtering', () => {
           await expect(page.locator('[data-cjdoc-search-dialog]')).toBeVisible();
           await expect(page).toHaveURL(badgeUrl.href);
           await expectSearchRows(page, 4);
+          expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(1);
           assertDeclarationPageRequests(page);
           expect(resultRows.some(row => row.name === 'StreamReader' &&
             /class\s+StreamReader/.test(row.signature))).toBe(true);

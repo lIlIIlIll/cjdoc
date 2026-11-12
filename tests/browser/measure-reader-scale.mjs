@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { chromium, playwrightVersion, distribution, entryIndex, installMetrics, pageMetrics,
   resourceSizes, screenshot, sha256, timedQuery, typeEntry } from './reader-scale-metrics.mjs';
-import { anchorFor, instrumentedPage, memberTasks, overloadTasks, queryTasks } from './reader-scale-tasks.mjs';
+import { anchorFor, instrumentedPage, memberTasks, openSearch, overloadTasks, queryTasks } from './reader-scale-tasks.mjs';
 
 async function fontIdentities(report, inventory = false) {
   // The inventory names the installed files for every family the capture either
@@ -88,15 +88,23 @@ async function loadingTask(context, index, base) {
   try {
     const firstQuery = index.entries.find(entry => entry.kind === 'function');
     if (!firstQuery) throw new Error('Native corpus has no function entries');
+    // Keep initial DOM/heap independent of the first interaction. The
+    // navigation-relative probe time below still includes creating the dialog.
+    const coldMetrics = await pageMetrics(page, client);
+    await openSearch(page);
     const coldProbe = await timedQuery(page, firstQuery.qualifiedName);
+    if (!coldProbe.supported) throw new Error(`Cold loading search probe is unavailable: ${coldProbe.reason}`);
     const cold = { firstInteractiveProbeMs: await page.evaluate(() => performance.now()),
-      probeDeliveredResults: coldProbe.displayed > 0, ...await pageMetrics(page, client) };
+      probeDeliveredResults: coldProbe.displayed > 0, ...coldMetrics };
     await client.send('Network.setCacheDisabled', { cacheDisabled: false });
     await page.reload({ waitUntil: 'load' }); // Prime an enabled browser cache explicitly.
     await page.reload({ waitUntil: 'load' });
+    const warmMetrics = await pageMetrics(page, client);
+    await openSearch(page);
     const warmProbe = await timedQuery(page, firstQuery.qualifiedName);
+    if (!warmProbe.supported) throw new Error(`Warm loading search probe is unavailable: ${warmProbe.reason}`);
     const warm = { firstInteractiveProbeMs: await page.evaluate(() => performance.now()),
-      probeDeliveredResults: warmProbe.displayed > 0, ...await pageMetrics(page, client) };
+      probeDeliveredResults: warmProbe.displayed > 0, ...warmMetrics };
     const bytes = await readFile(path.join(config.site, 'search-index.json'), 'utf8');
     const parse = await page.evaluate(text => {
       const samples = [];

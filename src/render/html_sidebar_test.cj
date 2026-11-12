@@ -62,8 +62,8 @@ class HtmlSidebarNavigationTest {
         let html = renderSidebarHtml(projection, Some(packagePath),
             selected, Some(symbolPagePath(selected.getOrThrow())))
 
-        // The whole current-package branch is server rendered; the tree is usable
-        // without scripts and the active declaration survives the bounded window.
+        // The current declaration stays in the bounded server-rendered branch;
+        // its full index keeps declarations outside the window reachable without scripts.
         @Expect(html.contains("data-cjdoc-tree-item=\"package\""))
         @Expect(html.contains("data-cjdoc-current-symbol=\"sidebar-269\""))
         @Expect(html.contains("data-cjdoc-current-page=\"${symbolPagePath(selected.getOrThrow())}\""))

@@ -69,26 +69,182 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
 (() => {
   const kernel = globalThis.cjdocSearch;
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
-  const dialog = document.querySelector("[data-cjdoc-search-dialog]");
   const trigger = document.querySelector("[data-cjdoc-search-trigger]");
-  const input = document.querySelector("[data-cjdoc-search]");
-  const results = document.querySelector("[data-cjdoc-results]");
-  const closeButton = document.querySelector("[data-cjdoc-search-close]");
-  if (!dialog || !input || !results) return;
   const isChinese = (document.documentElement.lang || "").toLowerCase().startsWith("zh");
+  const text = (english, chinese) => isChinese ? chinese : english;
   const kindLabels = {function: "函数", constructor: "构造器", property: "属性", variable: "变量",
     class: "类", struct: "结构体", interface: "接口", enum: "枚举", enumCase: "枚举项",
     extend: "扩展", typeAlias: "类型别名", concept: "指南", macro: "宏"};
   const englishKindLabels = {typeAlias: "type alias", enumCase: "enum case", extend: "extension"};
   const kindLabel = value => isChinese ? (kindLabels[value] || value) : (englishKindLabels[value] || value);
-  const root = input.dataset.root || "";
-  const kindFilter = document.querySelector("[data-cjdoc-kind]");
-  const packageFilter = document.querySelector("[data-cjdoc-package]");
-  const searchStatus = document.querySelector("[data-cjdoc-search-status]");
-  const searchPages = document.querySelector("[data-cjdoc-search-pages]");
-  const previousPage = document.querySelector("[data-cjdoc-search-previous]");
-  const nextPage = document.querySelector("[data-cjdoc-search-next]");
-  const searchFacets = document.querySelector("[data-cjdoc-search-facets]");
+  // The trigger already carries the publication prefix that the input used to
+  // read, so URL results work before the dialog that owns the input exists.
+  const root = trigger ? (trigger.dataset.cjdocRootPrefix || "") : "";
+  const createElement = (tag, className, content) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (content !== undefined) node.textContent = content;
+    return node;
+  };
+  // Same magnifier geometry as HtmlWriter.icon("search").
+  const createSearchIcon = () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    for (const [name, value] of [
+      ["class", "cj-icon"], ["width", "16"], ["height", "16"], ["viewBox", "0 0 24 24"],
+      ["fill", "none"], ["stroke", "currentColor"], ["stroke-width", "1.8"],
+      ["stroke-linecap", "round"], ["stroke-linejoin", "round"],
+      ["aria-hidden", "true"], ["focusable", "false"]
+    ]) svg.setAttribute(name, value);
+    const circle = document.createElementNS(svg.namespaceURI, "circle");
+    for (const [name, value] of [["cx", "11"], ["cy", "11"], ["r", "7"]]) {
+      circle.setAttribute(name, value);
+    }
+    const handle = document.createElementNS(svg.namespaceURI, "path");
+    handle.setAttribute("d", "m20 20-4-4");
+    svg.append(circle, handle);
+    return svg;
+  };
+  const appendSearchFilter = (parent, property, labelText, allLabel) => {
+    const row = createElement("label", "cj-search__filter");
+    row.append(createElement("span", "cj-sr-only", labelText));
+    const select = createElement("select", "cj-select");
+    select.setAttribute(property, "");
+    select.setAttribute("aria-label", labelText);
+    const all = createElement("option", undefined, allLabel);
+    all.setAttribute("value", "");
+    select.append(all);
+    row.append(select);
+    parent.append(row);
+    return select;
+  };
+  const buildSearchDialog = () => {
+    const node = createElement("dialog", "cj-search");
+    node.id = "cjdoc-search-dialog";
+    node.setAttribute("data-cjdoc-search-dialog", "");
+    node.setAttribute("aria-label", text("Search documentation", "搜索文档"));
+    const bar = createElement("div", "cj-search__bar");
+    bar.append(createSearchIcon());
+    const fieldLabel = createElement("label", "cj-sr-only", text("Search API", "搜索 API"));
+    fieldLabel.setAttribute("for", "cjdoc-search-input");
+    bar.append(fieldLabel);
+    const field = createElement("input", "cj-search__input");
+    field.id = "cjdoc-search-input";
+    field.setAttribute("type", "search");
+    field.setAttribute("placeholder", text("Search docs", "搜索文档"));
+    field.setAttribute("autocomplete", "off");
+    field.setAttribute("role", "combobox");
+    field.setAttribute("aria-autocomplete", "list");
+    field.setAttribute("aria-controls", "cjdoc-search-results");
+    field.setAttribute("aria-expanded", "false");
+    field.setAttribute("data-cjdoc-search", "");
+    field.setAttribute("data-root", root);
+    bar.append(field);
+    const close = createElement("button", "cj-button cj-button--quiet cj-search__close");
+    close.setAttribute("type", "button");
+    close.setAttribute("data-cjdoc-search-close", "");
+    close.setAttribute("aria-label", text("Close search", "关闭搜索"));
+    close.append(createElement("kbd", "cj-kbd", "Esc"));
+    bar.append(close);
+    node.append(bar);
+    const filters = createElement("div", "cj-search__filters");
+    filters.id = "cjdoc-search-filters";
+    const kind = appendSearchFilter(filters, "data-cjdoc-kind",
+      text("Filter by kind", "按类别筛选"), text("All kinds", "全部类别"));
+    const pack = appendSearchFilter(filters, "data-cjdoc-package",
+      text("Filter by package", "按包筛选"), text("All packages", "全部包"));
+    node.append(filters);
+    const facets = createElement("div", "cj-search__facets");
+    facets.setAttribute("data-cjdoc-search-facets", "");
+    facets.setAttribute("role", "group");
+    facets.setAttribute("aria-label", text("Tag filters", "标签筛选"));
+    facets.hidden = true;
+    node.append(facets);
+    const list = createElement("ul", "cj-search__results");
+    list.id = "cjdoc-search-results";
+    list.setAttribute("role", "listbox");
+    list.setAttribute("data-cjdoc-results", "");
+    list.setAttribute("aria-live", "polite");
+    node.append(list);
+    const status = createElement("p", "cj-search__status");
+    status.setAttribute("data-cjdoc-search-status", "");
+    status.setAttribute("role", "status");
+    status.hidden = true;
+    node.append(status);
+    const pages = createElement("div", "cj-search__pages");
+    pages.setAttribute("data-cjdoc-search-pages", "");
+    pages.hidden = true;
+    const previous = createElement("button", "cj-button", text("Previous", "上一页"));
+    previous.setAttribute("type", "button");
+    previous.setAttribute("data-cjdoc-search-previous", "");
+    const next = createElement("button", "cj-button", text("Next", "下一页"));
+    next.setAttribute("type", "button");
+    next.setAttribute("data-cjdoc-search-next", "");
+    pages.append(previous, next);
+    node.append(pages);
+    node.append(createElement("p", "cj-search__note", text(
+      "Search covers names, structured fields and up to 2,000 characters of body text " +
+        "per entry. No match does not prove absence from the full documentation.",
+      "检索覆盖名称、结构化字段及每项最多 2,000 字符的正文摘录；没有命中不代表完整文档中不存在。")));
+    return {node, field, close, list, status, pages, previous, next, facets, kind, pack};
+  };
+  let dialog = null;
+  let input = null;
+  let results = null;
+  let closeButton = null;
+  let kindFilter = null;
+  let packageFilter = null;
+  let searchStatus = null;
+  let searchPages = null;
+  let previousPage = null;
+  let nextPage = null;
+  let searchFacets = null;
+  let controller = null;
+  const readUrlSearchState = () => {
+    const state = {tags: [], moduleId: null, snapshotId: null, hasScope: false,
+      errorCode: null, invalidToken: ""};
+    const search = window.location && typeof window.location.search === "string"
+      ? window.location.search : "";
+    if (!search) return state;
+    if (typeof URLSearchParams !== "function") {
+      state.errorCode = "request_schema";
+      return state;
+    }
+    let params;
+    try { params = new URLSearchParams(search); }
+    catch (_) { state.errorCode = "request_schema"; return state; }
+    const tags = params.getAll("tag");
+    if (tags.length > 64) {
+      state.errorCode = "request_schema";
+      state.invalidToken = "tag";
+      return state;
+    }
+    if (kernel && index && index.contract) {
+      for (const tag of tags) {
+        const parsed = kernel.parseQuery("tag:" + tag, index.contract);
+        if (parsed.errorCode) {
+          state.errorCode = parsed.errorCode;
+          state.invalidToken = parsed.invalidToken || "tag:" + tag;
+          return state;
+        }
+      }
+    }
+    const modules = params.getAll("moduleId");
+    const snapshots = params.getAll("snapshotId");
+    if (modules.length > 1 || snapshots.length > 1) {
+      state.errorCode = "request_schema";
+      state.invalidToken = modules.length > 1 ? "moduleId" : "snapshotId";
+      return state;
+    }
+    state.tags = tags;
+    if (modules.length) { state.moduleId = modules[0]; state.hasScope = true; }
+    if (snapshots.length) { state.snapshotId = snapshots[0]; state.hasScope = true; }
+    return state;
+  };
+  const urlSearchState = readUrlSearchState();
+  // A tag badge or shared link lands here with ?tag/moduleId/snapshotId; the
+  // reader asked for those results, so show them instead of a closed dialog.
+  const urlRequestsSearch = () => urlSearchState.tags.length > 0 ||
+    urlSearchState.hasScope || urlSearchState.errorCode !== null;
   const pageSize = index && index.contract && Number.isSafeInteger(index.contract.defaultLimit)
     ? index.contract.defaultLimit : 0;
   const entries = index && Array.isArray(index.entries) ? index.entries : [];
@@ -101,50 +257,9 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
   let currentParsed = null;
   let composing = false;
 
-  const initSearchDialog = () => {
-    const readUrlSearchState = () => {
-      const state = {tags: [], moduleId: null, snapshotId: null, hasScope: false,
-        errorCode: null, invalidToken: ""};
-      const search = window.location && typeof window.location.search === "string"
-        ? window.location.search : "";
-      if (!search) return state;
-      if (typeof URLSearchParams !== "function") {
-        state.errorCode = "request_schema";
-        return state;
-      }
-      let params;
-      try { params = new URLSearchParams(search); }
-      catch (_) { state.errorCode = "request_schema"; return state; }
-      const tags = params.getAll("tag");
-      if (tags.length > 64) {
-        state.errorCode = "request_schema";
-        state.invalidToken = "tag";
-        return state;
-      }
-      if (kernel && index && index.contract) {
-        for (const tag of tags) {
-          const parsed = kernel.parseQuery("tag:" + tag, index.contract);
-          if (parsed.errorCode) {
-            state.errorCode = parsed.errorCode;
-            state.invalidToken = parsed.invalidToken || "tag:" + tag;
-            return state;
-          }
-        }
-      }
-      const modules = params.getAll("moduleId");
-      const snapshots = params.getAll("snapshotId");
-      if (modules.length > 1 || snapshots.length > 1) {
-        state.errorCode = "request_schema";
-        state.invalidToken = modules.length > 1 ? "moduleId" : "snapshotId";
-        return state;
-      }
-      state.tags = tags;
-      if (modules.length) { state.moduleId = modules[0]; state.hasScope = true; }
-      if (snapshots.length) { state.snapshotId = snapshots[0]; state.hasScope = true; }
-      return state;
-    };
-    const urlSearchState = readUrlSearchState();
-
+  // One controller per created dialog: it binds its listeners once and reuses
+  // the same nodes, state and cursors for every later open.
+  const createController = () => {
     const filterFieldForProperty = property => {
       const rows = index && index.contract && Array.isArray(index.contract.filterFields) ?
         index.contract.filterFields : [];
@@ -516,10 +631,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       else dialog.removeAttribute("open");
       if (restoreFocus && trigger && typeof trigger.focus === "function") trigger.focus();
     };
-    if (trigger) {
-      trigger.hidden = false;
-      trigger.addEventListener("click", openDialog);
-    }
     if (closeButton) closeButton.addEventListener("click", () => closeDialog(true));
     dialog.addEventListener("close", () => {
       if (trigger) trigger.setAttribute("aria-expanded", "false");
@@ -538,21 +649,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       closeDialog(false);
     });
 
-    const typingElsewhere = event => {
-      const target = event.target;
-      if (!target) return false;
-      const tag = String(target.tagName || "").toLowerCase();
-      return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
-    };
-    document.addEventListener("keydown", event => {
-      const isSearchKey = ((event.ctrlKey || event.metaKey) &&
-        event.key.toLocaleLowerCase() === "k") ||
-        (event.key === "/" && !typingElsewhere(event));
-      if (!isSearchKey) return;
-      event.preventDefault();
-      if (!dialog.open) openDialog();
-      else focusTarget();
-    });
     input.addEventListener("keydown", event => {
       // Escape stays usable mid-composition; navigation and activation do not.
       if (event.key === "Escape") {
@@ -573,20 +669,69 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
         if (link) { event.preventDefault(); link.click(); }
       }
     });
-    // A tag badge or shared link lands here with ?tag/moduleId/snapshotId; the
-    // reader asked for those results, so show them instead of a closed dialog.
-    const urlRequestsSearch = () => urlSearchState.tags.length > 0 ||
-      urlSearchState.hasScope || urlSearchState.errorCode !== null;
-    if (urlRequestsSearch()) openDialog();
-    window.addEventListener("popstate", () => {
-      Object.assign(urlSearchState, readUrlSearchState());
-      cursorHistory = [];
-      if (urlRequestsSearch() && !dialog.open) openDialog();
-      else render();
-    });
+
+    return {open: openDialog, render, focus: focusTarget,
+      isOpen: () => dialog.open === true};
   };
 
-  initSearchDialog();
+  // First request builds exactly one dialog and controller; later requests reuse
+  // them. A builder exception must reach the caller instead of a fake success.
+  const ensureSearchDialog = () => {
+    if (controller) return controller;
+    const parts = buildSearchDialog();
+    dialog = parts.node;
+    input = parts.field;
+    results = parts.list;
+    closeButton = parts.close;
+    searchStatus = parts.status;
+    searchPages = parts.pages;
+    previousPage = parts.previous;
+    nextPage = parts.next;
+    searchFacets = parts.facets;
+    kindFilter = parts.kind;
+    packageFilter = parts.pack;
+    const created = createController();
+    document.body.append(dialog);
+    controller = created;
+    // The trigger is associated with the real dialog only now that creation
+    // succeeded, so a failed builder leaves no dangling aria-controls.
+    if (trigger) trigger.setAttribute("aria-controls", "cjdoc-search-dialog");
+    return controller;
+  };
+  const openSearchDialog = () => ensureSearchDialog().open();
+
+  if (trigger) {
+    trigger.hidden = false;
+    // Bound once here: the first activation creates the dialog, later ones
+    // reopen the same instance instead of building another.
+    trigger.addEventListener("click", () => openSearchDialog());
+  }
+  const typingElsewhere = event => {
+    const target = event.target;
+    if (!target) return false;
+    const tag = String(target.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+  };
+  document.addEventListener("keydown", event => {
+    const isSearchKey = ((event.ctrlKey || event.metaKey) &&
+      event.key.toLocaleLowerCase() === "k") ||
+      (event.key === "/" && !typingElsewhere(event));
+    if (!isSearchKey) return;
+    event.preventDefault();
+    if (!controller) { openSearchDialog(); return; }
+    if (!controller.isOpen()) controller.open();
+    else controller.focus();
+  });
+  window.addEventListener("popstate", () => {
+    Object.assign(urlSearchState, readUrlSearchState());
+    const requested = urlRequestsSearch();
+    // Back/forward without search state must not build a palette just to clear
+    // it; only an initialized controller keeps its results in step.
+    if (!controller) { if (requested) openSearchDialog(); return; }
+    if (requested && !controller.isOpen()) controller.open();
+    else controller.render();
+  });
+  if (urlRequestsSearch()) openSearchDialog();
 })();
 """
 

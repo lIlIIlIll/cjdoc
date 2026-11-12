@@ -141,6 +141,135 @@ test('Chinese display labels preserve raw search kind values and query protocol'
   await expect(page.locator('[data-cjdoc-results] [role="option"]')).not.toHaveCount(0);
 });
 
+test('display settings appear only on first open and stay one reusable instance', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  const urls = await routes(page,'en','file');
+  await page.goto(urls.home);
+  const popover = page.locator('[data-cjdoc-theme-popover]');
+  const trigger = page.locator('[data-cjdoc-theme-toggle]');
+  const label = page.locator('[data-cjdoc-theme-label]');
+  const baseline = await page.evaluate(() => ({
+    dialogs: document.querySelectorAll('dialog').length,
+    inlineScripts: document.querySelectorAll('script:not([src])').length,
+  }));
+  // A page that never asked for these controls ships neither dialog nor a
+  // template standing in for one.
+  expect(baseline.dialogs).toBe(0);
+  expect(baseline.inlineScripts).toBe(0);
+  await expect(popover).toHaveCount(0);
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(0);
+  await expect(trigger).toHaveAttribute('aria-haspopup','dialog');
+  await expect(trigger).toHaveAttribute('aria-expanded','false');
+  expect(await trigger.getAttribute('aria-controls')).toBeNull();
+  await expect(label).toHaveText('Theme: System');
+
+  await trigger.click();
+  await expect(popover).toHaveCount(1);
+  await expect(popover).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-controls','cjdoc-theme-popover');
+  await expect(trigger).toHaveAttribute('aria-expanded','true');
+  await expect(popover).toHaveAttribute('aria-labelledby','cjdoc-settings-title');
+  await expect(popover.locator('h2.cj-settings__title')).toHaveText('Display');
+  await expect(popover.locator('.cj-settings__group')).toHaveCount(3);
+  await expect(popover.locator('.cj-settings__legend')).toHaveText(['Theme','Font','Text size']);
+  await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
+  await expect(popover.locator('[data-cjdoc-font-value]')).toHaveCount(3);
+  await expect(popover.locator('[data-cjdoc-size-value]')).toHaveCount(3);
+  await expect(popover.locator('.cj-settings__options--themes')).toHaveCount(1);
+  await expect(popover.locator('[data-cjdoc-theme-value="violet"] .cj-settings__swatch'))
+    .toHaveAttribute('data-cjdoc-swatch','violet');
+  await expect(popover.locator('[data-cjdoc-theme-value="violet"] .cj-settings__swatch'))
+    .toHaveAttribute('aria-hidden','true');
+  const closeButton = popover.locator('[data-cjdoc-theme-close]');
+  await expect(closeButton).toHaveAttribute('aria-label','Close');
+  await expect(closeButton.locator('svg.cj-icon path'))
+    .toHaveAttribute('d','M6 6l12 12M18 6 6 18');
+  await expect(popover.locator('.cj-settings__hint')).toHaveText('System follows your device appearance.');
+  await expect(popover.locator('[data-cjdoc-theme-value="system"]')).toHaveAttribute('aria-pressed','true');
+  await expect(popover.locator('[data-cjdoc-font-value="system"]')).toHaveAttribute('aria-pressed','true');
+  await expect(popover.locator('[data-cjdoc-size-value="m"]')).toHaveAttribute('aria-pressed','true');
+  // Creation must not smuggle styling or executable content of its own.
+  expect(await popover.evaluate(node => node.getAttribute('style'))).toBeNull();
+  expect(await page.evaluate(() => document.querySelectorAll('script:not([src])').length)).toBe(0);
+
+  await popover.locator('[data-cjdoc-theme-value="dark"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await expect(label).toHaveText('Theme: Dark');
+  await expect(popover.locator('[data-cjdoc-theme-value="dark"]')).toHaveAttribute('aria-pressed','true');
+  await expect(popover.locator('[data-cjdoc-theme-value="system"]')).toHaveAttribute('aria-pressed','false');
+  expect(await page.evaluate(() => localStorage.getItem('cjdoc-theme'))).toBe('dark');
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-expanded','false');
+
+  // Reopening reuses the same node: no second dialog, no second set of options.
+  await trigger.click();
+  await expect(popover).toBeVisible();
+  expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(1);
+  await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
+  await expect(popover.locator('[data-cjdoc-theme-value="dark"]')).toHaveAttribute('aria-pressed','true');
+  await expect(label).toHaveText('Theme: Dark');
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+
+  // The two lazily created dialogs are independent: one request never builds
+  // the other, and building one never duplicates it later.
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(0);
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(1);
+  await expect(popover).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toBeHidden();
+  await trigger.click();
+  await expect(popover).toHaveCount(1);
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+
+  // The label and pressed state survive a reload without opening anything.
+  await page.reload();
+  await expect(popover).toHaveCount(0);
+  await expect(label).toHaveText('Theme: Dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await trigger.click();
+  await expect(popover.locator('[data-cjdoc-theme-value="dark"]')).toHaveAttribute('aria-pressed','true');
+  await page.keyboard.press('Escape');
+});
+
+test('Chinese settings copy and the modal sheet stay intact on the first open', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  const urls = await routes(page,'zh-CN','file');
+  await page.goto(urls.home);
+  const popover = page.locator('[data-cjdoc-theme-popover]');
+  const trigger = page.locator('[data-cjdoc-theme-toggle]');
+  await expect(popover).toHaveCount(0);
+  await expect(page.locator('[data-cjdoc-theme-label]')).toHaveText('主题：跟随系统');
+  await trigger.click();
+  await expect(popover).toBeVisible();
+  await expect(popover.locator('#cjdoc-settings-title')).toHaveText('显示');
+  await expect(popover.locator('.cj-settings__legend')).toHaveText(['主题','字体','字号']);
+  await expect(popover.locator('[data-cjdoc-theme-value="paper"] span').last()).toHaveText('纸色');
+  await expect(popover.locator('[data-cjdoc-theme-value="system"] span').last()).toHaveText('跟随系统');
+  await expect(popover.locator('[data-cjdoc-font-value="mono-ui"] span').last()).toHaveText('等宽');
+  await expect(popover.locator('[data-cjdoc-size-value="l"]')).toHaveText('L');
+  await expect(popover.locator('[data-cjdoc-theme-close]')).toHaveAttribute('aria-label','关闭');
+  await expect(popover.locator('.cj-settings__hint')).toHaveText('跟随系统会采用设备的外观设置。');
+  // On a phone viewport this dialog is a modal bottom sheet: focus stays inside
+  // and Escape returns it to the trigger.
+  expect(await popover.evaluate(element => element.matches(':modal'))).toBe(true);
+  await popover.locator('[data-cjdoc-size-value="l"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-cj-size','l');
+  await expect(page.locator('[data-cjdoc-theme-label]')).toHaveText('主题：跟随系统');
+  const buttons = popover.locator('button');
+  await buttons.last().focus();
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => document.activeElement !== document.body &&
+    document.activeElement !== document.documentElement)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
 test('mobile member filters yield to the first complete signature and retain active criteria', async ({page}) => {
   await page.setViewportSize({width:390,height:844});
   for (const locale of ['zh-CN','en']) {

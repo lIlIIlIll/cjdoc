@@ -9,7 +9,7 @@ internal let HTML_PAGE_CSP = "default-src 'none'; script-src 'self' file:; style
 // Every page repeats its server-rendered branch, so a branch is a fixed window
 // around the active entry: total output stays linear in the declaration count.
 // The tree script replaces a partial branch with the complete index.
-private let SIDEBAR_SERVER_WINDOW: Int64 = 12
+private let SIDEBAR_SERVER_WINDOW: Int64 = 5
 
 private func sidebarWindow(size: Int64, activeIndex: Int64): (Int64, Int64) {
     if (size <= SIDEBAR_SERVER_WINDOW) { return (0, size) }
@@ -121,9 +121,10 @@ private func appendTreeToggle(w: HtmlWriter, controlsId: String, name: String,
 
 private func appendSidebarMember(w: HtmlWriter, owner: SymbolDoc, member: SymbolDoc,
     rootPrefix: String): Unit {
+    // A member row is never a branch, so it carries no key the scripts resolve;
+    // the full identity stays in its link, which is what navigation copies.
     w.open("li", attrs: [htmlClass("cj-tree__item"),
-        htmlAttr("data-cjdoc-tree-item", "member"),
-        htmlAttr("data-cjdoc-tree-key", member.id)])
+        htmlAttr("data-cjdoc-tree-item", "member")])
     w.element("div", [htmlClass("cj-tree__row")], { row =>
         row.open("a", attrs: [htmlClass("cj-tree__link"), htmlHref(SafeUrl.siteRoute(
             rootPrefix + symbolPagePath(owner) + "#" + symbolAnchor(member)))])
@@ -354,8 +355,8 @@ private func appendShellHeader(w: HtmlWriter, documentation: DocumentationSet,
             attrs: [htmlClass("cj-header__project")])
     })
     w.open("button", attrs: [htmlClass("cj-search-trigger"), htmlAttr("type", "button"),
-        htmlFlag("data-cjdoc-search-trigger"), htmlAttr("aria-haspopup", "dialog"),
-        htmlAttr("aria-controls", "cjdoc-search-dialog"), htmlAttr("aria-expanded", "false"),
+        htmlFlag("data-cjdoc-search-trigger"), htmlAttr("data-cjdoc-root-prefix", rootPrefix),
+        htmlAttr("aria-haspopup", "dialog"), htmlAttr("aria-expanded", "false"),
         htmlFlag("hidden")])
     w.icon("search")
     w.textElement("span", label(locale, "Search docs", "搜索文档"),
@@ -375,7 +376,7 @@ private func appendShellHeader(w: HtmlWriter, documentation: DocumentationSet,
     w.close("span")
     w.open("button", attrs: [htmlClass("cj-button cj-button--icon cj-header__settings"),
         htmlAttr("type", "button"), htmlFlag("data-cjdoc-theme-toggle"),
-        htmlAttr("aria-haspopup", "dialog"), htmlAttr("aria-controls", "cjdoc-theme-popover"),
+        htmlAttr("aria-haspopup", "dialog"),
         htmlAttr("aria-expanded", "false"),
         htmlAttr("aria-label", label(locale, "Display settings", "显示设置")),
         htmlFlag("hidden")])
@@ -386,139 +387,6 @@ private func appendShellHeader(w: HtmlWriter, documentation: DocumentationSet,
     w.close("div")
     w.close("div")
     w.close("header")
-}
-
-private func appendSearchFilter(w: HtmlWriter, attribute: String,
-    labelText: String, allLabel: String): Unit {
-    w.element("label", [htmlClass("cj-search__filter")], { field =>
-        field.textElement("span", labelText, attrs: [htmlClass("cj-sr-only")])
-        field.open("select", attrs: [htmlClass("cj-select"), htmlFlag(attribute),
-            htmlAttr("aria-label", labelText)])
-        field.textElement("option", allLabel, attrs: [htmlAttr("value", "")])
-        field.close("select")
-    })
-}
-
-private func appendSearchDialog(w: HtmlWriter, rootPrefix: String, locale: String): Unit {
-    w.open("dialog", attrs: [htmlAttr("id", "cjdoc-search-dialog"), htmlClass("cj-search"),
-        htmlFlag("data-cjdoc-search-dialog"),
-        htmlAttr("aria-label", label(locale, "Search documentation", "搜索文档"))])
-    w.open("div", attrs: [htmlClass("cj-search__bar")])
-    w.icon("search")
-    w.textElement("label", label(locale, "Search API", "搜索 API"),
-        attrs: [htmlClass("cj-sr-only"), htmlAttr("for", "cjdoc-search-input")])
-    w.void("input", attrs: [htmlAttr("id", "cjdoc-search-input"),
-        htmlClass("cj-search__input"), htmlAttr("type", "search"),
-        htmlAttr("placeholder", label(locale, "Search docs", "搜索文档")),
-        htmlAttr("autocomplete", "off"), htmlAttr("role", "combobox"),
-        htmlAttr("aria-autocomplete", "list"),
-        htmlAttr("aria-controls", "cjdoc-search-results"),
-        htmlAttr("aria-expanded", "false"), htmlFlag("data-cjdoc-search"),
-        htmlAttr("data-root", rootPrefix)])
-    w.open("button", attrs: [htmlClass("cj-button cj-button--quiet cj-search__close"),
-        htmlAttr("type", "button"), htmlFlag("data-cjdoc-search-close"),
-        htmlAttr("aria-label", label(locale, "Close search", "关闭搜索"))])
-    w.textElement("kbd", "Esc", attrs: [htmlClass("cj-kbd")])
-    w.close("button")
-    w.close("div")
-    w.open("div", attrs: [htmlAttr("id", "cjdoc-search-filters"),
-        htmlClass("cj-search__filters")])
-    appendSearchFilter(w, "data-cjdoc-kind", label(locale, "Filter by kind", "按类别筛选"),
-        label(locale, "All kinds", "全部类别"))
-    appendSearchFilter(w, "data-cjdoc-package", label(locale, "Filter by package", "按包筛选"),
-        label(locale, "All packages", "全部包"))
-    w.close("div")
-    w.open("div", attrs: [htmlClass("cj-search__facets"),
-        htmlFlag("data-cjdoc-search-facets"), htmlAttr("role", "group"),
-        htmlAttr("aria-label", label(locale, "Tag filters", "标签筛选")), htmlFlag("hidden")])
-    w.close("div")
-    w.open("ul", attrs: [htmlAttr("id", "cjdoc-search-results"),
-        htmlClass("cj-search__results"), htmlAttr("role", "listbox"),
-        htmlFlag("data-cjdoc-results"), htmlAttr("aria-live", "polite")])
-    w.close("ul")
-    w.open("p", attrs: [htmlClass("cj-search__status"), htmlFlag("data-cjdoc-search-status"),
-        htmlAttr("role", "status"), htmlFlag("hidden")])
-    w.close("p")
-    w.open("div", attrs: [htmlClass("cj-search__pages"), htmlFlag("data-cjdoc-search-pages"),
-        htmlFlag("hidden")])
-    w.open("button", attrs: [htmlClass("cj-button"), htmlAttr("type", "button"),
-        htmlFlag("data-cjdoc-search-previous")])
-    w.text(label(locale, "Previous", "上一页"))
-    w.close("button")
-    w.open("button", attrs: [htmlClass("cj-button"), htmlAttr("type", "button"),
-        htmlFlag("data-cjdoc-search-next")])
-    w.text(label(locale, "Next", "下一页"))
-    w.close("button")
-    w.close("div")
-    w.textElement("p", label(locale,
-        "Search covers names, structured fields and up to 2,000 characters of body text " +
-            "per entry. No match does not prove absence from the full documentation.",
-        "检索覆盖名称、结构化字段及每项最多 2,000 字符的正文摘录；没有命中不代表完整文档中不存在。"),
-        attrs: [htmlClass("cj-search__note")])
-    w.close("dialog")
-}
-
-private let SETTINGS_THEMES: Array<(String, String, String)> = [
-    ("system", "System", "跟随系统"), ("light", "Light", "浅色"), ("dark", "Dark", "深色"),
-    ("paper", "Paper", "纸色"), ("ocean", "Ocean", "海洋"), ("forest", "Forest", "森林"),
-    ("terminal", "Terminal", "终端"), ("violet", "Violet", "紫罗兰")
-]
-
-private let SETTINGS_FONTS: Array<(String, String, String)> = [
-    ("system", "System", "系统"), ("serif", "Serif", "衬线"), ("mono-ui", "Monospace", "等宽")
-]
-
-private let SETTINGS_SIZES: Array<(String, String, String)> = [
-    ("s", "S", "S"), ("m", "M", "M"), ("l", "L", "L")
-]
-
-private func appendSettingsGroup(w: HtmlWriter, locale: String, legend: String,
-    options: Array<(String, String, String)>, attribute: String, themed!: Bool = false): Unit {
-    w.open("fieldset", attrs: [htmlClass("cj-settings__group")])
-    w.textElement("legend", legend, attrs: [htmlClass("cj-settings__legend")])
-    let groupClass = if (themed) {
-        "cj-settings__options cj-settings__options--themes"
-    } else {
-        "cj-settings__options"
-    }
-    w.open("div", attrs: [htmlClass(groupClass)])
-    for ((value, english, chinese) in options) {
-        w.open("button", attrs: [htmlClass("cj-settings__option"), htmlAttr("type", "button"),
-            htmlAttr(attribute, value), htmlAttr("aria-pressed", "false")])
-        if (themed) {
-            w.open("span", attrs: [htmlClass("cj-settings__swatch"),
-                htmlAttr("data-cjdoc-swatch", value), htmlAttr("aria-hidden", "true")])
-            w.close("span")
-        }
-        w.textElement("span", label(locale, english, chinese))
-        w.close("button")
-    }
-    w.close("div")
-    w.close("fieldset")
-}
-
-private func appendSettingsDialog(w: HtmlWriter, locale: String): Unit {
-    w.open("dialog", attrs: [htmlAttr("id", "cjdoc-theme-popover"), htmlClass("cj-settings"),
-        htmlFlag("data-cjdoc-theme-popover"),
-        htmlAttr("aria-labelledby", "cjdoc-settings-title")])
-    w.open("div", attrs: [htmlClass("cj-settings__head")])
-    w.textElement("h2", label(locale, "Display", "显示"),
-        attrs: [htmlAttr("id", "cjdoc-settings-title"), htmlClass("cj-settings__title")])
-    w.open("button", attrs: [htmlClass("cj-button cj-button--icon"),
-        htmlAttr("type", "button"), htmlFlag("data-cjdoc-theme-close"),
-        htmlAttr("aria-label", label(locale, "Close", "关闭"))])
-    w.icon("close")
-    w.close("button")
-    w.close("div")
-    appendSettingsGroup(w, locale, label(locale, "Theme", "主题"), SETTINGS_THEMES,
-        "data-cjdoc-theme-value", themed: true)
-    appendSettingsGroup(w, locale, label(locale, "Font", "字体"), SETTINGS_FONTS,
-        "data-cjdoc-font-value")
-    appendSettingsGroup(w, locale, label(locale, "Text size", "字号"), SETTINGS_SIZES,
-        "data-cjdoc-size-value")
-    w.textElement("p", label(locale, "System follows your device appearance.",
-        "跟随系统会采用设备的外观设置。"), attrs: [htmlClass("cj-settings__hint")])
-    w.close("dialog")
 }
 
 private func pageRole(currentRoute: String, currentSymbol: ?SymbolDoc): String {
@@ -583,8 +451,6 @@ internal func appendPageStart(w: HtmlWriter, title: String, rootPrefix: String,
     w.element("a", [htmlClass("cj-skip-link"), htmlHref(SafeUrl.fragment("cjdoc-main"))],
         { skip => skip.text(label(locale, "Skip to content", "跳到正文")) })
     appendShellHeader(w, documentation, rootPrefix, locale, docVersion)
-    appendSearchDialog(w, rootPrefix, locale)
-    appendSettingsDialog(w, locale)
     w.open("div", attrs: [htmlClass("cj-layout")])
     w.open("button", attrs: [htmlClass("cj-drawer-backdrop"), htmlAttr("type", "button"),
         htmlFlag("data-cjdoc-menu-backdrop"), htmlFlag("hidden"),

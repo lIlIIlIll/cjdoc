@@ -905,13 +905,18 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
     artifacts.toArray()
 }
 
-internal func appendDocumentVersionArtifact(artifacts: ArrayList<public_render.RenderArtifact>,
-    version: String, projectName: String): Unit {
+private func documentVersionArtifactContent(version: String, projectName: String): String {
     if (!versionSafeId(version)) {
         throw IllegalArgumentException("--doc-version must be a safe version identifier")
     }
-    let content = "{\n  \"schemaVersion\": \"${VERSION_FILE_SCHEMA}\",\n  \"id\": ${versionJsonEscape(version)},\n  \"label\": ${versionJsonEscape(version)},\n  \"project\": ${versionJsonEscape(projectName)}\n}\n"
-    artifacts.add(public_render.RenderArtifact("html/version.json", "application/json", content))
+    "{\n  \"schemaVersion\": \"${VERSION_FILE_SCHEMA}\",\n  \"id\": ${versionJsonEscape(version)},\n  \"label\": ${versionJsonEscape(version)},\n  \"project\": ${versionJsonEscape(projectName)}\n}\n"
+}
+
+/** The CLI publishes `html/version.json` directly into the artifact store. */
+internal func appendDocumentVersionArtifactInto(store: public_render.RenderArtifactStore,
+    version: String, projectName: String): Unit {
+    let content = documentVersionArtifactContent(version, projectName)
+    let _ = store.addText("html/version.json", "application/json", content)
 }
 
 internal func runVersionsCompose(options: NewCliOptions): Int64 {

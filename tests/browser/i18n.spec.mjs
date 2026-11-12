@@ -121,10 +121,30 @@ test('current language is the header toggle, with keyboard and outside dismissal
 
 test('search English author text, read the fallback and follow the guide binding', async ({ page }) => {
   await page.goto(base + 'html/en/index.html');
-  // Search lives in a modal dialog opened by its header trigger.
-  await page.locator('[data-cjdoc-search-trigger]').click();
+  // The palette is created on the first request; a normal load ships no dialog
+  // and the trigger advertises no control it has not built yet.
+  const trigger = page.locator('[data-cjdoc-search-trigger]');
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(0);
+  await expect(page.locator('[data-cjdoc-search]')).toHaveCount(0);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  expect(await trigger.getAttribute('aria-controls')).toBeNull();
+  await trigger.click();
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(1);
+  await expect(trigger).toHaveAttribute('aria-controls', 'cjdoc-search-dialog');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   const input = page.locator('[data-cjdoc-search]');
   await expect(input).toBeVisible();
+  // The created field keeps the site-relative root the trigger published.
+  expect(await input.evaluate(node => node.dataset.root)).toBe(
+    await trigger.evaluate(node => node.dataset.cjdocRootPrefix));
+  // Reopening reuses the single created instance.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toBeVisible();
+  await expect(input).toBeFocused();
+  expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(1);
   await input.fill('Sapphire');
   const hit = page.locator('[data-cjdoc-results] a').first();
   await expect(hit).toBeVisible();

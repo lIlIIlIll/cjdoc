@@ -650,10 +650,10 @@ internal func projectAssets(documentation: DocumentationSet,
     assets
 }
 
-internal func appendAssetArtifacts(artifacts: RenderArtifactCollector,
+internal func appendAssetArtifacts(artifacts: RenderArtifactStore,
     assets: ArrayList<AssetDoc>, formatRoot: String): Unit {
     for (asset in assets) {
-        artifacts.addOwnedBytes("${formatRoot}/${assetOutputPath(asset)}",
+        let _ = artifacts.addOwnedBytes("${formatRoot}/${assetOutputPath(asset)}",
             asset.mediaType, decodeAssetBase64(asset.base64))
     }
 }

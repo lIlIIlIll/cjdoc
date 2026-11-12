@@ -106,6 +106,10 @@ internal let HTML_SIDEBAR_SCRIPT = """
     return item;
   };
   const fillMembers = (list, type) => {
+    if (list.hasAttribute("data-cjdoc-tree-partial")) {
+      completePartial(list, (type.members || []).map(id => memberItem(type, id)));
+      return;
+    }
     if (list.childElementCount) return;
     for (const memberId of type.members || []) list.append(memberItem(type, memberId));
   };
@@ -187,7 +191,8 @@ internal let HTML_SIDEBAR_SCRIPT = """
         });
       }
       packages.push(record);
-      if (record.pkg && Array.isArray(record.pkg.types)) {
+      if (record.list && record.list.hasAttribute("data-cjdoc-tree-partial") &&
+        record.pkg && Array.isArray(record.pkg.types)) {
         completePartial(record.list, record.pkg.types.map(typeItem));
       }
     }
@@ -198,7 +203,8 @@ internal let HTML_SIDEBAR_SCRIPT = """
       toggle.dataset.cjdocTreeBound = "true";
       const initial = item.querySelector(":scope > ul");
       const initialType = typeRecord(item.dataset.cjdocTreeKey);
-      if (initial && initialType && Array.isArray(initialType.members)) {
+      if (initial && initial.hasAttribute("data-cjdoc-tree-partial") &&
+        initialType && Array.isArray(initialType.members)) {
         completePartial(initial, initialType.members.map(id => memberItem(initialType, id)));
       }
       toggle.hidden = false;
@@ -264,8 +270,12 @@ internal let HTML_SIDEBAR_SCRIPT = """
     const toggle = elementNode.querySelector("[data-cjdoc-tree-toggle]");
     if (!list || !toggle) return;
     const nameHit = folded(type.label).indexOf(query) >= 0;
-    if (!nameHit) fillMembers(list, type);
+    fillMembers(list, type);
     for (const member of list.children) {
+      if (member.classList.contains("cj-tree__item--more")) {
+        member.hidden = false;
+        continue;
+      }
       const label = member.querySelector(".cj-tree__label");
       const matches = nameHit || folded(label ? label.textContent : "").indexOf(query) >= 0;
       member.hidden = !matches;

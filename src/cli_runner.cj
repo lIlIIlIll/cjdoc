@@ -39,6 +39,46 @@ private func renderArtifacts(documentation: public_model.DocumentationSet,
 }
 
 
+/**
+ * The one renderer-resource fallback for directory output.
+ *
+ * Only `RenderResourceLimitException` may downgrade generated documentation,
+ * and only when a generation request exists. The spool is destroyed and
+ * recreated strictly before the bounded documentation replaces the input, so
+ * the retry starts from an empty inventory. The retry happens exactly once;
+ * disk, lock, and output-validation failures are never converted here.
+ */
+internal func renderArtifactsIntoWithCommandFallback(spool: OutputArtifactSpool,
+    documentation: public_model.DocumentationSet, formats: Array<String>,
+    generationRequest: ?GenerationRequest,
+    locale!: String = "zh-CN",
+    docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false,
+    allLanguages!: Bool = false, agentFull!: Bool = false,
+    reports!: Array<public_render.DocumentationReportAttachment> = [],
+    htmlFonts!: public_render.HtmlFontOptions = public_render.HtmlFontOptions()):
+        public_model.DocumentationSet {
+    try {
+        if (injectResourceLimitForTest) {
+            throw public_render.RenderResourceLimitException("injected renderer resource limit")
+        }
+        public_render.renderDocumentationInto(spool, documentation, formats, locale: locale,
+            docVersion: docVersion, allLanguages: allLanguages, agentFull: agentFull,
+            reports: reports, htmlFonts: htmlFonts)
+        documentation
+    } catch (error: public_render.RenderResourceLimitException) {
+        match (generationRequest) {
+            case Some(request) =>
+                spool.reset()
+                let fallback = boundGeneratedDocumentation(documentation, request, force: true)
+                public_render.renderDocumentationInto(spool, fallback, formats, locale: locale,
+                    docVersion: docVersion, allLanguages: allLanguages, agentFull: agentFull,
+                    reports: reports, htmlFonts: htmlFonts)
+                fallback
+            case None => throw error
+        }
+    }
+}
+
 internal func renderArtifactsWithCommandFallback(documentation: public_model.DocumentationSet,
     formats: Array<String>, generationRequest: ?GenerationRequest,
     locale!: String = "zh-CN",
@@ -314,25 +354,34 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
             public_render.decodeDocIr(readDocIrInput(Path(options.input.getOrThrow()), limit),
                 maxDocumentBytes: limit)
     }
-    var artifacts: Array<public_render.RenderArtifact> = []
-    if (options.command != "check") {
-        let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
+    // Every directory case renders once, straight into the lock-scoped spool.
+    // A spool is created only after the documentation value exists so a failed
+    // generation never leaves transaction state behind.
+    var spool: ?OutputArtifactSpool = None
+    if (options.command != "check" && !options.stdout) {
+        let created = OutputArtifactSpool(outputLock.getOrThrow())
+        spool = Some(created)
+        documentation = renderArtifactsIntoWithCommandFallback(created, documentation,
+            orderedFormats(options), generationRequest, locale: options.locale,
+            docVersion: options.docVersion, allLanguages: options.allLanguages,
+            agentFull: options.agentFull, reports: capturedCliReports(options),
+            htmlFonts: public_render.HtmlFontOptions(sans: options.htmlFontSans,
+                mono: options.htmlFontMono))
+        match (options.docVersion) {
+            case Some(version) =>
+                appendDocumentVersionArtifactInto(created, version, documentation.project.name)
+            case None => ()
+        }
+    }
+    let artifacts = if (options.command != "check" && options.stdout) {
+        let (renderedDocumentation, rendered) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
             docVersion: options.docVersion, allLanguages: options.allLanguages,
             agentFull: options.agentFull, reports: capturedCliReports(options),
             htmlFonts: public_render.HtmlFontOptions(sans: options.htmlFontSans, mono: options.htmlFontMono))
         documentation = renderedDocumentation
-        let artifactList = ArrayList<public_render.RenderArtifact>()
-        artifactList.add(all: renderedArtifacts)
-        match (options.docVersion) {
-            case Some(version) => appendDocumentVersionArtifact(artifactList, version, documentation.project.name)
-            case None => ()
-        }
-        artifacts = if (options.allLanguages && options.formats.contains("html")) {
-            public_render.finalizeDocumentationLanguageArtifacts(documentation, artifactList.toArray(),
-                docVersion: options.docVersion)
-        } else { artifactList.toArray() }
-    }
+        rendered
+    } else { Array<public_render.RenderArtifact>() }
     printPublicDiagnostics(documentation)
     let diagnosticsExit = publicExitCode(documentation, options.denyWarnings)
     let contractExit = contractGateExitCode(documentation, options)
@@ -342,8 +391,15 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
             getStdOut().write(artifacts[0].content.toArray())
         } else {
             let output = lockedOutput.getOrThrow()
-            writeOwnedArtifactsWithLockHeld(output, artifacts, outputLock.getOrThrow(),
+            writeOwnedSpoolWithLockHeld(output, spool.getOrThrow(), outputLock.getOrThrow(),
                 forceOwned: options.forceOwned)
+        }
+    } else {
+        // A rejected serve rebuild must not publish, and its spool must vanish
+        // so the next attempt starts from an empty inventory.
+        match (spool) {
+            case Some(created) => created.discard()
+            case None => ()
         }
     }
     if (diagnosticsExit != 0 || contractExit != 0) { 1 } else { 0 }

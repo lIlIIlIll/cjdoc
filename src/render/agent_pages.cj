@@ -75,7 +75,7 @@ private func agentPackageMarkdown(context: DocumentationReadSnapshot, pkg: Packa
     out.toString()
 }
 
-internal func appendAgentPageArtifacts(artifacts: RenderArtifactCollector,
+internal func appendAgentPageArtifacts(artifacts: RenderArtifactStore,
     context: DocumentationReadSnapshot): Unit {
     for (page in context.selectedPages()) {
         let markdownPath = agentPageMarkdownPath(page)
@@ -84,8 +84,8 @@ internal func appendAgentPageArtifacts(artifacts: RenderArtifactCollector,
         let raw = StringBuilder()
         appendDocumentationPages(raw, ArrayList<DocumentationPage>([page]))
         let array = raw.toString()
-        artifacts.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
-        artifacts.addText("html/" + jsonPath, "application/json",
+        let _ = artifacts.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
+        let _ = artifacts.addText("html/" + jsonPath, "application/json",
             agentPageEnvelope(context, page.id, "concept", None, page.route, markdownPath, jsonPath,
                 markdown, pageJson: array[1..array.size - 1]))
     }
@@ -97,16 +97,16 @@ internal func appendAgentPageArtifacts(artifacts: RenderArtifactCollector,
         let markdown = agentPackageMarkdown(context, source)
         let raw = StringBuilder()
         appendPackage(raw, source)
-        artifacts.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
-        artifacts.addText("html/" + jsonPath, "application/json",
+        let _ = artifacts.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
+        let _ = artifacts.addText("html/" + jsonPath, "application/json",
             agentPageEnvelope(context, id, "package", Some(source.moduleId), packagePagePath(source.moduleId, source.name),
                 markdownPath, jsonPath, markdown, packageJson: raw.toString()))
     }
     let markdown = "# " + context.documentation.project.name + "\n\nSnapshot: " + context.snapshotId +
         "\n\n- [API reference](../../index.html)\n- [Navigation and continuation](../../navigation-index.json)\n" +
         "- [Representations and machine data](../manifest.json)\n"
-    artifacts.addText("html/agent/pages/index.md", "text/markdown; charset=utf-8", markdown)
-    artifacts.addText("html/agent/pages/index.json", "application/json",
+    let _ = artifacts.addText("html/agent/pages/index.md", "text/markdown; charset=utf-8", markdown)
+    let _ = artifacts.addText("html/agent/pages/index.json", "application/json",
         agentPageEnvelope(context, "cjdoc:page:index", "project", None, "index.html",
             "agent/pages/index.md", "agent/pages/index.json", markdown))
 }

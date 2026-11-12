@@ -74,7 +74,26 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
 
 internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: String = "html/", version!: ?String = None): String {
     validateTypedDocumentationSet(documentation)
-    let projection = RenderProjection(documentation)
+    renderSymbolIndexProjected(documentation, RenderProjection(documentation),
+        hrefPrefix: hrefPrefix, version: version)
+}
+
+/**
+ * Serialize the inventory of a model whose typed validity and projection the
+ * caller already holds.
+ *
+ * `RenderProjection` indexes the whole visible symbol set, and
+ * `validateTypedDocumentationSet` encodes, pretty-prints and strictly decodes
+ * the entire document. A `DocumentationReadSnapshot` performs both on
+ * construction for this exact model: `encodedDocumentation = encodeDocIr(...)`
+ * is that same decode validation, and `projection` is the single index of
+ * `documentation`. Repeating either would rebuild an index that exists and
+ * materialize a transient second whole-document decode, so the snapshot reuses
+ * what it already proved instead.
+ */
+internal func renderSymbolIndexProjected(documentation: DocumentationSet,
+    projection: RenderProjection, hrefPrefix!: String = "html/",
+    version!: ?String = None): String {
     let identities = SymbolInventoryIdentity(documentation, publicationRevision: version)
     let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(symbols, lessThan: { left, right => left.id < right.id }, stable: true)
@@ -144,9 +163,9 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
     out.toString()
 }
 
-internal func appendSymbolIndexArtifacts(artifacts: RenderArtifactCollector,
+internal func appendSymbolIndexArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet, version!: ?String = None): Unit {
-    artifacts.addText("symbol-index/symbol-index.json", "application/json",
+    let _ = artifacts.addText("symbol-index/symbol-index.json", "application/json",
         renderSymbolIndex(documentation, version: version))
 }
 

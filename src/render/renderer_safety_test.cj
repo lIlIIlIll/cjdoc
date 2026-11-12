@@ -835,6 +835,38 @@ class RendererSafetyTest {
     }
 
     @TestCase
+    func artifactReplacementChargesOnlyTheFinalPayloadAndPreservesFailedWrites(): Unit {
+        let artifacts = RenderArtifactCollector(artifactLimit: 8, totalLimit: 10, entryLimit: 2)
+        let page = artifacts.addText("page.html", "text/html", "old")
+        let other = artifacts.addText("other.txt", "text/plain", "12345")
+        artifacts.replaceText(page, "newer")
+        @Expect(artifacts.readText(page, 8), "newer")
+        @ExpectThrows[RenderResourceLimitException](artifacts.replaceText(page, "larger"))
+        @Expect(artifacts.readText(page, 8), "newer")
+        @Expect(artifacts.readText(other, 8), "12345")
+        artifacts.replaceText(page, "")
+        artifacts.replaceText(page, "again")
+        @Expect(artifacts.readText(page, 8), "again")
+        @ExpectThrows[RenderResourceLimitException](
+            artifacts.addText("third.txt", "text/plain", ""))
+    }
+
+    @TestCase
+    func artifactTextReadsRespectUtf8BytesAndNeverInterpretBinaryEntries(): Unit {
+        let artifacts = RenderArtifactCollector()
+        let text = artifacts.addText("text.txt", "text/plain", "中\u{0}文")
+        @Expect(artifacts.readText(text, 7), "中\u{0}文")
+        @ExpectThrows[RenderResourceLimitException](artifacts.readText(text, 6))
+        let empty = artifacts.addText("empty.txt", "text/plain", "")
+        @Expect(artifacts.readText(empty, 0), "")
+        for (bytes in [Array<Byte>(), [UInt8(0), UInt8(0xff)]]) {
+            let binary = artifacts.addOwnedBytes("asset.bin", "application/octet-stream", bytes)
+            @ExpectThrows[IllegalArgumentException](artifacts.readText(binary, 64))
+            @ExpectThrows[IllegalArgumentException](artifacts.replaceText(binary, "text"))
+        }
+    }
+
+    @TestCase
     func binaryRenderArtifactClonesCallerAndReturnedBuffers(): Unit {
         let caller = [UInt8(1), UInt8(2), UInt8(3)]
         let artifact = RenderArtifact("asset.bin", "application/octet-stream", caller)

@@ -3,16 +3,18 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-private class AgentNavigationChunk {
+// Each part keeps a store entry and its own pagination numbers; entry payloads
+// are never retained here, and every navigation entry is rendered exactly once.
+private class AgentNavigationPart {
+    let entry: Int64
     let offset: Int64
     let count: Int64
-    let content: String
     let contentComplete: Bool
 
-    init(offset: Int64, count: Int64, content: String, contentComplete: Bool) {
+    init(entry: Int64, offset: Int64, count: Int64, contentComplete: Bool) {
+        this.entry = entry
         this.offset = offset
         this.count = count
-        this.content = content
         this.contentComplete = contentComplete
     }
 }
@@ -37,7 +39,7 @@ private func agentNavigationPath(part: Int64): String {
     if (part == 0) { "navigation-index.json" } else { "navigation-index-part-${part}.json" }
 }
 
-internal func appendAgentNavigationArtifacts(artifacts: RenderArtifactCollector,
+internal func appendAgentNavigationArtifacts(artifacts: RenderArtifactStore,
     context: DocumentationReadSnapshot, pages: ArrayList<AgentNavigationPage>, version: ?String,
     includeValidation!: Bool = false, limit!: Int64 = AGENT_NAVIGATION_LIMIT): Unit {
     let documentation = context.documentation
@@ -56,7 +58,10 @@ internal func appendAgentNavigationArtifacts(artifacts: RenderArtifactCollector,
     // Reserve metadata before placing an entire entry; never cut identity fields.
     let capacity = limit - prefix.size - 512
     if (capacity <= 0) { throw RenderResourceLimitException("agent_navigation_metadata_exceeds_budget") }
-    let chunks = ArrayList<AgentNavigationChunk>()
+    // One pass: each part body is appended once, then its pagination header is
+    // prepended once the total part count is known. Only the current part body
+    // is live, and no site-wide payload array is built.
+    let parts = ArrayList<AgentNavigationPart>()
     var body = RenderTextBuffer(limit: limit)
     var offset: Int64 = 0
     var count: Int64 = 0
@@ -67,10 +72,13 @@ internal func appendAgentNavigationArtifacts(artifacts: RenderArtifactCollector,
             throw RenderResourceLimitException("agent_navigation_entry_exceeds_budget")
         }
         if (count > 0 && body.size + 1 + entry.size > capacity) {
-            chunks.add(AgentNavigationChunk(offset, count, body.toString(), complete))
+            parts.add(AgentNavigationPart(
+                artifacts.addText("html/" + agentNavigationPath(parts.size), "application/json",
+                    body.toString()),
+                offset, count, complete))
             offset += count
-            body = RenderTextBuffer(limit: limit)
             count = 0
+            body = RenderTextBuffer(limit: limit)
             complete = true
         }
         if (count > 0) { body.append(",") }
@@ -78,19 +86,21 @@ internal func appendAgentNavigationArtifacts(artifacts: RenderArtifactCollector,
         count++
         if (page.summary.getOrDefault({ => "" }).size > AGENT_FIELD_LIMIT) { complete = false }
     }
-    chunks.add(AgentNavigationChunk(offset, count, body.toString(), complete))
-    for (part in 0..chunks.size) {
-        let chunk = chunks[part]
-        let next: ?String = if (part + 1 < chunks.size) { Some(agentNavigationPath(part + 1)) } else { None }
+    let finalEntry = artifacts.addText("html/" + agentNavigationPath(parts.size),
+        "application/json", body.toString())
+    parts.add(AgentNavigationPart(finalEntry, offset, count, complete))
+    for (part in 0..parts.size) {
+        let chunk = parts[part]
+        let next: ?String = if (part + 1 < parts.size) { Some(agentNavigationPath(part + 1)) } else { None }
         let out = RenderTextBuffer(limit: limit)
         out.append(prefix)
-        out.append(",\"completeness\":{\"enumerationComplete\":${chunks.size == 1}," +
+        out.append(",\"completeness\":{\"enumerationComplete\":${parts.size == 1}," +
             "\"contentComplete\":${chunk.contentComplete}},\"pagination\":{")
         out.append("\"offset\":${chunk.offset},\"returned\":${chunk.count},\"total\":${pages.size}," +
-            "\"part\":${part},\"parts\":${chunks.size},\"next\":${nullableString(next)}," +
+            "\"part\":${part},\"parts\":${parts.size},\"next\":${nullableString(next)}," +
             "\"pathBase\":\"document-root\"},\"pages\":[")
-        out.append(chunk.content)
+        out.append(artifacts.readText(chunk.entry, capacity))
         out.append("]}\n")
-        artifacts.addText("html/" + agentNavigationPath(part), "application/json", out.toString())
+        artifacts.replaceText(chunk.entry, out.toString())
     }
 }

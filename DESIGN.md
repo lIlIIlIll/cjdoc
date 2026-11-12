@@ -140,7 +140,7 @@ Desktop grid: `17rem | minmax(0, 1fr) | 14rem`, capped at 100rem, under a 3.25re
 - **≤1180px:** the outline column goes away; a native `<details>` "On this page" sits above the document. The tree narrows to 15rem.
 - **≤760px:** single column. With scripts the tree becomes an off-canvas drawer (`html[data-cj-drawer="open"]`, backdrop, focus trap, Escape); without scripts it follows the document in normal flow. Search and settings dialogs become full-screen and bottom-sheet respectively. Member filter fields fold behind a toggle; member actions collapse into a menu.
 
-Navigation tree: every package; the current package's types; the current type's members. The server renders a bounded window (12 entries centered on the current one) and a "Full package index" / "All members" link; the script completes the branch from `sidebar-index.js` and lazily builds any other branch on expand. One filter narrows packages, types and members by name and expands the matching ancestors.
+Navigation tree: every package; the current package's types; the current type's members. The server renders a bounded window of five entries (current ±2, shifted at the edges; the first five when there is no current entry) and a "Full package index" / "All members" link; the script completes a partial branch from `sidebar-index.js` and builds other branches only when expanded or matched by a filter. One filter narrows packages, types and members by name and expands the matching ancestors.
 
 ## Elevation & Depth
 
