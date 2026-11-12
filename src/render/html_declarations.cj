@@ -27,34 +27,43 @@ internal func packageDeclarationHeading(category: String, locale: String): (Stri
     }
 }
 
-private func appendDeclarationRow(out: RenderTextBuffer, projection: RenderProjection,
-    symbol: SymbolDoc, links: HtmlTypeLinkIndex, locale: String, showKind: Bool): Unit {
-    out.append("<article class=\"declaration-summary declaration-row\" data-cjdoc-member data-member-symbol-id=\"${escapeHtml(symbol.id)}\" data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\">")
-    // The stretched name link owns the row; signature type links are siblings,
-    // never nested anchors, and remain independently focusable above it.
-    out.append("<a class=\"declaration-row-link\" href=\"../${escapeHtml(symbolPagePath(symbol))}\"><span class=\"declaration-summary-head\"><code>${escapeHtml(readerDeclarationName(symbol))}</code>")
-    if (showKind) {
-        out.append("<span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</span>")
-    }
-    out.append("</span></a>")
-    appendDeclarationClassificationBadges(out, projection.catalog, projection.snapshotId,
-        symbol, "../", includeGroup: false)
-    if (!symbol.headerSpelling.isEmpty()) {
-        out.append("<code class=\"declaration-signature\">")
-        appendLinkedSignatureHtml(out, symbol, links, "../")
-        out.append("</code>")
-    }
+private func declarationRowSummary(symbol: SymbolDoc): String {
     match (symbol.documentation) {
-        case Some(comment) =>
-            let summary = summaryPlainText(comment)
-            if (!summary.isEmpty()) {
-                out.append("<p class=\"declaration-description\">")
-                out.append(escapeHtml(summary))
-                out.append("</p>")
-            }
-        case None => ()
+        case Some(comment) => summaryPlainText(comment)
+        case None => ""
     }
-    out.append("</article>\n")
+}
+
+// A compact row: name links to the declaration page, the kind is a badge, and the
+// one-paragraph summary replaces the old row-level signature. The name is the
+// navigation label shared with the sidebar, so overloads and repeated
+// extensions stay distinguishable without a signature column.
+private func appendDeclarationRow(w: HtmlWriter, projection: RenderProjection,
+    symbol: SymbolDoc, locale: String): Unit {
+    let name = sidebarPackageLabels(projection, symbol.moduleId, symbol.packageName)
+        .get(symbol.id).getOrDefault({ => readerDeclarationName(symbol) })
+    w.open("tr", attrs: [htmlClass("cj-decl-table__row"),
+        htmlFlag("data-cjdoc-member"),
+        htmlAttr("data-member-symbol-id", symbol.id),
+        htmlAttr("data-member-name", symbol.name),
+        htmlAttr("data-member-kind", symbol.kind)])
+    w.element("td", [htmlClass("cj-decl-table__name")]) { cell =>
+        cell.element("a", [htmlClass("cj-decl-table__link"),
+            htmlHref(documentationRouteHref("../" + symbolPagePath(symbol)))]) { link =>
+            link.textElement("code", name)
+        }
+        appendDeclarationClassificationBadges(cell, projection.catalog, projection.snapshotId,
+            symbol, "../", includeGroup: false)
+    }
+    w.element("td", [htmlClass("cj-decl-table__kind")]) { cell =>
+        cell.textElement("span", htmlKindLabel(symbol.kind, locale),
+            attrs: [htmlClass("cj-kind"), htmlAttr("data-kind", symbol.kind)])
+    }
+    w.element("td", [htmlClass("cj-decl-table__summary")]) { cell =>
+        cell.text(declarationRowSummary(symbol))
+    }
+    w.close("tr")
+    w.newline()
 }
 
 private let PACKAGE_DECLARATION_CATEGORY_ORDER = ["class", "struct", "interface", "enum",
@@ -90,62 +99,100 @@ internal func packageDeclarationCategories(symbols: ArrayList<SymbolDoc>):
     (ordered, kindByName)
 }
 
-internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
+private func appendDeclarationTable(w: HtmlWriter, projection: RenderProjection,
+    symbols: ArrayList<SymbolDoc>, locale: String): Unit {
+    w.open("table", attrs: [htmlClass("cj-decl-table")])
+    w.open("thead", attrs: [htmlClass("cj-sr-only")])
+    w.open("tr")
+    for (column in [label(locale, "Name", "名称"), label(locale, "Kind", "种类"),
+        label(locale, "Summary", "摘要")]) {
+        w.textElement("th", column, attrs: [htmlAttr("scope", "col")])
+    }
+    w.close("tr")
+    w.close("thead")
+    w.open("tbody")
+    for (symbol in symbols) {
+        appendDeclarationRow(w, projection, symbol, locale)
+    }
+    w.close("tbody")
+    w.close("table")
+    w.newline()
+}
+
+internal func appendPackageDeclarationGroups(w: HtmlWriter,
     projection: RenderProjection, pageModuleId: String, pagePackageName: String,
-    symbols: ArrayList<SymbolDoc>, links: HtmlTypeLinkIndex, locale: String): Unit {
+    symbols: ArrayList<SymbolDoc>, locale: String): Unit {
     let roles = partitionDeclarationGroups(symbols, projection.catalog)
     if (!hasGroupedDeclarations(roles)) {
-        appendPackageDeclarationKinds(out, projection, symbols, links, locale)
+        appendPackageDeclarationKinds(w, projection, symbols, locale)
         return
     }
     prepareDeclarationGroupAnchors(roles, pageModuleId, pagePackageName, None)
-    out.append("<span id=\"declarations\" class=\"section-anchor-alias\" aria-hidden=\"true\"></span>")
+    w.textElement("span", "", attrs: [htmlAttr("id", "declarations"),
+        htmlClass("cj-anchor-alias"), htmlAttr("aria-hidden", "true")])
     let aliases = HashSet<String>()
     for (role in roles) {
         for (symbol in role.symbols) {
             let (alias, _) = packageDeclarationHeading(packageDeclarationCategory(symbol.kind), locale)
             if (aliases.add(alias)) {
-                out.append("<span class=\"section-anchor-alias\" id=\"" + alias + "\" aria-hidden=\"true\"></span>")
+                w.textElement("span", "", attrs: [htmlClass("cj-anchor-alias"),
+                    htmlAttr("id", alias), htmlAttr("aria-hidden", "true")])
             }
         }
-        out.append("<section class=\"api-declaration-group\" data-cjdoc-declaration-group=\"" +
-            escapeHtml(role.id) + "\"><h2 id=\"" + escapeHtml(role.anchor) + "\">" +
-            escapeHtml(declarationGroupDisplayTitle(role, locale)) +
-            "<span data-cjdoc-group-count data-group-total=\"${role.symbols.size}\">" +
-            label(locale, " (${role.symbols.size})", "（${role.symbols.size}）") + "</span></h2>")
-        appendPackageDeclarationKinds(out, projection, role.symbols, links, locale,
+        w.open("section", attrs: [htmlClass("cj-api-group"),
+            htmlAttr("data-cjdoc-declaration-group", role.id)])
+        w.open("h2", attrs: [htmlAttr("id", role.anchor)])
+        w.text(declarationGroupDisplayTitle(role, locale))
+        w.textElement("span", label(locale, " (${role.symbols.size})", "（${role.symbols.size}）"),
+            attrs: [htmlFlag("data-cjdoc-group-count"), htmlAttr("data-group-total", role.symbols.size.toString())])
+        w.close("h2")
+        appendPackageDeclarationKinds(w, projection, role.symbols, locale,
             groupPrefix: role.kindPrefix)
-        out.append("</section>\n")
+        w.close("section")
+        w.newline()
     }
 }
 
-private func appendPackageDeclarationKinds(out: RenderTextBuffer, projection: RenderProjection,
-    symbols: ArrayList<SymbolDoc>, links: HtmlTypeLinkIndex, locale: String,
+private func appendKindHeading(w: HtmlWriter, headingTag: String, anchorId: String,
+    heading: String, count: String): Unit {
+    w.open(headingTag, attrs: [htmlAttr("id", anchorId), htmlAttr("data-cjdoc-toc-role", "group")])
+    w.text(heading + count)
+    w.close(headingTag)
+}
+
+private func appendGroupedKindSection(w: HtmlWriter, projection: RenderProjection,
+    category: String, group: ArrayList<SymbolDoc>,
+    locale: String, groupPrefix: String, showKindHeading: Bool): Unit {
+    let (groupId, heading) = packageDeclarationHeading(category, locale)
+    let count = label(locale, " (${group.size})", "（${group.size}）")
+    if (showKindHeading) {
+        w.open("section", attrs: [htmlClass("cj-decl-group")])
+        appendKindHeading(w, "h3", groupPrefix + groupId, heading, count)
+    } else {
+        // The omitted heading keeps its historical deep link on a zero-height
+        // alias, so old #api-kind… URLs still resolve without a second heading
+        // or TOC entry.
+        w.open("section", attrs: [htmlClass("cj-decl-group cj-decl-group--plain")])
+        w.textElement("span", "", attrs: [htmlClass("cj-anchor-alias"),
+            htmlAttr("id", groupPrefix + groupId), htmlAttr("aria-hidden", "true")])
+    }
+    appendDeclarationTable(w, projection, group, locale)
+    w.close("section")
+    w.newline()
+}
+
+private func appendPackageDeclarationKinds(w: HtmlWriter, projection: RenderProjection,
+    symbols: ArrayList<SymbolDoc>, locale: String,
     groupPrefix!: String = ""): Unit {
-    let (ordered, kindByName) = packageDeclarationCategories(symbols)
+    let (ordered, _) = packageDeclarationCategories(symbols)
     if (ordered.isEmpty()) { return }
     if (!groupPrefix.isEmpty()) {
         // A group with one visible kind needs no umbrella heading between the
-        // group and its entries; the signatures keep the kind identifiable.
+        // group and its entries; the table rows keep the kind identifiable.
         let layout = declarationGroupLayout(ordered.size, 2)
         for (entry in ordered) {
-            let category = entry[0]
-            let group = entry[1]
-            let (groupId, heading) = packageDeclarationHeading(category, locale)
-            let count = label(locale, " (${group.size})", "（${group.size}）")
-            if (layout.showKindHeading) {
-                out.append("<section class=\"declaration-group\"><h3 id=\"${groupPrefix}${groupId}\" data-cjdoc-toc-role=\"group\">${heading}${count}</h3><div class=\"declaration-list\">")
-            } else {
-                // The omitted heading keeps its historical deep link on a
-                // zero-height alias, so old #api-kind… URLs still resolve
-                // without a second heading or TOC entry.
-                out.append("<section class=\"declaration-group declaration-group-plain\"><span class=\"section-anchor-alias\" id=\"${groupPrefix}${groupId}\" aria-hidden=\"true\"></span><div class=\"declaration-list\">")
-            }
-            for (symbol in group) {
-                appendDeclarationRow(out, projection, symbol, links, locale,
-                    category == "other" || kindByName[symbol.name].isEmpty())
-            }
-            out.append("</div></section>\n")
+            appendGroupedKindSection(w, projection, entry[0], entry[1], locale,
+                groupPrefix, layout.showKindHeading)
         }
         return
     }
@@ -154,9 +201,10 @@ private func appendPackageDeclarationKinds(out: RenderTextBuffer, projection: Re
     // section and keeps the audience-visible count.
     let singleCategory = ordered.size == 1
     if (!singleCategory) {
-        out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
+        w.textElement("h2", label(locale, "Declarations", "声明"), attrs: [htmlAttr("id", "declarations")])
+        w.newline()
     }
-    let headingLevel = if (singleCategory) { "h2" } else { "h3" }
+    let headingTag = if (singleCategory) { "h2" } else { "h3" }
     for (entry in ordered) {
         let category = entry[0]
         let group = entry[1]
@@ -166,19 +214,20 @@ private func appendPackageDeclarationKinds(out: RenderTextBuffer, projection: Re
         // historical anchor has exactly one owner and one scroll target.
         let anchorId = if (singleCategory) { "declarations" } else { groupId }
         let count = label(locale, " (${group.size})", "（${group.size}）")
-        out.append("<section class=\"declaration-group\">")
+        w.open("section", attrs: [htmlClass("cj-decl-group")])
         // Merging the umbrella and category headings must not break either deep
         // link. The category anchor survives as a non-heading alias, so the TOC
         // (which only walks headings and roles) still sees one node.
         if (singleCategory) {
-            out.append("<span class=\"section-anchor-alias\" id=\"${groupId}\" aria-hidden=\"true\"></span>")
+            w.textElement("span", "", attrs: [htmlClass("cj-anchor-alias"),
+                htmlAttr("id", groupId), htmlAttr("aria-hidden", "true")])
         }
-        out.append("<${headingLevel} id=\"${anchorId}\" data-cjdoc-toc-role=\"group\">${heading}${count}</${headingLevel}><div class=\"declaration-list\">")
-        for (symbol in group) {
-            appendDeclarationRow(out, projection, symbol, links, locale,
-                category == "other" || kindByName[symbol.name].isEmpty())
-        }
-        out.append("</div></section>\n")
+        w.open(headingTag, attrs: [htmlAttr("id", anchorId),
+            htmlAttr("data-cjdoc-toc-role", "group")])
+        w.text(heading + count)
+        w.close(headingTag)
+        appendDeclarationTable(w, projection, group, locale)
+        w.close("section")
+        w.newline()
     }
 }
-

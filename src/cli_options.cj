@@ -3,6 +3,7 @@ package cjdoc
 import std.collection.*
 import std.convert.Parsable
 import cjdoc.model as public_model
+import cjdoc.render as public_render
 
 internal class NewCliOptions {
     var command = ""
@@ -63,6 +64,8 @@ internal class NewCliOptions {
     var standardLibraryDocsVersion: ?String = None
     var standardLibraryDocsBaseUrl: ?String = None
     var agentFull = false
+    var htmlFontSans: ?String = None
+    var htmlFontMono: ?String = None
     var versionSubcommand = ""
 
     let versionInputs = ArrayList<String>()
@@ -97,6 +100,7 @@ internal func newUsage(): String {
     "                 [--cache-dir <dir>|--no-cache] [--force-owned] [--max-doc-ir-mib 1..64]\n" +
     "                 [--locale zh-CN|en|--all-languages] [--require-language zh-CN|en]...\n" +
     "                 [--agent-full] [--validation-report <report.json>] [--api-diff-report <report.json>]\n" +
+    "                 [--html-font-sans <families>] [--html-font-mono <families>]\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "              [--chir-worker <executable>]\n" +
     "              [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
@@ -110,7 +114,9 @@ internal func newUsage(): String {
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned] [--doc-version <version>]\n" +
     "               [--locale zh-CN|en|--all-languages] [--max-doc-ir-mib 1..64]\n" +
     "               [--agent-full] [--validation-report <report.json>] [--api-diff-report <report.json>]\n" +
+    "               [--html-font-sans <families>] [--html-font-mono <families>]\n" +
     "  cjdoc serve [--project <dir>] [--port <port>] [--open] [--agent-full] [--max-doc-ir-mib 1..64]\n" +
+    "              [--html-font-sans <families>] [--html-font-mono <families>]\n" +
     "  cjdoc versions compose --version ID=PATH... [--label ID=TEXT] [--channel ID=TEXT] [--status ID=TEXT]\n" +
     "                        [--base-path ID=PATH] [--release ID=TEXT] [--diff ID=PATH] [--latest ID] --output <dir> [--force-owned]\n" +
     "  cjdoc query --snapshot <docs.json|agent/manifest.json|versions.json>... --request <request.json|->\n" +
@@ -372,13 +378,45 @@ private func parseFlagOption(options: NewCliOptions, args: Array<String>, index:
     }
 }
 
+private func parseHtmlFontOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
+    match (args[index]) {
+        case "--html-font-sans" =>
+            options.htmlFontSans = Some(requireCliValue(args, index, "--html-font-sans"))
+            Some(index + 2)
+        case "--html-font-mono" =>
+            options.htmlFontMono = Some(requireCliValue(args, index, "--html-font-mono"))
+            Some(index + 2)
+        case _ => None<Int64>
+    }
+}
+
 private func parseCliOption(options: NewCliOptions, args: Array<String>, index: Int64): Int64 {
     if (let Some(next) <- parsePathAndTextOption(options, args, index)) { return next }
     if (let Some(next) <- parseCollectionOption(options, args, index)) { return next }
     if (let Some(next) <- parseNumericOption(options, args, index)) { return next }
     if (let Some(next) <- parseEnumOption(options, args, index)) { return next }
     if (let Some(next) <- parseFlagOption(options, args, index)) { return next }
+    if (let Some(next) <- parseHtmlFontOption(options, args, index)) { return next }
     throw IllegalArgumentException("unknown option '${args[index]}'")
+}
+
+private func validateHtmlFontOptions(options: NewCliOptions): Unit {
+    for ((value, option) in [(options.htmlFontSans, "--html-font-sans"),
+        (options.htmlFontMono, "--html-font-mono")]) {
+        let list = match (value) {
+            case Some(list) => list
+            case None => continue
+        }
+        if (options.command != "generate" && options.command != "render" && options.command != "serve") {
+            throw IllegalArgumentException("${option} is only valid for generate, render, or serve")
+        }
+        if (options.command != "serve" && !options.formats.contains("html")) {
+            throw IllegalArgumentException("${option} requires --format html")
+        }
+        if (!public_render.isValidHtmlFontFamilyList(list)) {
+            throw IllegalArgumentException("invalid ${option} value")
+        }
+    }
 }
 
 private func validateDiffOptions(options: NewCliOptions): Unit {
@@ -401,6 +439,7 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
         options.docVersion.isSome() || options.standardLibraryDocsVersion.isSome() ||
         options.standardLibraryDocsBaseUrl.isSome() || options.agentFull ||
+        options.htmlFontSans.isSome() || options.htmlFontMono.isSome() ||
         options.servePortExplicit || options.serveOpenExplicit || options.checkExamples ||
         !options.formats.isEmpty() ||
         options.semanticExplicit || options.cjcExplicit ||
@@ -530,6 +569,7 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.agentFull && options.command != "serve" && !options.formats.contains("html")) {
         throw IllegalArgumentException("--agent-full requires --format html")
     }
+    validateHtmlFontOptions(options)
     if (options.validationReport.isSome() || options.apiDiffReport.isSome()) {
         if ((options.command != "generate" && options.command != "render") ||
             !options.formats.contains("html") || options.stdout) {

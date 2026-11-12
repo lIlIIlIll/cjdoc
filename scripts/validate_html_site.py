@@ -20,8 +20,8 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "8c0fd77db06934dd690c9d64cf64d2b50b33105a780b3308739dff7e3e112202"
-CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
+CANONICAL_SEARCH_JS_SHA256 = "4ee2ed6419b9c3eca7ed787107146fd1e4576623a28068f8b7f11765f7e5041f"
+CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "eb22acb6fbd233c77f87a16317ad5f48d171f13519f9113e3120bf6ab6f48ca7"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 CLASSIFICATION_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -49,6 +49,9 @@ class PageParser(HTMLParser):
         self.csp_policies: list[str] = []
         self.script_sources: list[str] = []
         self.is_alias = False
+        self.dialogs: dict[str, set[str]] = {}
+        self.dialog_depth = 0
+        self.has_shell = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered_tag = tag.lower()
@@ -63,6 +66,7 @@ class PageParser(HTMLParser):
         values = {name.lower(): value for name, value in attrs}
         if lowered_tag == "body":
             self.is_alias = values.get("data-cjdoc-route") == "symbol-alias"
+            self.has_shell = "data-cjdoc-page" in values
         if lowered_tag == "style":
             self.errors.append("inline style element is forbidden")
         if lowered_tag not in VOID_ELEMENTS:
@@ -85,6 +89,14 @@ class PageParser(HTMLParser):
                 or values.get("defer") is not None
             ):
                 self.errors.append("script must have only defer and src attributes")
+        if lowered_tag == "dialog":
+            self.dialog_depth += 1
+            identity = values.get("id")
+            if identity:
+                self.dialogs[identity] = set()
+        elif self.dialog_depth and "id" in values:
+            for dialog in self.dialogs:
+                self.dialogs[dialog].add(values["id"])
         if lowered_tag == "meta" and (values.get("http-equiv") or "").lower() == "content-security-policy":
             if self.stack != ["html", "head"]:
                 self.errors.append("CSP meta must be a direct child of head")
@@ -119,6 +131,8 @@ class PageParser(HTMLParser):
             expected = self.stack[-1] if self.stack else "none"
             self.errors.append(f"mismatched end tag </{tag}> (expected {expected})")
             return
+        if lowered == "dialog" and self.dialog_depth:
+            self.dialog_depth -= 1
         self.stack.pop()
         if lowered == "script" and self.script_depth:
             self.script_depth -= 1
@@ -163,6 +177,39 @@ def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, st
     return target, unquote(parsed.fragment)
 
 
+SIDEBAR_PACKAGE_FIELDS = {"id", "label", "href", "types"}
+SIDEBAR_TYPE_FIELDS = {"label", "kind", "kindLabel", "href", "members"}
+SIDEBAR_MEMBER_FIELDS = {"label", "kind", "kindLabel", "anchor"}
+UNSAFE_KEYS = {"__proto__", "constructor", "prototype"}
+
+
+def byte_sorted(values: list[str]) -> bool:
+    return values == sorted(values, key=lambda value: value.encode("utf-8"))
+
+
+SEARCH_DIALOG_CONTROLS = {
+    "cjdoc-search-input", "cjdoc-search-filters", "cjdoc-search-results"}
+SETTINGS_DIALOG_CONTROLS = {"cjdoc-settings-title"}
+
+
+def validate_dialogs(pages: dict[Path, PageParser]) -> None:
+    """Both scripted dialogs must keep their control ids on every page."""
+    for page, parser in pages.items():
+        if parser.is_alias or not parser.has_shell:
+            continue
+        expected = {
+            "cjdoc-search-dialog": SEARCH_DIALOG_CONTROLS,
+            "cjdoc-theme-popover": SETTINGS_DIALOG_CONTROLS,
+        }
+        for identity, controls in expected.items():
+            if identity not in parser.dialogs:
+                raise ValueError(f"{page.name}: missing dialog {identity}")
+            missing = controls - parser.dialogs[identity]
+            if missing:
+                raise ValueError(
+                    f"{page.name}: dialog {identity} is missing {sorted(missing)}")
+
+
 def validate_sidebar_index(root: Path, pages: dict[Path, PageParser]) -> None:
     source = root / "sidebar-index.js"
     text = source.read_text(encoding="utf-8")
@@ -170,41 +217,65 @@ def validate_sidebar_index(root: Path, pages: dict[Path, PageParser]) -> None:
     if not text.startswith(prefix) or not text.endswith(suffix):
         raise ValueError("sidebar-index.js must contain only its generated assignment")
     sidebar = strict_loads(text[len(prefix):-len(suffix)], description="sidebar-index.js")
-    if (
-        not isinstance(sidebar, dict)
-        or set(sidebar) != {"packages", "members", "symbols"}
-        or any(not isinstance(value, dict) for value in sidebar.values())
-    ):
-        raise ValueError("sidebar-index.js must contain package, member and symbol maps")
-    symbols = sidebar["symbols"]
-    fields = {"path", "label", "context", "kind", "signature", "anchor"}
-    for identity, symbol in symbols.items():
-        if (
-            identity in {"__proto__", "constructor", "prototype"}
-            or not isinstance(symbol, dict)
-            or set(symbol) != fields
-            or any(not isinstance(value, str) for value in symbol.values())
-        ):
-            raise ValueError("sidebar-index.js contains an invalid symbol")
-        target, fragment = resolve_local(root, source, symbol["path"])
+    if not isinstance(sidebar, dict) or set(sidebar) != {
+            "version", "packages", "types", "members"}:
+        raise ValueError("sidebar-index.js must publish version, packages, types and members")
+    if sidebar["version"] != 2:
+        raise ValueError("sidebar-index.js must publish navigation version 2")
+    packages, types, members = sidebar["packages"], sidebar["types"], sidebar["members"]
+    if not isinstance(packages, list) or not isinstance(types, dict) or \
+            not isinstance(members, dict):
+        raise ValueError("sidebar-index.js has an invalid navigation shape")
+    if not byte_sorted(list(types)) or not byte_sorted(list(members)):
+        raise ValueError("sidebar-index.js keys must be sorted by byte order")
+    for group in (types, members):
+        if UNSAFE_KEYS & set(group):
+            raise ValueError("sidebar-index.js must not publish prototype keys")
+    for member in members.values():
+        if not isinstance(member, dict) or set(member) != SIDEBAR_MEMBER_FIELDS or \
+                any(not isinstance(value, str) or not value for value in member.values()):
+            raise ValueError("sidebar-index.js contains an invalid member")
+    seen_packages: set[str] = set()
+    for package in packages:
+        if not isinstance(package, dict) or set(package) != SIDEBAR_PACKAGE_FIELDS:
+            raise ValueError("sidebar-index.js contains an invalid package")
+        for key in ("id", "label", "href"):
+            if not isinstance(package[key], str) or not package[key]:
+                raise ValueError("sidebar-index.js package fields must be non-empty strings")
+        if package["id"] in seen_packages or package["id"] != package["href"]:
+            raise ValueError("sidebar-index.js package identity must be unique and routable")
+        seen_packages.add(package["id"])
+        target, fragment = resolve_local(root, source, package["href"])
         if target not in pages or fragment:
-            raise ValueError(f"broken sidebar-index.js symbol target: {symbol['path']}")
-    for group in ("packages", "members"):
-        for owner, identities in sidebar[group].items():
-            if (
-                not isinstance(identities, list)
-                or any(not isinstance(identity, str) or identity not in symbols
-                       for identity in identities)
-                or len(identities) != len(set(identities))
-            ):
-                raise ValueError(f"sidebar-index.js contains invalid {group} references")
-            if group == "members":
-                if owner not in symbols:
-                    raise ValueError("sidebar-index.js contains an unknown member owner")
-            else:
-                target, fragment = resolve_local(root, source, owner)
-                if target not in pages or fragment:
-                    raise ValueError(f"broken sidebar-index.js package target: {owner}")
+            raise ValueError(f"broken sidebar-index.js package target: {package['href']}")
+        if not isinstance(package["types"], list) or \
+                len(package["types"]) != len(set(package["types"])):
+            raise ValueError("sidebar-index.js package type list must be unique")
+        for type_id in package["types"]:
+            if not isinstance(type_id, str) or type_id not in types:
+                raise ValueError("sidebar-index.js package references an unknown type")
+    for identity, entry in types.items():
+        if not isinstance(entry, dict) or set(entry) != SIDEBAR_TYPE_FIELDS:
+            raise ValueError("sidebar-index.js contains an invalid type")
+        for key in ("label", "kind", "kindLabel", "href"):
+            if not isinstance(entry[key], str) or not entry[key]:
+                raise ValueError("sidebar-index.js type fields must be non-empty strings")
+        target, fragment = resolve_local(root, source, entry["href"])
+        if target not in pages or fragment:
+            raise ValueError(f"broken sidebar-index.js type target: {entry['href']}")
+        if not isinstance(entry["members"], list) or \
+                len(entry["members"]) != len(set(entry["members"])):
+            raise ValueError("sidebar-index.js type member list must be unique")
+        for member_id in entry["members"]:
+            if not isinstance(member_id, str) or member_id not in members:
+                raise ValueError("sidebar-index.js type references an unknown member")
+            anchor = members[member_id]["anchor"]
+            if anchor not in pages[target].ids:
+                raise ValueError(
+                    f"broken sidebar-index.js member anchor: {entry['href']}#{anchor}")
+    known_members = {member_id for entry in types.values() for member_id in entry["members"]}
+    if known_members != set(members):
+        raise ValueError("sidebar-index.js member table must match its type listings")
 
 
 def main() -> int:
@@ -458,6 +529,7 @@ def main() -> int:
     expected_signature_ids = api_canonical_ids | exposure_ids
     if set(signatures) != expected_signature_ids:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")
+    validate_dialogs(pages)
     validate_sidebar_index(root, pages)
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0

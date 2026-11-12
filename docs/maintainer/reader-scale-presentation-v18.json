@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "cjdoc.reader-presentation/1",
+  "id": "reference-desk-v18-1k",
+  "recipe": "rdr-scale-v1",
+  "sourceSha256": "ade4b8ef804bdadad567d0df4109ac29fb1832e0a3b74ec85d233aea93bc1a83",
+  "taskManifestSha256": "b9c412ec7553501667f42205764843d968f826a296bf801c5dba36c17c8ddbb2",
+  "generatorVersions": {
+    "baseline": "0.7.7",
+    "after": "0.7.8"
+  },
+  "typography": {
+    "baseline": {
+      "bodyFont": "Inter, \"Noto Sans SC\", \"Noto Sans CJK SC\", ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "bodyFontSize": "16px"
+    },
+    "after": {
+      "bodyFont": "system-ui, -apple-system, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif",
+      "bodyFontSize": "16px"
+    }
+  },
+  "locales": {
+    "en": {
+      "baseline": {
+        "fontFamilies": [
+          "DejaVu Sans Mono",
+          "Liberation Mono",
+          "Noto Sans CJK SC",
+          "Noto Serif CJK SC",
+          "WenQuanYi Zen Hei"
+        ]
+      },
+      "after": {
+        "fontFamilies": [
+          "DejaVu Sans",
+          "DejaVu Sans Mono",
+          "Noto Sans CJK SC",
+          "WenQuanYi Zen Hei"
+        ]
+      }
+    },
+    "zh-CN": {
+      "baseline": {
+        "fontFamilies": [
+          "Liberation Mono",
+          "Noto Sans CJK SC",
+          "Noto Serif CJK SC"
+        ]
+      },
+      "after": {
+        "fontFamilies": [
+          "DejaVu Sans",
+          "DejaVu Sans Mono",
+          "Noto Sans CJK SC"
+        ]
+      }
+    }
+  }
+}

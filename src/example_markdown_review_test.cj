@@ -95,7 +95,7 @@ class ExampleMarkdownReviewTest {
         let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
         var checkedPage = false
         for (artifact in artifacts) {
-            if (!artifact.path.startsWith("html/symbols/") || !artifact.content.contains("example-list")) { continue }
+            if (!artifact.path.startsWith("html/symbols/") || !artifact.content.contains("<div class=\"cj-examples\">")) { continue }
             let html = artifact.content
             let ids = ArrayList<String>()
             for (part in html.split("id=\"")) {

@@ -15,15 +15,11 @@
         - code: Overload2
   - heading "Overload2" [level=1]:
     - code: Overload2
-  - paragraph: class
+  - text: class
   - button "Copy link"
   - paragraph: Select between 2 explicitly different input types.
   - code: public class Overload2
   - region "Members":
-    - text: Filter members
-    - searchbox "Filter members"
-    - button "Expand all"
-    - button "Collapse all"
     - heading "Functions" [level=2]
     - text: 2 members
     - group "choose 2 overloads":
@@ -41,11 +37,11 @@
         - text: Accept Choice00 and return its documented category.
         - heading "Parameters" [level=4]
         - term:
-          - code: value
-          - text: ":"
           - code:
-            - link "Choice00":
-              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
+            - text: "value:"
+            - code:
+              - link "Choice00":
+                - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
         - definition:
           - text: "Translation missing. Original text: zh-CN"
           - paragraph: 类别 0 的输入，不推断额外约束。
@@ -63,7 +59,8 @@
         - text: Member actions for
         - 'link "Open standalone API page public func choose(value: Choice00): Int64 Accept Choice00 and return its documented category."':
           - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072477-1727319314.html
-        - 'button "Copy link public func choose(value: Choice00): Int64 Accept Choice00 and return its documented category."'
+          - text: Open standalone API page
+        - 'button "Copy link public func choose(value: Choice00): Int64 Accept Choice00 and return its documented category."': Copy link
         - status
       - group:
         - code:
@@ -76,11 +73,11 @@
         - text: Accept Choice01 and return its documented category.
         - heading "Parameters" [level=4]
         - term:
-          - code: value
-          - text: ":"
           - code:
-            - link "Choice01":
-              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
+            - text: "value:"
+            - code:
+              - link "Choice01":
+                - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
         - definition:
           - text: "Translation missing. Original text: zh-CN"
           - paragraph: 类别 1 的输入，不推断额外约束。
@@ -98,5 +95,6 @@
         - text: Member actions for
         - 'link "Open standalone API page public func choose(value: Choice01): Int64 Accept Choice01 and return its documented category."':
           - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072608-1727319571.html
-        - 'button "Copy link public func choose(value: Choice01): Int64 Accept Choice01 and return its documented category."'
+          - text: Open standalone API page
+        - 'button "Copy link public func choose(value: Choice01): Int64 Accept Choice01 and return its documented category."': Copy link
         - status

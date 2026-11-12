@@ -33,11 +33,12 @@ class HtmlMemberBrowserTest {
             let projection = RenderProjection(documentation)
             let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
                 HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
-            @Expect(html.contains("member-browser-toolbar"), count >= 2)
+            @Expect(html.contains("cj-members__toolbar"), count >= 2)
             @Expect(html.contains("data-cjdoc-members-expand"), count >= 2)
             @Expect(!html.contains("data-cjdoc-member-origin"))
             @Expect(html.split("data-cjdoc-member data-member-name=").size - 1, count)
             @Expect(html.contains("data-cjdoc-member-browser"), count > 0)
+            @Expect(html.contains("<details class=\"cj-member\" id=\"symbol-"), count > 0)
         }
     }
 
@@ -113,10 +114,11 @@ class HtmlMemberBrowserTest {
         let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
             HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
         @Expect(browser.origins.toArray(), ["declared", "inherited", "extension"])
-        @Expect(html.contains("data-cjdoc-member-filter"))
-        @Expect(html.contains("<option value=\"declared\">"))
-        @Expect(html.contains("<option value=\"inherited\">"))
-        @Expect(html.contains("<option value=\"extension\">"))
+        @Expect(html.contains("data-cjdoc-member-filter"), true)
+        @Expect(html.contains("<option value=\"declared\">Declared</option>"), true)
+        @Expect(html.contains("<option value=\"inherited\">Inherited</option>"), true)
+        @Expect(html.contains("<option value=\"extension\">Extension</option>"), true)
+        @Expect(html.contains("class=\"cj-select\""), true)
         match (memberContextOwner(projection, extensionMember)) {
             case Some(contextOwner) => @Expect(contextOwner.id, ownerId)
             case None => @Expect(true, false)
@@ -148,11 +150,13 @@ class HtmlMemberBrowserTest {
         @Expect(browser.entries[0].origin, "declared")
         let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
             HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
-        @Expect(!html.contains("member-browser-toolbar"))
-        @Expect(!html.contains("data-cjdoc-member-filter"))
-        @Expect(!html.contains("data-cjdoc-members-expand"))
-        @Expect(html.contains("data-cjdoc-member "))
-        @Expect(html.contains(symbolAnchor(direct)))
+        @Expect(!html.contains("cj-members__toolbar"), true)
+        @Expect(!html.contains("data-cjdoc-member-filter"), true)
+        @Expect(!html.contains("data-cjdoc-members-expand"), true)
+        @Expect(html.contains("data-cjdoc-member "), true)
+        @Expect(html.contains("id=\"" + symbolAnchor(direct) + "\""), true)
+        @Expect(html.contains("id=\"" + symbolAnchor(direct) + "-summary\""), true)
+        @Expect(html.contains("id=\"" + symbolAnchor(direct) + "-actions\""), true)
     }
 }
 
@@ -307,6 +311,107 @@ class HtmlMemberSectionsTest {
     }
 }
 
+private func memberSectionFixture(): (DocumentationSet, ArrayList<SymbolDoc>) {
+    let moduleId = "cjdoc:module:v1:member-sections-page"
+    let ownerId = "section-owner"
+    let owner = SymbolDoc(ownerId, "class", "Box", "fixture.Box", "fixture", moduleId,
+        "public", memberBrowserTestSource(1), "public class Box", SemanticInfo("partial", "ast"))
+    let members = ArrayList<SymbolDoc>([
+        SymbolDoc("section-overload-int", "function", "read", "fixture.Box.read", "fixture",
+            moduleId, "public", memberBrowserTestSource(2),
+            "public func read(value: Int64): Int64", SemanticInfo("partial", "ast"),
+            ownerId: Some(ownerId),
+            parameters: [ParameterDoc("value", TypeRef("primitive", "Int64",
+                SemanticType("unavailable")))]),
+        SymbolDoc("section-overload-string", "function", "read", "fixture.Box.read", "fixture",
+            moduleId, "public", memberBrowserTestSource(3),
+            "public func read(value: String): String", SemanticInfo("partial", "ast"),
+            ownerId: Some(ownerId),
+            parameters: [ParameterDoc("value", TypeRef("primitive", "String",
+                SemanticType("unavailable")))]),
+        SymbolDoc("section-property", "property", "size", "fixture.Box.size", "fixture",
+            moduleId, "public", memberBrowserTestSource(4), "public prop size: Int64",
+            SemanticInfo("partial", "ast"), ownerId: Some(ownerId))
+    ])
+    let declarations = ArrayList<SymbolDoc>([owner])
+    declarations.add(all: members)
+    let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+        ProjectInfo("member-sections-page"), ConfigurationSnapshot(audience: "external"),
+        modules: [ModuleDoc(moduleId, "member-sections-page", "root", "",
+            packageNames: ["fixture"])],
+        packages: [PackageDoc("fixture", moduleId,
+            symbolIds: [ownerId, "section-overload-int", "section-overload-string",
+                "section-property"])],
+        declarations: declarations.toArray())
+    (documentation, declarations)
+}
+
+private func memberSectionPage(): String {
+    let (documentation, declarations) = memberSectionFixture()
+    let projection = RenderProjection(documentation)
+    renderSymbolPage(documentation, projection, projection.visibleIndex, declarations[0],
+        HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+}
+
+@Test
+class HtmlMemberSectionMarkupTest {
+    @TestCase
+    func kindGroupsOverloadFamiliesAndTocRolesKeepTheirContract(): Unit {
+        let html = memberSectionPage()
+        let (_, declarations) = memberSectionFixture()
+        let firstOverload = declarations[1]
+        // Kind sections are filterable containers with a labelled heading.
+        @Expect(html.contains("<section class=\"cj-member-group\" data-cjdoc-member-group>"), true)
+        @Expect(html.contains("id=\"functions\" data-cjdoc-toc-role=\"group\""), true)
+        @Expect(html.contains("id=\"properties\" data-cjdoc-toc-role=\"group\""), true)
+        @Expect(html.contains("class=\"cj-member-group__count\""), true)
+        // One overload family wraps the two read overloads only, keyed by the
+        // first member's stable anchor.
+        @Expect(html.split("data-cjdoc-overload-group").size - 1, 1)
+        @Expect(html.contains("id=\"overloads-" + symbolAnchor(firstOverload) + "\""), true)
+        @Expect(html.contains("data-cjdoc-toc-role=\"overload\""), true)
+        @Expect(html.contains("class=\"cj-overloads__count\" data-cjdoc-overload-count>"), true)
+        // Member summaries carry the TOC depth and the reader-facing context
+        // label, which keeps overloads of one name distinguishable.
+        @Expect(html.contains("data-cjdoc-toc-role=\"member\" data-cjdoc-toc-depth=\"4\""), true)
+        @Expect(html.contains("data-cjdoc-toc-label=\"read(Int64)\""), true)
+        @Expect(html.contains("data-cjdoc-toc-label=\"read(String)\""), true)
+        @Expect(html.contains("data-member-kind=\"property\""), true)
+    }
+
+    @TestCase
+    func plainKindContainerKeepsItsHistoricalAnchorAlias(): Unit {
+        // A declaration group with a single member kind omits the redundant kind
+        // heading but must keep the filterable container and every deep link.
+        let moduleId = "cjdoc:module:v1:plain-section"
+        let owner = SymbolDoc("plain-owner", "class", "Box", "fixture.Box", "fixture", moduleId,
+            "public", memberBrowserTestSource(1), "public class Box", SemanticInfo("partial", "ast"))
+        let groupComment = DocComment("raw", "Runs.", "", MarkdownNode("document"),
+            tags: [DocTag("group", "shared", "Shared API")])
+        let only = SymbolDoc("plain-only", "function", "run", "fixture.Box.run", "fixture", moduleId,
+            "public", memberBrowserTestSource(2), "public func run(): Unit",
+            SemanticInfo("partial", "ast"), ownerId: Some("plain-owner"),
+            documentation: Some(groupComment))
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+            ProjectInfo("plain-section"), ConfigurationSnapshot(audience: "external"),
+            modules: [ModuleDoc(moduleId, "plain-section", "root", "", packageNames: ["fixture"])],
+            packages: [PackageDoc("fixture", moduleId, symbolIds: [owner.id, only.id])],
+            declarations: [owner, only])
+        let projection = RenderProjection(documentation)
+        let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
+            HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+        @Expect(html.contains("<section class=\"cj-member-group cj-member-group--plain\" " +
+            "data-cjdoc-member-group>"), true)
+        // No empty heading shell and no group TOC node, but the historical kind
+        // anchor still resolves inside the container.
+        @Expect(!html.contains("data-cjdoc-toc-role=\"group\""), true)
+        @Expect(html.contains("<span class=\"cj-anchor-alias\" id=\"api-kind-6-shared-functions\" " +
+            "aria-hidden=\"true\"></span>"), true)
+        @Expect(html.contains("<span class=\"cj-anchor-alias\" id=\"functions\" " +
+            "aria-hidden=\"true\"></span>"), true)
+    }
+}
+
 private func memberDescriptionPage(symbol: SymbolDoc, locale!: String = "en"): String {
     let moduleId = symbol.moduleId
     let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
@@ -343,7 +448,7 @@ class HtmlParameterAndReturnDescriptionTest {
         let documentedHtml = memberDescriptionPage(documented)
         @Expect(documentedHtml.contains("Documented declaration"))
         @Expect(documentedHtml.split("data-documentation-state=\"missing\"").size - 1, 2)
-        @Expect(documentedHtml.split("class=\"return-value\"")[1].split("</div>")[0].contains("Int64"))
+        @Expect(documentedHtml.split("class=\"cj-returns\"")[1].split("</div>")[0].contains("Int64"))
 
         let undocumented = SymbolDoc("description-undocumented", "function", "undocumented",
             "fixture.undocumented", "fixture", "description-tests", "public",
@@ -353,7 +458,7 @@ class HtmlParameterAndReturnDescriptionTest {
         let undocumentedHtml = memberDescriptionPage(undocumented)
         @Expect(undocumentedHtml.contains("No documentation is available for this declaration."))
         @Expect(undocumentedHtml.split("data-documentation-state=\"missing\"").size - 1, 2)
-        @Expect(undocumentedHtml.split("class=\"return-value\"")[1].split("</div>")[0].contains("Int64"))
+        @Expect(undocumentedHtml.split("class=\"cj-returns\"")[1].split("</div>")[0].contains("Int64"))
     }
 
     @TestCase
@@ -405,7 +510,7 @@ class HtmlParameterAndReturnDescriptionTest {
         @Expect(html.contains("Captured text fallback"))
         @Expect(html.split("data-documentation-state=\"missing\"").size - 1, 1)
         @Expect(html.split("data-documentation-state=\"empty\"").size - 1, 5)
-        @Expect(html.split("class=\"return-value\"")[1].split("</div>")[0].contains("Int64"))
+        @Expect(html.split("class=\"cj-returns\"")[1].split("</div>")[0].contains("Int64"))
         let localized = memberDescriptionPage(symbol, locale: "zh-CN")
         @Expect(localized.contains("尚未提供说明。"))
         @Expect(localized.contains("说明为空。"))

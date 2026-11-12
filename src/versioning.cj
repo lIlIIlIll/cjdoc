@@ -634,7 +634,7 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
     chinese!: Bool = false): String {
     let out = VersionTextBuffer(limit)
     let versionLabel = if (chinese) { "文档版本" } else { "Documentation version" }
-    out.append("<nav class=\"cjdoc-version-selector\" aria-label=\"${versionLabel}\"><span>${versionLabel}</span>")
+    out.append("<nav class=\"cj-version-select\" aria-label=\"${versionLabel}\"><span class=\"cj-version-select__label\">${versionLabel}</span>")
     for (target in sites) {
         let route = versionTargetRoute(current, relative, target)
         let href = versionRelativeHref(currentOutputPath, versionOutputPath(target, route.href))
@@ -677,13 +677,13 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
             }
             routes.append("}")
         }
-        out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-state=\"${state}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
+        out.append("<a class=\"cj-version-select__option\" href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-state=\"${state}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
         match (target.spec.apiDiffSource) {
             case Some(_) =>
                 let diffPath = versionOutputPath(target, "api-diff.json")
                 let diffHref = versionRelativeHref(currentOutputPath, diffPath)
                 let changesLabel = if (chinese) { "版本变化" } else { "Changes" }
-                out.append(" <a href=\"${public_render.escapeStandaloneHtml(diffHref)}\">${changesLabel}</a>")
+                out.append(" <a class=\"cj-version-select__changes\" href=\"${public_render.escapeStandaloneHtml(diffHref)}\">${changesLabel}</a>")
             case None => ()
         }
     }
@@ -702,7 +702,7 @@ private func versionNavigationStateName(state: VersionNavigationState): String {
 }
 
 private func injectVersionSelector(html: String, selector: String): String {
-    let shellMarker = "<div class=\"docs-layout\">"
+    let shellMarker = "<div class=\"cj-layout\">"
     match (html.indexOf(shellMarker)) {
         case Some(index) => html[..index] + selector + html[index..]
         case None =>
@@ -763,22 +763,61 @@ private func versionManifest(sites: ArrayList<VersionSite>, latest: String,
     out.toString()
 }
 
+private let VERSION_ROOT_STYLE = """
+:root{color-scheme:light;--cj-bg:#f5f7fa;--cj-surface:#fff;--cj-fg:#17212b;--cj-muted:#536071;--cj-border:#d7dee8;--cj-accent:#176b5d;--cj-accent-soft:#dff4ef;--cj-shadow:0 18px 48px rgba(23,33,43,.12);font:16px/1.6 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--cj-bg);color:var(--cj-fg)}
+.cj-page-header{border-bottom:1px solid var(--cj-border);background:var(--cj-surface)}
+.cj-page-header__inner{max-width:1080px;margin:0 auto;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.cj-header__brand{color:inherit;text-decoration:none;display:flex;align-items:center;gap:.7rem}
+.cj-header__project{display:grid;place-items:center;width:2rem;height:2rem;border-radius:7px;background:var(--cj-accent);color:#fff;font:700 .95rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.cj-header__brand-copy{display:flex;flex-direction:column;line-height:1.15}
+.cj-header__brand-title{font-size:.98rem}
+.cj-header__brand-note,.cj-version-root__meta{color:var(--cj-muted);font-size:.8rem}
+.cj-version-root{max-width:900px;margin:0 auto;padding:clamp(3rem,8vw,7rem) 1.5rem}
+.cj-version-root__eyebrow{margin:0 0 .75rem;color:var(--cj-accent);font:700 .75rem/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}
+.cj-version-root h1{max-width:12ch;margin:0;font-size:clamp(2.4rem,7vw,5.2rem);line-height:.98;letter-spacing:-.06em}
+.cj-version-root__lead{max-width:44rem;margin:1.4rem 0 2.5rem;color:var(--cj-muted);font-size:1.08rem}
+.cj-version-list{display:grid;gap:.75rem}
+.cj-version-card{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem 1.2rem;border:1px solid var(--cj-border);border-radius:10px;background:var(--cj-surface);box-shadow:var(--cj-shadow);color:inherit;text-decoration:none}
+.cj-version-card:hover,.cj-version-card:focus-visible{border-color:var(--cj-accent);outline:2px solid var(--cj-accent-soft);outline-offset:2px}
+.cj-version-card__main{display:flex;flex-direction:column}
+.cj-version-card__main strong{font-size:1.08rem}
+.cj-version-card__main span,.cj-version-card__meta{color:var(--cj-muted);font-size:.85rem}
+.cj-footer{max-width:900px;margin:0 auto;padding:1.5rem;color:var(--cj-muted);font-size:.8rem}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--cj-bg:#111820;--cj-surface:#18222d;--cj-fg:#e8eef5;--cj-muted:#aab7c7;--cj-border:#2b3948;--cj-accent:#5ed6bd;--cj-accent-soft:#123b34;--cj-shadow:0 18px 48px rgba(0,0,0,.3)}}
+@media(max-width:600px){.cj-page-header__inner{padding:.8rem 1rem}.cj-version-root{padding:3rem 1rem}.cj-version-card{align-items:flex-start;flex-direction:column}.cj-version-root h1{font-size:3.3rem}.cj-version-root__meta{display:none}}
+"""
+
 private func versionRootIndex(sites: ArrayList<VersionSite>, latest: String): String {
     let out = StringBuilder()
-    out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>Documentation versions</title><style>")
-    out.append(":root{color-scheme:light;--ink:#17212b;--muted:#536071;--surface:#f5f7fa;--surface-raised:#fff;--line:#d7dee8;--accent:#176b5d;--accent-soft:#dff4ef;--shadow:0 18px 48px rgba(23,33,43,.12);font:16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink)}.site-nav{border-bottom:1px solid var(--line);background:var(--surface-raised)}.site-nav-inner{max-width:1080px;margin:0 auto;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}.brand{color:inherit;text-decoration:none;display:flex;align-items:center;gap:.7rem}.brand-mark{display:grid;place-items:center;width:2rem;height:2rem;border-radius:7px;background:#176b5d;color:#fff;font:700 .95rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}.brand-copy{display:flex;flex-direction:column;line-height:1.15}.brand-project{font-size:.98rem}.brand-subtitle,.version-root-meta{color:var(--muted);font-size:.8rem}.version-root{max-width:900px;margin:0 auto;padding:clamp(3rem,8vw,7rem) 1.5rem}.eyebrow{margin:0 0 .75rem;color:var(--accent);font:700 .75rem/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}.version-root h1{max-width:12ch;margin:0;font-size:clamp(2.4rem,7vw,5.2rem);line-height:.98;letter-spacing:-.06em}.page-lead{max-width:44rem;margin:1.4rem 0 2.5rem;color:var(--muted);font-size:1.08rem}.version-list{display:grid;gap:.75rem}.version-card{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem 1.2rem;border:1px solid var(--line);border-radius:10px;background:var(--surface-raised);box-shadow:var(--shadow);color:inherit;text-decoration:none}.version-card:hover,.version-card:focus-visible{border-color:var(--accent);outline:2px solid var(--accent-soft);outline-offset:2px}.version-card-main{display:flex;flex-direction:column}.version-card-main strong{font-size:1.08rem}.version-card-main span,.version-card-meta{color:var(--muted);font-size:.85rem}.site-footer{max-width:900px;margin:0 auto;padding:1.5rem;color:var(--muted);font-size:.8rem}@media(prefers-color-scheme:dark){:root{color-scheme:dark;--ink:#e8eef5;--muted:#aab7c7;--surface:#111820;--surface-raised:#18222d;--line:#2b3948;--accent:#5ed6bd;--accent-soft:#123b34;--shadow:0 18px 48px rgba(0,0,0,.3)}}@media(max-width:600px){.site-nav-inner{padding:.8rem 1rem}.version-root{padding:3rem 1rem}.version-card{align-items:flex-start;flex-direction:column}.version-root h1{font-size:3.3rem}.version-root-meta{display:none}}</style></head><body data-cjdoc-route=\"version-root\"><header class=\"site-nav\"><div class=\"site-nav-inner\"><a class=\"brand\" href=\"latest/index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span class=\"brand-copy\"><strong class=\"brand-project\">Documentation</strong><span class=\"brand-subtitle\">Version index</span></span></a><span class=\"version-root-meta\">Composed by cjdoc</span></div></header><main class=\"version-root\"><p class=\"eyebrow\">Documentation versions</p><h1>Choose a version.</h1><p class=\"page-lead\">Select the project and document version that matches the API reference you want to read.</p><nav class=\"version-list\" aria-label=\"Documentation versions\">")
+    out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
+    out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
+    out.append("<meta name=\"color-scheme\" content=\"light dark\">")
+    out.append("<title>Documentation versions</title><style>")
+    out.append(VERSION_ROOT_STYLE)
+    out.append("</style></head><body class=\"cj-page\" data-cjdoc-route=\"version-root\">")
+    out.append("<header class=\"cj-page-header\"><div class=\"cj-page-header__inner\">")
+    out.append("<a class=\"cj-header__brand\" href=\"latest/index.html\">")
+    out.append("<span class=\"cj-header__project\" aria-hidden=\"true\">cj</span>")
+    out.append("<span class=\"cj-header__brand-copy\"><strong class=\"cj-header__brand-title\">Documentation</strong>")
+    out.append("<span class=\"cj-header__brand-note\">Version index</span></span></a>")
+    out.append("<span class=\"cj-version-root__meta\">Composed by cjdoc</span></div></header>")
+    out.append("<main class=\"cj-version-root\"><p class=\"cj-version-root__eyebrow\">Documentation versions</p>")
+    out.append("<h1>Choose a version.</h1>")
+    out.append("<p class=\"cj-version-root__lead\">Select the project and document version that matches the API reference you want to read.</p>")
+    out.append("<nav class=\"cj-version-list\" aria-label=\"Documentation versions\">")
     for (site in sites) {
         let href = public_render.escapeStandaloneHtml(versionOutputPath(site, "index.html"))
         let label = public_render.escapeStandaloneHtml(site.spec.label)
         let channel = public_render.escapeStandaloneHtml(site.spec.channel)
         let latestText = if (site.spec.id == latest) { "Latest" } else { "" }
-        out.append("<a class=\"version-card\" href=\"")
+        out.append("<a class=\"cj-version-card\" href=\"")
         out.append(href)
-        out.append("\"><span class=\"version-card-main\"><strong>")
+        out.append("\"><span class=\"cj-version-card__main\"><strong>")
         out.append(label)
         out.append("</strong><span>")
         out.append(channel)
-        out.append("</span></span><span class=\"version-card-meta\">")
+        out.append("</span></span><span class=\"cj-version-card__meta\">")
         out.append(latestText)
         match (site.spec.release) {
             case Some(value) =>
@@ -789,9 +828,11 @@ private func versionRootIndex(sites: ArrayList<VersionSite>, latest: String): St
         }
         out.append("</span></a>\n")
     }
-    out.append("</nav></main><footer class=\"site-footer\"><span>cjdoc · Version manifest: </span><a href=\"versions.json\">versions.json</a></footer></body></html>\n")
+    out.append("</nav></main><footer class=\"cj-footer\"><span>cjdoc · Version manifest: </span>")
+    out.append("<a href=\"versions.json\">versions.json</a></footer></body></html>\n")
     out.toString()
 }
+
 private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): String {
     for (site in sites) {
         if (site.spec.id == latest) {

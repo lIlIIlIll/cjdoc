@@ -115,7 +115,7 @@ class DocumentationPageAssetsTest {
                         if (kind == "project") {
                             @Expect(entry.contains("<img src=\"assets/"))
                         } else {
-                            @Expect(entry.contains("class=\"package-overview-link\" href=\"../concepts/guides/deep/start.html\""))
+                            @Expect(entry.contains("class=\"cj-package-overview__link\" href=\"../concepts/guides/deep/start.html\""))
                         }
                         let expectedByte: Byte = if (locale == "en" && includeEnglish) { 0xf8 } else { 0x60 }
                         verifyCapturedPageImage(artifacts, "html", "concepts/guides/deep/start.html", "alt=\"\"", expectedByte)

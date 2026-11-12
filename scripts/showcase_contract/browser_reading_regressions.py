@@ -15,7 +15,16 @@ from .site import Site, load_json
 from showcase_build.manifest import roots
 
 
+def _dismiss_search(page):
+    """The search palette is a modal dialog, so nothing else on the page is
+    reachable while it is open; a reader closes it before reading on."""
+    dialog = page.locator("[data-cjdoc-search-dialog]")
+    if dialog.count() and dialog.evaluate("node => node.open"):
+        page.locator("[data-cjdoc-search]").press("Escape")
+
+
 def _drawer(page, open: bool):
+    _dismiss_search(page)
     if page.viewport_size["width"] > 760:
         return
     menu = page.locator("[data-cjdoc-menu]")
@@ -27,9 +36,8 @@ def _drawer(page, open: bool):
 
 
 def _filters(page):
-    panel = page.locator("#cjdoc-search-filters")
-    if not panel.is_visible():
-        page.locator("[data-cjdoc-filter-toggle]").click()
+    """Kind/package selects live inside the search dialog and need no toggle."""
+    return page.locator("#cjdoc-search-filters")
 
 
 def _visible_members(page):
@@ -62,23 +70,36 @@ def _toc_matches_content(page):
 def check_sidebar_filters(page):
     from playwright.sync_api import expect
     _drawer(page, True)
-    expect(page.locator(".sidebar-context")).to_have_count(0)
-    expect(page.locator(".sidebar-symbol.is-current")).to_have_text(re.compile("TextCatalog"))
+    # The old "in this package" context sidebar is gone; only the tree remains.
+    expect(page.locator("[data-cjdoc-sidebar-package], .cj-sidebar__context,"
+                        " [data-cjdoc-context-item]")).to_have_count(0)
+    # Both the containing package row and the type row are ancestors on a member
+    # page; the type row is the one that names the declaration being read. On the
+    # type's own page that row is the current page instead, and a page without
+    # members has no type row at all.
+    expect(page.locator('[data-cjdoc-tree-item="package"] > .cj-tree__row >'
+                        ' .cj-tree__link--ancestor')).to_have_count(1)
+    if page.locator("[data-cjdoc-member]").count():
+        expect(page.locator('[data-cjdoc-tree-item="type"] > .cj-tree__row >'
+                            ' .cj-tree__link--ancestor,'
+                            ' [data-cjdoc-tree-item="type"] > .cj-tree__row >'
+                            ' .cj-tree__link[aria-current="page"]')
+               .first).to_contain_text("TextCatalog")
     field = page.locator("[data-cjdoc-sidebar-filter]")
     bounds = field.evaluate("""node => {
-      const parent = node.closest('.docs-sidebar').getBoundingClientRect();
+      const parent = node.closest('#cjdoc-sidebar').getBoundingClientRect();
       const child = node.getBoundingClientRect();
       return {visible: child.top >= parent.top && child.bottom <= parent.bottom};
     }""")
     if not bounds["visible"]:
         raise AssertionError("initial sidebar scroll hides the package filter")
     field.fill("parsing")
-    expect(page.locator(".sidebar-package:visible")).to_have_count(1)
+    expect(page.locator('[data-cjdoc-tree-item="package"]:visible')).to_have_count(1)
     field.fill("cjdoc_no_match_72fb")
-    expect(page.locator(".sidebar-package:visible")).to_have_count(0)
+    expect(page.locator('[data-cjdoc-tree-item="package"]:visible')).to_have_count(0)
     expect(page.locator("[data-cjdoc-sidebar-no-results]")).to_be_visible()
     field.fill("")
-    expect(page.locator(".sidebar-package:visible")).to_have_count(3)
+    expect(page.locator('[data-cjdoc-tree-item="package"]:visible')).to_have_count(3)
     _drawer(page, False)
 
 
@@ -87,12 +108,12 @@ def check_member_toolbar(page):
     from playwright.sync_api import expect
     member = page.locator("details[data-cjdoc-member]:not([open])").first
     expect(member).to_have_count(1)
-    actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
+    actions = member.locator("xpath=..").locator(":scope > .cj-member-actions")
     expect(actions).to_have_count(1)
-    expect(member.locator(".member-detail-actions")).to_have_count(0)
-    expect(actions.locator(".member-permalink")).to_have_count(1)
-    expect(actions.locator(".member-action-copy")).to_have_count(1)
-    expect(actions.locator(".member-permalink")).to_have_attribute(
+    expect(member.locator(".cj-member-actions")).to_have_count(0)
+    expect(actions.locator("a.cj-member-actions__item--standalone")).to_have_count(1)
+    expect(actions.locator(".cj-member-actions__item--copy")).to_have_count(1)
+    expect(actions.locator(".cj-member-actions__item--standalone")).to_have_attribute(
         "aria-label", re.compile(r".+"))
     origin = page.url
     if page.viewport_size["width"] <= 760:
@@ -101,8 +122,8 @@ def check_member_toolbar(page):
         expect(toggle).to_have_attribute("aria-expanded", "false")
         toggle.click()
         expect(toggle).to_have_attribute("aria-expanded", "true")
-        expect(actions.locator(".member-permalink")).to_be_visible()
-        expect(actions.locator(".member-action-copy")).to_be_visible()
+        expect(actions.locator(".cj-member-actions__item--standalone")).to_be_visible()
+        expect(actions.locator(".cj-member-actions__item--copy")).to_be_visible()
         toggle.focus()
         page.keyboard.press("Escape")
         expect(toggle).to_have_attribute("aria-expanded", "false")
@@ -113,14 +134,14 @@ def check_member_toolbar(page):
         # The content column clips overflow: the final member's popup must
         # enlarge its row enough that the entire menu remains in the scroll area.
         last_member = page.locator("details[data-cjdoc-member]").last
-        last_actions = last_member.locator("xpath=..").locator(":scope > .member-detail-actions")
+        last_actions = last_member.locator("xpath=..").locator(":scope > .cj-member-actions")
         last_toggle = last_actions.locator("[data-cjdoc-member-actions-toggle]")
         last_toggle.click()
-        menu = last_actions.locator(".member-action-list")
+        menu = last_actions.locator(".cj-member-actions__list")
         expect(menu).to_be_visible()
         bounds = menu.evaluate("""node => ({
           menuBottom: node.getBoundingClientRect().bottom,
-          columnBottom: node.closest('.content-column').getBoundingClientRect().bottom
+          columnBottom: node.closest('.cj-content').getBoundingClientRect().bottom
         })""")
         if bounds["menuBottom"] > bounds["columnBottom"] + 1:
             raise AssertionError("last member action menu is clipped by the content column")
@@ -133,11 +154,11 @@ def check_member_toolbar(page):
         after = member.locator("summary").bounding_box()
         if abs(after["width"] - before["width"]) > 1 or abs(after["height"] - before["height"]) > 1:
             raise AssertionError("member actions shifted the signature on hover")
-        actions.locator(".member-permalink").focus()
+        actions.locator(".cj-member-actions__item--standalone").focus()
         expect(actions).to_have_css("opacity", "1")
-    copy = member_action(member, ".member-action-copy")
+    copy = member_action(member, ".cj-member-actions__item--copy")
     copy.click()
-    expect(copy).to_have_attribute("data-copy-link-result", re.compile("copied|manual"))
+    expect(copy).to_have_attribute("data-cjdoc-copy-state", re.compile("copied|failed"))
     expect(member).not_to_have_attribute("open", "")
     if page.url != origin:
         raise AssertionError("member action changed the current document route")
@@ -149,9 +170,9 @@ def check_member_filters_and_actions(page):
     field = _member_filters(page)
     field.fill("find")
     expect(_visible_members(page)).to_have_count(2)
-    expect(page.locator(".member-row:not([hidden]) > details[data-cjdoc-member]")).to_have_count(2)
-    for row in page.locator(".member-row[hidden]").all():
-        expect(row.locator(".member-detail-actions")).to_be_hidden()
+    expect(page.locator(".cj-member-row:not([hidden]) > details[data-cjdoc-member]")).to_have_count(2)
+    for row in page.locator(".cj-member-row[hidden]").all():
+        expect(row.locator(".cj-member-actions")).to_be_hidden()
     _toc_matches_content(page)
     hidden_open = page.locator("[data-cjdoc-member][hidden][open]").count()
     page.locator("[data-cjdoc-members-expand]").click()
@@ -185,11 +206,12 @@ def check_member_filters_and_actions(page):
 
 
 def _member_round_trip(page, member):
+    _dismiss_search(page)
     origin = page.url
     summary = member.locator("summary").first
     if member.get_attribute("open") is None:
         summary.click(position={"x": 6, "y": 12})
-    member_action(member, "a.member-permalink").click()
+    member_action(member, "a.cj-member-actions__item--standalone").click()
     page.wait_for_load_state("load")
     if unquote(page.url) == unquote(origin):
         raise AssertionError("standalone member navigation did not occur")
@@ -240,20 +262,19 @@ def check_search_and_sidebar_history(page, member_url):
     _filters(page)
     kind.select_option("function")
     expect(page.locator("[data-cjdoc-results] li")).to_have_count(2)
-    contexts = page.locator(".search-context").all_text_contents()
+    contexts = page.locator(".cj-search__hit-context").all_text_contents()
     if any("cjdoc:module:" in value or "owner:" in value for value in contexts):
         raise AssertionError("search results expose redundant internal identities")
-    signatures = page.locator(".search-result-signature").all_text_contents()
+    signatures = page.locator(".cj-search__hit-signature").all_text_contents()
     if len(set(signatures)) != 2:
         raise AssertionError("search no longer distinguishes the two find overloads")
-    search.press("Escape")
     _drawer(page, True)
     page.locator("[data-cjdoc-sidebar-filter]").fill("cjdoc_no_match_72fb")
     _drawer(page, False)
     _member_round_trip(page, page.locator("[data-cjdoc-member][open]").first)
     _drawer(page, True)
     expect(page.locator("[data-cjdoc-sidebar-filter]")).to_have_value("cjdoc_no_match_72fb")
-    expect(page.locator(".sidebar-package:visible")).to_have_count(0)
+    expect(page.locator('[data-cjdoc-tree-item="package"]:visible')).to_have_count(0)
     expect(page.locator("[data-cjdoc-sidebar-no-results]")).to_be_visible()
     page.locator("[data-cjdoc-sidebar-filter]").fill("")
     _drawer(page, False)
@@ -285,11 +306,21 @@ def check_filtered_hash_and_header(page, member_url):
     _toc_matches_content(page)
     page.wait_for_function("""id => {
       const top = document.getElementById(id).querySelector('summary').getBoundingClientRect().top;
-      const header = document.querySelector('.site-nav').getBoundingClientRect().bottom;
+      const header = document.querySelector('.cj-header').getBoundingClientRect().bottom;
       return top >= header - 1 && top < innerHeight;
     }""", arg=anchor)
-    measured = page.evaluate("""() => ({actual: Math.ceil(document.querySelector('.site-nav').getBoundingClientRect().height),
-      variable: parseFloat(document.documentElement.style.getPropertyValue('--cjdoc-header-height'))})""")
+    # The declared offset is a CSS length, not a bare number; resolve it through
+    # the same layout engine that places the header before comparing.
+    measured = page.evaluate("""() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position: absolute; visibility: hidden; height:' +
+        getComputedStyle(document.documentElement).getPropertyValue('--cj-header-height');
+      document.body.append(probe);
+      const variable = probe.getBoundingClientRect().height;
+      probe.remove();
+      return {actual: Math.ceil(document.querySelector('.cj-header').getBoundingClientRect().height),
+        variable: Math.round(variable)};
+    }""")
     if measured["actual"] != measured["variable"]:
         raise AssertionError("anchor offset did not track the real header height")
 
@@ -323,12 +354,12 @@ def check_no_script_member_links(browser, member_url: str):
         page.set_default_timeout(10000)
         page.goto(member_url, wait_until="load")
         member = page.locator("details[data-cjdoc-member]").first
-        actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
-        expect(actions.locator(".member-actions-toggle")).to_be_hidden()
-        expect(actions.locator(".member-action-list")).to_be_visible()
-        link = actions.locator("a.member-permalink")
+        actions = member.locator("xpath=..").locator(":scope > .cj-member-actions")
+        expect(actions.locator(".cj-member-actions__toggle")).to_be_hidden()
+        expect(actions.locator(".cj-member-actions__list")).to_be_visible()
+        link = actions.locator("a.cj-member-actions__item--standalone")
         expect(link).to_be_visible()
-        source = page.locator(".member-detail-actions a.member-source-link").first
+        source = page.locator(".cj-member-actions a.cj-member-actions__item--source").first
         if source.count():
             expect(source).to_be_visible()
         expect(actions).to_have_css("position", "static")

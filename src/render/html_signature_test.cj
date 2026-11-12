@@ -5,6 +5,29 @@ import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
+private func signatureHtml(body: (HtmlWriter) -> Unit): String {
+    let writer = HtmlWriter()
+    body(writer)
+    writer.toString()
+}
+
+private func signatureEscaped(value: String): String {
+    let writer = HtmlWriter()
+    writer.text(value)
+    writer.toString()
+}
+
+// Token spans are presentation only; unwrapping them proves the byte ranges
+// and the escaping of the underlying source text.
+private func unwrappedSignature(html: String): String {
+    var result = html
+    for (name in ["keyword", "type", "string", "number", "literal", "comment", "operator",
+        "punctuation", "function", "property", "meta"]) {
+        result = result.replace("<span class=\"cj-tok-${name}\">", "")
+    }
+    result.replace("</span>", "")
+}
+
 private func signatureTestTokens(): Array<String> {
     let values: Array<(String, String)> = [
         ("PUBLIC", "public"), ("FUNC", "func"), ("IDENTIFIER", "accept"), ("LPAREN", "("),
@@ -125,10 +148,9 @@ class HtmlSignatureMappingTest {
             @Expect(span.start > boundsStart, true)
             @Expect(raw[span.start..span.end], "Token")
         }
-        let out = RenderTextBuffer()
-        appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
-        @Expect(out.toString().contains("&quot;<a"), false)
-        @Expect(out.toString().contains("class=\"type-link signature-type-link\""), true)
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        @Expect(out.contains("&quot;<a"), false)
+        @Expect(out.contains("class=\"cj-type-link\""), true)
 
         let body = constraintSignatureDocument("public func accept<T>() { where T <: Token }",
             ["public", "func", "accept", "<", "T", ">", "(", ")", "{", "where", "T", "<:", "Token", "}"],
@@ -148,22 +170,21 @@ class HtmlSignatureMappingTest {
             "fixture", "1", "plain", Some("disabled"), [])
         let limited = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
             "fixture", "1", "plain", Some("resource-limit"), [])
-        let validHtml = "<span class=\"code-comment\">public</span>" + escapeHtml(raw[6..])
+        let validHtml = "<span class=\"cj-tok-comment\">public</span>" + signatureEscaped(raw[6..])
         let cases: Array<(?CodeHighlight, String)> = [
-            (None, escapeHtml(raw)), (Some(stale), escapeHtml(raw)), (Some(prepared), validHtml),
-            (Some(disabled), escapeHtml(raw)), (Some(limited), escapeHtml(raw))
+            (None, signatureEscaped(raw)), (Some(stale), signatureEscaped(raw)),
+            (Some(prepared), validHtml), (Some(disabled), signatureEscaped(raw)),
+            (Some(limited), signatureEscaped(raw))
         ]
         var originalLinked = ""
         for ((highlight, expected) in cases) {
             let document = signatureTestDocument(raw, highlight: highlight)
             let subject = document.declarations[1]
-            let out = RenderTextBuffer()
-            appendSignatureTextHtml(out, subject)
-            @Expect(out.toString(), expected)
-            let linked = RenderTextBuffer()
+            let out = signatureHtml({ w => appendSignatureTextHtml(w, subject) })
+            @Expect(out, expected)
             let links = HtmlTypeLinkIndex(document, RenderProjection(document))
-            appendLinkedSignatureHtml(linked, subject, links, "../")
-            let uncoloured = uncoloredCode(linked.toString())
+            let linked = signatureHtml({ w => appendLinkedSignatureHtml(w, subject, links, "../") })
+            let uncoloured = unwrappedSignature(linked)
             if (originalLinked.isEmpty()) { originalLinked = uncoloured }
             else { @Expect(uncoloured, originalLinked) }
             if (let Some(value) <- highlight) {
@@ -171,16 +192,16 @@ class HtmlSignatureMappingTest {
                     // Stale metadata loses only its own colouring; the type links come
                     // from the declaration model and must still be rendered, while no
                     // witness colour may stand in for the untrusted ranges.
-                    @Expect(linked.toString().contains("class=\"type-link signature-type-link\""))
-                    @Expect(linked.toString().contains("code-"), false)
+                    @Expect(linked.contains("class=\"cj-type-link\""))
+                    @Expect(linked.contains("cj-tok-"), false)
                     continue
                 }
             }
-            @Expect(linked.toString().contains("class=\"type-link signature-type-link\""))
-            @Expect(linked.toString().contains("code-comment"), expected.contains("code-comment"))
-            @Expect(!linked.toString().contains("code-keyword"))
-            @Expect(!linked.toString().contains("code-type"))
-            @Expect(!linked.toString().contains("code-string"))
+            @Expect(linked.contains("class=\"cj-type-link\""))
+            @Expect(linked.contains("cj-tok-comment"), expected.contains("cj-tok-comment"))
+            @Expect(!linked.contains("cj-tok-keyword"))
+            @Expect(!linked.contains("cj-tok-type"))
+            @Expect(!linked.contains("cj-tok-string"))
         }
     }
 
@@ -194,17 +215,14 @@ class HtmlSignatureMappingTest {
                 CodeSpan(literalStart, literalStart + 7, "string")])
         let document = signatureTestDocument(raw, highlight: Some(prepared))
         let links = HtmlTypeLinkIndex(document, RenderProjection(document))
-        let out = RenderTextBuffer()
-        appendLinkedSignatureHtml(out, document.declarations[1], links, "../")
-        let html = out.toString()
-        @Expect(html.contains("<span class=\"code-string\">&quot;Token&quot;</span>"))
-        @Expect(html.contains("class=\"type-link signature-type-link\""))
-        @Expect(!html.contains("&quot;<a"))
-        @Expect(uncoloredCode(html).contains("&quot;Token&quot;"))
+        let html = signatureHtml({ w => appendLinkedSignatureHtml(w, document.declarations[1], links, "../") })
+        @Expect(html.contains("<span class=\"cj-tok-string\">&quot;Token&quot;</span>"), true)
+        @Expect(html.contains("class=\"cj-type-link\""), true)
+        @Expect(!html.contains("&quot;<a"), true)
+        @Expect(unwrappedSignature(html).contains("&quot;Token&quot;"), true)
         let staleDocument = signatureTestDocument(raw + " ", highlight: Some(prepared))
-        let stale = RenderTextBuffer()
-        appendSignatureTextHtml(stale, staleDocument.declarations[1])
-        @Expect(stale.toString(), escapeHtml(raw + " "))
+        let stale = signatureHtml({ w => appendSignatureTextHtml(w, staleDocument.declarations[1]) })
+        @Expect(stale, signatureEscaped(raw + " "))
     }
 
     @TestCase
@@ -216,10 +234,9 @@ class HtmlSignatureMappingTest {
             "cjdoc-cangjie-lexer", "2", "complete", None,
             [CodeSpan(0, 6, "keyword"), CodeSpan(commentStart, commentEnd, "comment")])
         let document = signatureTestDocument(raw, highlight: Some(prepared))
-        let out = RenderTextBuffer()
-        appendSignatureTextHtml(out, document.declarations[1])
-        @Expect(uncoloredCode(out.toString()), escapeHtml(raw))
-        @Expect(out.toString().contains("<span class=\"code-comment\">/* nested /* inner */ end */</span>"))
+        let out = signatureHtml({ w => appendSignatureTextHtml(w, document.declarations[1]) })
+        @Expect(unwrappedSignature(out), signatureEscaped(raw))
+        @Expect(out.contains("<span class=\"cj-tok-comment\">/* nested /* inner */ end */</span>"), true)
     }
 
     @TestCase
@@ -233,13 +250,12 @@ class HtmlSignatureMappingTest {
         @Expect(spans[0].start,
             raw.indexOf("item!: Token").getOrThrow() + "item!: ".size)
         @Expect(spans[1].end, raw.size)
-        let out = RenderTextBuffer()
-        appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
-        @Expect(out.toString().contains("&quot;Token&quot;"), true)
-        @Expect(out.toString().contains("&quot;<a"), false)
-        @Expect(out.toString().contains("<span class=\"code-keyword\">func</span>"), true)
-        @Expect(out.toString().contains("<span class=\"code-string\">&quot;Token&quot;</span>"), true)
-        @Expect(out.toString().contains("class=\"type-link signature-type-link\""), true)
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        @Expect(out.contains("&quot;Token&quot;"), true)
+        @Expect(out.contains("&quot;<a"), false)
+        @Expect(out.contains("<span class=\"cj-tok-keyword\">func</span>"), true)
+        @Expect(out.contains("<span class=\"cj-tok-string\">&quot;Token&quot;</span>"), true)
+        @Expect(out.contains("class=\"cj-type-link\""), true)
     }
 
     @TestCase
@@ -265,13 +281,12 @@ class HtmlSignatureMappingTest {
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Expect(spans.size, 2)
         @Expect(raw[spans[0].start..spans[0].end], "Token")
-        let out = RenderTextBuffer()
-        appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
-        let html = out.toString()
-        @Expect(html.contains("<span class=\"code-keyword\">public</span>"), true)
-        @Expect(html.contains("<span class=\"code-keyword\">func</span>"), true)
-        @Expect(html.contains("<span class=\"code-string\">&quot;,&quot;</span>"), true)
-        @Expect(html.contains("class=\"type-link signature-type-link\""), true)
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        let html = out
+        @Expect(html.contains("<span class=\"cj-tok-keyword\">public</span>"), true)
+        @Expect(html.contains("<span class=\"cj-tok-keyword\">func</span>"), true)
+        @Expect(html.contains("<span class=\"cj-tok-string\">&quot;,&quot;</span>"), true)
+        @Expect(html.contains("class=\"cj-type-link\""), true)
     }
 
     @TestCase
@@ -283,12 +298,11 @@ class HtmlSignatureMappingTest {
         let documentation = signatureTestDocument(raw, tokens: tokens.toArray(),
             highlight: Some(signatureTestHighlight(raw)))
         let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
-        let out = RenderTextBuffer()
-        appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
-        let html = out.toString()
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        let html = out
         @Expect(html.contains("<img"), false)
         @Expect(html.contains("&lt;img src=x onerror=alert(1)&gt;"), true)
-        @Expect(html.contains("<span class=\"code-string\">"), true)
+        @Expect(html.contains("<span class=\"cj-tok-string\">"), true)
     }
 
     @TestCase
@@ -299,9 +313,8 @@ class HtmlSignatureMappingTest {
         @Expect(alignedSignatureTokens(subject).isEmpty(), true)
         let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
         @Expect(linkedSignatureSpans(subject, links).isEmpty(), true)
-        let out = RenderTextBuffer()
-        appendLinkedSignatureHtml(out, subject, links, "../")
-        @Expect(out.toString(), escapeHtml(raw))
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, subject, links, "../") })
+        @Expect(out, signatureEscaped(raw))
     }
 
     @TestCase

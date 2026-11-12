@@ -48,6 +48,25 @@ private func verifyCompleteHtmlEntrypoint(artifacts: Array<RenderArtifact>, loca
     englishContent: Bool): Unit {
     let index = entrypointContent(artifacts, "html/index.html")
     @Expect(index.contains("href=\"" + ENTRYPOINT_GUIDE + "\""))
+    // Every published page carries the redesigned shell: skip link, header,
+    // both scripted dialogs, the layout grid and the reading landmarks.
+    for (page in [index, entrypointContent(artifacts, "html/" + ENTRYPOINT_GUIDE)]) {
+        @Expect(page.startsWith("<!doctype html>"))
+        @Expect(page.contains("<body class=\"cj-page\""))
+        @Expect(page.contains("data-cjdoc-page=\"home\"") ||
+            page.contains("data-cjdoc-page=\"guide\""))
+        @Expect(page.contains("<a class=\"cj-skip-link\" href=\"#cjdoc-main\">"))
+        @Expect(page.contains("<header class=\"cj-header\">"))
+        @Expect(page.contains("<dialog id=\"cjdoc-search-dialog\""))
+        @Expect(page.contains("<dialog id=\"cjdoc-theme-popover\""))
+        @Expect(page.contains("<div class=\"cj-layout\">"))
+        @Expect(page.contains("<aside id=\"cjdoc-sidebar\" class=\"cj-sidebar\""))
+        @Expect(page.contains("<main id=\"cjdoc-main\" class=\"cj-main\""))
+        @Expect(page.contains("<aside class=\"cj-toc\" data-cjdoc-toc"))
+        @Expect(page.contains("<footer class=\"cj-footer\">"))
+        @Expect(!page.contains("docs-sidebar"))
+        @Expect(!page.contains("docs-layout"))
+    }
     let guide = entrypointContent(artifacts, "html/" + ENTRYPOINT_GUIDE)
     @Expect(guide.contains("<html lang=\"" + locale + "\""))
     @Expect(guide.contains(if (englishContent) { "English guide" } else { "Chinese guide" }))

@@ -49,7 +49,7 @@ class Journey:
         def complete():
             self.click(member.locator(":scope > summary"), position={"x": 6, "y": 12})
             expect(member).to_have_attribute("open", "")
-            expect(member.locator(".member-detail-body")).to_be_visible()
+            expect(member.locator(".cj-member__body")).to_be_visible()
         self.measured("expandMs", complete, member.locator("summary").first, "click")
 
     def local_path(self, url: str) -> Path:
@@ -126,7 +126,7 @@ def member_action(member, selector: str):
     # the sticky header or native summary intercept pointer events. Position the
     # member heading, then focus the action so :focus-within keeps it visible.
     summary.evaluate("node => node.scrollIntoView({block: 'center', behavior: 'instant'})")
-    actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
+    actions = member.locator("xpath=..").locator(":scope > .cj-member-actions")
     toggle = actions.locator("[data-cjdoc-member-actions-toggle]")
     if toggle.is_visible() and toggle.get_attribute("aria-expanded") != "true":
         toggle.click()
@@ -156,14 +156,14 @@ def clipboard_code_matches(copied: str, source: str) -> bool:
 def copy_code(journey: Journey, button=None):
     from playwright.sync_api import expect
     page = journey.page
-    button = button if button is not None else page.locator(".code-copy").first
+    button = button if button is not None else page.locator(".cj-code__copy").first
     expect(button).to_be_visible()
     if button.get_attribute("data-showcase-copy"):
         code = page.locator("#" + button.get_attribute("data-showcase-copy")).inner_text()
         attribute, expected = "data-copy-result", "copied"
     else:
         code = button.locator("..").locator("code").first.inner_text()
-        attribute, expected = "data-copied", "true"
+        attribute, expected = "data-cjdoc-copy-state", "copied"
     journey.click(button)
     expect(button).to_have_attribute(attribute, expected)
     if page.evaluate("Boolean(navigator.clipboard && window.isSecureContext)"):

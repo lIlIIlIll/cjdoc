@@ -103,7 +103,7 @@ class HtmlExtensionPageTest {
             @Expect(html.contains("href=\"../" + symbolPagePath(target) + "\""), true)
             @Expect(html.contains("Entry &lt; String &gt;"), false)
             @Expect(html.contains("Entry&lt;String&gt;"), true)
-            @Expect(html.contains("class=\"type-link relation-target\""), true)
+            @Expect(html.contains("cj-type-link cj-relations__target"), true)
         }
     }
 
@@ -123,9 +123,10 @@ class HtmlExtensionPageTest {
                 HashMap<String, String>(), links, locale: locale)
             let memberHtml = renderSymbolPage(documentation, projection, index, member,
                 HashMap<String, String>(), links, locale: locale)
+            @Expect(extHtml.contains("<h1 class=\"cj-page-header__title\""), true)
             @Expect(extHtml.contains("<code>" + title + "</code></h1>"), true)
-            @Expect(extHtml.contains("<li aria-current=\"page\"><code>" +
-                title + "</code>"), true)
+            @Expect(extHtml.contains("<li class=\"cj-breadcrumbs__item\" aria-current=\"page\">" +
+                "<code>" + title + "</code>"), true)
             @Expect(memberHtml.contains("href=\"../" + symbolPagePath(extension) +
                 "\"><code>" + title + "</code></a>"), true)
             @Expect(memberHtml.contains("href=\"../" + symbolPagePath(extension) + "\""), true)
@@ -152,7 +153,9 @@ class HtmlExtensionPageTest {
             "Entry<Map<String, Array<Int64>>>")
         @Expect(genericTypeDisplaySpelling("Entry < T > where T <: Comparable<T>"),
             "Entry < T > where T <: Comparable<T>")
-        let raw = "<script>"
-        @Expect(escapeHtml(raw), "&lt;script&gt;")
+        // Author text reaches HTML only through the writer's escaping.
+        let writer = HtmlWriter()
+        writer.text("<script>")
+        @Expect(writer.toString(), "&lt;script&gt;")
     }
 }

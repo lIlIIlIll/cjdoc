@@ -15,15 +15,11 @@
         - code: Overload2
   - heading "Overload2" [level=1]:
     - code: Overload2
-  - paragraph: 类
+  - text: 类
   - button "复制链接"
   - paragraph: 比较 2 种显式参数类型，名称不证明语义相同。
   - code: public class Overload2
   - region "成员":
-    - text: 筛选成员
-    - searchbox "筛选成员"
-    - button "全部展开"
-    - button "全部收起"
     - heading "函数" [level=2]
     - text: 2 个成员
     - group "choose 2 个重载":
@@ -41,11 +37,11 @@
         - text: 接受 Choice00，返回作者声明的类别编号。
         - heading "参数" [level=4]
         - term:
-          - code: value
-          - text: ":"
           - code:
-            - link "Choice00":
-              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
+            - text: "value:"
+            - code:
+              - link "Choice00":
+                - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
         - definition:
           - paragraph: 类别 0 的输入，不推断额外约束。
         - heading "返回值" [level=4]
@@ -60,7 +56,8 @@
         - text: 成员操作：
         - 'link "打开独立 API 页面 public func choose(value: Choice00): Int64 接受 Choice00，返回作者声明的类别编号。"':
           - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072477-1727319314.html
-        - 'button "复制链接 public func choose(value: Choice00): Int64 接受 Choice00，返回作者声明的类别编号。"'
+          - text: 打开独立 API 页面
+        - 'button "复制链接 public func choose(value: Choice00): Int64 接受 Choice00，返回作者声明的类别编号。"': 复制链接
         - status
       - group:
         - code:
@@ -73,11 +70,11 @@
         - text: 接受 Choice01，返回作者声明的类别编号。
         - heading "参数" [level=4]
         - term:
-          - code: value
-          - text: ":"
           - code:
-            - link "Choice01":
-              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
+            - text: "value:"
+            - code:
+              - link "Choice01":
+                - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
         - definition:
           - paragraph: 类别 1 的输入，不推断额外约束。
         - heading "返回值" [level=4]
@@ -92,5 +89,6 @@
         - text: 成员操作：
         - 'link "打开独立 API 页面 public func choose(value: Choice01): Int64 接受 Choice01，返回作者声明的类别编号。"':
           - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072608-1727319571.html
-        - 'button "复制链接 public func choose(value: Choice01): Int64 接受 Choice01，返回作者声明的类别编号。"'
+          - text: 打开独立 API 页面
+        - 'button "复制链接 public func choose(value: Choice01): Int64 接受 Choice01，返回作者声明的类别编号。"': 复制链接
         - status

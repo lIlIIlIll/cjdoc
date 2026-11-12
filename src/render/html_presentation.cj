@@ -4,7 +4,7 @@ import cjdoc.model.*
 import std.collection.*
 
 // Stable presentation order, independent of source declaration order and Doc IR encoding.
-internal class PackageSection {
+private class PackageSection {
     let id: String
     let title: String
     let chineseTitle: String
@@ -17,7 +17,7 @@ internal class PackageSection {
     }
 }
 
-internal class PackageSections {
+private class PackageSections {
     let groups = [PackageSection("classes", "Classes", "类"),
         PackageSection("structs", "Structs", "结构体"),
         PackageSection("interfaces", "Interfaces", "接口"),
@@ -48,41 +48,7 @@ internal class PackageSections {
     }
 }
 
-internal func appendPackageSections(out: RenderTextBuffer, sections: PackageSections,
-    index: HashMap<String, SymbolDoc>, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
-    out.append("<nav class=\"declaration-groups\" aria-label=\"${label(locale, "Declaration groups", "声明分组")}\"><ul>")
-    for (group in sections.groups where !group.symbols.isEmpty()) {
-        out.append("<li><a href=\"#${group.id}\">${label(locale, group.title, group.chineseTitle)} <span class=\"meta\">${group.symbols.size}</span></a></li>")
-    }
-    out.append("</ul></nav>\n")
-    for (group in sections.groups where !group.symbols.isEmpty()) {
-        out.append("<section class=\"declaration-group\"><h2 id=\"${group.id}\" data-cjdoc-toc-role=\"group\">${label(locale, group.title, group.chineseTitle)}</h2>\n")
-        for (symbol in group.symbols) {
-            if (isContainerDeclaration(symbol)) {
-                out.append("<section class=\"declaration-summary\"><h3 data-cjdoc-toc-role=\"api\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><a href=\"../${escapeHtml(symbolPagePath(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></a></h3>")
-                match (symbol.documentation) {
-                    case Some(comment) => out.append("<p>${escapeHtml(documentationSummary(comment))}</p>")
-                    case None => ()
-                }
-                out.append("</section>\n")
-            } else {
-                appendSymbolArticle(out, index, symbol, "../", assetLookup,
-                    typeLinkIndex, locale: locale)
-            }
-        }
-        out.append("</section>\n")
-    }
-}
-
-internal func documentationSummary(comment: DocComment): String {
-    for (child in comment.markdown.children) {
-        if (child.kind == "paragraph") { return markdownNodeText(child) }
-    }
-    ""
-}
-
-internal func appendApiOverview(out: RenderTextBuffer, projection: RenderProjection,
+internal func appendApiOverview(w: HtmlWriter, projection: RenderProjection,
     locale: String): Unit {
     let topLevel = ArrayList<SymbolDoc>()
     let packageGroups = HashMap<String, PackageSections>()
@@ -92,9 +58,12 @@ internal func appendApiOverview(out: RenderTextBuffer, projection: RenderProject
         packageGroups[routeKey(pkg.source.moduleId, pkg.source.name)] = PackageSections(symbols)
     }
     let sections = PackageSections(topLevel)
-    out.append("<h2 id=\"api-overview\">${label(locale, "API overview", "API 概览")}</h2>\n")
+    w.textElement("h2", label(locale, "API overview", "API 概览"), attrs: [htmlAttr("id", "api-overview")])
+    w.newline()
     for (group in sections.groups where !group.symbols.isEmpty()) {
-        out.append("<section class=\"api-overview-group\"><h3>${label(locale, group.title, group.chineseTitle)}</h3><ul class=\"api-overview-links\">")
+        w.open("section", attrs: [htmlClass("cj-overview")])
+        w.textElement("h3", label(locale, group.title, group.chineseTitle))
+        w.open("ul", attrs: [htmlClass("cj-overview__links")])
         // Keep large projects navigable without repeating every declaration on the landing page.
         for (pkg in projection.packages) {
             var count: Int64 = 0
@@ -102,8 +71,16 @@ internal func appendApiOverview(out: RenderTextBuffer, projection: RenderProject
                 if (packageGroup.id == group.id) { count = packageGroup.symbols.size; break }
             }
             if (count == 0) { continue }
-            out.append("<li><a href=\"${escapeHtml(packagePagePath(pkg.source.moduleId, pkg.source.name))}#${group.id}\"><code>${escapeHtml(pkg.source.name)}</code></a><span class=\"meta\">${count}</span></li>")
+            let visibleCount = count
+            w.element("li", []) { item =>
+                let href = documentationRouteHref(packagePagePath(pkg.source.moduleId, pkg.source.name) +
+                    "#" + group.id)
+                item.element("a", [htmlHref(href)]) { link => link.textElement("code", pkg.source.name) }
+                item.textElement("span", visibleCount.toString(), attrs: [htmlClass("cj-meta")])
+            }
         }
-        out.append("</ul></section>\n")
+        w.close("ul")
+        w.close("section")
+        w.newline()
     }
 }

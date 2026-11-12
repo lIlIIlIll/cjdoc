@@ -30,11 +30,12 @@ internal func orderedFormats(options: NewCliOptions): Array<String> {
 private func renderArtifacts(documentation: public_model.DocumentationSet,
     formats: Array<String>, locale!: String = "zh-CN", docVersion!: ?String = None,
     allLanguages!: Bool = false, agentFull!: Bool = false,
-    reports!: Array<public_render.DocumentationReportAttachment> = []):
+    reports!: Array<public_render.DocumentationReportAttachment> = [],
+    htmlFonts!: public_render.HtmlFontOptions = public_render.HtmlFontOptions()):
     Array<public_render.RenderArtifact> {
     public_render.renderDocumentationFormatsWithOptions(documentation, formats,
         locale: locale, docVersion: docVersion, allLanguages: allLanguages,
-        agentFull: agentFull, reports: reports)
+        agentFull: agentFull, reports: reports, htmlFonts: htmlFonts)
 }
 
 
@@ -43,20 +44,23 @@ internal func renderArtifactsWithCommandFallback(documentation: public_model.Doc
     locale!: String = "zh-CN",
     docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false,
     allLanguages!: Bool = false, agentFull!: Bool = false,
-    reports!: Array<public_render.DocumentationReportAttachment> = []):
+    reports!: Array<public_render.DocumentationReportAttachment> = [],
+    htmlFonts!: public_render.HtmlFontOptions = public_render.HtmlFontOptions()):
         (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
     try {
         if (injectResourceLimitForTest) {
             throw public_render.RenderResourceLimitException("injected renderer resource limit")
         }
         (documentation, renderArtifacts(documentation, formats, locale: locale,
-            docVersion: docVersion, allLanguages: allLanguages, agentFull: agentFull, reports: reports))
+            docVersion: docVersion, allLanguages: allLanguages, agentFull: agentFull, reports: reports,
+            htmlFonts: htmlFonts))
     } catch (error: public_render.RenderResourceLimitException) {
         match (generationRequest) {
             case Some(request) =>
                 let fallback = boundGeneratedDocumentation(documentation, request, force: true)
                 (fallback, renderArtifacts(fallback, formats, locale: locale,
-                    docVersion: docVersion, allLanguages: allLanguages, agentFull: agentFull, reports: reports))
+                    docVersion: docVersion, allLanguages: allLanguages, agentFull: agentFull, reports: reports,
+                    htmlFonts: htmlFonts))
             case None => throw error
         }
     }
@@ -315,7 +319,8 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
             docVersion: options.docVersion, allLanguages: options.allLanguages,
-            agentFull: options.agentFull, reports: capturedCliReports(options))
+            agentFull: options.agentFull, reports: capturedCliReports(options),
+            htmlFonts: public_render.HtmlFontOptions(sans: options.htmlFontSans, mono: options.htmlFontMono))
         documentation = renderedDocumentation
         let artifactList = ArrayList<public_render.RenderArtifact>()
         artifactList.add(all: renderedArtifacts)

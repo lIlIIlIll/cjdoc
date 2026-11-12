@@ -15,9 +15,10 @@ from .site import ContractError, load_json
 class MemberLinks(HTMLParser):
     """Bind each member permalink to its native details anchor, not its name.
 
-    A member row contains sibling <details> and action controls. Tracking the
-    containing row prevents a source/overload link from being attributed to a
-    neighboring declaration when the details node closes before the actions.
+    A member row contains the disclosure, its sibling action group and the
+    standalone permalink inside that group's list. Tracking the containing row
+    prevents a source/overload link from being attributed to a neighbouring
+    declaration when the details node closes before the actions.
     """
 
     def __init__(self, source: str) -> None:
@@ -39,13 +40,13 @@ class MemberLinks(HTMLParser):
         classes = (attrs.get("class") or "").split()
         if tag == "div":
             self.div_depth += 1
-            if "member-row" in classes:
+            if "cj-member-row" in classes:
                 if self.row_depth is not None:
                     raise ContractError("nested native member rows are not supported")
                 self.row_depth = self.div_depth
                 self.row_anchor = None
                 self.row_has_link = False
-            elif ("member-detail-actions" in classes and self.row_depth is not None
+            elif ("cj-member-actions" in classes and self.row_depth is not None
                   and self.div_depth == self.row_depth + 1):
                 if not self.row_anchor or self.actions_depth is not None:
                     raise ContractError("member actions have no unique preceding native anchor")
@@ -57,15 +58,11 @@ class MemberLinks(HTMLParser):
                 if self.row_anchor is not None or not attrs.get("id"):
                     raise ContractError("member row must contain exactly one native details anchor")
                 self.row_anchor = attrs["id"]
-        elif tag == "a" and "member-permalink" in classes:
-            if self.row_depth is not None:
-                if self.actions_depth is None or self.row_has_link:
-                    raise ContractError("member permalink is outside its unique sibling actions")
-                anchor = self.row_anchor
-                self.row_has_link = True
-            else:
-                # Support older generated pages where actions lived inside details.
-                anchor = next((item for item in reversed(self.details) if item is not None), None)
+        elif tag == "a" and "cj-member-actions__item--standalone" in classes:
+            if self.row_depth is None or self.actions_depth is None or self.row_has_link:
+                raise ContractError("member permalink is outside its unique sibling actions")
+            anchor = self.row_anchor
+            self.row_has_link = True
             if not anchor:
                 raise ContractError("member permalink is missing its enclosing native anchor")
             if not attrs.get("href"):

@@ -114,7 +114,7 @@ private func readingContent(artifacts: Array<RenderArtifact>, path: String): Str
 
 private func readingSymbolPage(artifacts: Array<RenderArtifact>, name: String): String {
     for (artifact in artifacts where artifact.path.startsWith("html/symbols/") &&
-        artifact.content.contains("class=\"page-header api-page-header\"") &&
+        artifact.content.contains("class=\"cj-page-header cj-page-header--api\"") &&
         artifact.content.contains("<code>" + name + "</code>")) {
         return artifact.content
     }
@@ -129,7 +129,7 @@ class EditorialReadingTest {
         let original = encodeDocIr(documentation)
         let artifacts = rendererFor("html").render(documentation)
         let home = readingContent(artifacts, "html/index.html")
-        @Expect(home.contains("<h1>author-library</h1>"))
+        @Expect(home.contains("<h1 class=\"cj-page-header__title\">author-library</h1>"))
         @Expect(home.contains("A real author introduction."))
         @Expect(home.contains("href=\"concepts/first.html#standalone--doc-keep-the-original\""))
         @Expect(home.indexOf("A real author introduction.").getOrThrow() < home.indexOf("id=\"packages\"").getOrThrow())
@@ -145,7 +145,7 @@ class EditorialReadingTest {
         @Expect(home.contains("id=\"packages\""))
         @Expect(home.contains("id=\"api-overview\""))
         @Expect(!home.contains("Start here"))
-        @Expect(!home.contains("class=\"home-introduction"))
+        @Expect(!home.contains("cj-home-intro"))
         @Expect(home.contains("href=\"#packages\""))
         @Expect(!home.contains("Choose a module or package"))
         @Expect(!home.contains("concepts/packages/"))
@@ -156,7 +156,7 @@ class EditorialReadingTest {
         let documentation = readingDocumentation(true, fallback: true)
         let snapshot = encodeDocIr(documentation)
         let home = readingContent(rendererFor("html").render(documentation), "html/index.html")
-        @Expect(!home.contains("class=\"home-introduction"))
+        @Expect(!home.contains("cj-home-intro"))
         @Expect(!home.contains("This site contains"))
         @Expect(home.contains("id=\"packages\""))
         @Expect(encodeDocIr(documentation), snapshot)
@@ -169,7 +169,7 @@ class EditorialReadingTest {
         @Expect(guide.contains("id=\"standalone--doc-keep-the-original\""))
         @Expect(guide.contains("The authored condition."))
         @Expect(guide.indexOf("The authored condition.").getOrThrow() <
-            guide.indexOf("class=\"guide-related-api\"").getOrThrow())
+            guide.indexOf("class=\"cj-guide__related\"").getOrThrow())
         var found = false
         for (artifact in artifacts where artifact.path.startsWith("html/symbols/")) {
             if (!artifact.content.contains("data-cjdoc-page=\"symbol\"")) { continue }
@@ -251,6 +251,6 @@ class EditorialReadingTest {
         @Expect(!first.contains("rel=\"prev\""))
         @Expect(second.contains("rel=\"prev\" href=\"../concepts/first.html\""))
         @Expect(!second.contains("rel=\"next\""))
-        @Expect(first.split("<h1>").size, 2)
+        @Expect(first.split("<h1").size, 2)
     }
 }

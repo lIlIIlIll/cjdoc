@@ -20,7 +20,7 @@
 |---|---|---|
 | 1k 显式源码声明 | 1,000 声明，`complete`；两次源码生成的 Doc IR SHA-256 相同 | 两种语言、三种载体、20 次查询/筛选采样；160 张生成页面截图 |
 | 10k 显式源码声明 | 编码预算预检返回 `CJDOC3027`、`partial` 的有界空投影；原生命令退出 0，观测器明确记为 `resource-limited` | 未运行，不生成虚假的零延迟或 PASS |
-| 50k 显式源码声明 | 固定 512 MiB 仓颉堆耗尽，退出 1，`resource-limited` | 未运行，不声明支持该规模 |
+| 50k 显式源码声明 | 固定堆配方耗尽，退出 1，`resource-limited` | 未运行，不声明支持该规模 |
 | yjson 固定 revision | 2,319 声明、1,218 个公开/受保护声明，`partial`；保留未展开 Derive 宏的 `CJDOC1009` | 两种 UI 语言、三种载体；32 张生成页面截图 |
 
 `CJDOC3027` 对应 `docIrFitsEncodedBudget` 的编码资源预检。当前产品诊断没有细分字节、对象、数组或类型子限额；不能把这次拒绝擅自解释成某个精确字节阈值，更不能推导通用的“最大声明数”。SDK 堆上限也不等于整个进程 RSS：后者包含非仓颉堆内存。
@@ -81,7 +81,7 @@ TASK=$(mktemp -d "$HOME/.cache/agent-tmp/cjdoc-reader.XXXXXX")
 chmod 700 "$TASK"
 mkdir -m 700 "$TASK/tmp" "$TASK/browser-dependencies"
 export TMPDIR="$TASK/tmp" TMP="$TASK/tmp" TEMP="$TASK/tmp"
-export RUNNER_TEMP="$TASK/tmp" GITHUB_WORKSPACE="$PWD" cjHeapSize=512MB
+export RUNNER_TEMP="$TASK/tmp" GITHUB_WORKSPACE="$PWD" cjHeapSize=1GB
 export PYTHONDONTWRITEBYTECODE=1 PLAYWRIGHT_SKIP_BROWSER_GC=1
 export PLAYWRIGHT_BROWSERS_PATH="$TASK/browsers"
 export CJDOC_BROWSER_REQUIRE_ROOT="$TASK/browser-dependencies"
@@ -133,7 +133,7 @@ python3 scripts/reader_register.py \
   --aria-transition docs/maintainer/reader-scale-docs-173-177.json
 ```
 
-这两个参数只用于固定 1k 比较，不能与 `--presentation` 同用。其它 cohort 和普通重跑不传它们，继续使用严格默认比较。
+这三个参数只用于固定 1k 比较：精确过渡冻结 IR/ARIA 的既定差异，`--presentation` 明确登记本次重设的排版与实际使用字体。三者并存时各自仍按原规则逐项校验，任何一个都不会放宽数值预算、原始任务、打印/无 JS 检查或其它视觉相等要求；其它 cohort 和普通重跑不传它们，继续使用严格默认比较。
 
 ```bash
 : "${AFTER_BINARY:?指定实际改后 binary}"

@@ -30,7 +30,15 @@ const errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 const report = { schemaVersion: 'cjdoc.reader-discovery/1', locale: values.locale, tasks: [], visuals: [] };
 const links = () => page.locator('[data-cjdoc-results] li a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')));
-const query = value => page.locator('[data-cjdoc-search]').fill(value);
+// Search is a modal palette in the generated reader: it starts closed, and
+// every document navigation closes it again.
+const searchDialog = () => page.locator('[data-cjdoc-search-dialog]');
+const openSearch = async () => {
+  if (await searchDialog().evaluate(dialog => dialog.open)) return;
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await searchDialog().evaluate(dialog => dialog.open || Promise.reject(new Error('search did not open')));
+};
+const query = async value => { await openSearch(); await page.locator('[data-cjdoc-search]').fill(value); };
 const next = page.locator('[data-cjdoc-search-next]');
 const previous = page.locator('[data-cjdoc-search-previous]');
 try {
@@ -82,16 +90,27 @@ try {
   await page.goto(indexUrl);
   report.tasks.push({ id: 'arrow-up-wraps-to-last-visible-native-result', pass: true });
 
+  // The palette is a combobox: the field keeps DOM focus and names the current
+  // option through aria-activedescendant, so assistive tech follows the same
+  // cursor the reader sees.
+  const activeOption = () => page.evaluate(() => {
+    const input = document.querySelector('[data-cjdoc-search]');
+    const id = input.getAttribute('aria-activedescendant');
+    if (!id) return null;
+    const option = document.getElementById(id);
+    const options = [...document.querySelectorAll('[data-cjdoc-results] [role="option"]')];
+    return { index: options.indexOf(option), selected: option?.getAttribute('aria-selected') };
+  });
   await query('kind:function');
   await next.click();
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await page.locator('[data-cjdoc-results] li a').nth(1)
-    .evaluate(link => link === document.activeElement), true,
-    'ArrowDown must move actual result focus after pagination');
+  await page.locator('[data-cjdoc-search]').press('ArrowDown');
+  assert.deepEqual(await activeOption(), { index: 0, selected: 'true' },
+    'ArrowDown must activate the first visible result after pagination');
+  await page.locator('[data-cjdoc-search]').press('ArrowDown');
+  assert.deepEqual(await activeOption(), { index: 1, selected: 'true' });
   await page.keyboard.press('ArrowUp');
-  assert.equal(await page.locator('[data-cjdoc-results] li a').first()
-    .evaluate(link => link === document.activeElement), true);
-  await keyboardField.focus();
+  assert.deepEqual(await activeOption(), { index: 0, selected: 'true' });
+  await page.locator('[data-cjdoc-search]').focus();
   assert.deepEqual(await links(), expected.slice(20, 40),
     'returning focus to the query must not reset the current result page');
   await keyboardField.press('Control+k');
@@ -104,10 +123,11 @@ try {
   await query('kind:function');
   await next.click();
   await page.keyboard.press('Escape');
-  assert.equal(await page.locator('[data-cjdoc-search-popover]').isVisible(), false,
+  assert.equal(await searchDialog().isVisible(), false,
     'Escape from a paged result must dismiss the search');
-  assert.equal(await keyboardField.evaluate(input => input === document.activeElement), true,
-    'dismissing a focused result must return focus to the search control');
+  assert.equal(await page.locator('[data-cjdoc-search-trigger]')
+    .evaluate(trigger => trigger === document.activeElement), true,
+    'dismissing the palette must return focus to the control that opened it');
   report.tasks.push({ id: 'paged-result-keyboard-and-query-refocus', pass: true });
 
   await query('kind:function');
@@ -156,7 +176,7 @@ try {
   await tailActions.locator('[data-cjdoc-member-actions-toggle]').click();
   // An off-viewport popup is not paint clipping. Expose the actual menu before
   // independently checking that native pointer hit-testing reaches its action.
-  await tailActions.locator('.member-action-list').scrollIntoViewIfNeeded();
+  await tailActions.locator('.cj-member-actions__list').scrollIntoViewIfNeeded();
   const menuHit = await tailActions.locator('a').first().evaluate(link => {
     const box = link.getBoundingClientRect();
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
@@ -182,7 +202,7 @@ try {
   assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
     .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
-    const sidebar = document.querySelector('.docs-sidebar');
+    const sidebar = document.querySelector('.cj-sidebar');
     sidebar.scrollTop = 160;
     // Navigate in the same task, before the scroll event can update the cache.
     location.href = destination;
@@ -192,7 +212,7 @@ try {
     historyQuery);
   assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
     .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
-  assert.ok(Math.abs(await page.locator('.docs-sidebar').evaluate(node => node.scrollTop) - 160) <= 2,
+  assert.ok(Math.abs(await page.locator('.cj-sidebar').evaluate(node => node.scrollTop) - 160) <= 2,
     'pagehide must capture sidebar scroll even before its queued scroll event');
   await page.locator('[data-cjdoc-member-filter]').fill('');
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
@@ -222,7 +242,7 @@ try {
         // after ResizeObserver updates the viewport budget used by the popup.
         await frame(visualPage);
         const layout = await visualPage.evaluate(() => {
-          const popup = document.querySelector('[data-cjdoc-search-popover]');
+          const popup = document.querySelector('[data-cjdoc-search-dialog]');
           const box = popup.getBoundingClientRect();
           const buttons = [...popup.querySelectorAll('button')].map(button => {
             const bounds = button.getBoundingClientRect();

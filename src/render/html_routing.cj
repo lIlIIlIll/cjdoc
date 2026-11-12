@@ -73,13 +73,37 @@ internal func symbolReadablePagePath(symbol: SymbolDoc): String {
 
 internal func renderSymbolAlias(symbol: SymbolDoc, locale: String): String {
     let target = symbolPagePath(symbol)["symbols/".size..]
-    let out = RenderTextBuffer()
-    out.append("<!doctype html><html lang=\"${escapeHtml(locale)}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
-    out.append("<title>${escapeHtml(readerQualifiedName(symbol))}</title><link rel=\"canonical\" href=\"${escapeHtml(target)}\">")
-    out.append("<link rel=\"describedby\" type=\"text/plain\" href=\"../llms.txt\">")
-    out.append("<link rel=\"alternate\" type=\"text/markdown\" href=\"../${escapeHtml(agentDeclarationMarkdownPath(symbol))}\"></head><body data-cjdoc-route=\"symbol-alias\"><main>")
-    out.append("<a data-cjdoc-alias-target href=\"${escapeHtml(target)}\">${escapeHtml(label(locale, "Open API documentation", "打开 API 文档"))}: ${escapeHtml(readerQualifiedName(symbol))}</a></main><script src=\"../symbol-alias.js\" defer></script></body></html>")
-    out.toString()
+    let w = HtmlWriter()
+    w.doctype()
+    w.open("html", attrs: [htmlAttr("lang", locale)])
+    w.open("head")
+    w.void("meta", attrs: [htmlAttr("charset", "utf-8")])
+    w.void("meta", attrs: [htmlAttr("name", "viewport"),
+        htmlAttr("content", "width=device-width,initial-scale=1")])
+    w.void("meta", attrs: [htmlAttr("http-equiv", "Content-Security-Policy"),
+        htmlAttr("content", HTML_PAGE_CSP)])
+    w.textElement("title", readerQualifiedName(symbol))
+    w.void("link", attrs: [htmlAttr("rel", "canonical"),
+        htmlHref(SafeUrl.relative(target).getOrThrow())])
+    w.void("link", attrs: [htmlAttr("rel", "describedby"), htmlAttr("type", "text/plain"),
+        htmlHref(SafeUrl.siteRoute("../llms.txt"))])
+    w.void("link", attrs: [htmlAttr("rel", "alternate"), htmlAttr("type", "text/markdown"),
+        htmlHref(SafeUrl.siteRoute("../" + agentDeclarationMarkdownPath(symbol)))])
+    w.close("head")
+    w.open("body", attrs: [htmlAttr("data-cjdoc-route", "symbol-alias")])
+    w.open("main")
+    w.element("a", [htmlFlag("data-cjdoc-alias-target"),
+        htmlHref(SafeUrl.relative(target).getOrThrow())], { link =>
+        link.text(label(locale, "Open API documentation", "打开 API 文档") + ": " +
+            readerQualifiedName(symbol))
+    })
+    w.close("main")
+    w.open("script", attrs: [htmlSrc(SafeUrl.siteRoute("../symbol-alias.js")),
+        htmlFlag("defer")])
+    w.close("script")
+    w.close("body")
+    w.close("html")
+    w.toString()
 }
 
 internal let HTML_SYMBOL_ALIAS_SCRIPT = #"
@@ -562,130 +586,6 @@ internal func navigationHref(rootPrefix: String, url: String): ?String {
     let path = relative.split("#", 2)[0].split("?", 2)[0]
     if (!safeRelativePath(path) || !isSafeDocumentationRoute(relative)) { return None }
     Some(rootPrefix + relative)
-}
-
-internal func typeNavigationTitle(typeRef: TypeRef, locale: String): String {
-    let title = label(locale, "Documentation link unavailable", "暂无文档链接")
-    if (let Some(navigation) <- typeRef.navigation) {
-        if (!navigation.reason.isEmpty()) { return title + ": " + navigation.reason }
-    }
-    title
-}
-internal func appendNavigationAttributes(out: RenderTextBuffer, navigation: ?TypeNavigation): Unit {
-    if (let Some(value) <- navigation) {
-        if (value.state != "resolved") { return }
-        out.append(" data-doc-match=\""); out.append(escapeHtml(value.matchLevel))
-        out.append("\" title=\""); out.append(escapeHtml(value.matchLevel)); out.append(": ")
-        out.append(escapeHtml(value.reason)); out.append("\"")
-    }
-}
-
-
-internal func typeHeadSpelling(spelling: String): String {
-    match (spelling.indexOf("<")) {
-        case Some(index) => spelling[..index].trimAscii()
-        case None => spelling
-    }
-}
-
-internal func typeGenericSuffix(spelling: String): String {
-    let bytes = spelling.toArray()
-    var depth: Int64 = 0
-    var genericEnd: Int64 = -1
-    var index: Int64 = 0
-    for (byte in bytes) {
-        if (byte == b'<') {
-            depth++
-        } else if (byte == b'>' && depth > 0) {
-            depth--
-            if (depth == 0) { genericEnd = index }
-        }
-        index++
-    }
-    if (genericEnd < 0 || genericEnd + 1 >= spelling.size) { "" }
-    else { spelling[genericEnd + 1..] }
-}
-
-// Some source/AST providers record a generic type's spelling with trivia around
-// angle brackets. Normalize only this display spelling; source signatures and
-// semantic identities must remain byte-for-byte intact. Function arrows and
-// generic constraints are deliberately left untouched.
-internal func genericTypeDisplaySpelling(spelling: String): String {
-    if (!spelling.contains("<") || spelling.contains("->") || spelling.contains("<:")) {
-        return spelling
-    }
-    spelling.replace(" <", "<").replace("< ", "<")
-        .replace(" >", ">").replace("> ", ">").replace(" ,", ",")
-}
-
-internal func appendTypeAtomHtml(out: RenderTextBuffer, typeRef: TypeRef,
-    spelling: String, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
-    match (typeLinkIndex.targetUrl(typeRef)) {
-        case Some(url) =>
-            if (let Some(href) <- navigationHref(rootPrefix, url)) {
-                out.append("<a class=\"type-link\" href=\"" + escapeHtml(href) + "\"")
-                appendNavigationAttributes(out, typeRef.navigation)
-                out.append(">" + escapeHtml(spelling) + "</a>")
-            } else { out.append(escapeHtml(spelling)) }
-        case None =>
-            if (typeRef.navigation.isSome()) {
-                out.append("<span title=\"" + escapeHtml(typeNavigationTitle(typeRef, "en")) + "\">" + escapeHtml(spelling) + "</span>")
-            } else { out.append(escapeHtml(spelling)) }
-    }
-}
-
-internal func appendTypeRefContentHtml(out: RenderTextBuffer, typeRef: TypeRef,
-    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
-    if (typeRef.kind == "optional" && typeRef.arguments.size == 1) {
-        out.append("?")
-        appendTypeRefContentHtml(out, typeRef.arguments[0], typeLinkIndex, rootPrefix)
-        return
-    }
-    if ((typeRef.kind == "tuple" || typeRef.kind == "function") && !typeRef.arguments.isEmpty()) {
-        out.append("(")
-        for (index in 0..typeRef.arguments.size) {
-            if (typeRef.kind == "function" && index == typeRef.arguments.size - 1) {
-                out.append(") -&gt; ")
-            } else if (index > 0) { out.append(", ") }
-            appendTypeRefContentHtml(out, typeRef.arguments[index], typeLinkIndex, rootPrefix)
-        }
-        if (typeRef.kind == "tuple") { out.append(")") }
-        return
-    }
-    match (typeRef.spelling.indexOf("<")) {
-        case Some(_) =>
-            if (typeRef.arguments.isEmpty()) {
-                appendTypeAtomHtml(out, typeRef,
-                    genericTypeDisplaySpelling(typeRef.spelling), typeLinkIndex, rootPrefix)
-                return
-            }
-            appendTypeAtomHtml(out, typeRef, typeHeadSpelling(typeRef.spelling),
-                typeLinkIndex, rootPrefix)
-            out.append("&lt;")
-            var first = true
-            for (argument in typeRef.arguments) {
-                if (!first) { out.append(", ") }
-                first = false
-                appendTypeRefContentHtml(out, argument, typeLinkIndex, rootPrefix)
-            }
-            out.append("&gt;")
-            let suffix = typeGenericSuffix(typeRef.spelling)
-            if (!suffix.isEmpty()) { out.append(escapeHtml(suffix)) }
-        case None => appendTypeAtomHtml(out, typeRef, typeRef.spelling, typeLinkIndex, rootPrefix)
-    }
-}
-
-internal func appendTypeRefCodeHtml(out: RenderTextBuffer, typeRef: TypeRef,
-    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String,
-    className!: String = ""): Unit {
-    out.append("<code")
-    if (!className.isEmpty()) { out.append(" class=\"${escapeHtml(className)}\"") }
-    if (typeLinkIndex.shouldShowUnavailableTitle(typeRef)) {
-        out.append(" title=\"${escapeHtml(typeNavigationTitle(typeRef, locale))}\"")
-    }
-    out.append(">")
-    appendTypeRefContentHtml(out, typeRef, typeLinkIndex, rootPrefix)
-    out.append("</code>")
 }
 
 internal func buildAssetLookup(assets: ArrayList<AssetDoc>,

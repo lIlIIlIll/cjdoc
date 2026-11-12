@@ -57,7 +57,7 @@ internal func reverseTypeUsageLabel(kind: String, locale: String): String {
 
 // Display labels only: IR identifiers and source spellings remain unchanged.
 internal func htmlKindLabel(kind: String, locale: String): String {
-    if (locale != "zh-CN") { return kind }
+    if (locale != "zh-CN") { return englishKindLabel(kind) }
     match (kind) {
         case "class" => "类"
         case "struct" => "结构体"
@@ -92,6 +92,16 @@ internal func htmlKindLabel(kind: String, locale: String): String {
         case "overriddenBy" => "被重写"
         case "implements" => "实现"
         case "implementedBy" => "被实现"
+        case _ => kind
+    }
+}
+
+// Camel-case IR kinds read as identifiers in badges; the rest are already words.
+private func englishKindLabel(kind: String): String {
+    match (kind) {
+        case "typeAlias" => "type alias"
+        case "enumCase" => "enum case"
+        case "extend" => "extension"
         case _ => kind
     }
 }

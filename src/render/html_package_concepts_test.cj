@@ -84,7 +84,7 @@ class HtmlPackageConceptsTest {
         let ambiguous = overviewFixture([overviewPage("Ambiguous purpose")], duplicate: true)
         let values = HtmlDocumentationRenderer().render(ambiguous)
         for (pkg in ambiguous.packages) {
-            @Expect(!overviewContent(values, "html/" + packagePagePath(pkg.moduleId, pkg.name)).contains("class=\"package-overview\""))
+            @Expect(!overviewContent(values, "html/" + packagePagePath(pkg.moduleId, pkg.name)).contains("class=\"cj-package-overview\""))
         }
         let id = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Atwo::fixture::entry"
         let exact = overviewFixture([overviewPage("Module two purpose", targets: [id])], duplicate: true)
@@ -101,8 +101,8 @@ class HtmlPackageConceptsTest {
         for (page in cases) {
             let value = overviewFixture([page])
             let artifacts = HtmlDocumentationRenderer().render(value)
-            @Expect(!overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture")).contains("class=\"package-overview\""))
-            @Expect(!overviewContent(artifacts, "html/concepts/deep/overview.html").contains("package-api-return"))
+            @Expect(!overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture")).contains("class=\"cj-package-overview\""))
+            @Expect(!overviewContent(artifacts, "html/concepts/deep/overview.html").contains("cj-package-return"))
         }
         let all = overviewFixture([cases[0]], audience: "all")
         @Expect(overviewContent(HtmlDocumentationRenderer().render(all), "html/" + packagePagePath(all.packages[0].moduleId, "fixture")).contains("Hidden purpose"))
@@ -115,12 +115,12 @@ class HtmlPackageConceptsTest {
                 MarkdownNode("paragraph", children: [MarkdownNode("text", literal: wording)])]))
         let value = overviewFixture([old])
         let artifacts = HtmlDocumentationRenderer().render(value)
-        @Expect(!overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture")).contains("class=\"package-overview\""))
+        @Expect(!overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture")).contains("class=\"cj-package-overview\""))
         let authored = overviewFixture([overviewPage(wording)])
         @Expect(overviewContent(HtmlDocumentationRenderer().render(authored), "html/" + packagePagePath(authored.packages[0].moduleId, "fixture")).contains(wording))
         authored.appendDiagnostic(Diagnostic("warning", "CJDOC3026", "Captured page used a bounded fallback",
             source: Some(SourceRange("docs/en/package.md", SourcePosition(1, 1, 0), SourcePosition(1, 1, 0)))))
-        @Expect(!overviewContent(HtmlDocumentationRenderer().render(authored), "html/" + packagePagePath(authored.packages[0].moduleId, "fixture")).contains("class=\"package-overview\""))
+        @Expect(!overviewContent(HtmlDocumentationRenderer().render(authored), "html/" + packagePagePath(authored.packages[0].moduleId, "fixture")).contains("class=\"cj-package-overview\""))
     }
     @TestCase
     func sharedSourcesKeepOnePackageEntryAndExactRouteReturns(): Unit {
@@ -131,7 +131,7 @@ class HtmlPackageConceptsTest {
         let rendered = HtmlDocumentationRenderer().render(value)
         let path = packagePagePath(value.packages[0].moduleId, "fixture")
         let pkg = overviewContent(rendered, "html/" + path)
-        @Expect(pkg.contains("class=\"package-overview\""))
+        @Expect(pkg.contains("class=\"cj-package-overview\""))
         @Expect(!pkg.contains("href=\"../concepts/other.html\""))
         @Expect(overviewContent(rendered, "html/concepts/deep/overview.html").contains("../../" + path + "#declarations"))
         @Expect(overviewContent(rendered, "html/concepts/other.html").contains("../" + path + "#declarations"))

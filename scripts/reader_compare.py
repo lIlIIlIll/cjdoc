@@ -132,13 +132,33 @@ def presentation_profile(budgets: dict) -> dict | None:
     return profile
 
 
+def installed_fonts(before: dict, after: dict) -> dict:
+    """One installed environment, keyed by family, from both captures.
+
+    Both captures share one host, but each records the families it knew about:
+    the fixed inventory plus whatever its own pages resolved. A redesign
+    legitimately resolves a family the baseline never sampled, so the union is
+    the host. A family that both sides know must still resolve to one file.
+    """
+    inventory = keyed(before.get("environment", {}).get("fontFiles") or [],
+                      "family", "installed fonts")
+    extra = keyed(after.get("environment", {}).get("fontFiles") or [],
+                  "family", "installed fonts")
+    for family, font in extra.items():
+        known = inventory.get(family)
+        require(known is None or known == font,
+                "installed font identity disagrees between captures: " + family)
+        inventory[family] = font
+    return inventory
+
+
 def check_font_usage(before: dict, after: dict, profile: dict | None) -> None:
+    inventory = installed_fonts(before, after)
     if profile is None:
         require(before.get("fontUsage") == after.get("fontUsage"), "used font identities changed")
         return
     locale = after["environment"]["requestedUiLocale"]
     require(before["recipe"] == after["recipe"] == profile["recipe"], "presentation corpus recipe changed")
-    inventory = keyed(before["environment"]["fontFiles"], "family", "installed fonts")
     for label, report in (("baseline", before), ("after", after)):
         usage = report.get("fontUsage")
         require(isinstance(usage, list) and bool(usage), "actual font usage is missing")
@@ -237,8 +257,19 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
 
 def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
                     failures: list[str], sites: tuple[Path, Path] | None = None) -> list[dict]:
-    for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "environment", "nativeIndexEntries"):
+    for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "nativeIndexEntries"):
         require(before.get(key) == after.get(key) and before.get(key) is not None, f"browser {key} changed or missing")
+    # The installed-font inventory is captured knowledge, not the host identity:
+    # each side records the families its own pages resolved plus the fixed set,
+    # so a redesign legitimately lists families the baseline never sampled. The
+    # host is still pinned field by field, and every family must resolve to one
+    # identical file in check_font_usage.
+    before_environment = {key: value for key, value in before.get("environment", {}).items()
+                          if key != "fontFiles"}
+    after_environment = {key: value for key, value in after.get("environment", {}).items()
+                         if key != "fontFiles"}
+    require(before.get("environment") and before_environment == after_environment,
+            "browser environment changed or missing")
     require(before.get("harness") and before["environment"].get("fontFiles"), "missing harness or font identities")
     require(all(font.get("status") == "measured" for font in before["environment"]["fontFiles"]), "font file identity unavailable")
     profile = presentation_profile(budgets)

@@ -28,7 +28,12 @@ SCENARIOS.update({
 # assertions. Pre-click scrolling is recorded separately. These are controlled
 # CI regression ceilings, not claims about end-user latency.
 # Explicitly approved current-protocol payload budgets; interaction limits stay fixed.
-BUDGETS = {"siteBytes": 130_000_000, "offlineBytes": 20_000_000,
+# The reference desk renders the navigation branch, both dialogs and a member
+# window into every page, so its own payload is larger than the flat sidebar it
+# replaced; declared pages still open from package and overflow links without
+# scripts. The ceilings are set above the measured site rather than derived from
+# it: a fixture change that doubles the tree should still fail this gate.
+BUDGETS = {"siteBytes": 165_000_000, "offlineBytes": 24_000_000,
            "queryMs": 1500, "expandMs": 1000, "listHeight": 6000,
            "compactRowHeight": 220, "splitContentTop": 260,
            "homepageActivations": 1, "homepageDocumentNavigations": 1}

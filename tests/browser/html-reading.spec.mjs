@@ -45,9 +45,9 @@ async function routes(page, locale, transport) {
     ? pathToFileURL(path.resolve(fixture, locale, 'index.html')).href
     : `${origin}${transport === 'subpath' ? '/docs' : ''}/${locale}/index.html`;
   await page.goto(home);
-  const pkg = new URL(await page.locator('.package-index a').first().getAttribute('href'), home).href;
+  const pkg = new URL(await page.locator('.cj-package-index a').first().getAttribute('href'), home).href;
   await page.goto(pkg);
-  const api = new URL(await page.locator('.declaration-row-link').filter({hasText:'TextCatalog'}).first().getAttribute('href'), pkg).href;
+  const api = new URL(await page.locator('.cj-decl-table__link').filter({hasText:'TextCatalog'}).first().getAttribute('href'), pkg).href;
   return {home, package:pkg, api, guide:new URL('concepts/guides/first-catalogue.html',home).href};
 }
 
@@ -56,12 +56,12 @@ async function readingMetrics(page) {
     const visible = selector => [...document.querySelectorAll(selector)].filter(n => n.checkVisibility({checkVisibilityCSS:true}));
     return {
       width:document.documentElement.clientWidth, scroll:document.documentElement.scrollWidth,
-      summaries:visible('.declaration-description,.member-summary-description').map(n => ({
+      summaries:visible('.cj-decl-table__summary,.cj-member__description').map(n => ({
         size:parseFloat(getComputedStyle(n).fontSize), full:n.scrollHeight <= n.clientHeight + 1,
         clamp:getComputedStyle(n).webkitLineClamp,
       })),
-      code:visible('pre code,.declaration-signature').map(n => parseFloat(getComputedStyle(n).fontSize)),
-      prose:visible('.prose > p').map(n => parseFloat(getComputedStyle(n).fontSize)),
+      code:visible('pre code,.cj-signature-inline').map(n => parseFloat(getComputedStyle(n).fontSize)),
+      prose:visible('.cj-prose > p').map(n => parseFloat(getComputedStyle(n).fontSize)),
     };
   });
 }
@@ -86,39 +86,42 @@ for (const transport of ['root','subpath','file']) {
         }
       }
       await page.goto(urls.home);
-      await expect(page.locator('.home-introduction')).toContainText('TextCatalog');
-      await expect(page.locator('.reading-paths a[href*="concepts/packages/"]')).toHaveCount(0);
-      await expect(page.locator('.reading-paths a[href*="concepts/modules/"]')).toHaveCount(0);
-      await expect(page.locator('.reading-paths')).toContainText(locale === 'en' ? 'Catalogue and lifetime' : '目录与资源入门');
-      if (locale === 'en') await expect(page.locator('.home-introduction .content-language')).toHaveAttribute('data-translation-state','fallback');
+      await expect(page.locator('.cj-home-intro')).toContainText('TextCatalog');
+      // The reading-path navigation is distinct from the secondary
+      // "other resources" disclosure that reuses the same block class.
+      const readingPaths = page.locator('nav.cj-reading-paths');
+      await expect(readingPaths.locator('a[href*="concepts/packages/"]')).toHaveCount(0);
+      await expect(readingPaths.locator('a[href*="concepts/modules/"]')).toHaveCount(0);
+      await expect(readingPaths).toContainText(locale === 'en' ? 'Catalogue and lifetime' : '目录与资源入门');
+      if (locale === 'en') await expect(page.locator('.cj-home-intro .cj-content-language')).toHaveAttribute('data-translation-state','fallback');
       await page.goto(urls.package);
-      expect(await page.locator('.package-overview').count()).toBe(1);
+      expect(await page.locator('.cj-package-overview').count()).toBe(1);
       await page.goto(urls.api);
       const overloads = page.locator('[data-cjdoc-member][data-member-name="add"]');
       await expect(overloads).toHaveCount(2);
       for (const member of await overloads.all()) await member.evaluate(n => n.open = true);
       await expect(overloads.filter({hasText:'radix'})).toContainText('10');
       const stringOverload = overloads.filter({hasText:'value: String'});
-      const guideLink = stringOverload.locator('.api-usages a[href*="first-catalogue.html"]').first();
+      const guideLink = stringOverload.locator('.cj-usages a[href*="first-catalogue.html"]').first();
       const expectedGuideUrl = manifestSectionUrl(locale, urls.home, urls.guide, 'store-read');
       expect(new URL(await guideLink.getAttribute('href'), page.url()).href).toBe(expectedGuideUrl);
       await guideLink.click();
       expect(page.url()).toBe(expectedGuideUrl);
       const sectionId = decodeURIComponent(new URL(expectedGuideUrl).hash.slice(1));
-      await expect(page.locator(`.guide-content [id="${sectionId}"]`)).toBeVisible();
-      await expect(page.locator('.inline-binding > .binding-state')).toHaveCount(0);
-      await expect(page.locator('.inline-binding > .related-api-label').first()).toHaveText(locale === 'en' ? 'Related API:' : '相关 API：');
-      await expect(page.locator('.inline-binding a').first()).toHaveAttribute('href', /symbols\/.*\.html(?:#.*)?$/);
+      await expect(page.locator(`.cj-guide [id="${sectionId}"]`)).toBeVisible();
+      await expect(page.locator('.cj-binding > .cj-bindings__state')).toHaveCount(0);
+      await expect(page.locator('.cj-binding > .cj-bindings__label').first()).toHaveText(locale === 'en' ? 'Related API:' : '相关 API：');
+      await expect(page.locator('.cj-binding a').first()).toHaveAttribute('href', /symbols\/.*\.html(?:#.*)?$/);
       const introduction = siteManifest.routes.find(item => item.language === locale &&
         !item.symbolId && !item.sectionId && item.href === `html/${locale}/concepts/index.html`);
       expect(introduction).toBeTruthy();
       const introductionUrl = new URL(introduction.href.replace(`html/${locale}/`, ''), urls.home).href;
-      const introductionHref = await page.locator('.guide-content a[href]').evaluateAll(
+      const introductionHref = await page.locator('.cj-guide a[href]').evaluateAll(
         (links, target) => links.find(link => link.href === target)?.getAttribute('href'), introductionUrl);
       expect(introductionHref).toBeTruthy();
-      await page.locator(`.guide-content a[href=${JSON.stringify(introductionHref)}]`).first().click();
+      await page.locator(`.cj-guide a[href=${JSON.stringify(introductionHref)}]`).first().click();
       await expect(page).toHaveURL(introductionUrl);
-      await expect(page.locator('.guide-content')).toContainText('TextCatalog');
+      await expect(page.locator('.cj-guide')).toContainText('TextCatalog');
     }
   });
 }
@@ -126,14 +129,16 @@ for (const transport of ['root','subpath','file']) {
 test('Chinese display labels preserve raw search kind values and query protocol', async ({page}) => {
   const urls = await routes(page,'zh-CN','file');
   await page.goto(urls.home);
-  await page.locator('[data-cjdoc-filter-toggle]').click();
+  // Kind and package filters are always present inside the search dialog.
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toBeVisible();
   await expect(page.locator('[data-cjdoc-kind] option[value="function"]')).toHaveText('函数');
   await expect(page.locator('[data-cjdoc-kind] option[value="concept"]')).toHaveText('指南');
   await page.locator('[data-cjdoc-search]').fill('kind:function add');
-  await expect(page.locator('[data-cjdoc-results] .search-kind').first()).toHaveText('函数');
+  await expect(page.locator('[data-cjdoc-results] .cj-kind').first()).toHaveText('函数');
   await page.locator('[data-cjdoc-kind]').selectOption('function');
   await expect(page.locator('[data-cjdoc-kind]')).toHaveValue('function');
-  await expect(page.locator('[data-cjdoc-filter-toggle]')).toContainText('(1)');
+  await expect(page.locator('[data-cjdoc-results] [role="option"]')).not.toHaveCount(0);
 });
 
 test('mobile member filters yield to the first complete signature and retain active criteria', async ({page}) => {
@@ -144,10 +149,10 @@ test('mobile member filters yield to the first complete signature and retain act
     const toggle = page.locator('[data-cjdoc-member-filter-toggle]');
     await expect(toggle).toHaveAttribute('aria-expanded','false');
     await expect(page.locator('[data-cjdoc-member-filter]')).toBeHidden();
-    const toolbar = await page.locator('.member-browser-toolbar').boundingBox();
+    const toolbar = await page.locator('.cj-members__toolbar').boundingBox();
     expect(toolbar.height).toBeLessThanOrEqual(44);
     if (locale === 'zh-CN') {
-      const first = await page.locator('[data-cjdoc-member] .declaration-signature').first().boundingBox();
+      const first = await page.locator('[data-cjdoc-member] .cj-signature-inline').first().boundingBox();
       expect(first.y + first.height).toBeLessThan(844);
     }
     await toggle.click();
@@ -174,8 +179,9 @@ test('all theme presets keep normal text contrast and use offline font fallbacks
     const urls = await routes(page, locale, 'file');
     for (const [role,url] of Object.entries(urls)) {
       await page.goto(url);
+      // The settings dialog stays open across theme choices, so open it once.
+      await page.locator('[data-cjdoc-theme-toggle]').click();
       for (const theme of ['system','light','dark','paper','ocean','forest','terminal','violet']) {
-        await page.locator('[data-cjdoc-theme-toggle]').click();
         await page.locator(`[data-cjdoc-theme-value="${theme}"]`).click();
         await page.evaluate(() => {
           for (const animation of document.getAnimations()) {
@@ -188,7 +194,7 @@ test('all theme presets keep normal text contrast and use offline font fallbacks
             .reduce((s,c,i)=>s+c*[.2126,.7152,.0722][i],0);
           const failures=[]; let minimum=100, count=0;
           for (const el of document.querySelectorAll('body *')) {
-            if (!el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) || el.closest('svg,.sr-only,.skip-link')) continue;
+            if (!el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) || el.closest('svg,.cj-sr-only,.cj-skip-link')) continue;
             if (![...el.childNodes].some(n=>n.nodeType===3 && n.textContent.trim())) continue;
             const style = getComputedStyle(el);
             if (parseFloat(style.fontSize)>=24) continue;
@@ -204,10 +210,11 @@ test('all theme presets keep normal text contrast and use offline font fallbacks
         observations.push({locale,role,theme,...result});
         expect(result.failures, `${locale}/${role}/${theme}`).toEqual([]);
       }
+      await page.keyboard.press('Escape');
       const session = await page.context().newCDPSession(page);
       await session.send('DOM.enable'); await session.send('CSS.enable');
       const {root} = await session.send('DOM.getDocument');
-      for (const selector of ['h1','.prose > p','pre code','.member-summary-description']) {
+      for (const selector of ['h1','.cj-prose > p','pre code','.cj-member__description']) {
         const {nodeId} = await session.send('DOM.querySelector',{nodeId:root.nodeId,selector});
         if (nodeId) {
           const {fonts} = await session.send('CSS.getPlatformFontsForNode',{nodeId});
@@ -230,13 +237,13 @@ test('native details, guide return and print remain usable without JavaScript at
   const member=page.locator('[data-cjdoc-member][data-member-name="add"]').first();
   await member.locator('summary').click();
   await expect(member).toHaveAttribute('open','');
-  await expect(member.locator('.member-detail-body')).toBeVisible();
-  await expect(page.locator('.member-detail-actions a').first()).toBeVisible();
+  await expect(member.locator('.cj-member__body')).toBeVisible();
+  await expect(page.locator('.cj-member-actions .cj-member-actions__item--standalone').first()).toBeVisible();
   const metrics=await readingMetrics(page); expect(metrics.scroll).toBeLessThanOrEqual(metrics.width+1);
   await page.emulateMedia({media:'print'});
-  await expect(page.locator('.docs-sidebar')).toBeHidden();
-  await expect(page.locator('.member-detail-body').first()).toBeVisible();
+  await expect(page.locator('.cj-sidebar')).toBeHidden();
+  await expect(page.locator('.cj-member__body').first()).toBeVisible();
   await page.goto(urls.guide);
-  await expect(page.locator('.guide-content')).toContainText('String');
+  await expect(page.locator('.cj-guide')).toContainText('String');
   await context.close();
 });
