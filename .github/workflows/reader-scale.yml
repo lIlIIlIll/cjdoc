@@ -175,6 +175,7 @@ jobs:
             registration_command+=(
               --doc-ir-transition v17-v18-unregistered-source
               --aria-transition docs/maintainer/reader-scale-docs-173-177.json
+              --presentation docs/maintainer/reader-scale-presentation-v18.json
             )
           fi
           "${registration_command[@]}"

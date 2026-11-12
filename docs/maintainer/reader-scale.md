@@ -133,7 +133,7 @@ python3 scripts/reader_register.py \
   --aria-transition docs/maintainer/reader-scale-docs-173-177.json
 ```
 
-这两个参数只用于固定 1k 比较，不能与 `--presentation` 同用。其它 cohort 和普通重跑不传它们，继续使用严格默认比较。
+这三个参数只用于固定 1k 比较：精确过渡冻结 IR/ARIA 的既定差异，`--presentation` 明确登记本次重设的排版与实际使用字体。三者并存时各自仍按原规则逐项校验，任何一个都不会放宽数值预算、原始任务、打印/无 JS 检查或其它视觉相等要求；其它 cohort 和普通重跑不传它们，继续使用严格默认比较。
 
 ```bash
 : "${AFTER_BINARY:?指定实际改后 binary}"

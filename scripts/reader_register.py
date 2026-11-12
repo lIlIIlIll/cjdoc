@@ -33,8 +33,10 @@ REGISTRATION_FIELDS = {"baseline", "baselineQueryFailures", "presentation", "doc
 def validate_transition_budget(budget: dict, reference: Path) -> None:
     if "docIrTransition" not in budget and "ariaTransition" not in budget:
         return
-    if "presentation" in budget:
-        raise ValueError("exact IR/ARIA transitions cannot waive presentation or font equality")
+    # A transition freezes the exact IR/ARIA difference it allows; it never
+    # changes the numeric budgets. A presentation profile may be registered
+    # alongside it because a redesign changes typography and the accessible tree
+    # together, and both must be stated explicitly rather than derived.
     encoded = reference.read_bytes()
     registration = budget.get("transitionTemplate", {})
     if set(registration) != {"sha256"} or registration["sha256"] != hashlib.sha256(encoded).hexdigest():
@@ -53,8 +55,6 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
         raise ValueError("registered percentiles require at least 20 raw samples")
     has_transition = doc_ir_transition is not None or aria_transition is not None
     if has_transition:
-        if presentation is not None:
-            raise ValueError("exact transitions cannot be combined with a presentation exemption")
         reference_bytes = REFERENCE_TEMPLATE.read_bytes()
         if budget != strict_loads(reference_bytes, description="committed Reader threshold template"):
             raise ValueError("exact transitions require unchanged committed Reader budgets")

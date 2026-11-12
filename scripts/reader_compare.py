@@ -138,7 +138,14 @@ def check_font_usage(before: dict, after: dict, profile: dict | None) -> None:
         return
     locale = after["environment"]["requestedUiLocale"]
     require(before["recipe"] == after["recipe"] == profile["recipe"], "presentation corpus recipe changed")
+    # Both captures share one host, but each records only the families it knew
+    # about: the baseline's fixed inventory plus whatever its own pages used. A
+    # redesign resolves families the baseline never sampled, so the installed
+    # environment is the union, and a family must resolve to one identical file.
     inventory = keyed(before["environment"]["fontFiles"], "family", "installed fonts")
+    for font in after["environment"]["fontFiles"]:
+        known = inventory.setdefault(font["family"], font)
+        require(known == font, "installed font identity disagrees between captures: " + font["family"])
     for label, report in (("baseline", before), ("after", after)):
         usage = report.get("fontUsage")
         require(isinstance(usage, list) and bool(usage), "actual font usage is missing")

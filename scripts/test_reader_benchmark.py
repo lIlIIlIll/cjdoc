@@ -1058,10 +1058,11 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             relaxed["absolute"]["querySyncP95Ms"] += 1
             with self.assertRaises(ValueError):
                 validate_transition_budget(relaxed, template)
+            # A redesign registers typography and the accessible tree beside the
+            # exact IR/ARIA transitions; each difference stays explicitly stated.
             presentation = deepcopy(budget)
             presentation["presentation"] = {"profile": {}}
-            with self.assertRaises(ValueError):
-                validate_transition_budget(presentation, template)
+            validate_transition_budget(presentation, template)
 
             altered_template = deepcopy(budget)
             with tempfile.TemporaryDirectory() as altered_directory:
@@ -1078,10 +1079,12 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as registration_directory:
                 missing_baseline = Path(registration_directory) / "not-captured"
                 missing_presentation = Path(registration_directory) / "presentation.json"
-                with self.assertRaises(ValueError):
+                # A presentation profile is read before the baseline, so an
+                # absent profile is rejected even when transitions are given.
+                with self.assertRaises((ValueError, FileNotFoundError)):
                     register_reader(missing_baseline, template, missing_presentation,
                                     doc_ir_transition=TRANSITION_NAME)
-                with self.assertRaises(ValueError):
+                with self.assertRaises((ValueError, FileNotFoundError)):
                     register_reader(missing_baseline, template, missing_presentation,
                                     aria_transition=missing_presentation)
                 modified_template = json.loads(template.read_text(encoding="utf-8"))

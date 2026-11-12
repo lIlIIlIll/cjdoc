@@ -14,8 +14,10 @@ import { chromium, playwrightVersion, distribution, entryIndex, installMetrics, 
 import { anchorFor, instrumentedPage, memberTasks, overloadTasks, queryTasks } from './reader-scale-tasks.mjs';
 
 async function fontIdentities(report, inventory = false) {
-  // The installed environment is independent of which fonts the edited page uses.
-  // Actual per-node usage remains in the report and has its own registered check.
+  // The inventory names the installed files for every family the capture either
+  // samples by contract or actually used, so a redesign that resolves a family
+  // outside the original six still has a file identity to compare against. The
+  // resolution is `fc-match` on the host, never a value copied from the page.
   const families = new Set(inventory ? [
     'DejaVu Sans Mono', 'Liberation Mono', 'Liberation Sans',
     'Noto Sans CJK SC', 'Noto Serif CJK SC', 'WenQuanYi Zen Hei',
@@ -25,7 +27,7 @@ async function fontIdentities(report, inventory = false) {
     if (Array.isArray(value.fonts)) for (const font of value.fonts) if (!font.custom) families.add(font.family);
     for (const child of Object.values(value)) if (child && typeof child === 'object') visit(child);
   };
-  if (!inventory) visit(report);
+  visit(report);
   const identities = [];
   for (const family of [...families].sort()) {
     try {
