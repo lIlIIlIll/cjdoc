@@ -141,11 +141,9 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
 
 internal func strictObject(node: JsonNode, path: String, keys: Array<String>): JsonObject {
     let object = try { node.asObject() } catch (_: Exception) { fail(path, "expected object") }
-    let allowed = HashSet<String>()
-    for (key in keys) { let _ = allowed.add(key) }
     for (index in 0..object.size()) {
         let key = object.nameAt(index)
-        if (!allowed.contains(key)) { fail(path, "unknown field '${key}'") }
+        if (!keys.contains(key)) { fail(path, "unknown field '${key}'") }
     }
     object
 }
