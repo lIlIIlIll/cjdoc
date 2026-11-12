@@ -52,7 +52,10 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
       PYTHONUTF8: '1'
       CJDOC_PYTHON: python
-      cjHeapSize: '512MB'
+      # The redesigned reader renders the navigation branch and both dialogs
+      # into every page, so one capture peaks near the old ceiling; the heap
+      # recipe is a measurement environment, not a product limit.
+      cjHeapSize: '1GB'
       PLAYWRIGHT_SKIP_BROWSER_GC: '1'
     steps:
       - name: Prepare disk-backed task directories

@@ -268,16 +268,20 @@ internal class HtmlWriter {
     }
 
     private func appendStartTag(tag: String, attrs: Array<HtmlAttr>): Unit {
-        let seen = HashSet<String>()
         out.append("<")
         out.append(tag)
-        for (attribute in attrs) {
+        // Attribute lists are a handful of entries, so a scan over the already
+        // written names is cheaper than allocating a set for every element.
+        for (index in 0..attrs.size) {
+            let attribute = attrs[index]
             let name = attribute.name
             if (!validHtmlAttributeName(name)) {
                 throw IllegalArgumentException("attribute '${name}' is not allowed")
             }
-            if (!seen.add(name)) {
-                throw IllegalArgumentException("duplicate attribute '${name}'")
+            for (previous in 0..index) {
+                if (attrs[previous].name == name) {
+                    throw IllegalArgumentException("duplicate attribute '${name}'")
+                }
             }
             out.append(" ")
             out.append(name)
