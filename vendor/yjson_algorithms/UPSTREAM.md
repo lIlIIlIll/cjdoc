@@ -7,8 +7,10 @@ a Git repository subdirectory. The vendored source is copied from the yjson
 0.1.0 release package at the pinned release commit, and includes two
 cjdoc-local allocation patches recorded in vendor-manifest.toml:
 
-- `src/lib_json_schema.cj`: avoid a large `RuneArray` allocation while counting JSON Schema string length.
-- `src/lib_json_schema.cj`: reuse pointer targets in the private, detached compiled schema instead of deep-copying the same subtree on every reference resolution. Public schema copies, resource context and per-use work limits remain unchanged.
+- `src/lib_json_schema.cj`: Avoid large RuneArray allocation while counting JSON Schema string length; reuse private compiled-schema pointer targets without per-reference deep copies.
+
+Schema resources are detached once at compilation. Public schema copies,
+resource context and per-use work limits remain unchanged.
 
 - Upstream: `https://github.com/lIlIIlIll/yjson`
 - Release: [yjson 0.1.0](https://github.com/lIlIIlIll/yjson/releases/tag/0.1.0)
