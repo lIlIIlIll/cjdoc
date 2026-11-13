@@ -197,7 +197,8 @@ html:not([data-cj-js]) .cj-members__toolbar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;
-    transition-duration: .01ms !important;
+    /* A nonzero duration creates transitions even on otherwise static elements. */
+    transition: none !important;
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
   }

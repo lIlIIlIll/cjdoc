@@ -526,6 +526,16 @@ html:not([data-cj-js]) .cj-member-actions { position: static; }
   html[data-cj-js] .cj-member-row:focus-within .cj-member-actions {
     opacity: 1; pointer-events: auto;
   }
+  /* The controls stay focusable; only invisible decorative vectors defer layout.
+     Discrete display transitions retain the tray's existing fade-out. */
+  @supports (transition-behavior: allow-discrete) {
+    html[data-cj-js] .cj-members--large .cj-member-actions__item > .cj-icon {
+      transition: display .12s allow-discrete;
+    }
+    html[data-cj-js] .cj-members--large .cj-member-row:not(:hover):not(:focus-within) .cj-member-actions__item > .cj-icon {
+      display: none;
+    }
+  }
 }
 .cj-member-actions__item {
   display: inline-grid; place-items: center; width: 1.875rem; height: 1.875rem; padding: 0;

@@ -81,6 +81,26 @@ test('member outline refreshes when its responsive view becomes active', async (
   await expect.poll(() => targets(desktop)).toEqual(members.map(member => member.id));
 });
 
+test('reduced motion keeps outline activation free of new transitions', async ({page}) => {
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.setViewportSize({width:1440,height:900});
+  const urls = await routes(page, 'en', 'root');
+  await page.goto(urls.api);
+  const links = page.locator('[data-cjdoc-toc] a[data-toc-target]');
+  const selected = await links.evaluateAll(nodes =>
+    nodes.findIndex(node => !node.classList.contains('cj-toc__link--active')));
+  const target = links.nth(selected);
+  const href = await target.getAttribute('href');
+  const transitions = await target.evaluate(link => {
+    link.click();
+    link.getBoundingClientRect();
+    return link.getAnimations().map(animation => animation.transitionProperty);
+  });
+  expect(transitions).toEqual([]);
+  await expect(page).toHaveURL(new URL(href, urls.api).href);
+  await expect(target).toHaveClass(/cj-toc__link--active/);
+});
+
 async function routes(page, locale, transport) {
   const home = transport === 'file'
     ? pathToFileURL(path.resolve(fixture, locale, 'index.html')).href

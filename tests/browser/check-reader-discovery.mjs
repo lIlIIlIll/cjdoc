@@ -46,6 +46,35 @@ const openSearch = async () => {
 const query = async value => { await openSearch(); await page.locator('[data-cjdoc-search]').fill(value); };
 const next = page.locator('[data-cjdoc-search-next]');
 const previous = page.locator('[data-cjdoc-search-previous]');
+const checkDesktopActionKeyboard = async member => {
+  const action = member.locator('..').locator('.cj-member-actions__item--standalone');
+  const destination = new URL(await action.getAttribute('href'), ownerUrl).href;
+  const memberId = await member.getAttribute('id');
+  await page.mouse.move(1, 1);
+  await page.locator('[data-cjdoc-member-filter]').focus();
+  await page.waitForFunction(id => {
+    const tray = document.getElementById(id)?.parentElement.querySelector('[data-cjdoc-member-actions]');
+    return tray && getComputedStyle(tray).opacity === '0';
+  }, memberId);
+  await action.focus();
+  await page.waitForFunction(() => {
+    const tray = document.activeElement?.closest('[data-cjdoc-member-actions]');
+    return tray && getComputedStyle(tray).opacity === '1';
+  });
+  const painted = await action.evaluate(link => {
+    const box = link.querySelector('.cj-icon').getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return { focused: document.activeElement === link, width: box.width, height: box.height,
+      receivesPointer: hit === link || link.contains(hit) };
+  });
+  assert.equal(painted.focused, true, 'the action remains a real keyboard focus target');
+  assert.ok(painted.width > 0 && painted.height > 0, 'keyboard focus paints the decorative icon');
+  assert.equal(painted.receivesPointer, true, 'the painted action receives native pointer input');
+  await Promise.all([page.waitForURL(destination), page.keyboard.press('Enter')]);
+  await page.goBack({waitUntil: 'load'});
+  await page.waitForFunction(id => document.getElementById(id)?.open, memberId);
+  report.tasks.push({id: 'desktop-member-action-keyboard-paints-and-navigates', pass: true});
+};
 try {
   await page.goto(indexUrl);
   await query('kind:function');
@@ -175,6 +204,7 @@ try {
   assert.equal(await tail.innerText(), tailContract,
     'opening a distant member must not discard the already-open tail contract from rendered text');
   report.tasks.push({ id: 'distant-open-contract-retains-complete-rendered-text', pass: true });
+  await checkDesktopActionKeyboard(firstMember);
   // Compact action menus are a mobile affordance; desktop exposes direct actions.
   await page.setViewportSize({ width: 390, height: 844 });
   const tailActions = tail.locator('..').locator('[data-cjdoc-member-actions]');
