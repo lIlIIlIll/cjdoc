@@ -70,6 +70,7 @@
 - 当前浏览器报告为 `cjdoc.reader-browser/2`，不接受旧形状。重载比较分别保留原始签名、按顺序的参数名/类型/默认值、返回类型，以及每个作者 `doc-field` 的身份和精确 rendered text；两侧逐项相等，不归一化作者文本或默认值中的空白。生成的参数标题分隔符不是作者契约，不能把整个详情容器的排版文本混入作者字段。完整原生 HTML 仍保留在观测产物中。
 - 伴随 JSON 的解析采样是隔离的 `JSON.parse`，不是把 JS 索引的实际加载/编译时间改名为 JSON 解析时间。真实页面同时记录导航、脚本 CPU、>50ms 长任务、DOM 与 CDP JavaScript heap；后者不是浏览器进程总 RSS。
 - `environment.fontFiles` 只记录固定七家族 `DejaVu Sans`、`DejaVu Sans Mono`、`Liberation Mono`、`Liberation Sans`、`Noto Sans CJK SC`、`Noto Serif CJK SC`、`WenQuanYi Zen Hei` 的 fontconfig 默认文件及真实 SHA-256，并按家族排序。before/after 的完整 environment（包括该安装清单）必须相等，不取两侧并集；缺失、新增、不可用或摘要改变均拒绝。采样节点的实际 family/PostScriptName 与 `fontUsage` 独立记录；只有明确登记的 presentation profile 可以允许实际使用集合变化。这不是枚举所有字形、字重或字体文件的声明。
+- 字体节点采样使用独立 CDP session，并在 `finally` 中 detach；负责后续 `Performance` / `Network` 观测的 session 不开启 `DOM` / `CSS` domain。节点查询会让 Inspector 订阅该路径下的成员变更，不能把这些额外通知留进后续筛选计时。两侧仍采集相同字体字段；采样生命周期修复不改变样本、原始任务、environment、ARIA/presentation profile 或任何数值门槛。
 
 非 Ubuntu 本地资格检查必须同时复现 runner 的 fontconfig 规则，而不只提供相同字体文件；一个 TTC 还可包含清单之外的实际 face。当前 Ubuntu 22.04 配方使用原始 `fontconfig-config` 规则及 `fonts-noto-cjk` 的 `70-fonts-noto-cjk.conf` 语言选择规则。可在任务私有目录中包含这些原始规则、排除宿主 user/local 配置，并引用原始七家族文件与私有 cache；不得改字体字节或以临时 family 替换放宽 profile。先核对双语实际 usage、完整 environment 和完整 ARIA，再冻结环境采正式 20 样本。
 

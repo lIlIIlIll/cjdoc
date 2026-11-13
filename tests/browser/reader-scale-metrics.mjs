@@ -63,19 +63,22 @@ export async function pageMetrics(page, attachedClient = null) {
   const performanceMetrics = await client.send('Performance.getMetrics');
   const values = Object.fromEntries(performanceMetrics.metrics.map(item => [item.name, item.value]));
   let fonts = null;
+  // Font-node subscriptions must not instrument later interaction timings.
+  const fontClient = await page.context().newCDPSession(page);
   try {
-    await client.send('DOM.enable');
-    await client.send('CSS.enable');
-    const dom = await client.send('DOM.getDocument', { depth: 0 });
+    await fontClient.send('DOM.enable');
+    await fontClient.send('CSS.enable');
+    const dom = await fontClient.send('DOM.getDocument', { depth: 0 });
     fonts = [];
     for (const selector of ['body', 'main h1', 'main p', '.cj-signature-inline',
       '[data-cjdoc-member][open] .cj-signature-inline', 'pre code']) {
-      const node = await client.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector });
+      const node = await fontClient.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector });
       if (!node.nodeId) continue;
-      const sampled = (await client.send('CSS.getPlatformFontsForNode', { nodeId: node.nodeId })).fonts;
+      const sampled = (await fontClient.send('CSS.getPlatformFontsForNode', { nodeId: node.nodeId })).fonts;
       fonts.push(...sampled.map(font => ({ ...font, sampleSelector: selector })));
     }
   } catch (_) { fonts = null; /* Unsupported font identity is not an empty measurement. */ }
+  finally { await fontClient.detach(); }
   if (!attachedClient) await client.detach();
   const layout = await page.evaluate(() => {
     const rect = element => {

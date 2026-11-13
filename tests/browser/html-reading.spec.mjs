@@ -3,6 +3,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import path from 'node:path';
+import {pageMetrics} from './reader-scale-metrics.mjs';
 
 const fixture = process.env.CJDOC_READING_FIXTURE;
 test.skip(!fixture, 'CJDOC_READING_FIXTURE must point to a generated bilingual PocketKit site');
@@ -39,6 +40,24 @@ test.beforeAll(async () => {
   origin = `http://127.0.0.1:${server.address().port}`;
 });
 test.afterAll(async () => { if (server) await new Promise(resolve => server.close(resolve)); });
+
+test('font evidence sampling releases DOM subscriptions before interaction timing', async ({page, context}) => {
+  await page.goto(`${origin}/en/index.html`);
+  const client = await context.newCDPSession(page);
+  try {
+    await client.send('Performance.enable');
+    let changes = 0;
+    client.on('DOM.attributeModified', () => changes++);
+    const metrics = await pageMetrics(page, client);
+    expect(metrics.fonts).not.toBeNull();
+    changes = 0;
+    await page.locator('main').evaluate(node => node.setAttribute('data-reader-probe', 'changed'));
+    await client.send('Runtime.evaluate', {expression:'0'});
+    expect(changes).toBe(0);
+  } finally {
+    await client.detach();
+  }
+});
 
 async function routes(page, locale, transport) {
   const home = transport === 'file'
