@@ -195,7 +195,7 @@ internal let HTML_READING_SCRIPT = """
       const observer = new IntersectionObserver(entries => {
         if (clickedTarget !== null) return;
         for (const entry of entries) {
-          if (entry.isIntersecting) setActive(targetId(entry.target));
+          if (entry.isIntersecting && !entry.target.closest("[hidden]")) setActive(targetId(entry.target));
         }
       }, {rootMargin: "-18% 0px -68% 0px", threshold: 0});
       for (const heading of headings) observer.observe(heading);
@@ -206,7 +206,7 @@ internal let HTML_READING_SCRIPT = """
       if (!window.location.hash || window.location.hash.length <= 1) return;
       let id = window.location.hash.slice(1);
       try { id = decodeURIComponent(id); } catch (_) { /* keep raw */ }
-      if (links.some(link => link.dataset.tocTarget === id)) setActive(id);
+      if (linksByTarget.has(id)) setActive(id);
     };
     syncHash();
     window.addEventListener("hashchange", syncHash);
@@ -228,8 +228,7 @@ internal let HTML_READING_SCRIPT = """
           if (link.textContent !== label) link.textContent = label;
         }
       }
-      const active = tocList.querySelector(".cj-toc__link--active");
-      if (active && !visibleIds.has(active.dataset.tocTarget) && visible.length) {
+      if (activeLink && !visibleIds.has(activeLink.dataset.tocTarget) && visible.length) {
         setActive(targetId(visible[0]));
       }
       toc.hidden = visible.length === 0;
