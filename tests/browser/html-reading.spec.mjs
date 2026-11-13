@@ -285,6 +285,45 @@ test('display settings appear only on first open and stay one reusable instance'
   await page.keyboard.press('Escape');
 });
 
+for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
+  test(`search shortcuts transfer modal ownership at ${viewport.width}px`, async ({page}) => {
+    await page.setViewportSize(viewport);
+    const urls = await routes(page,'en','file');
+    for (const key of ['Control+k','Meta+k']) {
+      await page.goto(urls.home);
+      const settings = page.locator('[data-cjdoc-theme-popover]');
+      const search = page.locator('[data-cjdoc-search-dialog]');
+      const trigger = page.locator('[data-cjdoc-theme-toggle]');
+      await trigger.click();
+      await expect(settings).toBeVisible();
+      await expect(search).toHaveCount(0);
+      await page.keyboard.press(key);
+      await expect(settings).toBeHidden();
+      await expect(trigger).toHaveAttribute('aria-expanded','false');
+      await expect(search).toBeVisible();
+      await expect(page.locator('dialog:modal')).toHaveCount(1);
+      await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await trigger.click();
+      await page.keyboard.press(key);
+      await expect(settings).toBeHidden();
+      await expect(settings).toHaveCount(1);
+      await expect(search).toHaveCount(1);
+      await expect(page.locator('dialog:modal')).toHaveCount(1);
+      await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+    }
+    if (viewport.width < 760) {
+      await page.keyboard.press('Escape');
+      await page.locator('[data-cjdoc-menu]').click();
+      await expect(page.locator('html')).toHaveAttribute('data-cj-drawer','open');
+      await page.keyboard.press('Control+k');
+      await expect(page.locator('html')).not.toHaveAttribute('data-cj-drawer','open');
+      await expect(page.locator('dialog:modal')).toHaveCount(1);
+      await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+    }
+  });
+}
+
 test('Chinese settings copy and the modal sheet stay intact on the first open', async ({page}) => {
   await page.setViewportSize({width:390,height:844});
   const urls = await routes(page,'zh-CN','file');

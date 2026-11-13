@@ -648,6 +648,15 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       if (input && typeof input.select === "function") input.select();
     };
     const openDialog = () => {
+      const settings = document.querySelector("[data-cjdoc-theme-popover]");
+      if (settings && settings.open) {
+        if (typeof settings.close === "function") settings.close();
+        else settings.removeAttribute("open");
+        document.querySelector("[data-cjdoc-theme-toggle]")?.setAttribute("aria-expanded", "false");
+      }
+      if (document.documentElement.dataset.cjDrawer === "open") {
+        document.querySelector("[data-cjdoc-sidebar-close]")?.click();
+      }
       if (trigger) trigger.setAttribute("aria-expanded", "true");
       if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
       else dialog.setAttribute("open", "");
