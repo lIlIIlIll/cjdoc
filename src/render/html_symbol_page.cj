@@ -590,7 +590,9 @@ internal func appendMemberBrowser(w: HtmlWriter, documentation: DocumentationSet
     typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
     let browser = projection.members(symbol)
     if (browser.entries.isEmpty()) { return }
-    w.open("section", attrs: [htmlClass("cj-members"), htmlFlag("data-cjdoc-member-browser"),
+    // The stylesheet needs this boundary before any script can force the first layout.
+    let browserClass = if (browser.entries.size > 256) { "cj-members cj-members--large" } else { "cj-members" }
+    w.open("section", attrs: [htmlClass(browserClass), htmlFlag("data-cjdoc-member-browser"),
         htmlAttr("aria-label", label(locale, "Members", "成员"))])
     appendMemberBrowserToolbar(w, browser, locale)
     let sections = HtmlMemberSections(browser.entries, projection.catalog)

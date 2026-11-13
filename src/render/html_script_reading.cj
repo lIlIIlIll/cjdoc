@@ -218,8 +218,9 @@ internal let HTML_READING_SCRIPT = """
     syncTocVisibility = () => {
       const visible = headings.filter(heading => !heading.closest("[hidden]"));
       const visibleIds = new Set(visible.map(targetId));
+      const activeList = mobileOutline.matches && mobileList || tocList;
       for (const {list, link, item, heading} of outline) {
-        if (mobileList && (list === mobileList) !== mobileOutline.matches) continue;
+        if (list !== activeList) continue;
         if (item) item.hidden = !visibleIds.has(link.dataset.tocTarget);
         // Filtering changes group counts, not member signatures.
         if (heading && heading.dataset.cjdocTocRole !== "member") {
@@ -591,8 +592,6 @@ internal let HTML_READING_SCRIPT = """
     const status = document.querySelector("[data-cjdoc-member-filter-status]");
     const expand = document.querySelector("[data-cjdoc-members-expand]");
     const collapse = document.querySelector("[data-cjdoc-members-collapse]");
-    // Defer layout only for large, closed member rows.
-    if (rows.length > 256) browser.classList.add("cj-members--large");
     let notice = "";
     const syncActions = () => {
       const visible = rows.filter(row => !row.hidden);
