@@ -311,6 +311,7 @@ def evidence_pair():
 def overload_evidence_pair():
     before, after, manifest, budget = evidence_pair()
     details = [{"id": "native:first", "signature": "public func choose(value: Choice00): Int64",
+                "returnType": "Int64",
                 "parameters": [{"name": "value", "type": "Choice00", "defaultValue": '"keep: spaces = here"'}],
                 "authorFields": [{"id": "doc-field-param", "text": "Keep value: Choice00 and a = b exactly."},
                                  {"id": "doc-field-post", "text": "The result equals 0."}]}]
@@ -357,6 +358,7 @@ class EvidenceIntegrityTests(unittest.TestCase):
     def test_overload_contract_rejects_semantic_changes_and_author_whitespace_changes(self):
         changes = [
             lambda row: row.update(signature="public func choose(value: Choice01): Int64"),
+            lambda row: row.update(returnType="String"),
             lambda row: row["parameters"][0].update(name="other"),
             lambda row: row["parameters"][0].update(type="Choice01"),
             lambda row: row["parameters"][0].update(defaultValue='"keep:spaces = here"'),
@@ -370,7 +372,7 @@ class EvidenceIntegrityTests(unittest.TestCase):
                 compare_browser(before, after, manifest, budget, [])
 
     def test_identically_incomplete_or_legacy_overload_evidence_cannot_pair(self):
-        for change in ("version", "authorFields", "emptyAuthors", "parameters", "parameterType"):
+        for change in ("version", "authorFields", "emptyAuthors", "parameters", "parameterType", "returnType"):
             before, after, manifest, budget = overload_evidence_pair()
             for report in (before, after):
                 detail = report["transports"][0]["overloads"][0]["comparison"]["details"][0]

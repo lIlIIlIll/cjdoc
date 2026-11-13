@@ -184,9 +184,10 @@ export async function overloadDetailEvidence(row, target) {
       return { name: name.textContent, type: type ? type.textContent : null,
         defaultValue: defaultValue ? defaultValue.textContent : null };
     });
+    const returnType = body.querySelector('.cj-returns__type > code, .return-type');
     const authorFields = [...body.querySelectorAll('[id^="doc-field-"]')]
       .map(field => ({ id: field.id, text: field.innerText }));
-    return { parameters, authorFields };
+    return { parameters, returnType: returnType ? returnType.textContent : null, authorFields };
   });
   if (content.parameters.length !== target.parameterTypes.length) {
     throw new Error('Rendered parameter inventory differs from the native target');

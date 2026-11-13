@@ -64,7 +64,7 @@
 - 原生生成和 Doc IR→HTML replay 分别记录 CPU、墙钟、退出码、最大单进程 RSS。`wait4` RSS 不是同时存活的进程树总内存；不支持 POSIX `wait4` 的原生观测明确拒绝，不伪造 Windows 资源数据。
 - 查询与成员筛选保留全部原始样本和 nearest-rank P50/P95。成员序列交替清空/精确目标；不能把它写成仅测更容易的同值重复。`frameMs` 是下一次 `requestAnimationFrame` 的时刻，不保证像素已经绘制。
 - `automationDurationMs` 是脚本协议耗时，查询/成员任务包含采样和自动化调度；`operationCount` 是逻辑读者操作数。它们不是人类完成时间，不能用二者相除得到“每次点击成本”。重载选择另记目标调用形状到准确原生链接的操作耗时。
-- 当前浏览器报告为 `cjdoc.reader-browser/2`，不接受旧形状。重载比较分别保留原始签名、按顺序的参数名/类型/默认值，以及每个作者 `doc-field` 的身份和精确 rendered text；两侧逐项相等，不归一化作者文本或默认值中的空白。生成的参数标题分隔符不是作者契约，不能把整个详情容器的排版文本混入作者字段。完整原生 HTML 仍保留在观测产物中。
+- 当前浏览器报告为 `cjdoc.reader-browser/2`，不接受旧形状。重载比较分别保留原始签名、按顺序的参数名/类型/默认值、返回类型，以及每个作者 `doc-field` 的身份和精确 rendered text；两侧逐项相等，不归一化作者文本或默认值中的空白。生成的参数标题分隔符不是作者契约，不能把整个详情容器的排版文本混入作者字段。完整原生 HTML 仍保留在观测产物中。
 - 伴随 JSON 的解析采样是隔离的 `JSON.parse`，不是把 JS 索引的实际加载/编译时间改名为 JSON 解析时间。真实页面同时记录导航、脚本 CPU、>50ms 长任务、DOM 与 CDP JavaScript heap；后者不是浏览器进程总 RSS。
 - `environment.fontFiles` 只记录固定七家族 `DejaVu Sans`、`DejaVu Sans Mono`、`Liberation Mono`、`Liberation Sans`、`Noto Sans CJK SC`、`Noto Serif CJK SC`、`WenQuanYi Zen Hei` 的 fontconfig 默认文件及真实 SHA-256，并按家族排序。before/after 的完整 environment（包括该安装清单）必须相等，不取两侧并集；缺失、新增、不可用或摘要改变均拒绝。采样节点的实际 family/PostScriptName 与 `fontUsage` 独立记录；只有明确登记的 presentation profile 可以允许实际使用集合变化。这不是枚举所有字形、字重或字体文件的声明。
 

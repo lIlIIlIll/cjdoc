@@ -55,10 +55,12 @@ def validate_browser_contract(browser: dict) -> None:
                 raise ValueError("overload contract details are absent")
             for detail in details:
                 if not isinstance(detail, dict) or set(detail) != {
-                        "id", "signature", "parameters", "authorFields"}:
+                        "id", "signature", "parameters", "returnType", "authorFields"}:
                     raise ValueError("overload contract must separate parameter fields and author text")
                 if not isinstance(detail["id"], str) or not isinstance(detail["signature"], str):
                     raise ValueError("overload identity and original signature must be strings")
+                if detail["returnType"] is not None and not isinstance(detail["returnType"], str):
+                    raise ValueError("overload return type must remain an exact string or null")
                 parameters = detail["parameters"]
                 if not isinstance(parameters, list):
                     raise ValueError("overload parameter inventory must be a list")
