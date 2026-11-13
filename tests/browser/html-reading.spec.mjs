@@ -304,6 +304,7 @@ for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
       await expect(page.locator('dialog:modal')).toHaveCount(1);
       await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
       await page.keyboard.press('Escape');
+      await expect(trigger).toBeFocused();
       await trigger.click();
       await page.keyboard.press(key);
       await expect(settings).toBeHidden();

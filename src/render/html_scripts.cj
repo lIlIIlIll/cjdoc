@@ -647,12 +647,15 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       if (input && typeof input.focus === "function") input.focus();
       if (input && typeof input.select === "function") input.select();
     };
+    let returnTarget = trigger;
     const openDialog = () => {
+      returnTarget = trigger;
       const settings = document.querySelector("[data-cjdoc-theme-popover]");
       if (settings && settings.open) {
         if (typeof settings.close === "function") settings.close();
         else settings.removeAttribute("open");
-        document.querySelector("[data-cjdoc-theme-toggle]")?.setAttribute("aria-expanded", "false");
+        returnTarget = document.querySelector("[data-cjdoc-theme-toggle]") || trigger;
+        returnTarget?.setAttribute("aria-expanded", "false");
       }
       if (document.documentElement.dataset.cjDrawer === "open") {
         document.querySelector("[data-cjdoc-sidebar-close]")?.click();
@@ -663,8 +666,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       render();
       focusTarget();
     };
-    // Focus returns to the trigger only when the reader dismissed the dialog;
-    // following a result leaves focus to the navigation target.
+    // Dismissal returns to the invoking trigger; result navigation owns its focus.
     let restoreFocusOnClose = true;
     const closeDialog = (restoreFocus = true) => {
       restoreFocusOnClose = restoreFocus;
@@ -672,13 +674,13 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       if (trigger) trigger.setAttribute("aria-expanded", "false");
       if (typeof dialog.close === "function" && dialog.open) dialog.close();
       else dialog.removeAttribute("open");
-      if (restoreFocus && trigger && typeof trigger.focus === "function") trigger.focus();
+      if (restoreFocus && returnTarget && typeof returnTarget.focus === "function") returnTarget.focus();
     };
     if (closeButton) closeButton.addEventListener("click", () => closeDialog(true));
     dialog.addEventListener("close", () => {
       if (trigger) trigger.setAttribute("aria-expanded", "false");
       resetSearch();
-      if (restoreFocusOnClose && trigger && typeof trigger.focus === "function") trigger.focus();
+      if (restoreFocusOnClose && returnTarget && typeof returnTarget.focus === "function") returnTarget.focus();
       restoreFocusOnClose = true;
     });
     dialog.addEventListener("click", event => {
