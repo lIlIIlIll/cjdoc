@@ -223,13 +223,6 @@ private let HTML_CHROME_STYLE = """
 .cj-toc__link:hover { color: var(--cj-fg); text-decoration: none; }
 .cj-toc__link--active { border-left-color: var(--cj-accent); color: var(--cj-accent); font-weight: 600; }
 .cj-toc__item--member .cj-toc__link, .cj-toc__item--api .cj-toc__link { font-family: var(--cj-font-mono); font-size: .75rem; }
-/* Keep every desktop outline link, without laying out all offscreen member leaves. */
-@media screen {
-  html[data-cj-js] .cj-toc .cj-toc__item--member {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 1.5rem;
-  }
-}
 .cj-toc__toggle {
   display: inline-grid; flex: none; place-items: center; width: 1.25rem; height: 1.5rem; padding: 0;
   border: 0; background: none; color: var(--cj-muted); cursor: pointer;
