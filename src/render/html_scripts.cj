@@ -634,7 +634,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     // A theme URL replacement can clear history.state; checkpoint the controls
     // before departure without changing the immutable prepaint bootstrap.
     window.addEventListener("pagehide", saveSelectedFilters);
-    render();
 
     const isComposing = event => composing || (event && event.isComposing === true);
     input.addEventListener("compositionstart", () => { composing = true; });
@@ -661,9 +660,9 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
         document.querySelector("[data-cjdoc-sidebar-close]")?.click();
       }
       if (trigger) trigger.setAttribute("aria-expanded", "true");
+      render();
       if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
       else dialog.setAttribute("open", "");
-      render();
       focusTarget();
     };
     // Dismissal returns to the invoking trigger; result navigation owns its focus.

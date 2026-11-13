@@ -21,6 +21,7 @@ internal let HTML_READING_SCRIPT = """
     const mobileToc = document.querySelector("[data-cjdoc-mobile-toc]");
     const mobileList = mobileToc && mobileToc.querySelector("ol");
     if (!tocList) return;
+    const mobileOutline = window.matchMedia("(max-width: 1180px)");
     const headings = [...content.querySelectorAll(
       "h1, h2, h3, h4, h5, h6, [data-cjdoc-toc-role='member']")].filter(heading => {
       const role = heading.dataset.cjdocTocRole;
@@ -152,7 +153,7 @@ internal let HTML_READING_SCRIPT = """
     }
     toc.hidden = headings.length === 0;
     if (mobileToc) mobileToc.hidden = headings.length === 0;
-    if (layout) layout.classList.toggle("cj-layout--with-toc", !toc.hidden);
+    layout?.classList.toggle("cj-layout--with-toc", !toc.hidden);
     if (!headings.length) return;
     const links = [...tocList.querySelectorAll("a")];
     const linksByTarget = new Map(links.map(link => [link.dataset.tocTarget, link]));
@@ -212,12 +213,13 @@ internal let HTML_READING_SCRIPT = """
     const byTarget = new Map(headings.map(heading => [targetId(heading), heading]));
     const outline = [tocList, mobileList].filter(Boolean).flatMap(list =>
       [...list.querySelectorAll("[data-toc-target]")].map(link => ({
-        link, item: link.closest("li"), heading: byTarget.get(link.dataset.tocTarget)
+        list, link, item: link.closest("li"), heading: byTarget.get(link.dataset.tocTarget)
       })));
     syncTocVisibility = () => {
       const visible = headings.filter(heading => !heading.closest("[hidden]"));
       const visibleIds = new Set(visible.map(targetId));
-      for (const {link, item, heading} of outline) {
+      for (const {list, link, item, heading} of outline) {
+        if (mobileList && (list === mobileList) !== mobileOutline.matches) continue;
         if (item) item.hidden = !visibleIds.has(link.dataset.tocTarget);
         // Filtering changes group counts, not member signatures.
         if (heading && heading.dataset.cjdocTocRole !== "member") {
@@ -231,8 +233,9 @@ internal let HTML_READING_SCRIPT = """
       }
       toc.hidden = visible.length === 0;
       if (mobileToc) mobileToc.hidden = visible.length === 0;
-      if (layout) layout.classList.toggle("cj-layout--with-toc", !toc.hidden);
+      layout?.classList.toggle("cj-layout--with-toc", !toc.hidden);
     };
+    mobileOutline.addEventListener("change", syncTocVisibility);
   };
 
   // Display settings: first-open construction leaves untouched pages dialog-free.
@@ -770,7 +773,7 @@ internal let HTML_READING_SCRIPT = """
         }));
       } catch (_) { /* storage is optional */ }
     };
-    // A history-restored hash is not a new target: preserve the reader's filters.
+    // History restores filters; fresh hashes reveal their target.
     const navigationEntry = typeof performance !== "undefined" &&
       performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
     const isHistoryNavigation = Boolean(navigationEntry && navigationEntry.type === "back_forward");

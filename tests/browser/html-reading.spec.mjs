@@ -59,6 +59,28 @@ test('font evidence sampling releases DOM subscriptions before interaction timin
   }
 });
 
+test('member outline refreshes when its responsive view becomes active', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  const urls = await routes(page, 'en', 'root');
+  await page.goto(urls.api);
+  const members = await page.locator('[data-cjdoc-member]').evaluateAll(nodes =>
+    nodes.map(node => ({id:node.id,name:node.dataset.memberName})));
+  const selected = members[0].name;
+  const expected = members.filter(member => member.name === selected).map(member => member.id);
+  const targets = selector => page.locator(selector).evaluateAll(nodes =>
+    nodes.filter(node => !node.closest('li').hidden).map(node => node.dataset.tocTarget));
+  const desktop = '[data-cjdoc-toc] .cj-toc__item--member > a';
+  const mobile = '[data-cjdoc-mobile-toc] .cj-toc__item--member > a';
+  await page.locator('[data-cjdoc-member-filter]').fill('name:' + selected);
+  await expect.poll(() => targets(desktop)).toEqual(expected);
+  await page.setViewportSize({width:960,height:900});
+  await expect.poll(() => targets(mobile)).toEqual(expected);
+  await page.locator('[data-cjdoc-member-filter]').fill('');
+  await expect.poll(() => targets(mobile)).toEqual(members.map(member => member.id));
+  await page.setViewportSize({width:1440,height:900});
+  await expect.poll(() => targets(desktop)).toEqual(members.map(member => member.id));
+});
+
 async function routes(page, locale, transport) {
   const home = transport === 'file'
     ? pathToFileURL(path.resolve(fixture, locale, 'index.html')).href
