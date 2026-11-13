@@ -16,6 +16,7 @@ internal let HTML_READING_SCRIPT = """
     const toc = document.querySelector("[data-cjdoc-toc]");
     const content = document.querySelector("[data-cjdoc-content]");
     if (!toc || !content) return;
+    const layout = toc.closest(".cj-layout");
     const tocList = toc.querySelector("ol");
     const mobileToc = document.querySelector("[data-cjdoc-mobile-toc]");
     const mobileList = mobileToc && mobileToc.querySelector("ol");
@@ -151,12 +152,17 @@ internal let HTML_READING_SCRIPT = """
     }
     toc.hidden = headings.length === 0;
     if (mobileToc) mobileToc.hidden = headings.length === 0;
+    if (layout) layout.classList.toggle("cj-layout--with-toc", !toc.hidden);
     if (!headings.length) return;
     const links = [...tocList.querySelectorAll("a")];
+    const linksByTarget = new Map(links.map(link => [link.dataset.tocTarget, link]));
+    let activeLink = null;
     const setActive = targetIdValue => {
-      for (const link of links) {
-        link.classList.toggle("cj-toc__link--active", link.dataset.tocTarget === targetIdValue);
-      }
+      const next = linksByTarget.get(targetIdValue) || null;
+      if (next === activeLink) return;
+      if (activeLink) activeLink.classList.remove("cj-toc__link--active");
+      if (next) next.classList.add("cj-toc__link--active");
+      activeLink = next;
     };
     // Jump targets sit above the observer band. Keep click ownership until reader
     // input or timeout instead of retaining the observer's previous entry.
@@ -203,21 +209,20 @@ internal let HTML_READING_SCRIPT = """
     };
     syncHash();
     window.addEventListener("hashchange", syncHash);
+    const byTarget = new Map(headings.map(heading => [targetId(heading), heading]));
+    const outline = [tocList, mobileList].filter(Boolean).flatMap(list =>
+      [...list.querySelectorAll("[data-toc-target]")].map(link => ({
+        link, item: link.closest("li"), heading: byTarget.get(link.dataset.tocTarget)
+      })));
     syncTocVisibility = () => {
       const visible = headings.filter(heading => !heading.closest("[hidden]"));
       const visibleIds = new Set(visible.map(targetId));
-      const byTarget = new Map(headings.map(heading => [targetId(heading), heading]));
-      for (const list of [tocList, mobileList]) {
-        if (!list) continue;
-        for (const link of list.querySelectorAll("[data-toc-target]")) {
-          const item = link.closest("li");
-          if (item) item.hidden = !visibleIds.has(link.dataset.tocTarget);
-          // Filtering changes group counts, not member signatures.
-          const heading = byTarget.get(link.dataset.tocTarget);
-          if (heading && heading.dataset.cjdocTocRole !== "member") {
-            const label = headingLabel(heading);
-            if (link.textContent !== label) link.textContent = label;
-          }
+      for (const {link, item, heading} of outline) {
+        if (item) item.hidden = !visibleIds.has(link.dataset.tocTarget);
+        // Filtering changes group counts, not member signatures.
+        if (heading && heading.dataset.cjdocTocRole !== "member") {
+          const label = headingLabel(heading);
+          if (link.textContent !== label) link.textContent = label;
         }
       }
       const active = tocList.querySelector(".cj-toc__link--active");
@@ -226,6 +231,7 @@ internal let HTML_READING_SCRIPT = """
       }
       toc.hidden = visible.length === 0;
       if (mobileToc) mobileToc.hidden = visible.length === 0;
+      if (layout) layout.classList.toggle("cj-layout--with-toc", !toc.hidden);
     };
   };
 
@@ -572,6 +578,7 @@ internal let HTML_READING_SCRIPT = """
     const kernel = globalThis.cjdocSearch;
     const index = globalThis.__CJDOC_SEARCH_INDEX__;
     const rows = [...document.querySelectorAll("[data-cjdoc-member]")];
+    const memberIds = rows.map(row => row.dataset.memberSymbolId);
     const groups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
     const overloads = [...document.querySelectorAll("[data-cjdoc-overload-group]")];
     const filter = document.querySelector("[data-cjdoc-member-filter]");
@@ -592,9 +599,7 @@ internal let HTML_READING_SCRIPT = """
     // CSS reads aria-expanded, avoiding stale touch-menu state after resizing.
     const closeActionMenus = (restoreFocus = false) => {
       let closed = null;
-      for (const actions of document.querySelectorAll("[data-cjdoc-member-actions]")) {
-        const toggle = actions.querySelector("[data-cjdoc-member-actions-toggle]");
-        if (!toggle || toggle.getAttribute("aria-expanded") !== "true") continue;
+      for (const toggle of document.querySelectorAll('[data-cjdoc-member-actions-toggle][aria-expanded="true"]')) {
         toggle.setAttribute("aria-expanded", "false");
         closed = closed || toggle;
       }
@@ -613,8 +618,7 @@ internal let HTML_READING_SCRIPT = """
       if (!error) {
         const request = {query: parsed.query, filters: parsed.filters};
         if (parsed.tags.length) request.tags = parsed.tags;
-        const projection = kernel.filterEntries(index, request,
-          rows.map(row => row.dataset.memberSymbolId));
+        const projection = kernel.filterEntries(index, request, memberIds);
         if (projection.status !== "ok") error = projection.errorCode || "search_index_invalid";
         else matching = new Set(projection.canonicalIds);
       }

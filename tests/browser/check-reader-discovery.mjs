@@ -206,6 +206,10 @@ try {
   await page.locator('[data-cjdoc-member-filter]').fill(historyQuery);
   assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
     .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
+  // Lazy navigation stays bounded until the reader requests the full branch.
+  await page.locator('[data-cjdoc-sidebar-filter]').fill('member');
+  assert.ok(await page.locator('.cj-sidebar').evaluate(node =>
+    node.scrollHeight - node.clientHeight >= 160), 'history scenario requires a scrollable sidebar');
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
     const sidebar = document.querySelector('.cj-sidebar');
     sidebar.scrollTop = 160;
