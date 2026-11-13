@@ -14,14 +14,14 @@ try:
     from .strict_json import strict_load, strict_loads, strict_dumps
     from .reader_aria_transition import check_aria_pair
     from .reader_ir_transition import TRANSITION_NAME, compare_ir_transition
-    from .reader_register import REPO, REFERENCE_TEMPLATE, validate_transition_budget
+    from .reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
     from .reader_search_identity import compare_search_identities, verify_search_identity
     from .test_agent_artifacts import ContractError, document
 except ImportError:
     from strict_json import strict_load, strict_loads, strict_dumps
     from reader_aria_transition import check_aria_pair
     from reader_ir_transition import TRANSITION_NAME, compare_ir_transition
-    from reader_register import REPO, REFERENCE_TEMPLATE, validate_transition_budget
+    from reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
     from reader_search_identity import compare_search_identities, verify_search_identity
     from test_agent_artifacts import ContractError, document
 
@@ -255,6 +255,11 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
 
 def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
                     failures: list[str], sites: tuple[Path, Path] | None = None) -> list[dict]:
+    try:
+        validate_browser_contract(before)
+        validate_browser_contract(after)
+    except ValueError as error:
+        raise EvidenceError(str(error)) from error
     for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "nativeIndexEntries"):
         require(before.get(key) == after.get(key) and before.get(key) is not None, f"browser {key} changed or missing")
     require(before.get("environment") and before["environment"] == after.get("environment"),

@@ -263,7 +263,7 @@ try {
   await new Promise(resolve => hosted.server.close(resolve));
   throw error;
 }
-const report = { schemaVersion: 'cjdoc.reader-browser/1', label: config.label,
+const report = { schemaVersion: 'cjdoc.reader-browser/2', label: config.label,
   recipe: manifest.recipe, sourceSha256: manifest.sourceSha256, taskManifestSha256: sha256(manifestBytes),
   harness,
   environment: { browser: await browser.version(), playwright: playwrightVersion, node: process.version,

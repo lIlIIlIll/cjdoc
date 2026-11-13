@@ -292,7 +292,7 @@ def evidence_pair():
     query = {"id": "target", "expectedIds": ["native:target"], "first20Hrefs": ["symbols/target.html"],
              "pass": True, "synchronous": distribution(10), "frame": distribution(20)}
     page = {"firstInteractiveProbeMs": 40}
-    report = {"schemaVersion": "cjdoc.reader-browser/1", "recipe": "test", "sourceSha256": "source",
+    report = {"schemaVersion": "cjdoc.reader-browser/2", "recipe": "test", "sourceSha256": "source",
         "taskManifestSha256": "tasks", "harness": {"test": "same"}, "nativeIndexEntries": 1,
         "environment": {"fontFiles": font_inventory()},
         "resources": {name: {"sha256": "same", "bytes": 100, "gzipBytes": 50}
@@ -307,6 +307,20 @@ def evidence_pair():
                            "queryHeapBytes": 1000, "bundleFileBytes": 1000},
               "relative": {name: {"factor": 1.25, "slack": 5} for name in ("latency", "loading", "memory", "bundle")}}
     return report, deepcopy(report), {"queries": [task], "members": [], "overloads": []}, budget
+
+def overload_evidence_pair():
+    before, after, manifest, budget = evidence_pair()
+    details = [{"id": "native:first", "signature": "public func choose(value: Choice00): Int64",
+                "parameters": [{"name": "value", "type": "Choice00", "defaultValue": '"keep: spaces = here"'}],
+                "authorFields": [{"id": "doc-field-param", "text": "Keep value: Choice00 and a = b exactly."},
+                                 {"id": "doc-field-post", "text": "The result equals 0."}]}]
+    overload = {"id": "overloads", "pass": True,
+                "selections": [{"expectedId": "native:first"}], "comparison": {"details": details}}
+    for report in (before, after):
+        report["transports"][0]["overloads"] = deepcopy([overload])
+    manifest["overloads"] = [{"id": "overloads"}]
+    return before, after, manifest, budget
+
 
 
 def register_presentation(budget, profile):
@@ -340,6 +354,37 @@ def presentation_pair():
 
 
 class EvidenceIntegrityTests(unittest.TestCase):
+    def test_overload_contract_rejects_semantic_changes_and_author_whitespace_changes(self):
+        changes = [
+            lambda row: row.update(signature="public func choose(value: Choice01): Int64"),
+            lambda row: row["parameters"][0].update(name="other"),
+            lambda row: row["parameters"][0].update(type="Choice01"),
+            lambda row: row["parameters"][0].update(defaultValue='"keep:spaces = here"'),
+            lambda row: row["authorFields"][0].update(id="doc-field-other"),
+            lambda row: row["authorFields"][0].update(text="Keep value:Choice00 and a = b exactly."),
+        ]
+        for index, change in enumerate(changes):
+            before, after, manifest, budget = overload_evidence_pair()
+            change(after["transports"][0]["overloads"][0]["comparison"]["details"][0])
+            with self.subTest(change=index), self.assertRaises(EvidenceError):
+                compare_browser(before, after, manifest, budget, [])
+
+    def test_identically_incomplete_or_legacy_overload_evidence_cannot_pair(self):
+        for change in ("version", "authorFields", "emptyAuthors", "parameters", "parameterType"):
+            before, after, manifest, budget = overload_evidence_pair()
+            for report in (before, after):
+                detail = report["transports"][0]["overloads"][0]["comparison"]["details"][0]
+                if change == "version":
+                    report["schemaVersion"] = "cjdoc.reader-browser/1"
+                elif change == "emptyAuthors":
+                    detail["authorFields"] = []
+                elif change == "parameterType":
+                    detail["parameters"][0].pop("type")
+                else:
+                    detail.pop(change)
+            with self.subTest(change=change), self.assertRaises(EvidenceError):
+                compare_browser(before, after, manifest, budget, [])
+
     def test_percentiles_are_recomputed_from_raw_samples(self):
         raw = {"samples": list(range(1, 21)), "p50Ms": 10, "p95Ms": 19}
         self.assertEqual(p95(raw, 20, "query"), 19)
@@ -778,7 +823,8 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 site_name = f"sites/{locale}"
                 site, resources, _, _ = write_search_site(baseline / site_name, before_ir, locale)
                 browser_name = f"browser/{locale}.json"
-                browser = {"failures": [], "resources": resources, "transports": []}
+                browser = {"schemaVersion": "cjdoc.reader-browser/2",
+                           "failures": [], "resources": resources, "transports": []}
                 browser_path = baseline / browser_name
                 browser_path.parent.mkdir(parents=True, exist_ok=True)
                 browser_path.write_text(json.dumps(browser), encoding="utf-8")
@@ -803,12 +849,13 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             changed_site, changed_resources, _, _ = write_search_site(
                 Path(directory) / "after/sites/en", after_ir, "en", body="changed published body")
             before_browser = {
-                "schemaVersion": "cjdoc.reader-browser/1", "recipe": "fixture",
+                "schemaVersion": "cjdoc.reader-browser/2", "recipe": "fixture",
                 "sourceSha256": "b" * 64, "taskManifestSha256": "c" * 64,
                 "harness": {"browser": "fixture"},
                 "environment": {"requestedUiLocale": "en",
                                 "fontFiles": font_inventory()},
                 "nativeIndexEntries": 1, "failures": [], "resources": baseline_resources,
+                "transports": [],
             }
             after_browser = deepcopy(before_browser)
             after_browser["resources"] = changed_resources
@@ -837,7 +884,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                         observation / site_name, model, locale,
                         search_schema_version="cjdoc.search-index/10" if label == "after" else "cjdoc.search-index/11")
                     browser_name = f"browser-{locale}.json"
-                    browser = {"schemaVersion": "cjdoc.reader-browser/1", "recipe": "fixture",
+                    browser = {"schemaVersion": "cjdoc.reader-browser/2", "recipe": "fixture",
                                "sourceSha256": "b" * 64, "taskManifestSha256": file_digest(manifest),
                                "harness": {"browser": "fixture"}, "nativeIndexEntries": 1,
                                "environment": {"requestedUiLocale": locale,
@@ -936,12 +983,13 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             }
 
             before_browser = {
-                "schemaVersion": "cjdoc.reader-browser/1", "recipe": "fixture",
+                "schemaVersion": "cjdoc.reader-browser/2", "recipe": "fixture",
                 "sourceSha256": "source", "taskManifestSha256": "tasks",
                 "harness": {"browser": "fixture"},
                 "environment": {"requestedUiLocale": "en",
                                 "fontFiles": font_inventory()},
                 "nativeIndexEntries": 1, "failures": [], "resources": before_resources,
+                "transports": [],
             }
             after_browser = deepcopy(before_browser)
             after_browser["resources"] = after_resources

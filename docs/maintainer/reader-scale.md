@@ -64,8 +64,13 @@
 - 原生生成和 Doc IR→HTML replay 分别记录 CPU、墙钟、退出码、最大单进程 RSS。`wait4` RSS 不是同时存活的进程树总内存；不支持 POSIX `wait4` 的原生观测明确拒绝，不伪造 Windows 资源数据。
 - 查询与成员筛选保留全部原始样本和 nearest-rank P50/P95。成员序列交替清空/精确目标；不能把它写成仅测更容易的同值重复。`frameMs` 是下一次 `requestAnimationFrame` 的时刻，不保证像素已经绘制。
 - `automationDurationMs` 是脚本协议耗时，查询/成员任务包含采样和自动化调度；`operationCount` 是逻辑读者操作数。它们不是人类完成时间，不能用二者相除得到“每次点击成本”。重载选择另记目标调用形状到准确原生链接的操作耗时。
+- 当前浏览器报告为 `cjdoc.reader-browser/2`，不接受旧形状。重载比较分别保留原始签名、按顺序的参数名/类型/默认值，以及每个作者 `doc-field` 的身份和精确 rendered text；两侧逐项相等，不归一化作者文本或默认值中的空白。生成的参数标题分隔符不是作者契约，不能把整个详情容器的排版文本混入作者字段。完整原生 HTML 仍保留在观测产物中。
 - 伴随 JSON 的解析采样是隔离的 `JSON.parse`，不是把 JS 索引的实际加载/编译时间改名为 JSON 解析时间。真实页面同时记录导航、脚本 CPU、>50ms 长任务、DOM 与 CDP JavaScript heap；后者不是浏览器进程总 RSS。
 - `environment.fontFiles` 只记录固定七家族 `DejaVu Sans`、`DejaVu Sans Mono`、`Liberation Mono`、`Liberation Sans`、`Noto Sans CJK SC`、`Noto Serif CJK SC`、`WenQuanYi Zen Hei` 的 fontconfig 默认文件及真实 SHA-256，并按家族排序。before/after 的完整 environment（包括该安装清单）必须相等，不取两侧并集；缺失、新增、不可用或摘要改变均拒绝。采样节点的实际 family/PostScriptName 与 `fontUsage` 独立记录；只有明确登记的 presentation profile 可以允许实际使用集合变化。这不是枚举所有字形、字重或字体文件的声明。
+
+非 Ubuntu 本地资格检查必须同时复现 runner 的 fontconfig 规则，而不只提供相同字体文件；一个 TTC 还可包含清单之外的实际 face。当前 Ubuntu 22.04 配方使用原始 `fontconfig-config` 规则及 `fonts-noto-cjk` 的 `70-fonts-noto-cjk.conf` 语言选择规则。可在任务私有目录中包含这些原始规则、排除宿主 user/local 配置，并引用原始七家族文件与私有 cache；不得改字体字节或以临时 family 替换放宽 profile。先核对双语实际 usage、完整 environment 和完整 ARIA，再冻结环境采正式 20 样本。
+
+隔离 `XDG_CACHE_HOME` 时，须另用 `PLAYWRIGHT_BROWSERS_PATH` 指向已安装的锁定浏览器目录，否则 Playwright 会在新 cache 下查找另一个浏览器安装。两侧正式捕获必须使用同一份规则、字体与浏览器，资格检查不计作正式样本。
 
 截图矩阵为 1440×900、960×900、390×844、760/761/1180/1181×900，以及 CSS 720×450 / DPR 2 的 200% 等效内容布局；light/dark、中文/英文。后者对应物理 1440×900，不声称操作了浏览器 chrome 的缩放菜单。所有截图来自原生生成站点，包含长契约、命名参数、泛型约束、500 成员和 16 重载。
 
@@ -130,7 +135,8 @@ python3 scripts/reader_register.py \
   --template docs/maintainer/reader-scale-budgets.json \
   --output "$TASK/registered-1000.json" \
   --doc-ir-transition v17-v18-unregistered-source \
-  --aria-transition docs/maintainer/reader-scale-docs-173-177.json
+  --aria-transition docs/maintainer/reader-scale-docs-173-177.json \
+  --presentation docs/maintainer/reader-scale-presentation-v18.json
 ```
 
 这三个参数只用于固定 1k 比较：精确过渡冻结 IR/ARIA 的既定差异，`--presentation` 明确登记本次重设的排版与实际使用字体。三者并存时各自仍按原规则逐项校验，任何一个都不会放宽数值预算、原始任务、打印/无 JS 检查或其它视觉相等要求；其它 cohort 和普通重跑不传它们，继续使用严格默认比较。
@@ -174,8 +180,8 @@ RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件�
 
 [Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；固定以 `67faf0b244544a750543f049370c59479769eff4`（Doc IR/17、search-index/11）为当前 CI baseline，在 checkout 外使用同一认证 SDK 构建。该基线刷新经显式批准：此门禁仅证明后续修复相对该版本的回归，不把它表述为旧协议到新协议的完整性能比较。旧 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 的历史观测保持原样，原功能变更的成本另行披露。
 
-在同一 runner 上依次采 baseline、事前登记预算、采 after、运行行为回归并严格比较。固定 1k 按上文冻结 Doc IR 与 ARIA 过渡；其它规模不使用这两项登记。比较仍要求相同原始任务、样本数、字体、声明下限及资源/延迟预算。搜索 JSON/JS 各侧按 receipt 验证，只配对已证明的派生身份，其余 payload 严格比较；原始 JSON、日志、Doc IR、截图与比较作为该 run artifact 保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
-固定 1k 的 ARIA tree 仅接受已冻结双语快照列出的三类差异；不使用旧 `reader-scale-presentation.json`，也不传 `--presentation`。字体身份、字体文件、实际 font usage、字号、正文排版及其它视觉检查仍严格相等；旧 #163 展示登记继续只作历史凭据。
+在同一 runner 上依次采 baseline、事前登记预算、采 after、运行行为回归并严格比较。固定 1k 按上文同时冻结 Doc IR、完整双语 ARIA 快照和 v18 presentation；其它规模不使用这三项登记。比较仍要求相同原始任务、样本数、完整字体环境、声明下限及资源/延迟预算。搜索 JSON/JS 各侧按 receipt 验证，只配对已证明的派生身份，其余 payload 严格比较；原始 JSON、日志、Doc IR、截图与比较作为该 run artifact 保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
+固定 1k 的 ARIA tree 只接受已冻结完整快照，排版与实际 font usage 只接受 `reader-scale-presentation-v18.json` 登记的差异；七家族安装清单和整个 environment 仍严格相等，数值预算不变。旧 `reader-scale-presentation.json` 继续只作 #163 的历史凭据，不用于当前 CI。
 浏览器行为回归按当前检索契约校验：filter-only 同分结果使用 UTF-8 canonical identity 顺序，package 过滤保留 canonical-or-exposure 命中。历史恢复场景用显式 `name:` 条件选择唯一成员并核对其捕获的渲染身份，不对自由文本 discovery 的结果数量固定旧假设。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。

@@ -173,6 +173,28 @@ export async function memberTasks(context, index, manifest, base, samples) {
   }
   return records;
 }
+export async function overloadDetailEvidence(row, target) {
+  const signature = await row.locator(':scope > summary code').first().textContent();
+  const content = await row.locator(MEMBER_BODY).evaluate(body => {
+    const parameters = [...body.querySelectorAll('.cj-params__row, .parameter-row')].map(parameter => {
+      const name = parameter.querySelector('.cj-params__name, .parameter-name');
+      if (!name) throw new Error('Rendered parameter name is absent');
+      const type = parameter.querySelector('.cj-params__type > code, .parameter-type-code');
+      const defaultValue = parameter.querySelector('.cj-params__default code, .parameter-default code');
+      return { name: name.textContent, type: type ? type.textContent : null,
+        defaultValue: defaultValue ? defaultValue.textContent : null };
+    });
+    const authorFields = [...body.querySelectorAll('[id^="doc-field-"]')]
+      .map(field => ({ id: field.id, text: field.innerText }));
+    return { parameters, authorFields };
+  });
+  if (content.parameters.length !== target.parameterTypes.length) {
+    throw new Error('Rendered parameter inventory differs from the native target');
+  }
+  if (!content.authorFields.length) throw new Error('Rendered author contract fields are absent');
+  return { id: target.id, signature, ...content };
+}
+
 
 export async function overloadTasks(context, index, manifest, base) {
   const records = [];
@@ -211,8 +233,7 @@ export async function overloadTasks(context, index, manifest, base) {
         if (!target) continue;
         const row = page.locator('#' + anchorFor(target));
         await row.locator(':scope > summary').click();
-        details.push({ id: target.id, signature: await row.locator(':scope > summary code').first().textContent(),
-          authoredDetails: await row.locator(MEMBER_BODY).innerText() });
+        details.push(await overloadDetailEvidence(row, target));
       }
       const openIds = await page.locator('[data-cjdoc-member][open]').evaluateAll(rows => rows.map(row => row.id));
       const simultaneouslyOpen = targets.every(target => target && openIds.includes(anchorFor(target)));
