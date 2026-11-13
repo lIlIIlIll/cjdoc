@@ -453,12 +453,16 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       return item;
     };
 
-    const renderPage = () => {
+    // Both a fresh render and a teardown start from the same empty state.
+    const clearResults = () => {
       results.replaceChildren();
       selected = -1;
-      input.removeAttribute("aria-activedescendant");
       visible = [];
+      input.removeAttribute("aria-activedescendant");
       if (searchFacets) { searchFacets.replaceChildren(); searchFacets.hidden = true; }
+    };
+    const renderPage = () => {
+      clearResults();
       if (!currentExecution) return;
       if (currentExecution.errorCode) {
         showError(currentExecution.errorCode);
@@ -501,14 +505,10 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     };
 
     const resetSearch = () => {
-      visible = [];
-      selected = -1;
-      results.replaceChildren();
-      input.removeAttribute("aria-activedescendant");
+      clearResults();
       input.setAttribute("aria-expanded", "false");
       if (searchStatus) searchStatus.hidden = true;
       if (searchPages) searchPages.hidden = true;
-      if (searchFacets) { searchFacets.replaceChildren(); searchFacets.hidden = true; }
       currentRequest = null;
       currentExecution = null;
       currentParsed = null;
@@ -698,8 +698,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
         const active = position >= 0 ? position : selected;
         select(event.key === "ArrowDown" ? active + 1 : active < 0 ? visible.length - 1 : active - 1);
       } else if (event.key === "Enter" && selected >= 0) {
-        const entry = results.children[selected];
-        const link = entry && entry.querySelector("a");
+        const link = results.children[selected] && results.children[selected].querySelector("a");
         if (link) { event.preventDefault(); link.click(); }
       }
     });

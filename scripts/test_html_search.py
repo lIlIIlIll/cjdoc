@@ -585,6 +585,11 @@ assert.equal(api.parseQuery(Array(65).fill("tag:stream").join(" "), contract).er
 assert.equal(api.parseQuery(Array(64).fill("tag:stream").join(" "), contract).errorCode, null);
 assert.equal(execute({query: "\ud800"}).errorCode, "request_unicode");
 assert.equal(api.parseQuery("\ud800", contract).errorCode, "invalid_unicode");
+for (const raw of [undefined, null, 42, {}]) {
+  const rejected = api.parseQuery(raw, contract);
+  assert.equal(rejected.errorCode, "invalid_unicode");
+  assert.equal(rejected.invalidToken, raw);
+}
 const qualifiedToken = api.parseQuery("QUALIFIEDNAME:net.HttpClientBuilder", contract);
 assert.equal(qualifiedToken.filters[0].field, "qualifiedName");
 assert.deepEqual(Array.from(api.filterEntries(index, localRequest(qualifiedToken),

@@ -69,15 +69,15 @@ globalThis.cjdocSearch = (() => {
   const lowercaseAscii = character => String.fromCharCode(character.charCodeAt(0) + 0x20);
   const fold = value => value.replace(ASCII_UPPERCASE, lowercaseAscii);
   const runeCount = value => [...value].length;
+  const isWordCode = code => (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x61 && code <= 0x7a) || code === 0x5f;
   const tokens = value => {
     const result = [];
     let current = "";
     const flush = () => { if (current) { result.push(fold(current)); current = ""; } };
     for (const char of value) {
       const code = char.codePointAt(0);
-      const word = (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a) ||
-        (code >= 0x61 && code <= 0x7a) || code === 0x5f;
-      if (word || code >= 0x80) current += char; else flush();
+      if (isWordCode(code) || code >= 0x80) current += char; else flush();
     }
     flush();
     return result;
@@ -90,8 +90,7 @@ globalThis.cjdocSearch = (() => {
     for (let index = 0; index < chars.length; index += 1) {
       const char = chars[index];
       const code = char.codePointAt(0);
-      const word = (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a) ||
-        (code >= 0x61 && code <= 0x7a) || code === 0x5f || code >= 0x80;
+      const word = isWordCode(code) || code >= 0x80;
       if (!word) {
         if (started) words.push(fold(current));
         current = "";
@@ -140,10 +139,15 @@ globalThis.cjdocSearch = (() => {
   const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
   const own = (value, name) => Object.prototype.hasOwnProperty.call(value, name);
   const stringArray = value => Array.isArray(value) && value.every(item => typeof item === "string");
-  const numeric = value => typeof value === "number" && Number.isFinite(value);
   const propertyArray = property => Array.isArray(property) ? property : [property];
   const validRulePrimitive = primitive => RULE_PRIMITIVES.has(primitive);
   const validOperatorPrimitive = primitive => OP_PRIMITIVES.has(primitive);
+
+  // Enum schemas are pinned exactly: same members, same order, no extras.
+  const sameItems = (value, expected) => Array.isArray(value) &&
+    value.length === expected.length && expected.every((item, index) => value[index] === item);
+  const sameSet = (values, expected) => Array.isArray(values) && values.length === expected.size &&
+    new Set(values).size === values.length && values.every(value => expected.has(value));
 
   const validateContract = contract => {
     if (!exactKeys(contract, ["version", "maxRequestBytes", "textPolicy", "defaultMode", "defaultProfile",
@@ -151,12 +155,6 @@ globalThis.cjdocSearch = (() => {
         "summaryDisplayLimit", "signatureDisplayLimit", "requestProperties", "globalFields",
         "searchFields", "filterFields", "filterOps", "setPredicates", "preciseRules", "discoveryRules"]) ||
         contract.version !== "cjdoc.search-contract/2" ||
-        typeof contract.defaultMode !== "string" || typeof contract.defaultProfile !== "string" ||
-        !Number.isSafeInteger(contract.defaultLimit) || !Number.isSafeInteger(contract.maxLimit) ||
-        !Number.isSafeInteger(contract.maxFilters) || !Number.isSafeInteger(contract.maxTags) ||
-        !Number.isSafeInteger(contract.maxRequestBytes) ||
-        !Number.isSafeInteger(contract.staticBodyTextLimit) || !Number.isSafeInteger(contract.summaryDisplayLimit) ||
-        !Number.isSafeInteger(contract.signatureDisplayLimit) ||
         !isObject(contract.requestProperties) || !stringArray(contract.globalFields) ||
         !stringArray(contract.searchFields) || !Array.isArray(contract.filterFields) || contract.filterFields.length === 0 ||
         !Array.isArray(contract.filterOps) || contract.filterOps.length === 0 ||
@@ -185,10 +183,9 @@ globalThis.cjdocSearch = (() => {
     const modeSchema = properties.mode;
     const profileSchema = properties.profile;
     const fields = new Set();
-    if (!exactKeys(modeSchema, ["enum"]) || modeSchema.enum.length !== 2 ||
-        modeSchema.enum[0] !== "precise" || modeSchema.enum[1] !== "discovery" ||
-        !exactKeys(profileSchema, ["enum"]) || profileSchema.enum.length !== 2 ||
-        profileSchema.enum[0] !== "full-ir" || profileSchema.enum[1] !== "bounded-static") return false;
+    if (!exactKeys(modeSchema, ["enum"]) || !sameItems(modeSchema.enum, ["precise", "discovery"]) ||
+        !exactKeys(profileSchema, ["enum"]) ||
+        !sameItems(profileSchema.enum, ["full-ir", "bounded-static"])) return false;
     const filterSchema = properties.filters;
     if (!exactKeys(filterSchema, ["type", "maxItems", "items"]) || filterSchema.type !== "array" ||
         filterSchema.maxItems !== contract.maxFilters ||
@@ -214,8 +211,7 @@ globalThis.cjdocSearch = (() => {
       fields.add(row.field);
     }
     const fieldEnum = filterSchema.items.properties.field.enum;
-    if (fieldEnum.length !== fields.size || new Set(fieldEnum).size !== fieldEnum.length ||
-        fieldEnum.some(field => !fields.has(field))) return false;
+    if (!sameSet(fieldEnum, fields)) return false;
     const operators = new Set();
     for (const row of contract.filterOps) {
       if (!exactKeys(row, ["op", "primitive"]) || typeof row.op !== "string" || !row.op ||
@@ -224,8 +220,7 @@ globalThis.cjdocSearch = (() => {
       operators.add(row.op);
     }
     const operatorEnum = filterSchema.items.properties.op.enum;
-    if (operatorEnum.length !== operators.size || new Set(operatorEnum).size !== operatorEnum.length ||
-        operatorEnum.some(operator => !operators.has(operator))) return false;
+    if (!sameSet(operatorEnum, operators)) return false;
     const predicate = contract.setPredicates[0];
     const tagsSchema = properties.tags;
     if (!exactKeys(predicate, ["field", "property", "primitive"]) ||
@@ -268,25 +263,29 @@ globalThis.cjdocSearch = (() => {
     !hasUnpairedSurrogate(section.kind) && !hasUnpairedSurrogate(section.anchor) && !hasUnpairedSurrogate(section.text);
   const validTagId = value => typeof value === "string" && TAG_ID_PATTERN.test(value);
   const hasDisplayControl = value => /[\u0000-\u001f\u007f]/u.test(value);
-  const validMetadataTitle = value => nonemptyString(value) && value.trim().length > 0 &&
-    utf8Bytes(value).length <= 256 && !hasDisplayControl(value);
-  const validLegacyGroupTitle = value => nonemptyString(value) &&
-    !/^[ \t\n\r\f\v]*$/u.test(value) && utf8Bytes(value).length <= 256 && !hasDisplayControl(value);
+  // A tag or group title is short, printable metadata; one bound serves both
+  // the current and the legacy spellings.
+  const boundedTitle = value => nonemptyString(value) && utf8Bytes(value).length <= 256 &&
+    !hasDisplayControl(value);
+  const validMetadataTitle = value => boundedTitle(value) && value.trim().length > 0;
+  const validLegacyGroupTitle = value => boundedTitle(value) &&
+    !/^[ \t\n\r\f\v]*$/u.test(value);
   const validSafeText = value => nonemptyString(value) && !hasDisplayControl(value);
+  const DOCUMENT_SET_FIELDS = ["id", "moduleId", "library", "identity", "state", "source", "target",
+    "cfg", "audience", "language", "revision", "apiVersion", "documentationRevision", "indexIdentity",
+    "baseUrl"];
+  const DEPENDENCY_FIELDS = ["moduleId", "componentModuleId", "name", "instanceId", "kind",
+    "identity", "state", "evidence", "version", "revision", "target", "cfg"];
+  // Every recorded identity field is a well-formed string; the same key list
+  // bounds the object shape, so one table per record keeps them in step.
+  const exactStringFields = (value, fields) => exactKeys(value, fields) &&
+    fields.every(key => typeof value[key] === "string" && !hasUnpairedSurrogate(value[key]));
   const validDocumentSet = value => value === null ||
-    (exactKeys(value, ["id", "moduleId", "library", "identity", "state", "source", "target", "cfg",
-      "audience", "language", "revision", "apiVersion", "documentationRevision", "indexIdentity", "baseUrl"]) &&
-      ["id", "moduleId", "library", "identity", "state", "source", "target", "cfg", "audience",
-        "language", "revision", "apiVersion", "documentationRevision", "indexIdentity", "baseUrl"]
-        .every(key => typeof value[key] === "string" && !hasUnpairedSurrogate(value[key])) &&
+    (exactStringFields(value, DOCUMENT_SET_FIELDS) &&
       nonemptyString(value.id) && nonemptyString(value.library) &&
       ["observed", "verified", "declared", "unknown"].includes(value.state));
   const validDependency = value => value === null ||
-    (exactKeys(value, ["moduleId", "componentModuleId", "name", "instanceId", "kind", "identity",
-      "state", "evidence", "version", "revision", "target", "cfg"]) &&
-      ["moduleId", "componentModuleId", "name", "instanceId", "kind", "identity", "state",
-        "evidence", "version", "revision", "target", "cfg"]
-        .every(key => typeof value[key] === "string" && !hasUnpairedSurrogate(value[key])) &&
+    (exactStringFields(value, DEPENDENCY_FIELDS) &&
       nonemptyString(value.moduleId) && nonemptyString(value.name) && nonemptyString(value.instanceId) &&
       ["source", "binary", "std", "stdx", "toolchain"].includes(value.kind) &&
       ["unknown", "declared", "observed", "verified", "conflict"].includes(value.state));
@@ -484,70 +483,70 @@ globalThis.cjdocSearch = (() => {
     if (INDEX_CACHE.has(index)) return INDEX_CACHE.get(index);
     let prepared;
     try {
-      if (index.schemaVersion !== "cjdoc.search-index/11") prepared = {error: "search_index_version_unsupported"};
-      else if (!validateContract(index.contract)) prepared = {error: "search_contract_unavailable"};
-      else if (!exactKeys(index, ["schemaVersion", "profile", "contract", "projectionId", "scope", "coverage",
-          "modules", "tags", "entries"]) ||
-          index.profile !== "bounded-static" || !nonemptyString(index.projectionId) ||
-          !validIndexScope(index.scope) || !Array.isArray(index.modules) || index.modules.length > 4096 ||
-          !Array.isArray(index.tags) || !Array.isArray(index.entries) ||
-          !validCoverage(index.coverage, index, index.contract)) prepared = {error: "search_index_invalid"};
-      else {
-        const modules = [];
-        const moduleIds = new Set();
-        for (const module of index.modules) {
-          if (!validIndexModule(module) || moduleIds.has(module.moduleId)) {
-            prepared = {error: "search_index_invalid"};
-            break;
-          }
-          moduleIds.add(module.moduleId);
-          modules.push(frozenCopy(module));
-        }
-        const tagDictionary = prepared ? null : prepareTagDictionary(index.tags, modules, index.scope);
-        if (!prepared && !tagDictionary) prepared = {error: "search_index_invalid"};
-        if (!prepared) {
-          const entries = [];
-          const byIdentity = new Map();
-          const byCanonicalId = new Map();
-          const usedTagKeys = new Set();
-          for (const entry of index.entries) {
-            const facts = prepareEntry(entry, modules, index.scope, index.contract, tagDictionary.byScope);
-            if (!facts) { prepared = {error: "search_index_invalid"}; break; }
-            for (const tag of facts.tagFacets) usedTagKeys.add(tag.key);
-            const snapshotGroup = byIdentity.get(facts.snapshotId) || new Map();
-            byIdentity.set(facts.snapshotId, snapshotGroup);
-            let group = snapshotGroup.get(facts.canonicalId);
-            if (!group) {
-              group = {entry: facts, exposures: [], snapshotId: facts.snapshotId,
-                canonicalId: facts.canonicalId, snapshotBytes: facts.snapshotBytes,
-                canonicalBytes: facts.canonicalBytes};
-              snapshotGroup.set(facts.canonicalId, group);
-              byCanonicalId.set(facts.canonicalId, group);
-              entries.push(group);
-            } else if (group.entry.scope !== facts.scope ||
-                canonicalJson(group.entry.classification) !== canonicalJson(facts.classification)) {
-              prepared = {error: "search_index_invalid"};
-              break;
-            }
-            for (const exposure of facts.exposures) {
-              if (!group.exposures.some(existing => existing.raw.id === exposure.raw.id)) group.exposures.push(exposure);
-            }
-          }
-          if (!prepared && tagDictionary.all.some(tag => !usedTagKeys.has(tag.key))) {
-            prepared = {error: "search_index_invalid"};
-          }
-          if (!prepared) {
-            for (const group of entries) group.exposures.sort((a, b) => compareByteArrays(a.idBytes, b.idBytes));
-            prepared = {contract: index.contract, modules, entries, byIdentity, byCanonicalId,
-              tagDictionary, scope: frozenCopy(index.scope), coverage: frozenCopy(index.coverage),
-              projectionId: index.projectionId,
-              contentBinding: index.projectionId + "\n" + canonicalJson(index.scope)};
-          }
-        }
-      }
+      prepared = buildPreparedIndex(index);
     } catch (_) { prepared = {error: "search_index_invalid"}; }
     INDEX_CACHE.set(index, prepared);
     return prepared;
+  };
+  // Each rejection returns its own code, so validation reads top to bottom
+  // instead of threading a mutable error through every stage.
+  const buildPreparedIndex = index => {
+    const invalid = {error: "search_index_invalid"};
+    if (index.schemaVersion !== "cjdoc.search-index/11") {
+      return {error: "search_index_version_unsupported"};
+    }
+    if (!validateContract(index.contract)) return {error: "search_contract_unavailable"};
+    if (!exactKeys(index, ["schemaVersion", "profile", "contract", "projectionId", "scope",
+        "coverage", "modules", "tags", "entries"]) ||
+        index.profile !== "bounded-static" || !nonemptyString(index.projectionId) ||
+        !validIndexScope(index.scope) || !Array.isArray(index.modules) || index.modules.length > 4096 ||
+        !Array.isArray(index.tags) || !Array.isArray(index.entries) ||
+        !validCoverage(index.coverage, index, index.contract)) return invalid;
+    const modules = [];
+    const moduleIds = new Set();
+    for (const module of index.modules) {
+      if (!validIndexModule(module) || moduleIds.has(module.moduleId)) return invalid;
+      moduleIds.add(module.moduleId);
+      modules.push(frozenCopy(module));
+    }
+    const tagDictionary = prepareTagDictionary(index.tags, modules, index.scope);
+    if (!tagDictionary) return invalid;
+    const entries = [];
+    const byIdentity = new Map();
+    const byCanonicalId = new Map();
+    const usedTagKeys = new Set();
+    for (const entry of index.entries) {
+      const facts = prepareEntry(entry, modules, index.scope, index.contract, tagDictionary.byScope);
+      if (!facts) return invalid;
+      for (const tag of facts.tagFacets) usedTagKeys.add(tag.key);
+      const snapshotGroup = byIdentity.get(facts.snapshotId) || new Map();
+      byIdentity.set(facts.snapshotId, snapshotGroup);
+      let group = snapshotGroup.get(facts.canonicalId);
+      if (!group) {
+        group = {entry: facts, exposures: [], snapshotId: facts.snapshotId,
+          canonicalId: facts.canonicalId, snapshotBytes: facts.snapshotBytes,
+          canonicalBytes: facts.canonicalBytes};
+        snapshotGroup.set(facts.canonicalId, group);
+        byCanonicalId.set(facts.canonicalId, group);
+        entries.push(group);
+      } else if (group.entry.scope !== facts.scope ||
+          canonicalJson(group.entry.classification) !== canonicalJson(facts.classification)) {
+        return invalid;
+      }
+      for (const exposure of facts.exposures) {
+        if (!group.exposures.some(existing => existing.raw.id === exposure.raw.id)) {
+          group.exposures.push(exposure);
+        }
+      }
+    }
+    if (tagDictionary.all.some(tag => !usedTagKeys.has(tag.key))) return invalid;
+    for (const group of entries) {
+      group.exposures.sort((a, b) => compareByteArrays(a.idBytes, b.idBytes));
+    }
+    return {contract: index.contract, modules, entries, byIdentity, byCanonicalId,
+      tagDictionary, scope: frozenCopy(index.scope), coverage: frozenCopy(index.coverage),
+      projectionId: index.projectionId,
+      contentBinding: index.projectionId + "\n" + canonicalJson(index.scope)};
   };
 
   const canonicalJson = value => {
@@ -779,131 +778,90 @@ globalThis.cjdocSearch = (() => {
   };
   const exactAliasFacts = (exposures, value) => exposures.filter(exposure =>
     exposure.raw.name === value);
-  const preciseSelectorEvidence = (facts, exposures, request, prepared, hasOverload) => {
+  // Selector fields are strict identities: precise and discovery share the
+  // same admission rules and evidence primitives; only the rule table and its
+  // overload variants differ, which ruleFor resolves from the mode.
+  const selectorEvidence = (facts, exposures, request, prepared, mode, hasOverload = false) => {
+    const evidence = (primitive, exposureId = "") => {
+      const row = evidenceFrom(prepared, mode, primitive, exposureId, {overload: hasOverload});
+      return row ? [row] : [];
+    };
+    const admit = (admitted, primitive) => admitted ? evidence(primitive) : [];
     if (request.symbolId !== undefined) {
-      if (facts.concept || facts.canonicalId !== request.symbolId) return [];
-      return [evidenceFrom(prepared, "precise", "exact_symbol_id")].filter(Boolean);
+      return admit(!facts.concept && facts.canonicalId === request.symbolId, "exact_symbol_id");
     }
     if (request.symbolKey !== undefined) {
-      if (facts.concept || facts.symbolKey !== request.symbolKey) return [];
-      return [evidenceFrom(prepared, "precise", "exact_symbol_key")].filter(Boolean);
+      return admit(!facts.concept && facts.symbolKey === request.symbolKey, "exact_symbol_key");
     }
     if (request.qualifiedName !== undefined) {
-      if (facts.concept || facts.qualifiedName !== request.qualifiedName) return [];
-      return [evidenceFrom(prepared, "precise", "exact_qualified_name", "", {overload: hasOverload})].filter(Boolean);
+      return admit(!facts.concept && facts.qualifiedName === request.qualifiedName, "exact_qualified_name");
     }
-    if (request.name !== undefined) {
-      if (facts.concept) return [];
-      const value = request.name;
-      if (facts.name === value) return [evidenceFrom(prepared, "precise", "exact_name", "", {overload: hasOverload})].filter(Boolean);
-      if (facts.qualifiedName === value) {
-        return [evidenceFrom(prepared, "precise", "exact_qualified_name", "", {overload: hasOverload})].filter(Boolean);
-      }
-      if (facts.ownerName && facts.ownerName + "." + facts.name === value) {
-        return [evidenceFrom(prepared, "precise", "exact_owner_member", "", {overload: hasOverload})].filter(Boolean);
-      }
-      const aliases = exactAliasFacts(exposures, value);
-      return aliases.map(exposure => evidenceFrom(prepared, "precise", "exact_alias", exposure.raw.id,
-        {overload: hasOverload})).filter(Boolean);
-    }
-    return null;
+    if (request.name === undefined || facts.concept) return [];
+    const value = request.name;
+    if (facts.name === value) return evidence("exact_name");
+    if (facts.qualifiedName === value) return evidence("exact_qualified_name");
+    if (facts.ownerName && facts.ownerName + "." + facts.name === value) return evidence("exact_owner_member");
+    return exactAliasFacts(exposures, value).flatMap(exposure => evidence("exact_alias", exposure.raw.id));
   };
-  const discoverySelectorEvidence = (facts, exposures, request, prepared) => {
-    if (request.symbolId !== undefined) {
-      if (facts.concept || facts.canonicalId !== request.symbolId) return [];
-      return [evidenceFrom(prepared, "discovery", "exact_symbol_id")].filter(Boolean);
-    }
-    if (request.symbolKey !== undefined) {
-      if (facts.concept || facts.symbolKey !== request.symbolKey) return [];
-      return [evidenceFrom(prepared, "discovery", "exact_symbol_key")].filter(Boolean);
-    }
-    if (request.qualifiedName !== undefined) {
-      if (facts.concept || facts.qualifiedName !== request.qualifiedName) return [];
-      return [evidenceFrom(prepared, "discovery", "exact_qualified_name")].filter(Boolean);
-    }
-    if (request.name !== undefined) {
-      if (facts.concept) return [];
-      const value = request.name;
-      if (facts.name === value) return [evidenceFrom(prepared, "discovery", "exact_name")].filter(Boolean);
-      if (facts.qualifiedName === value) {
-        return [evidenceFrom(prepared, "discovery", "exact_qualified_name")].filter(Boolean);
-      }
-      if (facts.ownerName && facts.ownerName + "." + facts.name === value) {
-        return [evidenceFrom(prepared, "discovery", "exact_owner_member")].filter(Boolean);
-      }
-      return exactAliasFacts(exposures, value).map(exposure =>
-        evidenceFrom(prepared, "discovery", "exact_alias", exposure.raw.id)).filter(Boolean);
-    }
-    return [];
-  };
-  const preciseQueryEvidence = (facts, exposures, query, prepared, hasOverload) => {
+  // Both modes walk their own published rule table; a rule that matches yields
+  // its declared level/score/reason. Precise scanning stops at the first match,
+  // discovery accumulates every match, and only precise honours overload
+  // selector variants.
+  const queryEvidence = (facts, exposures, query, prepared, mode, hasOverload = false) => {
     if (!query) return [];
-    const wanted = tokens(query);
-    for (const row of prepared.contract.preciseRules) {
-      const variant = row.primitive.endsWith("_with_selector");
-      const primitive = variant ? row.primitive.slice(0, -"_with_selector".length) : row.primitive;
-      if (primitive !== "exact_symbol_id" && primitive !== "exact_symbol_key" &&
-          primitive !== "concept_text" && hasOverload !== variant) continue;
-      let matched = false;
-      let aliases = [];
-      if (primitive === "exact_symbol_id") matched = !facts.concept && query === facts.canonicalId;
-      else if (primitive === "exact_symbol_key") matched = !facts.concept && !!facts.symbolKey && query === facts.symbolKey;
-      else if (primitive === "exact_qualified_name") matched = !facts.concept && query === facts.qualifiedName;
-      else if (primitive === "query_exact_name") matched = !facts.concept && query === facts.name;
-      else if (primitive === "exact_owner_member") {
-        matched = !facts.concept && !!facts.ownerName && query === facts.ownerName + "." + facts.name;
-      } else if (primitive === "exact_alias") {
-        aliases = facts.concept ? [] : exactAliasFacts(exposures, query);
-        matched = aliases.length > 0;
-      } else if (primitive === "structured_text") matched = !facts.concept && containsAll(facts.identifierFold, wanted);
-      else if (primitive === "documentation_text") matched = !facts.concept && containsAll(facts.documentationFold, wanted);
-      else if (primitive === "concept_text") matched = facts.concept && containsAll(facts.documentationFold, wanted);
-      if (!matched) continue;
-      const exposureIds = aliases.length ? aliases.map(exposure => exposure.raw.id) : [""];
-      return exposureIds.map(exposureId => ({level: row.level, score: row.score,
-        reason: row.reason, exposureId}));
-    }
-    return [];
-  };
-  const discoveryEvidence = (facts, exposures, query, prepared) => {
-    if (!query) return [];
+    const precise = mode === "precise";
     const wanted = tokens(query);
     const foldedQuery = fold(query);
     const matches = [];
-    for (const row of prepared.contract.discoveryRules) {
+    for (const row of ruleRows(prepared, mode)) {
+      const variant = row.primitive.endsWith("_with_selector");
+      const primitive = variant ? row.primitive.slice(0, -"_with_selector".length) : row.primitive;
+      if (precise && primitive !== "exact_symbol_id" && primitive !== "exact_symbol_key" &&
+          primitive !== "concept_text" && hasOverload !== variant) continue;
       let exposureIds = [""];
-      const primitive = row.primitive;
       let matched = false;
       if (primitive === "exact_symbol_id") matched = !facts.concept && query === facts.canonicalId;
-      else if (primitive === "exact_symbol_key") matched = !facts.concept && !!facts.symbolKey && query === facts.symbolKey;
-      else if (primitive === "exact_qualified_name") matched = !facts.concept && !!facts.qualifiedName && query === facts.qualifiedName;
-      else if (primitive === "exact_name") matched = !facts.concept && !!facts.name && query === facts.name;
-      else if (primitive === "exact_owner_member") matched = !facts.concept && !!facts.ownerName && query === facts.ownerName + "." + facts.name;
-      else if (primitive === "exact_alias") {
-        const aliases = exactAliasFacts(exposures, query);
+      else if (primitive === "exact_symbol_key") {
+        matched = !facts.concept && !!facts.symbolKey && query === facts.symbolKey;
+      } else if (primitive === "exact_qualified_name") {
+        matched = !facts.concept && (precise || !!facts.qualifiedName) && query === facts.qualifiedName;
+      } else if (primitive === "query_exact_name" || (!precise && primitive === "exact_name")) {
+        matched = !facts.concept && query === facts.name;
+      } else if (primitive === "exact_owner_member") {
+        matched = !facts.concept && !!facts.ownerName && query === facts.ownerName + "." + facts.name;
+      } else if (primitive === "exact_alias") {
+        const aliases = facts.concept ? [] : exactAliasFacts(exposures, query);
         if (aliases.length) { matched = true; exposureIds = aliases.map(exposure => exposure.raw.id); }
       } else if (primitive === "ascii_fold_name") matched = !!facts.name && facts.nameFold === foldedQuery;
       else if (primitive === "name_prefix") matched = !!facts.name && facts.nameFold.startsWith(foldedQuery);
-      else if (primitive === "qualified_prefix") matched = !!facts.qualifiedName && facts.qualifiedFold.startsWith(foldedQuery);
-      else if (primitive === "all_token_word_prefix") {
+      else if (primitive === "qualified_prefix") {
+        matched = !!facts.qualifiedName && facts.qualifiedFold.startsWith(foldedQuery);
+      } else if (primitive === "all_token_word_prefix") {
         const words = facts.nameWords.concat(facts.ownerWords);
         matched = wanted.length > 0 && wanted.every(token => words.some(word => word.startsWith(token)));
       } else if (primitive === "acronym") {
         matched = !facts.concept && wanted.length === 1 &&
           (acronym(facts.nameWords) === wanted[0] || acronym(facts.qualifiedWords) === wanted[0]);
-      } else if (primitive === "structured_text") matched = !facts.concept && containsAll(facts.structuredFold, wanted);
-      else if (primitive === "one_edit") {
+      } else if (primitive === "structured_text") {
+        matched = !facts.concept && containsAll(precise ? facts.identifierFold : facts.structuredFold, wanted);
+      } else if (primitive === "one_edit") {
         const length = wanted.length === 1 ? runeCount(wanted[0]) : 0;
-        if (!facts.concept && wanted.length === 1 && length >= prepared.contract.textPolicy.minEditRunes &&
-            length <= prepared.contract.textPolicy.maxEditRunes) {
+        const policy = prepared.contract.textPolicy;
+        if (!facts.concept && wanted.length === 1 && length >= policy.minEditRunes &&
+            length <= policy.maxEditRunes) {
           const choices = [facts.nameFold, ...facts.nameWords];
           matched = choices.some(candidate => oneEditApart(wanted[0], candidate));
         }
-      } else if (primitive === "documentation_text") matched = !facts.concept && containsAll(facts.documentationFold, wanted);
-      else if (primitive === "concept_text") matched = facts.concept && containsAll(facts.documentationFold, wanted);
+      } else if (primitive === "documentation_text") {
+        matched = !facts.concept && containsAll(facts.documentationFold, wanted);
+      } else if (primitive === "concept_text") {
+        matched = facts.concept && containsAll(facts.documentationFold, wanted);
+      }
       if (!matched) continue;
-      for (const exposureId of exposureIds) matches.push({level: row.level, score: row.score,
-        reason: row.reason, exposureId});
+      const evidenceRows = exposureIds.map(exposureId =>
+        ({level: row.level, score: row.score, reason: row.reason, exposureId}));
+      if (precise) return evidenceRows;
+      matches.push(...evidenceRows);
     }
     return matches;
   };
@@ -935,6 +893,21 @@ globalThis.cjdocSearch = (() => {
     }
     return known;
   };
+  // A module record is the only place these identities live, so both candidate
+  // admission and request scope validation ask the same question of it.
+  const moduleFieldsAdmit = (module, request) => {
+    if (request.moduleId !== undefined && module.moduleId !== request.moduleId &&
+        module.moduleName !== request.moduleId) return false;
+    const set = module.documentSet;
+    const dependency = module.dependency;
+    if (request.documentSetId !== undefined && (!set || set.id !== request.documentSetId)) return false;
+    if (request.library !== undefined && (!set || set.library !== request.library)) return false;
+    if (request.apiVersion !== undefined && (!set || set.apiVersion !== request.apiVersion)) return false;
+    if (request.dependencyInstanceId !== undefined &&
+        (!dependency || dependency.instanceId !== request.dependencyInstanceId)) return false;
+    if (request.target !== undefined && !scopeValueAdmits(set, dependency, "target", request.target, true)) return false;
+    return request.cfg === undefined || scopeValueAdmits(set, dependency, "cfg", request.cfg, true);
+  };
   const moduleScopeAdmits = (facts, modules, request) => {
     if (facts.concept) {
       const moduleFields = ["moduleId", "packageName", "documentSetId", "apiVersion", "library",
@@ -943,22 +916,9 @@ globalThis.cjdocSearch = (() => {
       return request.kind === undefined || request.kind === facts.kind;
     }
     const module = modules[facts.scope];
-    if (!module) return false;
-    if (request.moduleId !== undefined && module.moduleId !== request.moduleId &&
-        module.moduleName !== request.moduleId) return false;
+    if (!module || !moduleFieldsAdmit(module, request)) return false;
     if (request.packageName !== undefined && facts.packageName !== request.packageName) return false;
-    const documentSet = module.documentSet;
-    const dependency = module.dependency;
-    if (request.documentSetId !== undefined && (!documentSet || documentSet.id !== request.documentSetId)) return false;
-    if (request.library !== undefined && (!documentSet || documentSet.library !== request.library)) return false;
-    if (request.apiVersion !== undefined && (!documentSet || documentSet.apiVersion !== request.apiVersion)) return false;
-    if (request.dependencyInstanceId !== undefined && (!dependency || dependency.instanceId !== request.dependencyInstanceId)) return false;
-    if (request.target !== undefined &&
-        !scopeValueAdmits(documentSet, dependency, "target", request.target, true)) return false;
-    if (request.cfg !== undefined &&
-        !scopeValueAdmits(documentSet, dependency, "cfg", request.cfg, true)) return false;
-    if (request.kind !== undefined && facts.kind !== request.kind) return false;
-    return true;
+    return request.kind === undefined || facts.kind === request.kind;
   };
   const userNarrowing = request => {
     const executionFields = new Set(["schemaVersion", "operation", "mode", "profile", "limit",
@@ -995,23 +955,9 @@ globalThis.cjdocSearch = (() => {
     if (request.latest === true && scope.latest !== true) return "latest_not_declared";
     const scopedKeys = ["moduleId", "documentSetId", "apiVersion", "library",
       "dependencyInstanceId", "target", "cfg"];
-    if (scopedKeys.some(key => request[key] !== undefined)) {
-      const admitted = prepared.modules.some(module => {
-        if (request.moduleId !== undefined && module.moduleId !== request.moduleId &&
-            module.moduleName !== request.moduleId) return false;
-        const set = module.documentSet;
-        const dependency = module.dependency;
-        if (request.documentSetId !== undefined && (!set || set.id !== request.documentSetId)) return false;
-        if (request.library !== undefined && (!set || set.library !== request.library)) return false;
-        if (request.apiVersion !== undefined && (!set || set.apiVersion !== request.apiVersion)) return false;
-        if (request.dependencyInstanceId !== undefined && (!dependency || dependency.instanceId !== request.dependencyInstanceId)) return false;
-        if (request.target !== undefined &&
-            !scopeValueAdmits(set, dependency, "target", request.target, true)) return false;
-        if (request.cfg !== undefined &&
-            !scopeValueAdmits(set, dependency, "cfg", request.cfg, true)) return false;
-        return true;
-      });
-      if (!admitted) return "scope_not_captured";
+    if (scopedKeys.some(key => request[key] !== undefined) &&
+        !prepared.modules.some(module => moduleFieldsAdmit(module, request))) {
+      return "scope_not_captured";
     }
     return null;
   };
@@ -1069,17 +1015,17 @@ globalThis.cjdocSearch = (() => {
     return [...h].map(word => word.toString(16).padStart(8, "0")).join("");
   };
 
+  // Every rejected query carries the same empty result shape so callers can
+  // read errorCode without probing for missing arrays.
+  const parseError = (errorCode, invalidToken) =>
+    ({query: "", filters: [], tags: [], errorCode, invalidToken});
   const parseQuery = (raw, contract) => {
-    if (typeof raw !== "string" || hasUnpairedSurrogate(raw)) {
-      return {query: "", filters: [], tags: [], errorCode: "invalid_unicode", invalidToken: raw};
-    }
-    if (!validateContract(contract)) return {query: "", filters: [], tags: [],
-      errorCode: "search_contract_unavailable", invalidToken: ""};
+    if (typeof raw !== "string" || hasUnpairedSurrogate(raw)) return parseError("invalid_unicode", raw);
+    if (!validateContract(contract)) return parseError("search_contract_unavailable", "");
     const fields = new Map(contract.filterFields.map(row => [fold(row.field), row.field]));
     const contains = contract.filterOps.find(row => row.primitive === "ascii_fold_contains");
     const tagPredicate = contract.setPredicates.find(row => row.field === "tags");
-    if (!contains || !tagPredicate) return {query: "", filters: [], tags: [],
-      errorCode: "search_contract_unsupported", invalidToken: ""};
+    if (!contains || !tagPredicate) return parseError("search_contract_unsupported", "");
     const filters = [];
     const tags = [];
     const terms = [];
@@ -1090,21 +1036,23 @@ globalThis.cjdocSearch = (() => {
       const field = fold(token.slice(0, colon));
       const value = token.slice(colon + 1);
       if (field === "tag") {
-        if (!value) return {query: "", filters: [], tags: [], errorCode: "empty_filter_value", invalidToken: token};
-        if (!validTagId(value)) return {query: "", filters: [], tags: [], errorCode: "invalid_tag_id", invalidToken: token};
+        if (!value) return parseError("empty_filter_value", token);
+        if (!validTagId(value)) return parseError("invalid_tag_id", token);
         tags.push(value);
-        if (tags.length > 64) return {query: "", filters: [], tags: [], errorCode: "request_schema", invalidToken: token};
+        if (tags.length > 64) return parseError("request_schema", token);
         continue;
       }
-      if (!fields.has(field)) return {query: "", filters: [], tags: [],
-        errorCode: "unknown_filter_field", invalidToken: token};
-      if (!value) return {query: "", filters: [], tags: [],
-        errorCode: "empty_filter_value", invalidToken: token};
+      if (!fields.has(field)) return parseError("unknown_filter_field", token);
+      if (!value) return parseError("empty_filter_value", token);
       filters.push({field: fields.get(field), op: contains.op, value});
     }
     return {query: terms.join(" "), filters, tags, errorCode: null, invalidToken: ""};
   };
 
+  // A cursor is bound to the projection and the canonical request, so the same
+  // digest proves pagination continuity on both issuing and checking.
+  const cursorDigest = (normalized, prepared) => sha256Utf8("cjdoc.cursor-binding/2:" +
+    prepared.contentBinding + "\n" + normalized.profile + "\n" + cursorCanonicalRequest(normalized));
   const checkCursor = (cursor, normalized, prepared) => {
     if (typeof cursor !== "string" || hasUnpairedSurrogate(cursor)) return {error: "cursor_format"};
     const match = /^cjdoc\.cursor\/2:(0|[1-9][0-9]*):([^:]+):([0-9a-f]{64})$/.exec(cursor);
@@ -1113,16 +1061,13 @@ globalThis.cjdocSearch = (() => {
     if (!Number.isSafeInteger(offset)) return {error: "cursor_format"};
     if (match[2] !== normalized.profile) return {error: "cursor_binding"};
     let digest;
-    try {
-      digest = sha256Utf8("cjdoc.cursor-binding/2:" + prepared.contentBinding + "\n" + normalized.profile + "\n" +
-        cursorCanonicalRequest(normalized));
-    } catch (_) { return {error: "cursor_format"}; }
+    try { digest = cursorDigest(normalized, prepared); }
+    catch (_) { return {error: "cursor_format"}; }
     if (digest !== match[3]) return {error: "cursor_binding"};
     return {offset};
   };
-  const makeCursor = (offset, normalized, prepared) => "cjdoc.cursor/2:" + offset + ":" + normalized.profile + ":" +
-    sha256Utf8("cjdoc.cursor-binding/2:" + prepared.contentBinding + "\n" + normalized.profile + "\n" +
-      cursorCanonicalRequest(normalized));
+  const makeCursor = (offset, normalized, prepared) => "cjdoc.cursor/2:" + offset + ":" +
+    normalized.profile + ":" + cursorDigest(normalized, prepared);
 
   const collectCandidates = (prepared, normalizedResult, restrictCanonicalIds = null) => {
     const normalized = normalizedResult.effective;
@@ -1143,12 +1088,11 @@ globalThis.cjdocSearch = (() => {
       let evidence = [];
       if (filterOnly) evidence = [evidenceFrom(prepared, normalized.mode, "filter_only")].filter(Boolean);
       else if (selectedIdentity(normalized)) {
-        evidence = normalized.mode === "precise"
-          ? (preciseSelectorEvidence(facts, group.exposures, normalized, prepared, hasOverload) || [])
-          : discoverySelectorEvidence(facts, group.exposures, normalized, prepared);
+        evidence = selectorEvidence(facts, group.exposures, normalized, prepared,
+          normalized.mode, hasOverload);
       } else if (queryEmpty) evidence = [];
-      else if (normalized.mode === "precise") evidence = preciseQueryEvidence(facts, group.exposures, query, prepared, hasOverload);
-      else evidence = discoveryEvidence(facts, group.exposures, query, prepared);
+      else evidence = queryEvidence(facts, group.exposures, query, prepared,
+        normalized.mode, hasOverload);
       if (!evidence.length) continue;
       let best = evidence[0];
       for (const candidate of evidence) if (compareEvidence(candidate, best) < 0) best = candidate;
@@ -1199,13 +1143,7 @@ globalThis.cjdocSearch = (() => {
       return {error: "request_schema", status: "invalid_request"};
     }
     const scopeError = validateScope(normalized, prepared);
-    if (scopeError) {
-      const code = scopeError === "latest_not_declared" ? "latest_not_declared" :
-        scopeError === "snapshot_unavailable" ? "snapshot_unavailable" :
-        scopeError === "projection_unavailable" ? "projection_unavailable" : "scope_not_captured";
-      return {error: code, status: "scope_mismatch"};
-    }
-    return null;
+    return scopeError ? {error: scopeError, status: "scope_mismatch"} : null;
   };
   const execute = (index, request) => {
     const prepared = prepareIndex(index);
@@ -1251,20 +1189,19 @@ globalThis.cjdocSearch = (() => {
     return success(status, reason, items, offset, unique.length, complete, next,
       prepared.coverage, {tags: tagFacetRows(unique)});
   };
+  const unavailable = (status, errorCode) => ({status, errorCode, canonicalIds: []});
   const filterEntries = (index, request, canonicalIds) => {
     const prepared = prepareIndex(index);
-    if (prepared.error) return {status: "unavailable", errorCode: prepared.error, canonicalIds: []};
+    if (prepared.error) return unavailable("unavailable", prepared.error);
     if (!Array.isArray(canonicalIds) ||
         !canonicalIds.every(value => nonemptyString(value))) {
-      return {status: "unavailable", errorCode: "search_index_invalid", canonicalIds: []};
+      return unavailable("unavailable", "search_index_invalid");
     }
     const ids = sortedUniqueStrings(canonicalIds);
     const groups = [];
     for (const id of ids) {
       const group = prepared.byCanonicalId.get(id);
-      if (!group || group.entry.concept) {
-        return {status: "unavailable", errorCode: "search_index_invalid", canonicalIds: []};
-      }
+      if (!group || group.entry.concept) return unavailable("unavailable", "search_index_invalid");
       groups.push(group);
     }
     const localRequest = {...(isObject(request) ? request : {})};
@@ -1274,11 +1211,9 @@ globalThis.cjdocSearch = (() => {
     localRequest.limit = 0;
     delete localRequest.cursor;
     const normalizedResult = normalizeRequest(localRequest, prepared);
-    if (normalizedResult.error) return {status: "invalid_request",
-      errorCode: normalizedResult.error, canonicalIds: []};
+    if (normalizedResult.error) return unavailable("invalid_request", normalizedResult.error);
     const requestError = validateSearchRequest(normalizedResult, prepared);
-    if (requestError) return {status: requestError.status,
-      errorCode: requestError.error, canonicalIds: []};
+    if (requestError) return unavailable(requestError.status, requestError.error);
     const normalized = normalizedResult.effective;
     const restriction = new Set(ids);
     const queryEmpty = !normalized.query || /^[ \t\n\r\f\v]*$/u.test(normalized.query);

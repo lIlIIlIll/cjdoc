@@ -461,6 +461,16 @@ private let HTML_REFERENCE_STYLE = """
   display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: .25rem;
   border-bottom: 1px solid var(--cj-border);
 }
+/* Only a large member browser defers closed idle rows: every row keeps its
+   complete markup and links, while a filter keystroke stops restyling hundreds
+   of collapsed bodies. Expanded rows, a row holding focus and a row whose menu
+   is open keep real geometry; print and engines without :has stay unstyled. */
+@media screen {
+  .cj-members--large .cj-member-row:not(:focus-within):not(:has(> .cj-member-actions [aria-expanded="true"])):has(> .cj-member:not([open])) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 4.125rem;
+  }
+}
 .cj-member { grid-area: 1 / 1; min-width: 0; }
 .cj-member-actions { grid-area: 1 / 2; position: relative; display: flex; align-items: flex-start; padding-top: .35rem; }
 .cj-member-row__badges { grid-area: 2 / 1; display: flex; flex-wrap: wrap; gap: .25rem; padding: 0 0 .5rem 1.2rem; }

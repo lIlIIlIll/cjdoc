@@ -8,12 +8,9 @@ internal let HTML_READING_SCRIPT = """
   const isChinese = (document.documentElement.lang || "").toLowerCase().startsWith("zh");
   const text = (english, chinese) => isChinese ? chinese : english;
 
-  // ---- on-page table of contents ------------------------------------------
-  // Wheel, touch and key scrolling all mean the reader took over from a TOC
-  // click; `scroll` alone would fire for the click's own jump.
+  // Outline: only reader input releases click ownership, not the jump's scroll.
   const CLICK_RELEASE_EVENTS = ["wheel", "touchstart", "keydown"];
-  // Filtering hides document sections; the outline follows so it never offers
-  // a jump to a hidden member or an emptied group.
+  // Hidden document sections must disappear from the outline too.
   let syncTocVisibility = () => {};
   const initToc = () => {
     const toc = document.querySelector("[data-cjdoc-toc]");
@@ -28,8 +25,7 @@ internal let HTML_READING_SCRIPT = """
       const role = heading.dataset.cjdocTocRole;
       if (role === "member") return true;
       if (heading.closest("[data-cjdoc-member]")) return false;
-      // Secondary disclosures (complete indexes, generation details) are
-      // collapsed reference material, not sections a reader scrolls to.
+      // Collapsed reference disclosures are not outline sections.
       if (heading.closest("details")) return false;
       return (role === "api-root" || role === "api" || role === "group" ||
         role === "overload" || heading.tagName === "H2" || heading.tagName === "H3");
@@ -75,7 +71,7 @@ internal let HTML_READING_SCRIPT = """
       link.textContent = headingLabel(heading);
       return link;
     };
-    // The toggle draws its chevron with CSS; only the accessible name is here.
+    // CSS draws the chevron; this supplies its accessible name.
     const createToggle = (label, children) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -101,12 +97,8 @@ internal let HTML_READING_SCRIPT = """
     };
     for (let index = 0; index < headings.length; index += 1) ensureId(headings[index], index);
     tocList.replaceChildren();
-    // A member nests under the kind group or declaration group that contains it;
-    // otherwise under the closest preceding section heading. An overload family
-    // title is a sibling of the other member entries of that group, not an extra
-    // level above them, so a group reads as one flat list of members. A
-    // single-kind declaration group has no kind heading, so its own H2 is the
-    // parent; a page without sections stays flat.
+    // Nest under the containing kind/declaration group, else the previous section.
+    // Overload titles are siblings, not another level; sectionless pages stay flat.
     const headingSet = new Set(headings);
     const containerHeading = (heading, containerSelector, titleSelector) => {
       const container = heading.closest(containerSelector);
@@ -129,8 +121,7 @@ internal let HTML_READING_SCRIPT = """
     }
     const withChildren = new Set(parentOf.values());
     const childLists = new Map();
-    // Parents precede their children in document order, so a parent's list
-    // exists by the time its first child is placed.
+    // Document order creates parent lists before their children.
     for (const heading of headings) {
       const item = document.createElement("li");
       item.className = itemClass(heading);
@@ -167,10 +158,8 @@ internal let HTML_READING_SCRIPT = """
         link.classList.toggle("cj-toc__link--active", link.dataset.tocTarget === targetIdValue);
       }
     };
-    // A jump scrolls the target to the top of the scrollport, above the
-    // observer's band, so the observer never reports it and the highlight would
-    // stay on the previous entry. Clicking records the target and wins until the
-    // reader scrolls or types again; a timer covers readers who never do.
+    // Jump targets sit above the observer band. Keep click ownership until reader
+    // input or timeout instead of retaining the observer's previous entry.
     let clickedTarget = null;
     let releaseTimer = 0;
     const releaseClick = () => {
@@ -205,8 +194,7 @@ internal let HTML_READING_SCRIPT = """
       for (const heading of headings) observer.observe(heading);
     }
     setActive(targetId(headings[0]));
-    // A #fragment link (deep link, back/forward, or a click outside the TOC)
-    // also lands above the observer's band; follow the hash there too.
+    // Fragments also land above the observer band: follow clicks and history.
     const syncHash = () => {
       if (!window.location.hash || window.location.hash.length <= 1) return;
       let id = window.location.hash.slice(1);
@@ -224,8 +212,7 @@ internal let HTML_READING_SCRIPT = """
         for (const link of list.querySelectorAll("[data-toc-target]")) {
           const item = link.closest("li");
           if (item) item.hidden = !visibleIds.has(link.dataset.tocTarget);
-          // Group headings carry live "visible / total" counts; members keep
-          // their fixed signature label.
+          // Filtering changes group counts, not member signatures.
           const heading = byTarget.get(link.dataset.tocTarget);
           if (heading && heading.dataset.cjdocTocRole !== "member") {
             const label = headingLabel(heading);
@@ -242,10 +229,8 @@ internal let HTML_READING_SCRIPT = """
     };
   };
 
-  // ---- display settings ----------------------------------------------------
-  // The dialog is built on the first open, so a page whose reader never touches
-  // these controls carries no settings DOM at all. The header label synchronizes
-  // from these stable option labels before any option button exists.
+  // Display settings: first-open construction leaves untouched pages dialog-free.
+  // Header labels use stable options before any option buttons exist.
   const THEMES = ["system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"];
   const FONTS = ["system", "serif", "mono-ui"];
   const SIZES = ["s", "m", "l"];
@@ -255,7 +240,7 @@ internal let HTML_READING_SCRIPT = """
   const FONT_OPTIONS = [["system", "System", "系统"], ["serif", "Serif", "衬线"],
     ["mono-ui", "Monospace", "等宽"]];
   const SIZE_OPTIONS = [["s", "S", "S"], ["m", "M", "M"], ["l", "L", "L"]];
-  // The close icon mirrors the renderer's fixed icon set; CSS supplies the size.
+  // Fixed close glyph; CSS owns its size.
   const settingsIcon = () => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     for (const [key, value] of Object.entries({class: "cj-icon", width: "16", height: "16",
@@ -356,8 +341,7 @@ internal let HTML_READING_SCRIPT = """
     };
     const currentFont = () => FONTS.includes(root.dataset.cjFont) ? root.dataset.cjFont : "system";
     const currentSize = () => SIZES.includes(root.dataset.cjSize) ? root.dataset.cjSize : "m";
-    // Runs before the dialog exists: it updates the header label from the
-    // persisted root state, then the created options once they are there.
+    // Sync persisted labels before creation, and option state after creation.
     const sync = () => {
       const theme = currentTheme();
       for (const button of themeButtons) {
@@ -401,13 +385,11 @@ internal let HTML_READING_SCRIPT = """
       writeReader(reader);
       sync();
     };
-    // Creation binds every listener once, so reopening reuses the same node and
-    // the trigger only points at a dialog that now exists.
+    // Create/bind once; associate aria-controls only with a real dialog.
     const ensureDialog = () => {
       if (dialog) return dialog;
       const created = buildSettingsDialog();
-      // Same position the static dialog used to occupy, so a non-modal
-      // fallback renders where it always did.
+      // Preserve the non-modal fallback's original placement.
       const header = trigger.closest("header");
       if (header && header.parentNode) header.after(created);
       else document.body.append(created);
@@ -452,15 +434,14 @@ internal let HTML_READING_SCRIPT = """
       else dialog.removeAttribute("open");
       if (restoreFocus && typeof trigger.focus === "function") trigger.focus();
     };
-    // The settings trigger lives in the header, which the mobile drawer marks
-    // inert, so a drawer and this modal cannot be opened together. A closed
-    // dialog leaves no inert surface behind.
+    // The drawer makes the header trigger inert, so it cannot coexist with settings.
+    // Closing must leave no inert surface.
     trigger.hidden = false;
     trigger.addEventListener("click", open);
     sync();
   };
 
-  // ---- copy actions --------------------------------------------------------
+  // Copy actions.
   const copyText = async value => {
     if (navigator.clipboard && window.isSecureContext) {
       try { await navigator.clipboard.writeText(value); return true; } catch (_) { /* fallback */ }
@@ -473,8 +454,7 @@ internal let HTML_READING_SCRIPT = """
     document.body.append(area);
     area.select();
     let copied = false;
-    // Textarea selection normalizes CRLF. Supply the bound original to the real
-    // copy event instead of publishing that normalized selection.
+    // Textarea selection normalizes CRLF; the real copy event gets original bytes.
     const preserveOriginal = event => {
       if (event.clipboardData) {
         event.clipboardData.setData("text/plain", value);
@@ -585,7 +565,7 @@ internal let HTML_READING_SCRIPT = """
     }
   };
 
-  // ---- member browser ------------------------------------------------------
+  // Member browser.
   const initMembers = () => {
     const browser = document.querySelector("[data-cjdoc-member-browser]");
     if (!browser) return;
@@ -601,14 +581,15 @@ internal let HTML_READING_SCRIPT = """
     const status = document.querySelector("[data-cjdoc-member-filter-status]");
     const expand = document.querySelector("[data-cjdoc-members-expand]");
     const collapse = document.querySelector("[data-cjdoc-members-collapse]");
+    // Defer layout only for large, closed member rows.
+    if (rows.length > 256) browser.classList.add("cj-members--large");
     let notice = "";
     const syncActions = () => {
       const visible = rows.filter(row => !row.hidden);
       if (expand) expand.disabled = !visible.some(row => !row.open);
       if (collapse) collapse.disabled = !visible.some(row => row.open);
     };
-    // Menu visibility follows aria-expanded in the compact-layout CSS only, so a
-    // menu closed on a touch layout never stays hidden after widening.
+    // CSS reads aria-expanded, avoiding stale touch-menu state after resizing.
     const closeActionMenus = (restoreFocus = false) => {
       let closed = null;
       for (const actions of document.querySelectorAll("[data-cjdoc-member-actions]")) {
@@ -705,8 +686,7 @@ internal let HTML_READING_SCRIPT = """
       status.textContent = countText + notice;
     };
     if (filterToggle && filterFields) {
-      // Wide layouts keep the fields open; narrow ones fold them behind the
-      // toggle (CSS reads data-cj-open), so one control state serves both.
+      // CSS unfolds fields on wide layouts and folds them behind this control.
       filterToggle.addEventListener("click", () => {
         const opening = filterToggle.getAttribute("aria-expanded") !== "true";
         filterToggle.setAttribute("aria-expanded", opening ? "true" : "false");
@@ -773,8 +753,7 @@ internal let HTML_READING_SCRIPT = """
       syncActions();
       if (scroll) requestAnimationFrame(() => member.scrollIntoView({block: "start"}));
     };
-    // Reader state survives a reload and back/forward navigation, but an
-    // explicit hash always wins because it names the target the reader asked for.
+    // Persist per-page state, but an explicitly chosen hash wins over it.
     const stateKey = "cjdoc-member-state:" + [document.body.dataset.cjdocProject || "",
       document.body.dataset.cjdocDocVersion || "", document.documentElement.lang,
       document.body.dataset.cjdocAudience || "", location.pathname].join("|");
@@ -787,9 +766,7 @@ internal let HTML_READING_SCRIPT = """
         }));
       } catch (_) { /* storage is optional */ }
     };
-    // An explicit hash names the target the reader asked for, but a
-    // back/forward return to a page the reader already filtered must keep their
-    // filters; the browser restored that URL, they did not pick it again.
+    // A history-restored hash is not a new target: preserve the reader's filters.
     const navigationEntry = typeof performance !== "undefined" &&
       performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
     const isHistoryNavigation = Boolean(navigationEntry && navigationEntry.type === "back_forward");
@@ -824,12 +801,10 @@ internal let HTML_READING_SCRIPT = """
     if (origin) origin.addEventListener("change", saveState);
     window.addEventListener("pagehide", saveState);
     if (!restored) applyFilter();
-    // Restored reader state already reopened the members it had open; revealing
-    // the hash on top of it would clear the filter the reader kept across Back.
+    // Restored open/filter state already wins over the restored URL's hash.
     if (!restored) revealHashTarget(true);
     window.addEventListener("hashchange", () => revealHashTarget(true));
-    // Following a link to the fragment that is already current fires no
-    // hashchange; reopen (and unfilter) the collapsed target all the same.
+    // Same-fragment clicks fire no hashchange; still unfilter and reopen.
     document.addEventListener("click", event => {
       if (event.defaultPrevented || event.button || event.ctrlKey || event.metaKey ||
           event.shiftKey || event.altKey) return;

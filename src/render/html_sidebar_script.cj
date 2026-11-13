@@ -75,8 +75,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     record.toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
     record.list.hidden = !expanded;
   };
-  // A list built after the fact must become the toggle's target, otherwise the
-  // server's aria-controls keeps naming a branch that never materializes.
+  // A lazy list must become the toggle's real aria-controls target.
   const bindToggle = (toggle, list) => {
     if (list.id) toggle.setAttribute("aria-controls", list.id);
   };
@@ -148,9 +147,16 @@ internal let HTML_SIDEBAR_SCRIPT = """
     }
     return record.list;
   };
-  const ensurePackageChildren = record => record.list || buildPackageChildren(record);
-  // The server renders a bounded window of a long branch; with the index loaded
-  // the branch becomes complete, keeping its trailing "full index" link.
+  // Keep the server window until explicit expansion or filtering needs all children.
+  const ensurePackageChildren = record => {
+    if (!record.list) return buildPackageChildren(record);
+    if (record.list.hasAttribute("data-cjdoc-tree-partial") && record.pkg &&
+      Array.isArray(record.pkg.types)) {
+      completePartial(record.list, record.pkg.types.map(typeItem));
+    }
+    return record.list;
+  };
+  // Complete a partial branch without losing its trailing full-index link.
   const completePartial = (list, children) => {
     if (!list || !list.hasAttribute("data-cjdoc-tree-partial")) return;
     const more = [...list.children].filter(child =>
@@ -158,8 +164,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     list.replaceChildren(...children.filter(Boolean), ...more);
     list.removeAttribute("data-cjdoc-tree-partial");
   };
-  // Server-rendered types other than the current one carry no member list; it
-  // is built from the index the first time the branch is expanded or filtered.
+  // Other types build their member list only when expanded or filtered.
   const ensureTypeList = (item, type) => {
     const existing = item.querySelector(":scope > ul");
     if (existing) return existing;
@@ -186,27 +191,18 @@ internal let HTML_SIDEBAR_SCRIPT = """
       if (record.toggle) {
         record.toggle.addEventListener("click", () => {
           const expanded = record.toggle.getAttribute("aria-expanded") === "true";
-          if (!ensurePackageChildren(record)) return;
+          if (!expanded && !ensurePackageChildren(record)) return;
           setExpanded(record, !expanded);
         });
       }
       packages.push(record);
-      if (record.list && record.list.hasAttribute("data-cjdoc-tree-partial") &&
-        record.pkg && Array.isArray(record.pkg.types)) {
-        completePartial(record.list, record.pkg.types.map(typeItem));
-      }
     }
-    // Server-rendered type toggles are hidden until their listeners exist.
+    // Expose toggles only after binding their listeners.
     for (const item of tree.querySelectorAll("[data-cjdoc-tree-item='type']")) {
       const toggle = item.querySelector("[data-cjdoc-tree-toggle]");
       if (!toggle || toggle.dataset.cjdocTreeBound) continue;
       toggle.dataset.cjdocTreeBound = "true";
       const initial = item.querySelector(":scope > ul");
-      const initialType = typeRecord(item.dataset.cjdocTreeKey);
-      if (initial && initial.hasAttribute("data-cjdoc-tree-partial") &&
-        initialType && Array.isArray(initialType.members)) {
-        completePartial(initial, initialType.members.map(id => memberItem(initialType, id)));
-      }
       toggle.hidden = false;
       if (initial) setExpanded({toggle, list: initial}, !initial.hidden);
       toggle.addEventListener("click", () => {
@@ -236,7 +232,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     const overview = links.find(link =>
       href(link).indexOf("index.html") >= 0 && href(link).indexOf("#") < 0);
     const api = links.find(link => href(link).indexOf("#packages") >= 0);
-    // Query and fragment are client state on the same document, not another page.
+    // Query and hash are state on this document, not another page.
     const onOverview = sidebar.dataset.cjdocCurrentPage === "index.html";
     const onApi = declaredRoute === "api" ||
       (declaredRoute === "overview" && hash === "#packages");
@@ -338,8 +334,9 @@ internal let HTML_SIDEBAR_SCRIPT = """
     }
   };
 
+  const filterControl = () => document.querySelector("[data-cjdoc-sidebar-filter]");
   const filterSidebar = () => {
-    const input = document.querySelector("[data-cjdoc-sidebar-filter]");
+    const input = filterControl();
     if (!input || !tree) return;
     const empty = document.querySelector("[data-cjdoc-sidebar-no-results]");
     const query = folded(input.value.trim());
@@ -352,23 +349,25 @@ internal let HTML_SIDEBAR_SCRIPT = """
     if (empty) empty.hidden = total > 0;
   };
 
-  // A navigation filter is reader state: following a member link and coming
-  // back must return to the same narrowed tree, so it is cached per document
-  // and restored only for a history navigation (never over an explicit URL).
-  const filterKey = () => "cjdoc-sidebar-filter:" +
-    [document.body.dataset.cjdocDocVersion || "", document.documentElement.lang,
-      window.location.pathname].join("|");
+  // Cache the narrowed tree per document, restoring only on Back/Forward.
+  const pageKey = name => name + ":" + [document.body.dataset.cjdocDocVersion || "",
+    document.documentElement.lang, window.location.pathname].join("|");
+  // Fresh navigations start clean.
+  const historyReturn = () => {
+    const entry = typeof performance !== "undefined" &&
+      performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+    return Boolean(entry) && entry.type === "back_forward";
+  };
+  const filterKey = () => pageKey("cjdoc-sidebar-filter");
   const saveFilter = () => {
-    const input = document.querySelector("[data-cjdoc-sidebar-filter]");
+    const input = filterControl();
     if (!input) return;
     try { sessionStorage.setItem(filterKey(), input.value); } catch (_) { /* optional */ }
   };
   const restoreFilter = () => {
-    const input = document.querySelector("[data-cjdoc-sidebar-filter]");
+    const input = filterControl();
     if (!input) return;
-    const entry = typeof performance !== "undefined" &&
-      performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
-    if (!entry || entry.type !== "back_forward") return;
+    if (!historyReturn()) return;
     let saved = "";
     try { saved = sessionStorage.getItem(filterKey()) || ""; } catch (_) { saved = ""; }
     if (!saved) return;
@@ -376,16 +375,10 @@ internal let HTML_SIDEBAR_SCRIPT = """
     filterSidebar();
   };
 
-  // Document scroll belongs to native history restoration, but a sidebar is a
-  // nested scroll box the browser does not restore on its own; take the offset
-  // at pagehide (a navigation can beat the queued scroll event) and put it back
-  // only for a Back/Forward return.
+  // Native history restores document scroll, not nested sidebar scroll.
+  // Capture at pagehide to beat queued events; restore only on Back/Forward.
   let sidebarOffset = 0;
-  const scrollKey = () => "cjdoc-sidebar-scroll:" +
-    [document.body.dataset.cjdocDocVersion || "", document.documentElement.lang,
-      window.location.pathname].join("|");
-  // Resolve the panel locally so these helpers also run in the extracted
-  // script harness, which only carries the slice under test.
+  const scrollKey = () => pageKey("cjdoc-sidebar-scroll");
   const scrollPanel = () => document.querySelector("#cjdoc-sidebar");
   const initScroll = () => {
     const panel = scrollPanel();
@@ -400,9 +393,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
   const restoreScroll = () => {
     const panel = scrollPanel();
     if (!panel) return;
-    const entry = typeof performance !== "undefined" &&
-      performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
-    if (!entry || entry.type !== "back_forward") return;
+    if (!historyReturn()) return;
     let saved = NaN;
     try { saved = Number(sessionStorage.getItem(scrollKey())); } catch (_) { saved = NaN; }
     if (!Number.isFinite(saved) || saved < 0) return;
@@ -489,8 +480,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     saveFilter();
     saveScroll();
   });
-  // The size of the tree settles after the deferred scripts run, so the resting
-  // position is computed in a frame unless history restoration already won.
+  // Deferred scripts settle tree size; history restoration takes priority.
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => {
     if (sidebarOffset > 0) return;
     positionSidebar();
