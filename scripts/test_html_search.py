@@ -592,8 +592,8 @@ for (const raw of [undefined, null, 42, {}]) {
 }
 const qualifiedToken = api.parseQuery("QUALIFIEDNAME:net.HttpClientBuilder", contract);
 assert.equal(qualifiedToken.filters[0].field, "qualifiedName");
-assert.deepEqual(Array.from(api.filterEntries(index, localRequest(qualifiedToken),
-  [index.entries[0].canonicalId]).canonicalIds), ["cjdoc:v2:net%3AHttpClientBuilder"]);
+assert.deepEqual(Array.from(api.createEntryFilter(index,
+  [index.entries[0].canonicalId])(localRequest(qualifiedToken)).canonicalIds), ["cjdoc:v2:net%3AHttpClientBuilder"]);
 assert.equal(api.execute({...index, schemaVersion:"cjdoc.search-index/10"}, baseRequest).errorCode,
   "search_index_version_unsupported");
 const scopedCopy = (projectionId, fields = {}) => ({
@@ -702,17 +702,22 @@ const largeIndex = {...index, projectionId: "projection-large",
   coverage: {...index.coverage, projectionId: "projection-large"},
   entries: [...index.entries, ...massEntries]};
 const localMassQuery = api.parseQuery("mass", contract);
-assert.equal(api.filterEntries(largeIndex, localRequest(localMassQuery),
-  massEntries.map(row => row.canonicalId)).canonicalIds.length, 105);
+assert.equal(api.createEntryFilter(largeIndex,
+  massEntries.map(row => row.canonicalId))(localRequest(localMassQuery)).canonicalIds.length, 105);
 const localTag = api.parseQuery("tag:stream", contract);
 const localCanonicalIds = [index.entries[0].canonicalId,
   index.entries.find(row => row.name === "send").canonicalId];
-assert.deepEqual(Array.from(api.filterEntries(index, localRequest(localTag),
-  localCanonicalIds).canonicalIds), ["cjdoc:v2:net%3AHttpClientBuilder"]);
+const localMemberFilter = api.createEntryFilter(index, localCanonicalIds);
+const localTagResult = localMemberFilter(localRequest(localTag));
+assert.deepEqual(Array.from(localTagResult.canonicalIds), ["cjdoc:v2:net%3AHttpClientBuilder"]);
+localCanonicalIds.splice(0, localCanonicalIds.length, "missing-canonical-id");
+localTagResult.canonicalIds.push("missing-canonical-id");
+assert.deepEqual(Array.from(localMemberFilter(localRequest(localTag)).canonicalIds),
+  ["cjdoc:v2:net%3AHttpClientBuilder"]);
 const localQuery = api.parseQuery("Http", contract);
-assert.deepEqual(Array.from(api.filterEntries(index, localRequest(localQuery),
-  localCanonicalIds).canonicalIds), ["cjdoc:v2:net%3AHttpClientBuilder"]);
-assert.equal(api.filterEntries(index, {query:""}, ["missing-canonical-id"]).errorCode,
+assert.deepEqual(Array.from(localMemberFilter(localRequest(localQuery)).canonicalIds),
+  ["cjdoc:v2:net%3AHttpClientBuilder"]);
+assert.equal(api.createEntryFilter(index, ["missing-canonical-id"])({query:""}).errorCode,
   "search_index_invalid");
 // ---- initial load: nothing is built --------------------------------------
 const world = loadWorld();

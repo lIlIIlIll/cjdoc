@@ -582,7 +582,7 @@ internal let HTML_READING_SCRIPT = """
     const kernel = globalThis.cjdocSearch;
     const index = globalThis.__CJDOC_SEARCH_INDEX__;
     const rows = [...document.querySelectorAll("[data-cjdoc-member]")];
-    const memberIds = rows.map(row => row.dataset.memberSymbolId);
+    const memberFilter = kernel?.createEntryFilter(index, rows.map(row => row.dataset.memberSymbolId));
     const groups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
     const overloads = [...document.querySelectorAll("[data-cjdoc-overload-group]")];
     const filter = document.querySelector("[data-cjdoc-member-filter]");
@@ -620,7 +620,7 @@ internal let HTML_READING_SCRIPT = """
       if (!error) {
         const request = {query: parsed.query, filters: parsed.filters};
         if (parsed.tags.length) request.tags = parsed.tags;
-        const projection = kernel.filterEntries(index, request, memberIds);
+        const projection = memberFilter(request);
         if (projection.status !== "ok") error = projection.errorCode || "search_index_invalid";
         else matching = new Set(projection.canonicalIds);
       }

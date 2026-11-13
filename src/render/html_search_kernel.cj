@@ -1190,42 +1190,44 @@ globalThis.cjdocSearch = (() => {
       prepared.coverage, {tags: tagFacetRows(unique)});
   };
   const unavailable = (status, errorCode) => ({status, errorCode, canonicalIds: []});
-  const filterEntries = (index, request, canonicalIds) => {
+  const createEntryFilter = (index, canonicalIds) => {
     const prepared = prepareIndex(index);
-    if (prepared.error) return unavailable("unavailable", prepared.error);
+    if (prepared.error) return () => unavailable("unavailable", prepared.error);
     if (!Array.isArray(canonicalIds) ||
         !canonicalIds.every(value => nonemptyString(value))) {
-      return unavailable("unavailable", "search_index_invalid");
+      return () => unavailable("unavailable", "search_index_invalid");
     }
     const ids = sortedUniqueStrings(canonicalIds);
     const groups = [];
     for (const id of ids) {
       const group = prepared.byCanonicalId.get(id);
-      if (!group || group.entry.concept) return unavailable("unavailable", "search_index_invalid");
+      if (!group || group.entry.concept) return () => unavailable("unavailable", "search_index_invalid");
       groups.push(group);
     }
-    const localRequest = {...(isObject(request) ? request : {})};
-    localRequest.operation = "search";
-    if (!own(localRequest, "mode")) localRequest.mode = "discovery";
-    if (!own(localRequest, "profile")) localRequest.profile = "bounded-static";
-    localRequest.limit = 0;
-    delete localRequest.cursor;
-    const normalizedResult = normalizeRequest(localRequest, prepared);
-    if (normalizedResult.error) return unavailable("invalid_request", normalizedResult.error);
-    const requestError = validateSearchRequest(normalizedResult, prepared);
-    if (requestError) return unavailable(requestError.status, requestError.error);
-    const normalized = normalizedResult.effective;
     const restriction = new Set(ids);
-    const queryEmpty = !normalized.query || /^[ \t\n\r\f\v]*$/u.test(normalized.query);
-    if (!queryEmpty || normalizedResult.hasUserNarrowing ||
-        selectedIdentity(normalized) || overloadSelected(normalized)) {
-      const {unique} = collectCandidates(prepared, normalizedResult, restriction);
-      return {status: "ok", errorCode: null,
-        canonicalIds: unique.map(item => item.group.canonicalId)};
-    }
-    return {status: "ok", errorCode: null, canonicalIds: groups
-      .filter(group => moduleScopeAdmits(group.entry, prepared.modules, normalized))
-      .map(group => group.canonicalId)};
+    return request => {
+      const localRequest = {...(isObject(request) ? request : {})};
+      localRequest.operation = "search";
+      if (!own(localRequest, "mode")) localRequest.mode = "discovery";
+      if (!own(localRequest, "profile")) localRequest.profile = "bounded-static";
+      localRequest.limit = 0;
+      delete localRequest.cursor;
+      const normalizedResult = normalizeRequest(localRequest, prepared);
+      if (normalizedResult.error) return unavailable("invalid_request", normalizedResult.error);
+      const requestError = validateSearchRequest(normalizedResult, prepared);
+      if (requestError) return unavailable(requestError.status, requestError.error);
+      const normalized = normalizedResult.effective;
+      const queryEmpty = !normalized.query || /^[ \t\n\r\f\v]*$/u.test(normalized.query);
+      if (!queryEmpty || normalizedResult.hasUserNarrowing ||
+          selectedIdentity(normalized) || overloadSelected(normalized)) {
+        const {unique} = collectCandidates(prepared, normalizedResult, restriction);
+        return {status: "ok", errorCode: null,
+          canonicalIds: unique.map(item => item.group.canonicalId)};
+      }
+      return {status: "ok", errorCode: null, canonicalIds: groups
+        .filter(group => moduleScopeAdmits(group.entry, prepared.modules, normalized))
+        .map(group => group.canonicalId)};
+    };
   };
 
   const findEntry = (index, snapshotId, canonicalId) => {
@@ -1237,6 +1239,6 @@ globalThis.cjdocSearch = (() => {
   };
 
   return {fold, tokens, wordParts, acronym, oneEditApart, compareBytes, sha256Utf8,
-    parseQuery, normalizeFilters, execute, filterEntries, findEntry};
+    parseQuery, normalizeFilters, execute, createEntryFilter, findEntry};
 })();
 "#
