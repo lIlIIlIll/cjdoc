@@ -240,16 +240,19 @@ private let HTML_CHROME_STYLE = """
 """
 
 private let HTML_DOCUMENT_STYLE = """
-/* Zero-specificity base rules: any component class overrides them by order. */
-:where(.cj-content) :where(h1, h2, h3, h4, h5, h6) {
+/* Singleton type buckets preserve zero specificity without matching every node. */
+:where(.cj-content) :where(h1), :where(.cj-content) :where(h2),
+:where(.cj-content) :where(h3), :where(.cj-content) :where(h4),
+:where(.cj-content) :where(h5), :where(.cj-content) :where(h6) {
   color: var(--cj-fg); font-weight: 650; line-height: 1.3; letter-spacing: -.01em; text-wrap: balance;
 }
 :where(.cj-content) :where(h2) { margin: 2.25rem 0 .75rem; padding-bottom: .4rem; border-bottom: 1px solid var(--cj-border); font-size: 1.3125rem; }
 :where(.cj-content) :where(h3) { margin: 1.75rem 0 .5rem; font-size: 1.0625rem; }
 :where(.cj-content) :where(h4) { margin: 1.4rem 0 .4rem; font-size: .9375rem; }
-:where(.cj-content) :where(h5, h6) { margin: 1.2rem 0 .35rem; font-size: .875rem; }
-:where(.cj-content) :where(p, ul, ol, dl, blockquote) { margin: .7rem 0; }
-:where(.cj-content) :where(ul, ol) { padding-left: 1.4rem; }
+:where(.cj-content) :where(h5), :where(.cj-content) :where(h6) { margin: 1.2rem 0 .35rem; font-size: .875rem; }
+:where(.cj-content) :where(p), :where(.cj-content) :where(ul), :where(.cj-content) :where(ol),
+:where(.cj-content) :where(dl), :where(.cj-content) :where(blockquote) { margin: .7rem 0; }
+:where(.cj-content) :where(ul), :where(.cj-content) :where(ol) { padding-left: 1.4rem; }
 :where(.cj-content) :where(li + li) { margin-top: .2rem; }
 :where(.cj-content) :where(hr) { margin: 2rem 0; border: 0; border-top: 1px solid var(--cj-border); }
 :where(.cj-content) :where(code) { font-size: .875em; }
@@ -477,7 +480,8 @@ private let HTML_REFERENCE_STYLE = """
   html[data-cj-js] .cj-members--large .cj-member { flex: 1 1 0; }
   html[data-cj-js] .cj-members--large .cj-member-actions { flex: 0 0 auto; }
   html[data-cj-js] .cj-members--large .cj-member-row__badges { flex: 1 0 100%; }
-  html[data-cj-js] .cj-members--large .cj-member-row:not(:focus-within):not(:has(> .cj-member-actions [aria-expanded="true"])):has(> .cj-member:not([open])) {
+  html[data-cj-js] .cj-members--large .cj-member-row:has(> .cj-member):not(:focus-within):not(:has(
+    > .cj-member[open], > .cj-member-actions > .cj-member-actions__toggle[aria-expanded="true"])) {
     content-visibility: auto;
     contain-intrinsic-size: auto 4.125rem;
   }

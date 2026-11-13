@@ -106,7 +106,8 @@ table { font-variant-numeric: tabular-nums; }
 .cj-drawer-backdrop { display: none; }
 .cj-header__inner > .cj-header__menu, .cj-sidebar__head { display: none; }
 /* Filters and bulk member actions only work once the reading script runs. */
-html:not([data-cj-js]) :is(.cj-sidebar__filter, .cj-members__toolbar) { display: none; }
+html:not([data-cj-js]) .cj-sidebar__filter,
+html:not([data-cj-js]) .cj-members__toolbar { display: none; }
 .cj-footer { border-top: 1px solid var(--cj-border); color: var(--cj-muted); font-size: .75rem; }
 .cj-footer__inner {
   display: flex;
