@@ -371,6 +371,44 @@ test.describe('generated HTML reference', () => {
     pageErrors.set(page, errors);
     page.on('pageerror', error => errors.push(String(error)));
   });
+  for (const surface of ['search', 'settings']) {
+    test(`${surface} dismissal cannot steal later focus or close a reopened session`, async ({ page }) => {
+      await openIndex(page);
+      const selectors = surface === 'search'
+        ? { trigger: '[data-cjdoc-search-trigger]', dialog: '[data-cjdoc-search-dialog]', close: '[data-cjdoc-search-close]' }
+        : { trigger: '[data-cjdoc-theme-toggle]', dialog: '[data-cjdoc-theme-popover]', close: '[data-cjdoc-theme-close]' };
+      const trigger = page.locator(selectors.trigger);
+      const dialog = page.locator(selectors.dialog);
+      const next = page.locator('[data-cjdoc-sidebar-filter]');
+      await expect(next).toBeVisible();
+      await trigger.click();
+      await page.evaluate(async ({ dialog, close }) => {
+        const popup = document.querySelector(dialog);
+        const closed = new Promise(resolve => popup.addEventListener('close', resolve, { once: true }));
+        document.querySelector(close).click();
+        document.querySelector('[data-cjdoc-sidebar-filter]').focus();
+        await closed;
+      }, selectors);
+      await expect(next).toBeFocused();
+      await trigger.click();
+      await page.evaluate(async ({ trigger, dialog, close }) => {
+        const popup = document.querySelector(dialog);
+        const closed = new Promise(resolve => popup.addEventListener('close', resolve, { once: true }));
+        document.querySelector(close).click();
+        document.querySelector(trigger).click();
+        await closed;
+      }, selectors);
+      await expect(dialog).toBeVisible();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      if (surface === 'search') await page.locator('[data-cjdoc-kind]').focus();
+      else await page.locator('[data-cjdoc-theme-value]').first().focus();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await expect(trigger).toBeFocused();
+      await expectStable(page);
+    });
+  }
+
   test('overview, search state, typography, theme, and API routes are observable', async ({ page }) => {
     await openIndex(page);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'overview');

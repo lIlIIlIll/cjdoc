@@ -407,9 +407,9 @@ internal let HTML_READING_SCRIPT = """
       fontButtons = [...created.querySelectorAll("[data-cjdoc-font-value]")];
       sizeButtons = [...created.querySelectorAll("[data-cjdoc-size-value]")];
       if (closeButton) closeButton.addEventListener("click", () => close(true));
-      created.addEventListener("close", () => {
-        trigger.setAttribute("aria-expanded", "false");
-        if (typeof trigger.focus === "function") trigger.focus();
+      created.addEventListener("cancel", event => {
+        event.preventDefault();
+        close(true);
       });
       created.addEventListener("click", event => {
         if (event.target === created) close(true);

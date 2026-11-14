@@ -666,9 +666,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       focusTarget();
     };
     // Dismissal returns to the invoking trigger; result navigation owns its focus.
-    let restoreFocusOnClose = true;
     const closeDialog = (restoreFocus = true) => {
-      restoreFocusOnClose = restoreFocus;
       resetSearch();
       if (trigger) trigger.setAttribute("aria-expanded", "false");
       if (typeof dialog.close === "function" && dialog.open) dialog.close();
@@ -676,11 +674,9 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       if (restoreFocus && returnTarget && typeof returnTarget.focus === "function") returnTarget.focus();
     };
     if (closeButton) closeButton.addEventListener("click", () => closeDialog(true));
-    dialog.addEventListener("close", () => {
-      if (trigger) trigger.setAttribute("aria-expanded", "false");
-      resetSearch();
-      if (restoreFocusOnClose && returnTarget && typeof returnTarget.focus === "function") returnTarget.focus();
-      restoreFocusOnClose = true;
+    dialog.addEventListener("cancel", event => {
+      event.preventDefault();
+      closeDialog(true);
     });
     dialog.addEventListener("click", event => {
       // A click on the dialog element itself is the backdrop area.
