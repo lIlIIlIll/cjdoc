@@ -46,7 +46,8 @@ private func appendInlineMemberActions(w: HtmlWriter,
 private func memberActionAttrs(cssClass: String, actionLabel: String,
     actionId: String, suffix: String, summaryId: String): Array<HtmlAttr> {
     let labelId = actionId + "-" + suffix + "-label"
-    return [htmlClass("cj-member-actions__item " + cssClass),
+    // A self-reference contributes aria-label before the full summary name.
+    return [htmlClass("cj-member-actions__item " + cssClass), htmlAttr("id", labelId),
         htmlAttr("aria-label", actionLabel), htmlAttr("title", actionLabel),
         htmlAttr("aria-labelledby", labelId + " " + summaryId)]
 }
@@ -58,8 +59,7 @@ private func appendMemberStandaloneAction(w: HtmlWriter, member: SymbolDoc,
     attrs.add(htmlHref(SafeUrl.siteRoute(rootPrefix + symbolPagePath(member))))
     w.open("a", attrs: attrs.toArray())
     w.icon("standalone")
-    w.textElement("span", actionLabel, attrs: [htmlClass("cj-member-actions__label"),
-        htmlAttr("id", actionId + "-standalone-label")])
+    w.text(actionLabel)
     w.close("a")
 }
 
@@ -77,9 +77,7 @@ private func appendMemberSourceAction(w: HtmlWriter, projection: RenderProjectio
                     attrs.add(htmlAttr("rel", "noreferrer"))
                     w.open("a", attrs: attrs.toArray())
                     w.icon("source")
-                    w.textElement("span", actionLabel,
-                        attrs: [htmlClass("cj-member-actions__label"),
-                            htmlAttr("id", actionId + "-source-label")])
+                    w.text(actionLabel)
                     w.close("a")
                 case None => ()
             }
@@ -95,8 +93,7 @@ private func appendMemberCopyAction(w: HtmlWriter, member: SymbolDoc, rootPrefix
     attrs.add(htmlAttr("data-cjdoc-copy-link", rootPrefix + symbolReadablePagePath(member)))
     w.open("button", attrs: attrs.toArray())
     w.icon("copy")
-    w.textElement("span", actionLabel, attrs: [htmlClass("cj-member-actions__label"),
-        htmlAttr("id", actionId + "-copy-label")])
+    w.text(actionLabel)
     w.close("button")
 }
 

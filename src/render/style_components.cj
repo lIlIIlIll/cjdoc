@@ -540,13 +540,11 @@ html:not([data-cj-js]) .cj-member-actions { position: static; }
   }
 }
 .cj-member-actions__item {
-  display: inline-grid; place-items: center; width: 1.875rem; height: 1.875rem; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.875rem; height: 1.875rem; padding: 0; font-size: 0; gap: 0; white-space: nowrap;
   border: 0; border-radius: var(--cj-radius); background: none; color: var(--cj-muted); cursor: pointer;
 }
 .cj-member-actions__item:hover { background: var(--cj-surface-2); color: var(--cj-fg); text-decoration: none; }
-.cj-member-actions__label {
-  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
-}
 /* The compact popup exists because a narrow row has no room for the inline
    tray, so only width decides it: a wide viewport keeps the inline tray even
    when the pointer cannot hover (headless, touch-screen laptops). */
@@ -558,8 +556,9 @@ html:not([data-cj-js]) .cj-member-actions { position: static; }
     border: 1px solid var(--cj-border); border-radius: 8px; background: var(--cj-bg); box-shadow: var(--cj-shadow); opacity: 1;
   }
   html[data-cj-js] .cj-member-actions__toggle[aria-expanded="true"] + .cj-member-actions__list { display: flex; }
-  html[data-cj-js] .cj-member-actions__item { justify-content: start; grid-auto-flow: column; gap: .5rem; width: auto; padding: 0 .6rem; }
-  html[data-cj-js] .cj-member-actions__label { position: static; width: auto; height: auto; overflow: visible; clip: auto; clip-path: none; font-size: .8125rem; }
+  html[data-cj-js] .cj-member-actions__item {
+    justify-content: start; gap: .5rem; width: auto; padding: 0 .6rem; font-size: .8125rem;
+  }
 }
 
 .cj-params, .cj-throws { margin: .5rem 0 1rem; border-top: 1px solid var(--cj-border); }

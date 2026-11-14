@@ -50,7 +50,8 @@ private func rendererSafetyFenceMarks(marker!: String = "~",
 }
 
 private func rendererOwnerDocumentation(ownerKind: String,
-    ownerDocumentation!: ?DocComment = None): DocumentationSet {
+    ownerDocumentation!: ?DocComment = None,
+    memberDocumentation!: ?DocComment = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:owner-validation"
     let ownerId =
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aowner-validation::fixture::class:Owner#g0()"
@@ -63,7 +64,8 @@ private func rendererOwnerDocumentation(ownerKind: String,
         documentation: ownerDocumentation)
     let member = SymbolDoc(memberId, "function", "member", "fixture.Owner.member", "fixture",
         moduleId, "public", source, "public func member(): Unit",
-        SemanticInfo("partial", "ast"), ownerId: Some(ownerId))
+        SemanticInfo("partial", "ast"), ownerId: Some(ownerId),
+        documentation: memberDocumentation)
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("owner-validation"),
         ConfigurationSnapshot(lintProfile: "off"), providers: [ProviderInfo("ast", "builtin",
             moduleId, "partial", SemanticCapabilities(false, false, false, false, false))],
@@ -544,9 +546,6 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains("-summary\" data-cjdoc-toc-role=\"member\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-toc-label=\"member()"), true)
         @Expect(symbolHtml.contains("aria-labelledby=\"symbol-"), true)
-        // Member action labels stay available to assistive technology while the
-        // compact row shows only their glyphs.
-        @Expect(symbolHtml.contains("<span class=\"cj-member-actions__label\""), true)
         // The compact row is chosen by width alone; a coarse pointer on a wide
         // viewport must not swap the inline tray for the popup.
         @Expect(css.contains("@media (min-width: 761px)"), true)
@@ -555,6 +554,21 @@ class RendererSafetyTest {
         @Expect(searchJs.contains("row.hidden = !matches"), true)
         @Expect(searchJs.contains("if (iconOnly) {"), true)
         @Expect(searchJs.contains("if (status) status.textContent = message;"), true)
+    }
+
+    @TestCase
+    func memberActionLabelsKeepUntrustedSummaryAsText(): Unit {
+        let attack = "</summary><img src=x onerror=alert(1)>"
+        let comment = DocComment(attack, attack, "", MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: attack)])
+        ]))
+        let documentation = rendererOwnerDocumentation("class",
+            memberDocumentation: Some(comment))
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let html = rendererSafetyContent(artifacts,
+            "html/${symbolPagePath(documentation.declarations[0])}")
+        @Expect(html.contains("<img src=x onerror=alert(1)>"), false)
+        @Expect(html.contains("&lt;img src=x onerror=alert(1)&gt;"), true)
     }
 
     @TestCase

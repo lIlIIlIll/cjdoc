@@ -626,7 +626,6 @@ test.describe('generated HTML reference', () => {
     await expect(actions.locator('.cj-member-actions__item--source')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
     await expect(actions.locator('.cj-member-actions__item--copy')).toHaveAttribute('aria-label', 'Copy link');
     await expect(actions.locator('.cj-member-actions__item--copy')).toHaveAttribute('title', 'Copy link');
-    await expect(actions.locator('.cj-member-actions__label')).toHaveText(['Open standalone API page', 'View source code', 'Copy link']);
     const minActionSize = await actions.locator('.cj-member-actions__item').evaluateAll(
       (elements) => Math.min(...elements.map(element => Math.min(
         element.getBoundingClientRect().height, element.getBoundingClientRect().width)))

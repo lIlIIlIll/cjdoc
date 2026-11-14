@@ -21,7 +21,7 @@ def _row(anchor: str, href: str) -> str:
         ' data-cjdoc-member-actions-toggle aria-expanded="false">More</button>'
         '<div class="cj-member-actions__list">'
         '<a class="cj-member-actions__item cj-member-actions__item--standalone"'
-        f' href="{href}"><span class="cj-member-actions__label">Standalone</span></a>'
+        f' href="{href}">Standalone</a>'
         '<button class="cj-member-actions__item cj-member-actions__item--copy"'
         ' data-cjdoc-copy-link>Copy link</button>'
         '</div></div></div>'
