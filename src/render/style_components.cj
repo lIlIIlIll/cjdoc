@@ -466,17 +466,26 @@ private let HTML_REFERENCE_STYLE = """
 }
 /* Only a large member browser defers closed idle rows: every row keeps its
    complete markup and links, while a filter keystroke stops restyling hundreds
-   of collapsed bodies. Expanded rows, a row holding focus and a row whose menu
-   is open keep real geometry; print and engines without :has never defer rows. */
+   of collapsed bodies. Expanded and focused rows keep real geometry; a narrow
+   popup also prevents deferral. Wide rows expose only inline actions.
+   Print and engines without :has never defer rows. */
 @media screen {
   html[data-cj-js] .cj-members--large .cj-member-row { display: flex; flex-wrap: wrap; }
   html[data-cj-js] .cj-members--large .cj-member { flex: 1 1 0; }
   html[data-cj-js] .cj-members--large .cj-member-actions { flex: 0 0 auto; }
   html[data-cj-js] .cj-members--large .cj-member-row__badges { flex: 1 0 100%; }
-  html[data-cj-js] .cj-members--large .cj-member-row:has(> .cj-member):not(:focus-within):not(:has(
-    > .cj-member[open], > .cj-member-actions > .cj-member-actions__toggle[aria-expanded="true"])) {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 4.125rem;
+  @media (max-width: 760px) {
+    html[data-cj-js] .cj-members--large .cj-member-row:has(> .cj-member):not(:focus-within):not(:has(
+      > .cj-member[open], > .cj-member-actions > .cj-member-actions__toggle[aria-expanded="true"])) {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 4.125rem;
+    }
+  }
+  @media (min-width: 761px) {
+    html[data-cj-js] .cj-members--large .cj-member-row:not(:focus-within):has(> .cj-member:not([open])) {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 4.125rem;
+    }
   }
 }
 .cj-member { grid-area: 1 / 1; min-width: 0; }
