@@ -13,6 +13,21 @@ import { chromium, playwrightVersion, distribution, entryIndex, installMetrics, 
   resourceSizes, screenshot, sha256, timedQuery, typeEntry } from './reader-scale-metrics.mjs';
 import { anchorFor, instrumentedPage, memberTasks, openSearch, overloadTasks, queryTasks } from './reader-scale-tasks.mjs';
 
+async function cpuAffinityIdentity() {
+  if (process.platform !== 'linux') {
+    return { status: 'not-supported', reason: 'process CPU affinity is reported only on Linux' };
+  }
+  const status = await readFile('/proc/self/status', 'utf8');
+  const row = status.split('\n').find(line => line.startsWith('Cpus_allowed_list:'));
+  if (!row) throw new Error('Linux process CPU affinity is missing');
+  const logicalCpuList = row.slice('Cpus_allowed_list:'.length).trim();
+  if (!/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/.test(logicalCpuList)) {
+    throw new Error('Linux process CPU affinity is invalid');
+  }
+  return { status: 'measured', logicalCpuList,
+    scope: 'Node launcher process affinity; child processes inherit it' };
+}
+
 async function fontIdentities(report, inventory = false) {
   // Installed identity is a fixed host contract, independent of which families
   // either reader happened to use. Usage is collected separately from the page.
@@ -255,6 +270,7 @@ const resources = await resourceSizes(config.site);
 const harness = Object.fromEntries(await Promise.all(
   ['measure-reader-scale.mjs', 'reader-scale-metrics.mjs', 'reader-scale-tasks.mjs']
     .map(async name => [name, sha256(await readFile(new URL(name, import.meta.url)))])));
+const affinity = await cpuAffinityIdentity();
 const hosted = await serve(config.site);
 let browser;
 try {
@@ -269,6 +285,7 @@ const report = { schemaVersion: 'cjdoc.reader-browser/2', label: config.label,
   environment: { browser: await browser.version(), playwright: playwrightVersion, node: process.version,
     platform: process.platform, architecture: process.arch, locale: 'en-US', requestedUiLocale: config.locale,
     cpuThrottlingRate: 1,
+    cpuAffinity: affinity,
     jsHeapLimitMiB: 512, baselineViewport: { width: 1440, height: 900, deviceScaleFactor: 1 },
     network: 'local static server without transfer compression; file has no HTTP transfer',
     taskSemantics: 'scripted browser operations and elapsed automation time, not human completion time' },

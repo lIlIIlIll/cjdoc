@@ -114,6 +114,8 @@ python3 scripts/with_stdx.py --variant static -- python3 scripts/reader_capture.
 
 安装浏览器系统依赖/字体是环境准备，不在测量中途安装。`--corpus` 还支持 `10000`、`50000`、`external`。每次要求全新输出目录，拒绝覆盖已有证据。`reader_capture.py` 只把明确的非 1k 资源拒绝当作完成观测；任意源码/渲染/浏览器故障仍退出失败。`measured` 表示采样完成，不表示所有读者任务通过。
 
+Linux 观测另记录实际 `environment.cpuAffinity`；它是 Node 启动进程的允许 CPU 列表，子进程继承该亲和性。需要隔离调度时，先从当前允许集合选择并登记固定 CPU 集合及物理核拓扑，再以同一 `taskset --cpu-list "$CPUSET"` 前缀运行完整 baseline/after 命令。隔离配方单独登记，不根据计时结果挑核，不改 governor，也不把未隔离配方的失败改记为通过；两侧完整 environment 仍须相等。
+
 当前采集器只消费实际发布的 `cjdoc.search-index/11`；升级搜索协议时必须同步 `reader-scale-metrics.mjs` 的输入契约。历史基线保留其源码版本对应的采集器及摘要，不能把旧协议拒绝误报为容量失败，也不能为绕过拒绝放宽预算、减少样本或生成手写索引。
 
 已有固定原生站点时可独立重跑浏览器观测，原生生成费用仍引用原来的真实凭据，不把重跑写成重新生成：
