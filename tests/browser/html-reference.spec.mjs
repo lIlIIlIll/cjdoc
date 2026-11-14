@@ -790,6 +790,24 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-results] [role="option"]')).not.toHaveCount(0);
   });
 
+  for (const [locale, rootUrl, visibleLabel] of [
+    ['en', indexUrl, 'constructor'], ['zh-CN', zhIndexUrl, '构造器'],
+  ]) {
+    test(`${locale}: visible constructor category selects real constructor results`, async ({page}) => {
+      test.skip(!rootUrl, 'the locale reference fixture is not configured');
+      await gotoFile(page, rootUrl);
+      await openSearchDialog(page);
+      const kindFilter = page.locator('[data-cjdoc-kind]');
+      await kindFilter.selectOption({label: visibleLabel});
+      await expect(kindFilter).toHaveValue('constructor');
+      const rows = await expectSearchRows(page, 2);
+      expect(rows.map(row => row.name)).toEqual(['init', 'init']);
+      await expect(page.locator('[data-cjdoc-results] .cj-kind[data-kind="constructor"]'))
+        .toHaveCount(2);
+      await expectStable(page);
+    });
+  }
+
   test('Chinese package filter retains a readable default and nonblank choices', async ({ page }) => {
     test.skip(!zhIndexUrl, 'CJDOC_HTML_FIXTURE_ZH is not configured');
     pageErrors.set(page, []);

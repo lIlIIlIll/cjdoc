@@ -72,10 +72,10 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
   const trigger = document.querySelector("[data-cjdoc-search-trigger]");
   const isChinese = (document.documentElement.lang || "").toLowerCase().startsWith("zh");
   const text = (english, chinese) => isChinese ? chinese : english;
-  const kindLabels = {function: "函数", constructor: "构造器", property: "属性", variable: "变量",
+  const kindLabels = {__proto__: null, function: "函数", constructor: "构造器", property: "属性", variable: "变量",
     class: "类", struct: "结构体", interface: "接口", enum: "枚举", enumCase: "枚举项",
     extend: "扩展", typeAlias: "类型别名", concept: "指南", macro: "宏"};
-  const englishKindLabels = {typeAlias: "type alias", enumCase: "enum case", extend: "extension"};
+  const englishKindLabels = {__proto__: null, typeAlias: "type alias", enumCase: "enum case", extend: "extension"};
   const kindLabel = value => isChinese ? (kindLabels[value] || value) : (englishKindLabels[value] || value);
   // The trigger already carries the publication prefix that the input used to
   // read, so URL results work before the dialog that owns the input exists.
