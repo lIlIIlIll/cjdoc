@@ -482,7 +482,7 @@ internal let HTML_READING_SCRIPT = """
   };
   const initCopy = () => {
     for (const button of document.querySelectorAll("[data-cjdoc-copy-link]")) {
-      const iconOnly = !button.textContent || !button.textContent.trim();
+      const iconOnly = !button.textContent.trim();
       const label = button.getAttribute("aria-label") || button.textContent || "";
       const status = button.parentElement
         ? button.parentElement.querySelector("[data-cjdoc-copy-status]") : null;
@@ -496,13 +496,12 @@ internal let HTML_READING_SCRIPT = """
         if (iconOnly) {
           button.setAttribute("aria-label", message);
           button.setAttribute("title", message);
-          if (status) status.textContent = message;
         } else {
-          const span = button.querySelector("span");
-          if (span) span.textContent = message;
-          else button.textContent = message;
-          if (status) status.textContent = message;
+          const labelNode = button.querySelector("span") || button.lastChild;
+          if (labelNode) labelNode.textContent = message;
+          if (button.hasAttribute("aria-label")) button.setAttribute("aria-label", message);
         }
+        if (status) status.textContent = message;
         if (!copied) {
           let field = button.parentElement
             ? button.parentElement.querySelector("[data-cjdoc-copy-link-fallback]") : null;

@@ -637,6 +637,8 @@ test.describe('generated HTML reference', () => {
     await expect(actions.locator('.cj-member-actions__item--copy'))
       .toHaveAttribute('data-cjdoc-copy-state', 'copied');
     await expect(actions.locator('[data-cjdoc-copy-status]')).toHaveText('Link copied');
+    await expect(actions.locator('.cj-member-actions__item--copy'))
+      .toHaveAccessibleName(/Link copied.*label/);
     // Copy feedback must not replace the copy icon with a text button.
     await expect(actions.locator('.cj-member-actions__item--copy .cj-icon')).toHaveCount(1);
     await expect(normalizeDetail).toHaveAttribute('open', '');

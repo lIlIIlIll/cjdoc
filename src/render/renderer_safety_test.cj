@@ -552,8 +552,6 @@ class RendererSafetyTest {
         @Expect(css.contains("@media (max-width: 760px)"), true)
         @Expect(css.contains("(pointer: coarse)"), false)
         @Expect(searchJs.contains("row.hidden = !matches"), true)
-        @Expect(searchJs.contains("if (iconOnly) {"), true)
-        @Expect(searchJs.contains("if (status) status.textContent = message;"), true)
     }
 
     @TestCase
