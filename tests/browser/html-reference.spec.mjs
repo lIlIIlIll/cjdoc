@@ -926,6 +926,33 @@ test.describe('generated HTML reference', () => {
 
 
 
+  for (const hiddenBy of ['collapse', 'filter']) {
+    test(`mobile drawer wraps focus after ${hiddenBy} hides a lazy branch`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await openIndex(page);
+      await page.locator('[data-cjdoc-menu]').click();
+      const sidebar = page.locator('#cjdoc-sidebar');
+      const tailLabel = await sidebar.locator('button[aria-expanded]').last().getAttribute('aria-label');
+      const tailToggle = sidebar.getByRole('button', { name: tailLabel, exact: true });
+      if (await tailToggle.getAttribute('aria-expanded') !== 'true') await tailToggle.click();
+      const branch = page.locator(`[id=${JSON.stringify(await tailToggle.getAttribute('aria-controls'))}]`);
+      const retainedLink = branch.locator('a[href]').last();
+      await expect(retainedLink).toBeVisible();
+      if (hiddenBy === 'collapse') await tailToggle.click();
+      else await sidebar.locator('[data-cjdoc-sidebar-filter]').fill('ReferenceBox');
+      await expect(retainedLink).toBeHidden();
+      const first = sidebar.locator('[data-cjdoc-sidebar-close]');
+      const last = sidebar.locator('a[href], button, input, [tabindex]')
+        .filter({ visible: true }).last();
+      await first.focus();
+      await page.keyboard.press('Shift+Tab');
+      await expect(last).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(first).toBeFocused();
+      await expectStable(page);
+    });
+  }
+
   test('mobile drawer, narrow TOC, filters, and CSS zoom remain usable', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openIndex(page);

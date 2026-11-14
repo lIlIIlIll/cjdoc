@@ -451,7 +451,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
       if (event.key === "Escape") { event.preventDefault(); close(true); return; }
       if (event.key !== "Tab") return;
       const focusable = [...sidebar.querySelectorAll("a[href], button, input, [tabindex]")]
-        .filter(node => !node.hidden && !node.disabled && node.tabIndex >= 0);
+        .filter(node => node.getClientRects().length && !node.disabled && node.tabIndex >= 0);
       if (!focusable.length) { event.preventDefault(); return; }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
