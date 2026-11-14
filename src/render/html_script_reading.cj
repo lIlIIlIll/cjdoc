@@ -221,7 +221,8 @@ internal let HTML_READING_SCRIPT = """
       const activeList = mobileOutline.matches && mobileList || tocList;
       for (const {list, link, item, heading} of outline) {
         if (list !== activeList) continue;
-        if (item) item.hidden = !visibleIds.has(link.dataset.tocTarget);
+        const hidden = !visibleIds.has(link.dataset.tocTarget);
+        if (item && item.hidden !== hidden) item.hidden = hidden;
         // Filtering changes group counts, not member signatures.
         if (heading && heading.dataset.cjdocTocRole !== "member") {
           const label = headingLabel(heading);
@@ -581,8 +582,13 @@ internal let HTML_READING_SCRIPT = """
     const index = globalThis.__CJDOC_SEARCH_INDEX__;
     const rows = [...document.querySelectorAll("[data-cjdoc-member]")];
     const memberFilter = kernel?.createEntryFilter(index, rows.map(row => row.dataset.memberSymbolId));
-    const groups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
-    const overloads = [...document.querySelectorAll("[data-cjdoc-overload-group]")];
+    const groups = [...document.querySelectorAll("[data-cjdoc-member-group]")].map(group =>
+      [group, [...group.querySelectorAll("[data-cjdoc-member]")]]);
+    const overloads = [...document.querySelectorAll("[data-cjdoc-overload-group]")].map(group =>
+      [group, [...group.querySelectorAll("[data-cjdoc-member]")]]);
+    const roles = [...document.querySelectorAll("[data-cjdoc-declaration-group]")].map(group =>
+      [group, [...group.querySelectorAll("[data-cjdoc-member]")]]);
+    const visibleCount = members => members.reduce((count, row) => count + Number(!row.hidden), 0);
     const filter = document.querySelector("[data-cjdoc-member-filter]");
     const origin = document.querySelector("[data-cjdoc-member-origin]");
     const filterToggle = document.querySelector("[data-cjdoc-member-filter-toggle]");
@@ -592,9 +598,8 @@ internal let HTML_READING_SCRIPT = """
     const collapse = document.querySelector("[data-cjdoc-members-collapse]");
     let notice = "";
     const syncActions = () => {
-      const visible = rows.filter(row => !row.hidden);
-      if (expand) expand.disabled = !visible.some(row => !row.open);
-      if (collapse) collapse.disabled = !visible.some(row => row.open);
+      if (expand) expand.disabled = !rows.some(row => !row.hidden && !row.open);
+      if (collapse) collapse.disabled = !rows.some(row => !row.hidden && row.open);
     };
     // CSS reads aria-expanded, avoiding stale touch-menu state after resizing.
     const closeActionMenus = (restoreFocus = false) => {
@@ -633,15 +638,15 @@ internal let HTML_READING_SCRIPT = """
         const queryMatches = !error && matching.has(row.dataset.memberSymbolId);
         const originMatches = !selectedOrigin || row.dataset.memberOrigin === selectedOrigin;
         const matches = queryMatches && originMatches;
-        row.hidden = !matches;
+        const hidden = !matches;
+        if (row.hidden !== hidden) row.hidden = hidden;
         const wrapper = row.closest(".cj-member-row");
-        if (wrapper) wrapper.hidden = !matches;
+        if (wrapper && wrapper.hidden !== hidden) wrapper.hidden = hidden;
         if (matches) visible += 1;
       }
-      for (const group of overloads) {
+      for (const [group, members] of overloads) {
         const total = Number(group.dataset.overloadTotal);
-        const matches = [...group.querySelectorAll("[data-cjdoc-member]")]
-          .filter(row => !row.hidden).length;
+        const matches = visibleCount(members);
         group.hidden = matches === 0;
         const count = group.querySelector("[data-cjdoc-overload-count]");
         if (count && Number.isFinite(total) && total > 0) {
@@ -651,9 +656,8 @@ internal let HTML_READING_SCRIPT = """
               : matches + " of " + total + " overloads");
         }
       }
-      for (const group of groups) {
-        const members = [...group.querySelectorAll("[data-cjdoc-member]")];
-        const matches = members.filter(row => !row.hidden).length;
+      for (const [group, members] of groups) {
+        const matches = visibleCount(members);
         group.hidden = matches === 0;
         const count = group.querySelector(".cj-member-group__count");
         if (count) {
@@ -663,9 +667,8 @@ internal let HTML_READING_SCRIPT = """
             : value + (members.length === 1 ? " member" : " members");
         }
       }
-      for (const role of document.querySelectorAll("[data-cjdoc-declaration-group]")) {
-        const members = [...role.querySelectorAll("[data-cjdoc-member]")];
-        const matches = members.filter(row => !row.hidden).length;
+      for (const [role, members] of roles) {
+        const matches = visibleCount(members);
         role.hidden = members.length > 0 && matches === 0;
         const count = role.querySelector("[data-cjdoc-group-count]");
         if (count) {
