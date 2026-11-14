@@ -1461,13 +1461,28 @@ test.describe('authored declaration groups', () => {
               await expect(mixed).toBeHidden();
               expect(numericCount(await single.locator('[data-cjdoc-group-count]').textContent()))
                 .toEqual([1, 3]);
-              const hiddenToc = await mixed.locator(
+              const hiddenTargets = await mixed.locator(
                 'h2, h3[data-cjdoc-toc-role="group"], [data-cjdoc-toc-role="overload"]')
-                .evaluateAll(headings => headings.every(heading =>
-                  [...document.querySelectorAll('[data-cjdoc-toc] [data-toc-target]')]
-                    .filter(link => link.dataset.tocTarget === heading.id)
-                    .every(link => link.closest('li').hidden)));
-              expect(hiddenToc).toBe(true);
+                .evaluateAll(headings => headings.map(heading => heading.id));
+              const expectFilteredOutline = async () => {
+                const narrow = page.viewportSize().width <= 1180;
+                const toc = page.locator(narrow
+                  ? '[data-cjdoc-mobile-toc]' : '[data-cjdoc-toc]');
+                if (narrow && await toc.getAttribute('open') === null) {
+                  await toc.locator(':scope > summary').click();
+                }
+                await expect(toc.locator(`[data-toc-target="${plainId}"]`)).toBeVisible();
+                for (const target of hiddenTargets) {
+                  const link = toc.locator(`[data-toc-target="${target}"]`);
+                  await expect(link).toHaveCount(1);
+                  await expect(link).toBeHidden();
+                }
+              };
+              await expectFilteredOutline();
+              await page.setViewportSize({width: width > 1180 ? 960 : 1440, height});
+              await expectFilteredOutline();
+              await page.setViewportSize({width, height});
+              await expectFilteredOutline();
               await filter.fill('');
               await page.locator('[data-cjdoc-members-collapse]').click();
               const geometry = await page.evaluate(() => {

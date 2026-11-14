@@ -56,7 +56,11 @@ def _member_filters(page):
 def _toc_matches_content(page):
     problems = page.evaluate("""() => {
       const problems = [];
-      for (const link of document.querySelectorAll('[data-cjdoc-toc] [data-toc-target], [data-cjdoc-mobile-toc] [data-toc-target]')) {
+      const selector = matchMedia('(max-width: 1180px)').matches
+        ? '[data-cjdoc-mobile-toc]' : '[data-cjdoc-toc]';
+      const outline = document.querySelector(selector);
+      if (!outline) return ['missing active outline'];
+      for (const link of outline.querySelectorAll('[data-toc-target]')) {
         const target = document.getElementById(link.dataset.tocTarget);
         const hidden = Boolean(target && target.closest('[hidden]'));
         if (!target || link.closest('li').hidden !== hidden) problems.push(link.textContent);
@@ -343,7 +347,7 @@ def run_reading_regressions(page, member_url: str) -> list[str]:
     check_filtered_hash_and_header(page, member_url)
     return ["member header actions work while collapsed on mouse and touch-sized screens",
             "sidebar filters hide nonmatches and retain their state through Back",
-            "both TOCs track text and origin filters, including zero matches and reset",
+            "the active responsive TOC tracks text and origin filters, including zero matches and reset",
             "bulk expand/collapse acts only on visible members",
             "Back preserves member filters and disclosure state with and without a URL hash",
             "history-restored category filters agree with their visible select value",
