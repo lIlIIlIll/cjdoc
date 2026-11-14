@@ -97,7 +97,7 @@ TASK=$(mktemp -d "$HOME/.cache/agent-tmp/cjdoc-reader.XXXXXX")
 chmod 700 "$TASK"
 mkdir -m 700 "$TASK/tmp" "$TASK/browser-dependencies"
 export TMPDIR="$TASK/tmp" TMP="$TASK/tmp" TEMP="$TASK/tmp"
-export RUNNER_TEMP="$TASK/tmp" GITHUB_WORKSPACE="$PWD" cjHeapSize=1GB
+export RUNNER_TEMP="$TASK/tmp" GITHUB_WORKSPACE="$PWD" cjHeapSize=512MB
 export PYTHONDONTWRITEBYTECODE=1 PLAYWRIGHT_SKIP_BROWSER_GC=1
 export PLAYWRIGHT_BROWSERS_PATH="$TASK/browsers"
 export CJDOC_BROWSER_REQUIRE_ROOT="$TASK/browser-dependencies"
