@@ -450,9 +450,6 @@ class RendererSafetyTest {
         let artifacts = HtmlDocumentationRenderer().render(documentation)
         let packagePath = "html/${packagePagePath("cjdoc:module:v1:renderer-safety", "fixture")}"
         let packageHtml = rendererSafetyContent(artifacts, packagePath)
-        let css = rendererSafetyContent(artifacts, "html/style.css")
-        // search.js bundles the sidebar, search and reading controllers in order.
-        let searchJs = rendererSafetyContent(artifacts, "html/search.js")
 
         // Currentness is ARIA, not a class: sidebarPageIsCurrent never marks a
         // link that carries a fragment, and the ancestor modifier only marks the
@@ -475,14 +472,6 @@ class RendererSafetyTest {
         @Expect(packageHtml.contains("aria-current=\"page\""), true)
         @Expect(packageHtml.contains(
             "<aside class=\"cj-toc\" data-cjdoc-toc aria-label=\"On this page\" hidden>"), true)
-        // The empty-state TOC stays hidden until the script finds headings.
-        @Expect(searchJs.contains("toc.hidden = headings.length === 0;"), true)
-        @Expect(searchJs.contains("cj-toc__children"), true)
-        @Expect(searchJs.contains("setActive(targetId("), true)
-        @Expect(searchJs.contains("aria-expanded"), true)
-        @Expect(searchJs.contains("event.key !== \"Tab\""), true)
-        @Expect(css.contains(".cj-toc__toggle"), true)
-        @Expect(css.contains(".cj-toc__children"), true)
 
         // Package pages keep their declaration-group anchors and expose the
         // compact declaration table instead of the old signature rows.
@@ -517,7 +506,6 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains("<div class=\"cj-member-group__head\">"), true)
         @Expect(symbolHtml.contains("<span class=\"cj-member-group__count\">"), true)
         @Expect(symbolHtml.contains("data-cjdoc-toc-role=\"member\""), true)
-        @Expect(searchJs.contains("[data-cjdoc-toc-role='member']"), true)
         @Expect(!symbolHtml.contains("semantic: resolved"), true)
         @Expect(!symbolHtml.contains("top-source-disabled"), true)
         @Expect(symbolHtml.contains(
@@ -546,12 +534,6 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains("-summary\" data-cjdoc-toc-role=\"member\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-toc-label=\"member()"), true)
         @Expect(symbolHtml.contains("aria-labelledby=\"symbol-"), true)
-        // The compact row is chosen by width alone; a coarse pointer on a wide
-        // viewport must not swap the inline tray for the popup.
-        @Expect(css.contains("@media (min-width: 761px)"), true)
-        @Expect(css.contains("@media (max-width: 760px)"), true)
-        @Expect(css.contains("(pointer: coarse)"), false)
-        @Expect(searchJs.contains("row.hidden = !matches"), true)
     }
 
     @TestCase

@@ -35,7 +35,7 @@
 - 翻页后结果链接继续支持方向键、Enter 和 Escape；方向键移动真实焦点，返回查询框或用 Ctrl+K 聚焦不会把当前页重置为第一页。查询、类别和包实际变更仍重置页码。Escape 保留原有清空查询语义，从结果返回搜索框。
 - 空结果只表示当前索引没有命中；面板明确说明每项 2,000-rune 正文摘录边界，不提高截断上限或复制完整正文。
 - `saveMemberState` 原来保存的文档滚动坐标没有恢复消费者，却会在成员 DOM 变更后强制布局。移除该无用字段，文档位置继续由原生历史负责；仅缓存实际恢复的 sidebar offset，并在 pagehide 同步取最终快照，覆盖未派发 scroll 事件就导航的情况。不能仅凭同步 JS 变快就宣称像素呈现变快；需要分开观察布局/下一帧与额外渲染机会。
-- 键盘回归使用真实 DOM 事件与原生生成页面。保留 ranking/IME 单元行为检查，并让 DOM test double 提供标准事件 `target`；删除截取内部函数再用空 `render` stub 复述调用顺序的测试，不给新函数名重建 stub。现有真实 browser 的 Control/Meta+K 关闭移动主题 modal、解除 inert 并聚焦搜索的用例继续保留。
+- 键盘回归使用真实 DOM 事件与原生生成页面。保留 ranking/IME 单元行为检查，并让 DOM test double 提供标准事件 `target`；删除截取内部函数再用空 `render` stub 复述调用顺序的测试，不给新函数名重建 stub。生成器的导航单测保留 ARIA、真实链接和内容契约，不钉 JS 赋值语句或 CSS 选择器／断点源码；目录可见性、筛选和响应式操作由真实浏览器回归覆盖。现有真实 browser 的 Control/Meta+K 关闭移动主题 modal、解除 inert 并聚焦搜索的用例继续保留。
 - 移动菜单的 pointer hit-test 先将实际 popup 原生滚入视口，再分别验证 action 位于视口内且实际接收指针；不将视口以外的坐标误判为 paint containment 裁切。菜单仍必须通过独立的浏览器 hit-testing，不能只看 DOM 存在或 `display`。
 - `tests/browser/check-reader-discovery.mjs` 在实际原生 1k 站点检查完整分页身份/顺序、查询重置、IME/键盘精确尾部链接、立即导航后的 sidebar/文档历史，以及规定视口/明暗主题中的翻页控件和边界说明。它不替代冻结的三文件规模测量 harness。
 - 首次完整成对 CI 的 500 成员下一帧 P95 最高 165.4ms，未达到事前 150ms 目标。独立 trace 将主要成本定位到恢复 500 行时的样式/布局（一次涉及 16,984 个样式元素、约 19k dirty layout objects），并排除仅增加 layout containment 的方案。仅在 screen media 中对未展开、无焦点且未打开操作菜单的行使用浏览器原生 `content-visibility:auto`；保留全部 DOM、作者正文和精确锚点，展开契约与 print 始终走完整布局。不支持所用 selector 的浏览器保留原布局。对所有行延后布局的早期方案曾使离屏展开契约的 rendered text 变为空，既有 showcase 检查捕获该回归；双展开后保留完整作者正文的实际场景防止重现。诊断样本不是正式通过凭据，仍以完整 cohort 的比较为准。
