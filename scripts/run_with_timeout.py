@@ -135,6 +135,39 @@ def _group_is_alive(process: subprocess.Popen) -> bool:
         return process.poll() is None
 
 
+class _Cancellation(BaseException):
+    """Unwind an interrupted wait before performing blocking group cleanup."""
+
+    def __init__(self, process: subprocess.Popen, signum: int, frame, prior) -> None:
+        super().__init__(signum)
+        self.process = process
+        self.signum = signum
+        self.frame = frame
+        self.prior = prior
+
+
+def _finish_cancellation(cancellation: _Cancellation) -> None:
+    process = cancellation.process
+    _signal_group(process, signal.SIGTERM)
+    if os.name == "nt":
+        _terminate_windows_tree_now(process)
+    else:
+        _wait_for_group(process, _grace_seconds())
+        # A worker may remain after its leader obeys TERM.
+        _kill_tree(process)
+    try:
+        process.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        pass
+    if cancellation.prior == signal.SIG_IGN:
+        return
+    if callable(cancellation.prior):
+        cancellation.prior(cancellation.signum, cancellation.frame)
+        return
+    signal.signal(cancellation.signum, signal.SIG_DFL)
+    os.kill(os.getpid(), cancellation.signum)
+
+
 def _start_with_signal_cleanup(command: list[str]) -> subprocess.Popen:
     """Start the command with cancellation cleanup installed before spawning.
 
@@ -146,33 +179,21 @@ def _start_with_signal_cleanup(command: list[str]) -> subprocess.Popen:
     previous: dict = {}
     process: subprocess.Popen | None = None
     pending: list = []
+    cancelling = False
 
     def handler(signum, frame) -> None:
+        nonlocal cancelling
+        if cancelling:
+            return
         if process is None:
             # Popen may have spawned the child before returning its handle.
             # Defer cancellation until the group can be signalled and reaped.
             pending.append((signum, frame))
             return
-        _signal_group(process, signal.SIGTERM)
-        if os.name == "nt":
-            _terminate_windows_tree_now(process)
-        else:
-            _wait_for_group(process, _grace_seconds())
-            # The group is killed even when the leader obeyed TERM, because a worker
-            # in its session may not have, and the grace above already covered it.
-            _kill_tree(process)
-        try:
-            process.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            pass
-        prior = previous.get(signum, signal.SIG_DFL)
-        if prior == signal.SIG_IGN:
-            return
-        if callable(prior):
-            prior(signum, frame)
-            return
-        signal.signal(signum, signal.SIG_DFL)
-        os.kill(os.getpid(), signum)
+        cancelling = True
+        # Popen.wait may currently own its non-reentrant waitpid lock. Cleanup
+        # must run only after the interrupted wait has released that lock.
+        raise _Cancellation(process, signum, frame, previous.get(signum, signal.SIG_DFL))
 
     # SIGHUP too: a local run that loses its terminal or SSH session receives it,
     # and the command -- in its own session -- would not, so it would survive as an
@@ -192,6 +213,8 @@ def _start_with_signal_cleanup(command: list[str]) -> subprocess.Popen:
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
             if os.name == "nt" else 0,
         )
+    except _Cancellation:
+        raise
     except BaseException:
         # No handle was returned. Restore signal semantics even when launch fails.
         for signum, prior in previous.items():
@@ -204,11 +227,10 @@ def _start_with_signal_cleanup(command: list[str]) -> subprocess.Popen:
     return process
 
 
-def run(command: list[str], timeout_seconds: int) -> int:
-    started = time.monotonic()
-    process = _start_with_signal_cleanup(command)
+def _wait_until_deadline(process: subprocess.Popen, timeout_seconds: int,
+                         started: float, deadline: float) -> int:
     try:
-        return process.wait(timeout=timeout_seconds)
+        return process.wait(timeout=max(0, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
         elapsed = round(time.monotonic() - started, 1)
         # TERM first, then escalate, exactly as `timeout --signal=TERM
@@ -222,7 +244,7 @@ def run(command: list[str], timeout_seconds: int) -> int:
             # No graceful group signal exists, and `taskkill /T` needs a live root,
             # so the tree is ended now rather than after a grace that could let the
             # root exit.
-            print(f"run_with_timeout.py: terminating the process tree",
+            print("run_with_timeout.py: terminating the process tree",
                   file=sys.stderr, flush=True)
             _terminate_windows_tree_now(process)
         else:
@@ -238,6 +260,22 @@ def run(command: list[str], timeout_seconds: int) -> int:
         except subprocess.TimeoutExpired:
             pass
         return TIMEOUT_EXIT_CODE
+
+
+def run(command: list[str], timeout_seconds: int) -> int:
+    started = time.monotonic()
+    deadline = None
+    try:
+        process = _start_with_signal_cleanup(command)
+        deadline = time.monotonic() + timeout_seconds
+        return _wait_until_deadline(process, timeout_seconds, started, deadline)
+    except _Cancellation as cancellation:
+        _finish_cancellation(cancellation)
+        # An ignored or returning custom handler resumes the existing child,
+        # without restarting a deadline that had already begun.
+        if deadline is None:
+            deadline = time.monotonic() + timeout_seconds
+        return _wait_until_deadline(cancellation.process, timeout_seconds, started, deadline)
 
 
 def main() -> int:

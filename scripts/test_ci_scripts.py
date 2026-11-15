@@ -352,6 +352,70 @@ class RunWithTimeoutTests(unittest.TestCase):
                 wrapper.wait(timeout=10)
             subprocess.run(["pkill", "-f", marker], check=False)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX signals only")
+    def test_hangup_during_wait_reaps_without_reentering_the_wait_lock(self) -> None:
+        directory = Path(self.temporary.name)
+        ready = directory / "ready"
+        terminated = directory / "terminated"
+        triggered = directory / "triggered"
+        # Deliver the real signal inside an owned wait, rather than relying on
+        # scheduler timing to hit Popen's non-reentrant waitpid critical section.
+        (directory / "sitecustomize.py").write_text(
+            "import json, os, signal, subprocess, sys, time\n"
+            "from pathlib import Path\n"
+            "if os.path.abspath(sys.argv[0]) == os.environ.get('CJDOC_TEST_WRAPPER'):\n"
+            "    directory = Path(os.environ['CJDOC_TEST_WAIT_DIRECTORY'])\n"
+            "    signal.signal(signal.SIGHUP, signal.SIG_DFL)\n"
+            "    original = subprocess.Popen._try_wait\n"
+            "    fired = False\n"
+            "    def interrupt_wait(process, flags):\n"
+            "        global fired\n"
+            "        observed = original(process, flags)\n"
+            "        if not fired and observed[0] == 0:\n"
+            "            fired = True\n"
+            "            deadline = time.monotonic() + 10\n"
+            "            while not (directory / 'ready').exists():\n"
+            "                if time.monotonic() >= deadline:\n"
+            "                    raise RuntimeError('child never became ready')\n"
+            "                time.sleep(0.01)\n"
+            "            (directory / 'triggered').write_text(json.dumps({\n"
+            "                'pid': process.pid, 'locked': process._waitpid_lock.locked()}))\n"
+            "            os.kill(os.getpid(), signal.SIGHUP)\n"
+            "        return observed\n"
+            "    subprocess.Popen._try_wait = interrupt_wait\n", encoding="utf-8")
+        child = (
+            "import os, signal, sys, time\n"
+            "from pathlib import Path\n"
+            "def terminate(number, frame):\n"
+            f"    Path({str(terminated)!r}).write_text('term')\n"
+            "    sys.exit(0)\n"
+            "signal.signal(signal.SIGTERM, terminate)\n"
+            f"Path({str(ready)!r}).write_text(str(os.getpid()))\n"
+            "time.sleep(60)\n")
+        environment = dict(self.short_grace(), PYTHONPATH=str(directory),
+                           CJDOC_TEST_WRAPPER=str(self.script),
+                           CJDOC_TEST_WAIT_DIRECTORY=str(directory))
+        wrapper = subprocess.Popen(
+            [sys.executable, str(self.script), "60", "--", sys.executable, "-c", child],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=environment)
+        try:
+            wrapper.wait(timeout=15)
+            self.assertEqual(wrapper.returncode, -signal.SIGHUP)
+            observation = json.loads(triggered.read_text())
+            self.assertTrue(observation["locked"])
+            self.assertEqual(terminated.read_text(), "term")
+            with self.assertRaises(ProcessLookupError):
+                os.kill(observation["pid"], 0)
+        finally:
+            if wrapper.poll() is None:
+                wrapper.kill()
+                wrapper.wait(timeout=10)
+            if triggered.exists():
+                try:
+                    os.killpg(json.loads(triggered.read_text())["pid"], signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_interrupting_the_wrapper_kills_the_child_group(self) -> None:
         """SIGTERM to the wrapper must not leave the command running."""

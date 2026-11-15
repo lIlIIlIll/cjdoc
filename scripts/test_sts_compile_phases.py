@@ -219,9 +219,12 @@ class CompilePhaseTests(unittest.TestCase):
     def test_an_unrepresentable_diagnostics_directory_stops_before_compiling(self):
         """A path `cjpm` would split or truncate must fail, not silently compile."""
         fixture, manifest, original = self.provider_fixture()
-        for diagnostics in ('relative/ir', '/runner/ir\\', '/runner/"quoted ir"',
-                            '/runner/ir;touch x', '/runner/${HOME}'):
+        # Native paths survive Git Bash's POSIX-path conversion unchanged.
+        for diagnostics in ('relative/ir', 'D:\\a\\_temp\\ir\\', 'D:\\a\\_temp\\"quoted ir"',
+                            'D:\\a\\_temp\\ir;touch x', 'D:\\a\\_temp\\${HOME}'):
             with self.subTest(diagnostics=diagnostics):
+                self.observed.unlink(missing_ok=True)
+                self.log.unlink(missing_ok=True)
                 result = self.invoke('cjpm run --build-args "--jobs 1"', cwd=fixture,
                                      CJDOC_STS_COMPILER_DIAGNOSTICS=diagnostics)
                 self.assertNotEqual(result.returncode, 0)

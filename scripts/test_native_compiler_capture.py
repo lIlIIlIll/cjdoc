@@ -511,17 +511,18 @@ class EvidenceIntegrityTest(CaptureTestCase):
     def test_changed_sdk_inventory_withholds_the_payload(self) -> None:
         fixture = self.fixture()
         capture = fixture.prepare()
+        self.assertTrue(capture.active)
         fixture.observe_compilations(capture)
         fixture.write_ir("widget.opt.bc", b"bitcode")
         fixture.write_invocations()
         fixture.write_log()
         (fixture.sdk / "third_party/llvm/bin/llc.exe").write_bytes(b"replaced")
         with mock.patch.object(capture_module.subprocess, "run",
-                               fake_opt(CLEAN_LLVM_TEXT)):
+                               side_effect=fake_opt(CLEAN_LLVM_TEXT)) as disassemble:
             record = capture.finish(5, fixture.stage_log)
-        self.assertEqual(record["reason"], "sdk-inventory-changed")
-        self.assertEqual(record["reasonDetail"], "third_party/llvm/bin/llc.exe")
-        self.assertFalse(record["sdk"]["matchesPrepare"])
+        self.assertEqual(record["status"], "unavailable")
+        self.assertEqual(record["stageExitCode"], 5)
+        disassemble.assert_not_called()
         self.assertIsNone(record["payload"])
         self.assertFalse((fixture.evidence / "provider.native-compiler").exists())
 

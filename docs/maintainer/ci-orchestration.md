@@ -130,6 +130,12 @@ started a separate process.
 This preserves the suite, deadline, serial test scheduling and committed compile
 defaults. A Linux routing/status/cleanup probe is not native Windows compile proof.
 
+Cancellation during launch is deferred until the child handle is bound. Once
+bound, cancellation unwinds the interrupted `Popen.wait()` before blocking group
+cleanup and reaping: a signal handler must not re-enter the same process's
+non-reentrant waitpid lock. The existing deadline, TERM/KILL grace and prior
+default/ignored/custom signal disposition are preserved.
+
 The optional-worker host build receives the running workflow shell through
 `highlight_ci.py --bash`. Windows requires this explicit absolute executable;
 the workflow converts Git Bash's path with `cygpath` when available. A Python
