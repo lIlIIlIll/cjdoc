@@ -80,7 +80,10 @@ class _Fixture:
         return self.evidence / "provider.log"
 
     def prepare(self) -> NativeCompilerCapture:
-        return NativeCompilerCapture.prepare(self.evidence, self.environment)
+        capture = NativeCompilerCapture.prepare(self.evidence, self.environment)
+        if not capture.active:
+            raise AssertionError(f"fixture preparation failed: {capture.reason} ({capture._detail})")
+        return capture
 
     def write_ir(self, name: str, payload: bytes = b"bitcode") -> Path:
         path = Path(self.environment[capture_module.DIAGNOSTICS_ENV]) / name
@@ -155,6 +158,30 @@ class PrepareTest(CaptureTestCase):
             self.assertEqual(mode & 0o077, 0, "scratch root must not be group/world readable")
         self.assertNotEqual(fixture.prepare().diagnostics_dir, capture.diagnostics_dir)
 
+    def test_descriptor_timestamp_semantics_do_not_reject_a_stable_sdk(self) -> None:
+        fixture = self.fixture()
+        original_fstat = os.fstat
+
+        def descriptor_stat(descriptor):
+            observed = original_fstat(descriptor)
+            return types.SimpleNamespace(
+                st_mode=observed.st_mode, st_dev=observed.st_dev,
+                st_ino=observed.st_ino, st_size=observed.st_size,
+                st_mtime_ns=observed.st_mtime_ns - 100,
+                st_ctime_ns=observed.st_ctime_ns + 17_000_000_000)
+
+        with mock.patch.object(capture_module.os, "fstat", descriptor_stat):
+            capture = fixture.prepare()
+            fixture.observe_compilations(capture)
+            fixture.write_ir("widget.bc", b"stable-ir")
+            fixture.write_invocations(exit_code=0)
+            record = capture.finish(0, fixture.stage_log)
+        self.assertEqual(record["status"], "recorded")
+        self.assertTrue(record["sdk"]["matchesPrepare"])
+        expected = hashlib.sha256(b"sdk-binary:bin/cjc.exe").hexdigest()
+        self.assertEqual(record["sdk"]["binaries"]["bin/cjc.exe"]["sha256"], expected)
+        self.assertTrue(record["temporaryRemoved"])
+
     def test_prepare_that_cannot_promise_evidence_changes_nothing(self) -> None:
         for name, mutate in (
             ("prepare-runner-temp-missing", lambda env: env.pop("RUNNER_TEMP")),
@@ -164,7 +191,7 @@ class PrepareTest(CaptureTestCase):
                 fixture = self.fixture(name=name)
                 mutate(fixture.environment)
                 before = dict(fixture.environment)
-                capture = fixture.prepare()
+                capture = NativeCompilerCapture.prepare(fixture.evidence, fixture.environment)
                 self.assertFalse(capture.active)
                 self.assertEqual(fixture.environment, before)
                 record = capture.finish(3, fixture.stage_log)
@@ -182,7 +209,7 @@ class PrepareTest(CaptureTestCase):
         if os.name == "posix":
             target.unlink()
             target.symlink_to(blocker)
-            capture = fixture.prepare()
+            capture = NativeCompilerCapture.prepare(fixture.evidence, fixture.environment)
             self.assertFalse(capture.active)
             self.assertEqual(capture.reason, "sdk-inventory-incomplete")
             self.assertIsNone(
@@ -192,7 +219,7 @@ class PrepareTest(CaptureTestCase):
         with mock.patch.object(capture_module.shutil, "disk_usage",
                                return_value=types.SimpleNamespace(total=1, used=1,
                                                                   free=1024)):
-            capture = crowded.prepare()
+            capture = NativeCompilerCapture.prepare(crowded.evidence, crowded.environment)
         self.assertFalse(capture.active)
         self.assertEqual(capture.reason, "prepare-free-space-low")
 
@@ -201,7 +228,7 @@ class PrepareTest(CaptureTestCase):
         # A failing inventory happens after the root exists, so this covers the
         # cleanup path rather than only the early refusals.
         (fixture.sdk / "third_party/llvm/bin/opt.exe").write_bytes(b"")
-        capture = fixture.prepare()
+        capture = NativeCompilerCapture.prepare(fixture.evidence, fixture.environment)
         self.assertFalse(capture.active)
         self.assertEqual(list(fixture.runner.iterdir()), [])
 
@@ -406,26 +433,26 @@ class FailedStageTest(CaptureTestCase):
         self.assertEqual(record["reason"], "privacy-audit-rejected")
         self.assertIsNone(record["payload"])
 
-    def test_unsafe_or_oversized_diagnostics_never_become_evidence(self) -> None:
+    @unittest.skipUnless(os.name == "posix", "POSIX symlink fixture only")
+    def test_symlinked_diagnostics_never_become_evidence(self) -> None:
         fixture = self.fixture()
         capture = fixture.prepare()
         fixture.observe_compilations(capture)
         target = fixture.write_ir("widget.opt.bc", b"bitcode")
         fixture.write_invocations()
         fixture.write_log()
-        if os.name == "posix":
-            outside = self.root / "outside.opt.bc"
-            outside.write_bytes(b"bitcode")
-            target.unlink()
-            target.symlink_to(outside)
-            with mock.patch.object(capture_module.subprocess, "run",
-                                   fake_opt(CLEAN_LLVM_TEXT)):
-                record = capture.finish(5, fixture.stage_log)
-            self.assertEqual(record["reason"], "ir-unsafe")
-            self.assertIsNone(record["payload"])
-            self.assertEqual(record["stageExitCode"], 5)
-            self.assertFalse((fixture.evidence / "provider.native-compiler").exists())
+        outside = self.root / "outside.opt.bc"
+        outside.write_bytes(b"bitcode")
+        target.unlink()
+        target.symlink_to(outside)
+        with mock.patch.object(capture_module.subprocess, "run", fake_opt(CLEAN_LLVM_TEXT)):
+            record = capture.finish(5, fixture.stage_log)
+        self.assertEqual(record["reason"], "ir-unsafe")
+        self.assertIsNone(record["payload"])
+        self.assertEqual(record["stageExitCode"], 5)
+        self.assertFalse((fixture.evidence / "provider.native-compiler").exists())
 
+    def test_oversized_diagnostics_never_become_evidence(self) -> None:
         oversized = self.fixture(name="oversized")
         capture = oversized.prepare()
         oversized.observe_compilations(capture)
@@ -508,6 +535,25 @@ class SuccessTest(CaptureTestCase):
 
 
 class EvidenceIntegrityTest(CaptureTestCase):
+    def test_metadata_changed_during_copy_is_still_rejected(self) -> None:
+        fixture = self.fixture()
+        source = fixture.root / "input.bc"
+        source.write_bytes(b"stable-input")
+        output = fixture.root / "private-copy.bc"
+        with output.open("wb") as sink:
+            def write_and_change_metadata(block):
+                written = sink.write(block)
+                observed = source.stat()
+                os.utime(source, ns=(observed.st_atime_ns,
+                                     observed.st_mtime_ns + 1_000_000_000))
+                return written
+
+            with self.assertRaises(capture_module._Unavailable) as failure:
+                capture_module._copy_verified(
+                    source, types.SimpleNamespace(write=write_and_change_metadata),
+                    1024, "input.bc")
+        self.assertEqual(failure.exception.reason, "unstable-file")
+
     def test_changed_sdk_inventory_withholds_the_payload(self) -> None:
         fixture = self.fixture()
         capture = fixture.prepare()
@@ -566,14 +612,13 @@ class EvidenceIntegrityTest(CaptureTestCase):
         self.assertEqual(record["invocations"]["ignored"], 1)
         self.assertEqual(record["invocations"]["count"], 1)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX symlink fixture only")
     def test_an_unsafe_stage_log_is_not_followed(self) -> None:
         fixture = self.fixture()
         capture = fixture.prepare()
         fixture.observe_compilations(capture)
         fixture.write_ir("widget.opt.bc", b"bitcode")
         fixture.write_invocations()
-        if os.name != "posix":
-            self.skipTest("symlink creation needs POSIX privileges here")
         outside = self.root / "outside.log"
         outside.write_text(WINDOWS_LLC_FAILURE, encoding="utf-8", newline="\n")
         fixture.stage_log.symlink_to(outside)

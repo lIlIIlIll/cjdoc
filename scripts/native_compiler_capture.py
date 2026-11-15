@@ -199,13 +199,14 @@ def _open_regular(path: Path, limit: int, reason: str, detail: str = "",
     handle = os.fdopen(descriptor, "rb")
     info = os.fstat(descriptor)
     if not stat.S_ISREG(info.st_mode) or info.st_size <= 0 or (
-            before.st_dev, before.st_ino) != (info.st_dev, info.st_ino):
+            before.st_dev, before.st_ino, before.st_size) != (
+            info.st_dev, info.st_ino, info.st_size):
         handle.close()
         raise _Unavailable(reason, detail)
     if info.st_size > limit:
         handle.close()
         raise _Unavailable(oversize_reason or reason, detail)
-    return handle, info
+    return handle, info, before
 
 
 def _copy_verified(source: Path, sink, limit: int, detail: str) -> dict:
@@ -214,8 +215,8 @@ def _copy_verified(source: Path, sink, limit: int, detail: str) -> dict:
     The source is opened once, and the name must still resolve to that same inode
     afterwards: the digest describes one observed snapshot, not a re-read.
     """
-    handle, info = _open_regular(source, limit, "payload-unreadable", detail,
-                                 "payload-oversize")
+    handle, info, before = _open_regular(source, limit, "payload-unreadable", detail,
+                                         "payload-oversize")
     digest = hashlib.sha256()
     total = 0
     try:
@@ -226,16 +227,23 @@ def _copy_verified(source: Path, sink, limit: int, detail: str) -> dict:
             digest.update(block)
             if sink is not None:
                 sink.write(block)
+        try:
+            after = source.stat(follow_symlinks=False)
+            after_descriptor = os.fstat(handle.fileno())
+        except OSError:
+            raise _Unavailable("unstable-file", detail) from None
     except OSError:
         raise _Unavailable("payload-unreadable", detail) from None
     finally:
         handle.close()
-    try:
-        after = source.stat(follow_symlinks=False)
-    except OSError:
-        raise _Unavailable("unstable-file", detail) from None
+    # Windows can give path and descriptor timestamps different semantics.
+    # Compare each API with itself; retain both identity and timestamp guards.
     if total != info.st_size or not stat.S_ISREG(after.st_mode) or (
             after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) != (
+            before.st_dev, before.st_ino, before.st_size,
+            before.st_mtime_ns, before.st_ctime_ns) or (
+            after_descriptor.st_dev, after_descriptor.st_ino, after_descriptor.st_size,
+            after_descriptor.st_mtime_ns, after_descriptor.st_ctime_ns) != (
             info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns):
         raise _Unavailable("unstable-file", detail)
     return {"sha256": digest.hexdigest(), "size": total}
@@ -252,7 +260,7 @@ def _inventory(sdk_root: Path) -> dict[str, dict]:
 
 def _read_tail(path: Path, limit: int) -> str:
     """Read a bounded tail of a stage log that is itself already bounded."""
-    handle, info = _open_regular(path, limit, "stage-log-missing")
+    handle, info, _before = _open_regular(path, limit, "stage-log-missing")
     offset = max(0, info.st_size - limit)
     try:
         handle.seek(offset)
@@ -359,8 +367,8 @@ def _scan_llvm_text(path: Path, detail: str, mask_ci: bool) -> tuple[list[str], 
     escaped Windows path is judged by the same rules as a raw one. Nothing derived
     from that view is published.
     """
-    handle, _info = _open_regular(path, LLVM_TEXT_LIMIT, "privacy-audit-unreadable",
-                                  detail, "privacy-audit-overlimit")
+    handle, _info, _before = _open_regular(path, LLVM_TEXT_LIMIT, "privacy-audit-unreadable",
+                                          detail, "privacy-audit-overlimit")
     labels: list[str] = []
     occurrences = 0
     seen = 0
@@ -659,9 +667,9 @@ class NativeCompilerCapture:
     def _invocations(self) -> tuple[dict, dict]:
         if self._invocation_log is None:
             raise _Unavailable("invocation-log-missing")
-        handle, _info = _open_regular(self._invocation_log, INVOCATION_LIMIT,
-                                      "invocation-log-missing", "",
-                                      "invocation-log-oversize")
+        handle, _info, _before = _open_regular(self._invocation_log, INVOCATION_LIMIT,
+                                              "invocation-log-missing", "",
+                                              "invocation-log-oversize")
         try:
             raw = handle.read()
         except OSError:

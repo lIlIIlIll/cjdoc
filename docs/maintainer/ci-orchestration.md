@@ -207,6 +207,13 @@ process without complete capture fails its evidence gate. Failed preparation
 refuses to run an uncaptured diagnostic attempt. Existing receipts/payloads are
 never replaced, and cleanup removes only this capture's private temporary root.
 
+SDK and payload hashes describe bytes streamed from one opened file. Pathname and
+descriptor identity and size must agree at open; before/after identity, size and
+timestamps are then checked separately within each API. Cross-API timestamp
+semantics are not portable, so a path timestamp is never compared with an
+`fstat` timestamp. An observed replacement or metadata change still withholds
+evidence; no timestamp guard or publication limit is removed.
+
 
 ## What the site-generation time is actually spent on
 
