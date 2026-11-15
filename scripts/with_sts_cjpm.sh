@@ -7,6 +7,11 @@
 # Commands outside the workspace and commands other than build/test/run pass
 # through to the selected SDK's cjpm.
 #
+# CJDOC_STS_COMPILER_DIAGNOSTICS asks for compiler IR retention. It is honoured
+# only for the provider fixture's product run, by appending -V --save-temps DIR
+# to the same policy option; every other invocation records that the request was
+# ignored and keeps the pinned option.
+#
 # Callers must set GITHUB_WORKSPACE and RUNNER_TEMP first and then execute their
 # acceptance command(s) in this same shell. CJDOC_STDX_PATH is exported when the
 # caller authenticated a sidecar; release.yml relies on with_stdx.py discovery
@@ -104,9 +109,26 @@ if [[ "$current_directory" == "${provider_fixture}" ||
       "$current_directory" == "${workspace}/tools/chir-worker" ]]; then
   patch_fixture_entry=1
 fi
+# Compiler diagnostics are requested for one provider-fixture product run by the
+# native compiler capture. Any other invocation keeps the plain policy option, so
+# an ambient variable can never add retention to an ordinary build and the unit
+# phase never inherits a product's -V/--save-temps.
+diagnostics_dir=""
+if [[ -n "${CJDOC_STS_COMPILER_DIAGNOSTICS:-}" ]]; then
+  if [[ "${current_directory}" == "${provider_fixture}" && "$1" == "run" ]]; then
+    diagnostics_dir="${CJDOC_STS_COMPILER_DIAGNOSTICS}"
+  else
+    echo "cjpm: ignoring CJDOC_STS_COMPILER_DIAGNOSTICS for '$1' outside the provider fixture run; the pinned option is unchanged" >&2
+  fi
+fi
 # The rewrite lives in scripts/apply_sts_override.py so CI-08.3 can run this same
 # call path rather than pattern-matching this file's text.
 arguments=("${manifest}" "${backup_dir}" --command "$1")
+# Appended conditionally: expanding an empty array is an unbound variable in the
+# bash 3.2 macOS still uses.
+if [[ -n "${diagnostics_dir}" ]]; then
+  arguments+=(--diagnostics-dir "${diagnostics_dir}")
+fi
 if [[ "${patch_fixture_entry}" == "1" ]]; then
   arguments+=(--manifest-path "${current_directory}/cjpm.toml")
 fi

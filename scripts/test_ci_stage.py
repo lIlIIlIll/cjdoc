@@ -113,6 +113,67 @@ raise SystemExit(7)
                               "0x00007ff123456789", "LLVM ERROR:"]:
                 self.assertNotIn(forbidden, published)
 
+    def test_native_capture_rejects_other_stages_before_creating_outputs(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary) / "not-created"
+            for platform, stage_id, kind in [
+                ("linux", "provider", "provider"),
+                ("win32", "build", "build"),
+                ("win32", "custom-provider", "provider"),
+            ]:
+                with self.subTest(platform=platform, stage=stage_id):
+                    with patch.object(ci_stage.sys, "platform", platform):
+                        with self.assertRaises(SystemExit):
+                            ci_stage.run_stage(
+                                stage_id, kind, [sys.executable, "-c", "raise SystemExit(0)"],
+                                evidence, capture_native_compiler=True)
+                    self.assertFalse(evidence.exists())
+
+    def test_native_capture_error_never_masks_program_failure_or_claims_success(self) -> None:
+        from unittest.mock import Mock, patch
+        for program_exit, capture_raises in [(7, True), (0, True), (0, False)]:
+            with self.subTest(program_exit=program_exit, capture_raises=capture_raises):
+                with tempfile.TemporaryDirectory() as temporary:
+                    evidence = Path(temporary)
+                    capture = Mock()
+                    if capture_raises:
+                        capture.finish.side_effect = OSError("PRIVATE_DIAGNOSTIC_DETAIL")
+                    else:
+                        capture.finish.return_value = {"status": "unavailable", "reason": "audit-failed"}
+                    with patch.object(ci_stage.sys, "platform", "win32"):
+                        with patch.object(ci_stage.NativeCompilerCapture, "prepare", return_value=capture):
+                            result = ci_stage.run_stage(
+                                "provider", "provider",
+                                [sys.executable, "-c", f"raise SystemExit({program_exit})"],
+                                evidence, capture_native_compiler=True)
+                    record = ci_stage.load_records(evidence)[0]
+                    self.assertEqual(result, program_exit or 1)
+                    self.assertEqual(record["exitCode"], program_exit or 1)
+                    self.assertEqual(record["programExitCode"], program_exit)
+                    self.assertEqual(record["status"], "failed")
+                    self.assertEqual(record["nativeCompilerEvidence"]["status"], "unavailable")
+                    self.assertNotIn("PRIVATE_DIAGNOSTIC_DETAIL", json.dumps(record))
+
+    def test_native_capture_setup_failure_is_recorded_without_running_uncaptured_command(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary) / "evidence"
+            marker = Path(temporary) / "program-ran"
+            command = [sys.executable, "-c",
+                       f"from pathlib import Path; Path({str(marker)!r}).write_text('ran')"]
+            with patch.object(ci_stage.sys, "platform", "win32"):
+                with patch.object(ci_stage.NativeCompilerCapture, "prepare",
+                                  side_effect=OSError("PRIVATE_SETUP_DETAIL")):
+                    result = ci_stage.run_stage(
+                        "provider", "provider", command, evidence, capture_native_compiler=True)
+            record = ci_stage.load_records(evidence)[0]
+            self.assertEqual(result, 1)
+            self.assertEqual(record["status"], "failed")
+            self.assertEqual(record["nativeCompilerEvidence"]["status"], "unavailable")
+            self.assertFalse(marker.exists())
+            self.assertNotIn("PRIVATE_SETUP_DETAIL", json.dumps(record))
+
 
 class ReportedIdentityTest(unittest.TestCase):
     """The browser/font axis must be recorded by the stage that actually rendered.
