@@ -11,8 +11,9 @@
 ## 前提条件
 
 - 已按[安装 cjdoc](../getting-started/install.md)安装 `cjdoc`，当前终端已加载仓颉 SDK 环境，`cjc -v` 报告 1.2.0。
-- 安装时保存了 `CJDOC_SOURCE`（源码目录）与 `CJDOC_REVISION`（完整提交号）。
-- 与该提交一致的源码副本可用：worker 必须和正在使用的 `cjdoc` 来自同一版本。
+- 从源码构建的：安装时保存了 `CJDOC_SOURCE`（源码目录）与 `CJDOC_REVISION`（完整提交号）。
+- 安装发行包的：先 `git clone https://github.com/lIlIIlIll/cjdoc.git`，把 `CJDOC_SOURCE` 设为克隆目录，把 `CJDOC_REVISION` 设为发行包 `release-manifest.json` 里的 `sourceCommit`（v0.7.8 为 `5c065affd2c45f61549c06808537731ce46b436b`）。
+- worker 必须和正在使用的 `cjdoc` 来自同一提交：两者之间的协议版本不同时，worker 不能混用。
 - 与 SDK 匹配的**静态** stdx 1.2.0，即同时包含 `stdx.chir.cjo` 与 `libstdx.chir.a` 的那一层。动态库目录不能代替。
 - Bash、Git、Python 3 与 `cjpm`。本页命令按 Linux 编写，Windows 差异写在相应步骤里。
 
@@ -202,7 +203,7 @@ worker 不可用或分析失败时，cjdoc 默认保留源码声明并给出 war
 
 处理顺序通常是：确认三个路径都是绝对路径且存在，确认编译器与 stdx 版本匹配，再重新跑第三步并复查具体声明的语义字段。仍然 `partial` 的声明可能属于映射本身的保守结果。
 
-项目 `cjpm.toml` 的 `[package]` 里用 `compile-option` 或非空的 `override-compile-option` 写了 `--experimental`、`--enable-local-mode` 时，CHIR 会把这两个选项转交给编译器。非空的 override 替代 compile 选项，空的 override 保留 compile 选项。这只保证选项被传递：对应语法能否编译，仍取决于 `--cjc` 和与之匹配的 SDK/stdx 所构建的 worker 是否支持。写在目标专属表里的语言选项仍报告 `CJDOC2102`，以免把另一个目标的配置用到当前分析上。
+**仅源码构建（v0.7.8 发行包不包含）：** 项目 `cjpm.toml` 的 `[package]` 里用 `compile-option` 或非空的 `override-compile-option` 写了 `--experimental`、`--enable-local-mode` 时，CHIR 会把这两个选项转交给编译器。非空的 override 替代 compile 选项，空的 override 保留 compile 选项。这只保证选项被传递：对应语法能否编译，仍取决于 `--cjc` 和与之匹配的 SDK/stdx 所构建的 worker 是否支持。写在目标专属表里的语言选项仍报告 `CJDOC2102`，以免把另一个目标的配置用到当前分析上。v0.7.8 发行包遇到这两个选项时报告 `CJDOC2102`。
 
 CHIR 选项只属于 `generate` 与 `check`；参数与默认值见[CLI 参考](../reference/cli.md#可选语义和高亮后端)，字段含义见[状态与限制](../reference/states-and-limits.md)。
 

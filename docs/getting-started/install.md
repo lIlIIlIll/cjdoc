@@ -13,9 +13,9 @@ cjdoc: error while loading shared libraries: libcangjie-std-ast.so: cannot open 
 | 路线 | 额外准备 | 你得到 |
 |---|---|---|
 | 安装预编译发行包 | 能下载文件；Linux 用 `curl`、`sha256sum`、`tar`，macOS 用 `shasum`，Windows 用 PowerShell | 现成的 `cjdoc 0.7.8` 可执行文件、schema 和随包文档 |
-| 从源码构建 | Git、Python 3、Cangjie 编译器、静态 stdx 1.2.0 | 自己构建的同一版本，产物为 `target/release/bin/main` |
+| 从源码构建 | Git、Python 3、Cangjie 编译器、静态 stdx 1.2.0 | `main` 分支当前源码构建的 `cjdoc`，产物为 `target/release/bin/main` |
 
-v0.7.8 发行包由提交 `5c065affd2c45f61549c06808537731ce46b436b` 构建；两条路线得到的命令行为一致。
+v0.7.8 发行包由提交 `5c065affd2c45f61549c06808537731ce46b436b` 构建。`main` 分支可能已经包含发行包之后的改动，这份手册跟随 `main`；个别内容只适用于源码构建时，相应页面会注明。与发行包完全对应的手册见 [v0.7.8 标签下的文档](https://github.com/lIlIIlIll/cjdoc/tree/v0.7.8/docs)。
 
 ## 前提：准备 SDK 1.2.0
 
