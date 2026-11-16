@@ -141,7 +141,7 @@ bash scripts/check.sh build --repo . \
 
 ## 可选 CHIR worker
 
-`--semantic chir` 通过独立 worker 进程使用 `stdx.chir` 做结构化语义补充。只有 `tools/chir-worker` 包导入 `stdx.chir`，core 通过受限文件协议调用它；协议常量 `CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/2"` 定义在 `tools/chir-protocol`。
+`--semantic chir` 通过独立 worker 进程使用 `stdx.chir` 做结构化语义补充。只有 `tools/chir-worker` 包导入 `stdx.chir`，core 通过受限文件协议调用它；协议常量 `CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/3"` 定义在 `tools/chir-protocol`。
 
 在已认证 stdx 的同一环境构建：
 

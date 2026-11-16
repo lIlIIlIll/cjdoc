@@ -207,6 +207,8 @@ worker 不可用或分析失败时，cjdoc 默认保留源码声明并产生 war
 | `CJDOC2105` | 多个源码声明无法一对一对应 | 项目里是否有形状完全相同的同名重载；这类声明会保留 `ambiguous` |
 | `CJDOC2106` | 声明被识别但不能可靠映射到结构化记录 | 类型别名、属性等没有稳定记录的声明；这些声明使用源码信息 |
 
+CHIR 会转交 `[package]` 中 `compile-option` 或非空 `override-compile-option` 的 `--experimental`、`--enable-local-mode`。非空 override 替代 compile 选项；空 override 保留 compile 选项。这只支持选项传递，具体语法仍要求 `--cjc` 与匹配 SDK/stdx 构建的 worker 支持。目标专属表中的语言选项仍产生 `CJDOC2102`，避免将另一目标的语言配置应用到当前分析。
+
 处理顺序通常是：确认三个路径都是绝对路径且文件存在，确认编译器与 stdx 版本匹配，再重新生成。修好之后重跑第 3 步，重新查看具体声明的语义字段；仍然是 `partial` 的声明可能属于映射本身的保守结果。
 
 CHIR 选项只属于 `generate` 和 `check`；`render` 读取既有 Doc IR，不接受这些参数。参数与默认值见[CLI 参考](../reference/cli.md#可选语义和高亮后端)，字段含义见[状态与限制](../reference/states-and-limits.md)。

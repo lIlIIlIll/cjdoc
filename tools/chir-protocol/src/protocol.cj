@@ -3,7 +3,7 @@ package cjdoc_chir_protocol
 import std.collection.*
 import std.fs.*
 
-public let CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/2"
+public let CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/3"
 public let MAX_CHIR_REQUEST_BYTES: Int64 = 4 * 1024 * 1024
 public let MAX_CHIR_RESPONSE_BYTES: Int64 = 16 * 1024 * 1024
 
@@ -142,7 +142,7 @@ public class ChirWorkerSummary {
 
 public func writeChirWorkerRequest(path: Path, compiler: String, moduleName: String,
     packageName: String, importPaths: ReadOnlyList<String>, cfgValues: ReadOnlyList<String>,
-    sourcePaths: ReadOnlyList<String>): Unit {
+    sourcePaths: ReadOnlyList<String>, compilerOptions!: Array<String> = []): Unit {
     let lines = ArrayList<String>()
     lines.add("protocol=${CHIR_WORKER_PROTOCOL}")
     lines.add("compiler=${compiler}")
@@ -150,6 +150,7 @@ public func writeChirWorkerRequest(path: Path, compiler: String, moduleName: Str
     lines.add("package=${packageName}")
     for (pathValue in importPaths) { lines.add("import=${pathValue}") }
     for (cfgValue in cfgValues) { lines.add("cfg=${cfgValue}") }
+    for (option in compilerOptions) { lines.add("compiler-option=${option}") }
     for (pathValue in sourcePaths) { lines.add("source=${pathValue}") }
     File.writeTo(path, chirWorkerLinesText(lines).toArray())
 }
@@ -240,6 +241,10 @@ public func readChirWorkerRequest(text: String): HashMap<String, ArrayList<Strin
         let value = parts[1]
         match (key) {
             case "compiler" | "module" | "package" | "import" | "cfg" | "source" => ()
+            case "compiler-option" =>
+                if (value != "--experimental" && value != "--enable-local-mode") {
+                    throw IllegalArgumentException("CHIR worker request contains unsupported compiler option")
+                }
             case _ => throw IllegalArgumentException("CHIR worker request contains unknown field")
         }
         if (let Some(values) <- fields.get(key)) {

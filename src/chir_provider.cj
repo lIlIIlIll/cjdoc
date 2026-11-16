@@ -108,22 +108,19 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         }
     }
 
-    private func unsupportedManifestReasonForModule(moduleId: String): ?String {
+    private func manifestForModule(moduleId: String): ?String {
         for (module in source.modules) {
             if (module.id != moduleId) { continue }
-            match (module.manifestText) {
-                case Some(text) => return chirManifestUnsupportedReason(Some(text))
-                case None =>
-                    if (module.role == "root") {
-                        return chirManifestUnsupportedReason(source.manifestText)
-                    }
-                    return None
-            }
+            if (module.manifestText.isSome()) { return module.manifestText }
+            if (module.role == "root") { return source.manifestText }
+            return None
         }
-        if (source.modules.isEmpty()) {
-            return chirManifestUnsupportedReason(source.manifestText)
-        }
+        if (source.modules.isEmpty()) { return source.manifestText }
         None
+    }
+
+    private func unsupportedManifestReasonForModule(moduleId: String): ?String {
+        chirManifestUnsupportedReason(manifestForModule(moduleId))
     }
     func analyzeModule(moduleId: String,
         declarations: ReadOnlyList<public_provider.SourceDeclarationView>): public_provider.SemanticBatch {
@@ -627,7 +624,8 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
                 case None => return Some("CJDOC2101: CHIR worker executable is not configured")
             }
             writeChirWorkerRequest(request, normalizedChirCompiler(), moduleName.getOrThrow(),
-                packageName, importPaths, cfgValues, sourcePaths)
+                packageName, importPaths, cfgValues, sourcePaths,
+                compilerOptions: chirManifestCompilerOptions(manifestForModule(moduleId)).toArray())
             let workerPath = try {
                 canonicalize(Path(executable)).toString()
             } catch (_: Exception) {

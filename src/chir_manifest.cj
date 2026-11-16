@@ -58,15 +58,17 @@ internal func chirManifestUnsupportedReason(manifest: ?String): ?String {
         case None => None
         case Some(text) =>
             var continuedOptions = false
+            var inPackage = true
             for (line in text.split("\n")) {
                 let trimmed = chirTomlCode(line)
                 if (continuedOptions) {
-                    if (!chirCompileOptionValueSupported(trimmed)) {
+                    if (!chirCompileOptionValueSupported(trimmed, allowLanguageOptions: inPackage)) {
                         return Some("CHIR rejects unsupported compiler options in cjpm.toml")
                     }
                     continuedOptions = !chirCompileOptionArrayClosed(trimmed)
                     continue
                 }
+                if (trimmed.startsWith("[")) { inPackage = trimmed == "[package]" }
                 if (trimmed == "[features]" || trimmed.startsWith("[package-configuration") ||
                     trimmed == "[build]") {
                     return Some("CHIR does not support this cjpm manifest section")
@@ -79,7 +81,7 @@ internal func chirManifestUnsupportedReason(manifest: ?String): ?String {
                         }
                         let value = trimmed[index + 1..].trimAscii()
                         if (key == "compile-option" || key == "override-compile-option") {
-                            if (!chirCompileOptionValueSupported(value)) {
+                            if (!chirCompileOptionValueSupported(value, allowLanguageOptions: inPackage)) {
                                 return Some("CHIR rejects unsupported compiler options in cjpm.toml")
                             }
                             continuedOptions = value.startsWith("[") &&
@@ -95,14 +97,34 @@ internal func chirManifestUnsupportedReason(manifest: ?String): ?String {
     }
 }
 
-private func chirCompileOptionValueSupported(value: String): Bool {
-    if (value.isEmpty() || value == "[]" || value == "\"\"" || value == "''") { return true }
+// Only language switches need forwarding. CHIR owns output and compilation phase
+// options; the previously accepted optimization/link options keep that policy.
+private func chirLanguageOption(value: String): Bool {
+    value == "--experimental" || value == "--enable-local-mode"
+}
+
+private func chirCompileOptionValueSupported(value: String, allowLanguageOptions!: Bool): Bool {
     let allowed = ["-O0", "-O1", "-O2", "-O3", "-g", "--static", "--static-libs",
         "CJDOC_STDX_LINK_OPTIONS", "-lstdc++", "-lgcc_s"]
-    let bytes = value.toArray()
-    for (byte in bytes) {
+    for (byte in value.toArray()) {
         if (byte == b'\n' || byte == b'\r') { return false }
     }
+    for (token in chirCompileOptionTokens(value)) {
+        if (chirLanguageOption(token)) {
+            if (!allowLanguageOptions) { return false }
+            continue
+        }
+        var known = false
+        for (candidate in allowed) {
+            if (token == candidate) { known = true; break }
+        }
+        if (!known) { return false }
+    }
+    true
+}
+
+private func chirCompileOptionTokens(value: String): ArrayList<String> {
+    let bytes = value.toArray()
     let tokens = ArrayList<String>()
     var start: Int64 = 0
     var index: Int64 = 0
@@ -116,12 +138,46 @@ private func chirCompileOptionValueSupported(value: String): Bool {
         index++
     }
     if (start < bytes.size) { tokens.add(String.fromUtf8(bytes[start..])) }
-    for (token in tokens) {
-        var known = false
-        for (candidate in allowed) {
-            if (token == candidate) { known = true; break }
-        }
-        if (!known) { return false }
+    tokens
+}
+
+// Read only the captured package manifest that passed the guard above. Options
+// in target tables remain unsupported rather than leaking into another target.
+internal func chirManifestCompilerOptions(manifest: ?String): ArrayList<String> {
+    let result = ArrayList<String>()
+    let text = match (manifest) {
+        case Some(value) => value
+        case None => return result
     }
-    true
+    let compile = ArrayList<String>()
+    let override = ArrayList<String>()
+    var inPackage = true
+    var activeKey = ""
+    for (line in text.split("\n")) {
+        let code = chirTomlCode(line)
+        var value = code
+        var arrayValue = !activeKey.isEmpty()
+        if (activeKey.isEmpty()) {
+            if (code.startsWith("[")) { inPackage = code == "[package]"; continue }
+            if (!inPackage) { continue }
+            let equals = match (tomlAssignmentEquals(code)) {
+                case Some(index) => index
+                case None => continue
+            }
+            let key = chirManifestKey(code[..equals]).getOrDefault({ => "" })
+            if (key != "compile-option" && key != "override-compile-option") { continue }
+            activeKey = key
+            value = code[equals + 1..].trimAscii()
+            arrayValue = value.startsWith("[")
+        }
+        let tokens = chirCompileOptionTokens(value)
+        if (activeKey == "compile-option") { compile.add(all: tokens) }
+        else { override.add(all: tokens) }
+        if (!arrayValue || chirCompileOptionArrayClosed(value)) { activeKey = "" }
+    }
+    let selected = if (override.isEmpty()) { compile } else { override }
+    for (token in selected) {
+        if (chirLanguageOption(token) && !result.contains(token)) { result.add(token) }
+    }
+    result
 }

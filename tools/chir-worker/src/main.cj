@@ -29,6 +29,7 @@ internal func runChirAnalyzeWorker(requestPath: String, responsePath: String): I
         let output = root.join("chir-out")
         Directory.create(output)
         let args = ArrayList<String>()
+        args.add(all: chirWorkerFields(fields, "compiler-option"))
         args.add("--emit-chir=raw")
         args.add("--output-type"); args.add("staticlib")
         args.add("--module-name"); args.add(moduleName)

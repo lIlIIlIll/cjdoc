@@ -211,6 +211,16 @@ internal class DependencyNavigationBinder {
         shape
     }
 
+    // CHIR's canonical spelling includes generic arguments and modal suffixes.
+    // Navigation selects the declaration head; the semantic spelling stays intact.
+    private func canonicalNavigationName(identity: String): String {
+        if (let Some(shape) <- cachedTypeShape(identity)) {
+            if (shape.kind == "primitive") { return "std.core." + shape.head }
+            if (shape.kind == "named" || shape.kind == "generic") { return shape.head }
+        }
+        identity
+    }
+
     private func candidateNames(owner: link_model.SymbolDoc, name: String): Array<String> {
         let names = ArrayList<String>()
         names.add(owner.packageName + "." + name)
@@ -537,7 +547,9 @@ internal class DependencyNavigationBinder {
         if (!parameter && (value.kind == "named" || value.kind == "generic" || canonical)) {
             let names = ArrayList<String>(candidateNames(owner, value.head))
             if (canonical) {
-                if (let Some(identity) <- typeRef.semantic.canonical) { names.clear(); names.add(identity) }
+                if (let Some(identity) <- typeRef.semantic.canonical) {
+                    names.clear(); names.add(canonicalNavigationName(identity))
+                }
             }
             if (!canonical && value.head.startsWith("std.") && !names.contains(value.head)) {
                 names.add(value.head)
