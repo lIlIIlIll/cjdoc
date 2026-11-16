@@ -98,9 +98,13 @@ internal func hasTopologyCollision(paths: Array<String>): Bool {
 }
 
 internal func outputLockOwnerContent(owner: OutputLockOwner): String {
-    "{\"schemaVersion\":\"cjdoc.output-lock/1\",\"pid\":${escapeJsonString(owner.pid.toString())}," +
-        "\"startTime\":${escapeJsonString(owner.startTime)},\"token\":${escapeJsonString(owner.token)}," +
-        "\"root\":${escapeJsonString(owner.root)}}\n"
+    let domain = match (owner.processDomainSha256) {
+        case Some(value) => escapeJsonString(value)
+        case None => "null"
+    }
+    "{\"schemaVersion\":\"${OUTPUT_LOCK_OWNER_SCHEMA}\",\"pid\":${escapeJsonString(owner.pid.toString())}," +
+        "\"startTime\":${escapeJsonString(owner.startTime)},\"processDomainSha256\":${domain}," +
+        "\"token\":${escapeJsonString(owner.token)},\"root\":${escapeJsonString(owner.root)}}\n"
 }
 
 internal func readOutputLockOwner(lockPath: Path): OutputLockOwner {
@@ -110,23 +114,34 @@ internal func readOutputLockOwner(lockPath: Path): OutputLockOwner {
     let object = try { parsed.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output lock owner")
     }
-    if (object.size() != 5 || object.get("schemaVersion").isNone() || object.get("pid").isNone() ||
-        object.get("startTime").isNone() || object.get("token").isNone() || object.get("root").isNone()) {
+    if (object.size() != 6 || object.get("schemaVersion").isNone() || object.get("pid").isNone() ||
+        object.get("startTime").isNone() || object.get("processDomainSha256").isNone() ||
+        object.get("token").isNone() || object.get("root").isNone()) {
         throw IllegalArgumentException("invalid cjdoc output lock owner fields")
     }
     let schema = try { object["schemaVersion"].asString() } catch (_: Exception) { "" }
     let pid = try { Int64.parse(object["pid"].asString()) } catch (_: Exception) { -1 }
     let startTime = try { object["startTime"].asString() } catch (_: Exception) { "" }
+    let processDomain: ?String = if (object["processDomainSha256"].isNull) { None } else {
+        let value = try { object["processDomainSha256"].asString() } catch (_: Exception) {
+            throw IllegalArgumentException("invalid cjdoc output lock process domain")
+        }
+        if (!isSha256(value)) { throw IllegalArgumentException("invalid cjdoc output lock process domain") }
+        Some(value)
+    }
     let token = try { object["token"].asString() } catch (_: Exception) { "" }
     let root = try { object["root"].asString() } catch (_: Exception) { "" }
-    if (schema != "cjdoc.output-lock/1" || pid <= 0 || startTime.isEmpty() ||
+    if (schema != OUTPUT_LOCK_OWNER_SCHEMA || pid <= 0 || startTime.isEmpty() ||
         token.isEmpty() || root.isEmpty()) {
         throw IllegalArgumentException("invalid cjdoc output lock owner values")
     }
-    OutputLockOwner(pid, startTime, token, root)
+    OutputLockOwner(pid, startTime, processDomain, token, root)
 }
 
 internal func ownerProcessState(owner: OutputLockOwner): OutputProcessState {
+    if (!outputProcessDomainMatches(owner.processDomainSha256)) {
+        return OutputProcessState.Unknown
+    }
     try {
         let process = findProcess(owner.pid)
         if (process.isAlive() && process.startTime.toString() == owner.startTime) {
@@ -135,10 +150,9 @@ internal func ownerProcessState(owner: OutputLockOwner): OutputProcessState {
             OutputProcessState.Dead
         }
     } catch (_: Exception) {
-        // ProcessException covers both a missing process and failures such as
-        // allocation/query errors. Those cases cannot be distinguished by the
-        // public API, so lock recovery must fail closed rather than assume dead.
-        OutputProcessState.Unknown
+        // Query errors alone prove nothing. The kernel's explicit absence is
+        // usable only after the owner's boot/PID namespace was established.
+        processPresenceState(owner.pid)
     }
 }
 
@@ -185,6 +199,7 @@ internal func ensureOutputLockCurrent(handle: OutputLockHandle): Unit {
     ensureOutputLockPhysicalIdentity(handle)
     let owner = readOutputLockOwner(handle.path)
     if (owner.pid != handle.pid || owner.startTime != handle.startTime ||
+        owner.processDomainSha256 != handle.processDomainSha256 ||
         owner.token != handle.token || owner.root != handle.root) {
         throw IllegalStateException("output parent lock ownership changed while in use")
     }
@@ -206,26 +221,6 @@ internal func lockedDirectoryCreate(path: Path, handle: OutputLockHandle,
 internal func lockedFileWrite(path: Path, bytes: Array<Byte>, handle: OutputLockHandle): Unit {
     ensureOutputLockCurrent(handle)
     File.writeTo(path, bytes)
-    ensureOutputLockCurrent(handle)
-}
-
-internal func lockedTextFileWrite(path: Path, content: String, handle: OutputLockHandle): Unit {
-    ensureOutputLockCurrent(handle)
-    let file = File(path, OpenMode.Write)
-    try {
-        let capacity = if (content.size < OUTPUT_HASH_CHUNK_BYTES) { content.size }
-            else { OUTPUT_HASH_CHUNK_BYTES }
-        let buffer = Array<Byte>(capacity, repeat: 0)
-        var offset: Int64 = 0
-        while (offset < content.size) {
-            let remaining = content.size - offset
-            let count = if (remaining < buffer.size) { remaining } else { buffer.size }
-            for (index in 0..count) { buffer[index] = content[offset + index] }
-            if (count == buffer.size) { file.write(buffer) }
-            else { file.write(buffer[0..count]) }
-            offset += count
-        }
-    } finally { file.close() }
     ensureOutputLockCurrent(handle)
 }
 
@@ -257,6 +252,7 @@ internal func acquireOutputLock(root: Path): OutputLockHandle {
     let retired = parent.join(OUTPUT_RETIRED_LOCK_NAME)
     let pid = getProcessId()
     let startTime = findProcess(pid).startTime.toString()
+    let processDomain = outputProcessDomainSha256()
     if (exists(retired)) {
         let info = FileInfo(retired)
         if (info.isSymbolicLink() || !info.isDirectory()) {
@@ -302,7 +298,7 @@ internal func acquireOutputLock(root: Path): OutputLockHandle {
     }
 
     let token = Sha256Digest.digest("${pid}|${startTime}|${absoluteRoot}|${parentCanonical}")
-    let owner = OutputLockOwner(pid, startTime, token, absoluteRoot.toString())
+    let owner = OutputLockOwner(pid, startTime, processDomain, token, absoluteRoot.toString())
     var created = false
     var published = false
     try {
@@ -316,8 +312,8 @@ internal func acquireOutputLock(root: Path): OutputLockHandle {
         published = true
         let ownerFile = File(lockPath.join("owner.json"), OpenMode.ReadWrite)
         try {
-            let handle = OutputLockHandle(lockPath, parent, parentCanonical, pid, startTime, token,
-                absoluteRoot.toString(), ownerFile, ownerText)
+            let handle = OutputLockHandle(lockPath, parent, parentCanonical, pid, startTime,
+                processDomain, token, absoluteRoot.toString(), ownerFile, ownerText)
             ensureOutputLockCurrent(handle)
             return handle
         } catch (error: Exception) {

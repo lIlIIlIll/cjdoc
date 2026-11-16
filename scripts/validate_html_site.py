@@ -20,10 +20,18 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "8c0fd77db06934dd690c9d64cf64d2b50b33105a780b3308739dff7e3e112202"
-CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
+CANONICAL_SEARCH_JS_SHA256 = "48ed1f76e1df14d3ab9d68367f3d06e9d1cc0f46595c54e3340de83c5cc57d9f"
+CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "eb22acb6fbd233c77f87a16317ad5f48d171f13519f9113e3120bf6ab6f48ca7"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# Every ARIA/form attribute whose value names another element by ID. The reader
+# creates its dialogs on first request, so these references are checked in the
+# served markup only for elements that are actually emitted.
+IDREF_ATTRIBUTES = {
+    "aria-controls", "aria-labelledby", "aria-describedby", "aria-owns",
+    "aria-flowto", "aria-activedescendant", "aria-details", "aria-errormessage",
+    "for", "headers", "list", "form",
+}
 CLASSIFICATION_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 CLASSIFICATION_ASCII_WHITESPACE = re.compile(r"[ \t\n\r\f\v]*")
 
@@ -49,6 +57,10 @@ class PageParser(HTMLParser):
         self.csp_policies: list[str] = []
         self.script_sources: list[str] = []
         self.is_alias = False
+        self.has_shell = False
+        self.idrefs: list[tuple[str, str]] = []
+        self.root_prefixes: list[str] = []
+        self.triggers: list[tuple[str, dict[str, str]]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered_tag = tag.lower()
@@ -63,6 +75,7 @@ class PageParser(HTMLParser):
         values = {name.lower(): value for name, value in attrs}
         if lowered_tag == "body":
             self.is_alias = values.get("data-cjdoc-route") == "symbol-alias"
+            self.has_shell = "data-cjdoc-page" in values
         if lowered_tag == "style":
             self.errors.append("inline style element is forbidden")
         if lowered_tag not in VOID_ELEMENTS:
@@ -85,6 +98,18 @@ class PageParser(HTMLParser):
                 or values.get("defer") is not None
             ):
                 self.errors.append("script must have only defer and src attributes")
+        if lowered_tag == "dialog":
+            self.errors.append(
+                "dialogs must be created on first request, not served statically")
+        if lowered_tag == "template":
+            self.errors.append(
+                "hidden dialog templates are forbidden; build the dialog on first request")
+        if "data-cjdoc-search-trigger" in values:
+            self.triggers.append(("search", values))
+        if "data-cjdoc-theme-toggle" in values:
+            self.triggers.append(("settings", values))
+        if "data-cjdoc-root-prefix" in values:
+            self.root_prefixes.append(values["data-cjdoc-root-prefix"] or "")
         if lowered_tag == "meta" and (values.get("http-equiv") or "").lower() == "content-security-policy":
             if self.stack != ["html", "head"]:
                 self.errors.append("CSP meta must be a direct child of head")
@@ -103,6 +128,9 @@ class PageParser(HTMLParser):
                 self.errors.append(f"forbidden event attribute {name!r}")
             elif lowered == "style":
                 self.errors.append("inline style attribute is forbidden")
+            elif lowered in IDREF_ATTRIBUTES:
+                for token in value.split():
+                    self.idrefs.append((lowered, token))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
@@ -163,6 +191,80 @@ def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, st
     return target, unquote(parsed.fragment)
 
 
+SIDEBAR_PACKAGE_FIELDS = {"id", "label", "href", "types"}
+SIDEBAR_TYPE_FIELDS = {"label", "kind", "kindLabel", "href", "members"}
+SIDEBAR_MEMBER_FIELDS = {"label", "kind", "kindLabel", "anchor"}
+UNSAFE_KEYS = {"__proto__", "constructor", "prototype"}
+
+
+def byte_sorted(values: list[str]) -> bool:
+    return values == sorted(values, key=lambda value: value.encode("utf-8"))
+
+
+SEARCH_DIALOG_ID = "cjdoc-search-dialog"
+SETTINGS_DIALOG_ID = "cjdoc-theme-popover"
+# A served page must not carry either dialog: the controllers create one only
+# when the reader first asks for it. The triggers stay in the shell, initially
+# hidden, and gain aria-controls only after their dialog exists in the DOM.
+LAZY_DIALOGS = {"search": SEARCH_DIALOG_ID, "settings": SETTINGS_DIALOG_ID}
+LAZY_DIALOG_REFERENCES = {
+    SEARCH_DIALOG_ID, SETTINGS_DIALOG_ID,
+    "cjdoc-search-input", "cjdoc-search-filters", "cjdoc-search-results",
+    "cjdoc-settings-title",
+}
+
+
+def validate_shell_contract(root: Path, pages: dict[Path, PageParser]) -> None:
+    """Check the lazy dialog triggers, their root prefix, and ID references."""
+    for page, parser in pages.items():
+        if not page.is_relative_to(root):
+            # Linked pages of another language are validated by their own run.
+            continue
+        relative = page.relative_to(root)
+        name = relative.as_posix()
+        if parser.is_alias:
+            continue
+        for attribute, target in parser.idrefs:
+            if target in LAZY_DIALOG_REFERENCES:
+                raise ValueError(
+                    f"{name}: {attribute} must not reference {target} "
+                    "before first creation")
+            if target not in parser.ids:
+                raise ValueError(f"{name}: dangling {attribute} reference {target}")
+        if not parser.has_shell:
+            if parser.triggers:
+                raise ValueError(
+                    f"{name}: lazy dialog triggers must only appear on a shell page")
+            continue
+        expected_prefix = "../" * len(relative.parent.parts)
+        if len(set(parser.root_prefixes)) != 1:
+            raise ValueError(
+                f"{name}: shell controls must share one data-cjdoc-root-prefix")
+        if parser.root_prefixes[0] != expected_prefix:
+            raise ValueError(
+                f"{name}: root prefix {parser.root_prefixes[0]!r} must address "
+                f"the site root as {expected_prefix!r}")
+        for kind, values in parser.triggers:
+            dialog_id = LAZY_DIALOGS[kind]
+            hook = "data-cjdoc-search-trigger" if kind == "search" else \
+                "data-cjdoc-theme-toggle"
+            if values.get("aria-haspopup") != "dialog":
+                raise ValueError(f"{name}: {hook} must declare aria-haspopup=dialog")
+            if values.get("aria-expanded") != "false":
+                raise ValueError(f"{name}: {hook} must start with aria-expanded=false")
+            if "hidden" not in values:
+                raise ValueError(
+                    f"{name}: {hook} must stay hidden until its controller runs")
+            if "aria-controls" in values:
+                raise ValueError(
+                    f"{name}: {hook} must not reference {dialog_id} before creation")
+        for kind in LAZY_DIALOGS:
+            count = sum(1 for name_, _ in parser.triggers if name_ == kind)
+            if count != 1:
+                raise ValueError(
+                    f"{name}: expected one {kind} trigger, found {count}")
+
+
 def validate_sidebar_index(root: Path, pages: dict[Path, PageParser]) -> None:
     source = root / "sidebar-index.js"
     text = source.read_text(encoding="utf-8")
@@ -170,41 +272,65 @@ def validate_sidebar_index(root: Path, pages: dict[Path, PageParser]) -> None:
     if not text.startswith(prefix) or not text.endswith(suffix):
         raise ValueError("sidebar-index.js must contain only its generated assignment")
     sidebar = strict_loads(text[len(prefix):-len(suffix)], description="sidebar-index.js")
-    if (
-        not isinstance(sidebar, dict)
-        or set(sidebar) != {"packages", "members", "symbols"}
-        or any(not isinstance(value, dict) for value in sidebar.values())
-    ):
-        raise ValueError("sidebar-index.js must contain package, member and symbol maps")
-    symbols = sidebar["symbols"]
-    fields = {"path", "label", "context", "kind", "signature", "anchor"}
-    for identity, symbol in symbols.items():
-        if (
-            identity in {"__proto__", "constructor", "prototype"}
-            or not isinstance(symbol, dict)
-            or set(symbol) != fields
-            or any(not isinstance(value, str) for value in symbol.values())
-        ):
-            raise ValueError("sidebar-index.js contains an invalid symbol")
-        target, fragment = resolve_local(root, source, symbol["path"])
+    if not isinstance(sidebar, dict) or set(sidebar) != {
+            "version", "packages", "types", "members"}:
+        raise ValueError("sidebar-index.js must publish version, packages, types and members")
+    if sidebar["version"] != 2:
+        raise ValueError("sidebar-index.js must publish navigation version 2")
+    packages, types, members = sidebar["packages"], sidebar["types"], sidebar["members"]
+    if not isinstance(packages, list) or not isinstance(types, dict) or \
+            not isinstance(members, dict):
+        raise ValueError("sidebar-index.js has an invalid navigation shape")
+    if not byte_sorted(list(types)) or not byte_sorted(list(members)):
+        raise ValueError("sidebar-index.js keys must be sorted by byte order")
+    for group in (types, members):
+        if UNSAFE_KEYS & set(group):
+            raise ValueError("sidebar-index.js must not publish prototype keys")
+    for member in members.values():
+        if not isinstance(member, dict) or set(member) != SIDEBAR_MEMBER_FIELDS or \
+                any(not isinstance(value, str) or not value for value in member.values()):
+            raise ValueError("sidebar-index.js contains an invalid member")
+    seen_packages: set[str] = set()
+    for package in packages:
+        if not isinstance(package, dict) or set(package) != SIDEBAR_PACKAGE_FIELDS:
+            raise ValueError("sidebar-index.js contains an invalid package")
+        for key in ("id", "label", "href"):
+            if not isinstance(package[key], str) or not package[key]:
+                raise ValueError("sidebar-index.js package fields must be non-empty strings")
+        if package["id"] in seen_packages or package["id"] != package["href"]:
+            raise ValueError("sidebar-index.js package identity must be unique and routable")
+        seen_packages.add(package["id"])
+        target, fragment = resolve_local(root, source, package["href"])
         if target not in pages or fragment:
-            raise ValueError(f"broken sidebar-index.js symbol target: {symbol['path']}")
-    for group in ("packages", "members"):
-        for owner, identities in sidebar[group].items():
-            if (
-                not isinstance(identities, list)
-                or any(not isinstance(identity, str) or identity not in symbols
-                       for identity in identities)
-                or len(identities) != len(set(identities))
-            ):
-                raise ValueError(f"sidebar-index.js contains invalid {group} references")
-            if group == "members":
-                if owner not in symbols:
-                    raise ValueError("sidebar-index.js contains an unknown member owner")
-            else:
-                target, fragment = resolve_local(root, source, owner)
-                if target not in pages or fragment:
-                    raise ValueError(f"broken sidebar-index.js package target: {owner}")
+            raise ValueError(f"broken sidebar-index.js package target: {package['href']}")
+        if not isinstance(package["types"], list) or \
+                len(package["types"]) != len(set(package["types"])):
+            raise ValueError("sidebar-index.js package type list must be unique")
+        for type_id in package["types"]:
+            if not isinstance(type_id, str) or type_id not in types:
+                raise ValueError("sidebar-index.js package references an unknown type")
+    for identity, entry in types.items():
+        if not isinstance(entry, dict) or set(entry) != SIDEBAR_TYPE_FIELDS:
+            raise ValueError("sidebar-index.js contains an invalid type")
+        for key in ("label", "kind", "kindLabel", "href"):
+            if not isinstance(entry[key], str) or not entry[key]:
+                raise ValueError("sidebar-index.js type fields must be non-empty strings")
+        target, fragment = resolve_local(root, source, entry["href"])
+        if target not in pages or fragment:
+            raise ValueError(f"broken sidebar-index.js type target: {entry['href']}")
+        if not isinstance(entry["members"], list) or \
+                len(entry["members"]) != len(set(entry["members"])):
+            raise ValueError("sidebar-index.js type member list must be unique")
+        for member_id in entry["members"]:
+            if not isinstance(member_id, str) or member_id not in members:
+                raise ValueError("sidebar-index.js type references an unknown member")
+            anchor = members[member_id]["anchor"]
+            if anchor not in pages[target].ids:
+                raise ValueError(
+                    f"broken sidebar-index.js member anchor: {entry['href']}#{anchor}")
+    known_members = {member_id for entry in types.values() for member_id in entry["members"]}
+    if known_members != set(members):
+        raise ValueError("sidebar-index.js member table must match its type listings")
 
 
 def main() -> int:
@@ -458,6 +584,7 @@ def main() -> int:
     expected_signature_ids = api_canonical_ids | exposure_ids
     if set(signatures) != expected_signature_ids:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")
+    validate_shell_contract(root, pages)
     validate_sidebar_index(root, pages)
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0

@@ -31,10 +31,14 @@
 | `--all-languages` | 关闭；按配置语言生成目录，与显式 locale/stdout 互斥 | generate、render |
 | `--doc-version TEXT` | 无；必须生成 HTML，写入站点版本元数据，不改变源码 | generate、render |
 | `--agent-full` | 关闭；HTML 聚合全文/分片；非 serve 时要求 format html | generate、render、serve |
+| `--html-font-sans LIST` | 无；站点正文与界面字体，逗号分隔的字体族列表（见下）；非 serve 时要求 format html | generate、render、serve |
+| `--html-font-mono LIST` | 无；签名与代码字体，规则同上 | generate、render、serve |
 | `--validation-report FILE` | 无；附加已存在的报告，不执行验证；要求 HTML 目录输出 | generate、render |
 | `--api-diff-report FILE` | 无；附加已有 diff，不重新比较；要求 HTML 目录输出 | generate、render |
 
 实际目录与 wire 版本见[产物参考](artifacts.md)。stdout 的结构化数据写 stdout，生成诊断写 stderr。多种输出一次扫描生成；没有 format html 时，不会因为给了 output 就自动生成网页。
+
+字体族列表中的每一项是字母、数字、空格、`_`、`-` 组成的名字，可以用双引号包住，例如 `'"Source Han Sans SC", system-ui, sans-serif'`；整个值不超过 256 字节。站点只引用字体名，不下载或打包字体文件，阅读者设备上没有的字体会按列表顺序回退。值不合法时命令以 `invalid --html-font-sans value`（或 mono）失败，不写出站点。阅读者在站点“显示设置”里选择的字体优先于这两个选项。
 
 ## 项目、依赖、可见性与缓存
 

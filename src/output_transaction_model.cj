@@ -6,6 +6,7 @@ import std.overflow.*
 
 internal let OUTPUT_MANIFEST_NAME = ".cjdoc-output.json"
 internal let OUTPUT_LOCK_NAME = ".cjdoc-output-parent.lock"
+internal let OUTPUT_LOCK_OWNER_SCHEMA = "cjdoc.output-lock/2"
 internal let OUTPUT_LOCK_BOOTSTRAP_NAME = ".cjdoc-output-parent.bootstrap"
 internal let OUTPUT_RETIRED_LOCK_NAME = ".cjdoc-output-parent.retired"
 internal let OUTPUT_BOOTSTRAP_NAME = ".cjdoc-output-transaction.bootstrap"
@@ -81,12 +82,15 @@ internal class PreviousOutputFile {
 internal class OutputLockOwner {
     let pid: Int64
     let startTime: String
+    let processDomainSha256: ?String
     let token: String
     let root: String
 
-    init(pid: Int64, startTime: String, token: String, root: String) {
+    init(pid: Int64, startTime: String, processDomainSha256: ?String,
+        token: String, root: String) {
         this.pid = pid
         this.startTime = startTime
+        this.processDomainSha256 = processDomainSha256
         this.token = token
         this.root = root
     }
@@ -98,6 +102,7 @@ internal class OutputLockHandle {
     let parentCanonical: String
     let pid: Int64
     let startTime: String
+    let processDomainSha256: ?String
     let token: String
     let root: String
     let ownerFile: File
@@ -106,12 +111,14 @@ internal class OutputLockHandle {
     var ownerChallengeIsSpace: Bool = false
 
     init(path: Path, parent: Path, parentCanonical: String, pid: Int64,
-        startTime: String, token: String, root: String, ownerFile: File, ownerText: String) {
+        startTime: String, processDomainSha256: ?String, token: String, root: String,
+        ownerFile: File, ownerText: String) {
         this.path = path
         this.parent = parent
         this.parentCanonical = parentCanonical
         this.pid = pid
         this.startTime = startTime
+        this.processDomainSha256 = processDomainSha256
         this.token = token
         this.root = root
         this.ownerFile = ownerFile
@@ -164,6 +171,18 @@ internal class OutputPreparationMarker {
 
 internal class OutputHashBudget {
     private var total: Int64 = 0
+    private var scratch: ?Array<Byte> = None
+
+    // A budget belongs to one validation phase, whose files are read serially.
+    func readBuffer(): Array<Byte> {
+        match (scratch) {
+            case Some(buffer) => buffer
+            case None =>
+                let buffer = Array<Byte>(OUTPUT_HASH_CHUNK_BYTES, repeat: 0)
+                scratch = Some(buffer)
+                buffer
+        }
+    }
 
     func reserve(size: Int64, description: String): Unit {
         if (size < 0 || size > OUTPUT_ARTIFACT_LIMIT) {
@@ -214,18 +233,6 @@ internal class StreamingOutputSha256 {
         inputSize += count
         for (index in 0..count) {
             pending[pendingSize] = buffer[index]
-            pendingSize++
-            if (pendingSize == 64) {
-                processBlock()
-                pendingSize = 0
-            }
-        }
-    }
-
-    func update(value: String): Unit {
-        inputSize += value.size
-        for (index in 0..value.size) {
-            pending[pendingSize] = value[index]
             pendingSize++
             if (pendingSize == 64) {
                 processBlock()

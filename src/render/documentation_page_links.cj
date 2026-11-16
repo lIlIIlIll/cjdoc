@@ -194,75 +194,96 @@ private func capturedPageBindingState(binding: DocumentationPageBinding, hidden:
     binding.state
 }
 
-private func appendCapturedPageBindingTargetHtml(out: RenderTextBuffer,
-    binding: DocumentationPageBinding, target: CapturedPageBindingTarget, prefix: String, locale: String, compact!: Bool = false): Unit {
+private func appendCapturedPageBindingTargetHtml(w: HtmlWriter,
+    binding: DocumentationPageBinding, target: CapturedPageBindingTarget, prefix: String, locale: String,
+    compact!: Bool = false): Unit {
     if (target.hidden) { return }
     let title = target.title(locale)
-    let destination = target.destination(prefix, false)
-    if (let Some(url) <- destination) {
-        out.append("<a href=\"" + escapeHtml(url) + "\"")
-        if (let Some(value) <- target.navigation) { out.append(" data-doc-match=\"" + escapeHtml(value.matchLevel) + "\"") }
-        if (!title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
-        out.append(">")
+    let destination = match (target.destination(prefix, false)) {
+        case Some(url) => documentationLinkHref(url)
+        case None => None<SafeUrl>
     }
-    let spelling = match (target.symbol) { case Some(value) => if (compact) { htmlContextLabel(value) } else { value.qualifiedName }; case None => binding.target }
-    out.append("<code")
-    if (destination.isNone() && !title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
-    out.append(">" + escapeHtml(spelling) + "</code>")
-    if (destination.isSome()) { out.append("</a>") }
+    let spelling = match (target.symbol) {
+        case Some(value) => if (compact) { htmlContextLabel(value) } else { value.qualifiedName }
+        case None => binding.target
+    }
+    if (let Some(href) <- destination) {
+        let attrs = ArrayList<HtmlAttr>([htmlHref(href)])
+        if (let Some(value) <- target.navigation) {
+            attrs.add(htmlAttr("data-doc-match", value.matchLevel))
+        }
+        if (!title.isEmpty()) { attrs.add(htmlAttr("title", title)) }
+        w.open("a", attrs: attrs.toArray())
+    }
+    let codeAttrs = ArrayList<HtmlAttr>()
+    if (destination.isNone() && !title.isEmpty()) { codeAttrs.add(htmlAttr("title", title)) }
+    w.textElement("code", spelling, attrs: codeAttrs.toArray())
+    if (destination.isSome()) { w.close("a") }
     if (!compact && !binding.version.isEmpty()) {
-        out.append(" <span class=\"binding-version\">" + escapeHtml(binding.version) + "</span>")
+        w.text(" ")
+        w.textElement("span", binding.version, attrs: [htmlClass("cj-bindings__version")])
     }
 }
 
-internal func capturedPageBindingChipHtml(page: DocumentationPage, binding: DocumentationPageBinding,
-    visible: HashMap<String, SymbolDoc>, locale: String, outputPath!: ?String = None): String {
-    let out = RenderTextBuffer()
+internal func appendCapturedPageBindingChipHtml(w: HtmlWriter, page: DocumentationPage,
+    binding: DocumentationPageBinding, visible: HashMap<String, SymbolDoc>, locale: String,
+    outputPath!: ?String = None): Unit {
     let target = CapturedPageBindingTarget(binding, visible)
-    out.append("<div class=\"inline-binding\"><span class=\"related-api-label\">" +
-        label(locale, "Related API: ", "相关 API：") + "</span>")
+    w.open("div", attrs: [htmlClass("cj-binding")])
+    w.textElement("span", label(locale, "Related API: ", "相关 API："),
+        attrs: [htmlClass("cj-bindings__label")])
     if (target.state != "resolved" || target.destination("", false).isNone()) {
-        out.append("<span class=\"binding-state\" data-state=\"" + target.state + "\">" +
-            target.stateLabel(locale) + "</span> ")
+        w.textElement("span", target.stateLabel(locale),
+            attrs: [htmlClass("cj-bindings__state"), htmlAttr("data-state", target.state)])
+        w.text(" ")
     }
-    appendCapturedPageBindingTargetHtml(out, binding, target,
+    appendCapturedPageBindingTargetHtml(w, binding, target,
         pageRootPrefix(outputPath.getOrDefault({ => page.route })), locale, compact: true)
-    out.append("<details class=\"binding-details\"><summary>" + label(locale, "Link details", "关联详情") + "</summary>")
-    out.append("<span class=\"binding-meta\">" + target.stateLabel(locale) + "</span>")
+    w.open("details", attrs: [htmlClass("cj-bindings__details cj-disclosure")])
+    w.textElement("summary", label(locale, "Link details", "关联详情"),
+        attrs: [htmlClass("cj-disclosure__summary")])
+    w.textElement("span", target.stateLabel(locale), attrs: [htmlClass("cj-bindings__meta")])
     if (!binding.version.isEmpty() && !target.hidden) {
-        out.append("<span class=\"binding-meta\">version: " + escapeHtml(binding.version) + "</span>")
+        w.textElement("span", "version: " + binding.version, attrs: [htmlClass("cj-bindings__meta")])
     }
     if (!target.hidden) {
         if (!binding.selector.isEmpty()) {
-            out.append("<span class=\"binding-meta\">selector: " + escapeHtml(binding.selector) + "</span>")
+            w.textElement("span", "selector: " + binding.selector, attrs: [htmlClass("cj-bindings__meta")])
         }
         if (!binding.provenance.isEmpty()) {
-            out.append("<span class=\"binding-meta\">source: " + escapeHtml(binding.provenance) + "</span>")
+            w.textElement("span", "source: " + binding.provenance, attrs: [htmlClass("cj-bindings__meta")])
         }
     }
-    out.append("<span class=\"binding-meta\">state: " + target.state + "; language: " + escapeHtml(binding.language) +
-        "; line: " + binding.sourceLine.toString() + "</span></details></div>")
-    out.toString()
+    w.textElement("span", "state: " + target.state + "; language: " + binding.language +
+        "; line: " + binding.sourceLine.toString(), attrs: [htmlClass("cj-bindings__meta")])
+    w.close("details")
+    w.close("div")
 }
 
-internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: DocumentationSet,
-    locale: String): String {
-    if (page.bindings.isEmpty()) { return "" }
-    let out = RenderTextBuffer()
+internal func appendCapturedPageBindingsHtml(w: HtmlWriter, page: DocumentationPage,
+    documentation: DocumentationSet, locale: String): Unit {
+    if (page.bindings.isEmpty()) { return }
     let visible = RenderProjection(documentation).visibleIndex
-    out.append("<details class=\"conceptual-bindings\"><summary id=\"conceptual-bindings-heading\">")
-    out.append(label(locale, "API associations", "API 关联") + "</summary><p class=\"binding-scope\">")
-    out.append(label(locale, "Explicit bindings from this page. Reader details stay in Technical details.",
-        "本页的显式关联。技术信息见「技术详情」。") + "</p><ul>")
+    w.open("details", attrs: [htmlClass("cj-bindings cj-disclosure")])
+    w.open("summary", attrs: [htmlAttr("id", "conceptual-bindings-heading"),
+        htmlClass("cj-disclosure__summary")])
+    w.text(label(locale, "API associations", "API 关联"))
+    w.close("summary")
+    w.textElement("p", label(locale, "Explicit bindings from this page. Reader details stay in Technical details.",
+        "本页的显式关联。技术信息见「技术详情」。"), attrs: [htmlClass("cj-bindings__scope")])
+    w.open("ul")
     for (binding in page.bindings) {
         let target = CapturedPageBindingTarget(binding, visible)
-        out.append("<li><span class=\"binding-state\" data-state=\"" + target.state + "\">")
-        out.append(target.stateLabel(locale) + "</span> ")
-        appendCapturedPageBindingTargetHtml(out, binding, target, pageRootPrefix(page.route), locale)
-        out.append("</li>")
+        w.open("li")
+        w.textElement("span", target.stateLabel(locale),
+            attrs: [htmlClass("cj-bindings__state"), htmlAttr("data-state", target.state)])
+        w.text(" ")
+        appendCapturedPageBindingTargetHtml(w, binding, target, pageRootPrefix(page.route), locale)
+        w.close("li")
     }
-    out.append("</ul></details>\n")
-    out.toString()
+    w.close("ul")
+    w.close("details")
+    w.newline()
 }
 
 internal func appendCapturedPageBindingsMarkdown(out: RenderTextBuffer,

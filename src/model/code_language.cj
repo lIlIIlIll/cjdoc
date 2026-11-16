@@ -58,17 +58,17 @@ public func codeLanguageBackend(value: String): String {
  */
 public func codeKindClass(kind: String): String {
     match (kind) {
-        case "keyword" => "code-keyword"
-        case "type" => "code-type"
-        case "string" => "code-string"
-        case "number" => "code-number"
-        case "literal" => "code-literal"
-        case "comment" => "code-comment"
-        case "operator" => "code-operator"
-        case "punctuation" => "code-punctuation"
-        case "function" => "code-function"
-        case "property" => "code-property"
-        case "meta" => "code-meta"
+        case "keyword" => "cj-tok-keyword"
+        case "type" => "cj-tok-type"
+        case "string" => "cj-tok-string"
+        case "number" => "cj-tok-number"
+        case "literal" => "cj-tok-literal"
+        case "comment" => "cj-tok-comment"
+        case "operator" => "cj-tok-operator"
+        case "punctuation" => "cj-tok-punctuation"
+        case "function" => "cj-tok-function"
+        case "property" => "cj-tok-property"
+        case "meta" => "cj-tok-meta"
         case _ => ""
     }
 }

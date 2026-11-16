@@ -185,7 +185,7 @@ public func translationCoverageFor(documentation: DocumentationSet, language: St
     report
 }
 
-internal func appendTranslationCoverageArtifact(artifacts: RenderArtifactCollector,
+internal func appendTranslationCoverageArtifact(artifacts: RenderArtifactStore,
     documentation: DocumentationSet): Unit {
     let languages = match (documentation.languageOptions) {
         case Some(options) => options.languages.toArray()
@@ -208,5 +208,5 @@ internal func appendTranslationCoverageArtifact(artifacts: RenderArtifactCollect
         out.append("]}")
     }
     out.append("]}\n")
-    artifacts.addText("coverage/translations.json", "application/json", out.toString())
+    let _ = artifacts.addText("coverage/translations.json", "application/json", out.toString())
 }

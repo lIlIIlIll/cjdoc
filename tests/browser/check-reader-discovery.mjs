@@ -30,9 +30,51 @@ const errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 const report = { schemaVersion: 'cjdoc.reader-discovery/1', locale: values.locale, tasks: [], visuals: [] };
 const links = () => page.locator('[data-cjdoc-results] li a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')));
-const query = value => page.locator('[data-cjdoc-search]').fill(value);
+// The palette is created on first request, so it is absent on load: an absent
+// dialog is neither open nor a reason to skip opening it.
+const searchSurface = () => page.evaluate(() => {
+  const dialog = document.querySelector('[data-cjdoc-search-dialog]');
+  return { open: Boolean(dialog && dialog.open) };
+});
+const openSearch = async () => {
+  const state = await searchSurface();
+  if (state.open) return;
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await page.waitForFunction(() =>
+    document.querySelector('[data-cjdoc-search-dialog]')?.open === true);
+};
+const query = async value => { await openSearch(); await page.locator('[data-cjdoc-search]').fill(value); };
 const next = page.locator('[data-cjdoc-search-next]');
 const previous = page.locator('[data-cjdoc-search-previous]');
+const checkDesktopActionKeyboard = async member => {
+  const action = member.locator('..').locator('.cj-member-actions__item--standalone');
+  const destination = new URL(await action.getAttribute('href'), ownerUrl).href;
+  const memberId = await member.getAttribute('id');
+  await page.mouse.move(1, 1);
+  await page.locator('[data-cjdoc-member-filter]').focus();
+  await page.waitForFunction(id => {
+    const tray = document.getElementById(id)?.parentElement.querySelector('[data-cjdoc-member-actions]');
+    return tray && getComputedStyle(tray).opacity === '0';
+  }, memberId);
+  await action.focus();
+  await page.waitForFunction(() => {
+    const tray = document.activeElement?.closest('[data-cjdoc-member-actions]');
+    return tray && getComputedStyle(tray).opacity === '1';
+  });
+  const painted = await action.evaluate(link => {
+    const box = link.querySelector('.cj-icon').getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return { focused: document.activeElement === link, width: box.width, height: box.height,
+      receivesPointer: hit === link || link.contains(hit) };
+  });
+  assert.equal(painted.focused, true, 'the action remains a real keyboard focus target');
+  assert.ok(painted.width > 0 && painted.height > 0, 'keyboard focus paints the decorative icon');
+  assert.equal(painted.receivesPointer, true, 'the painted action receives native pointer input');
+  await Promise.all([page.waitForURL(destination), page.keyboard.press('Enter')]);
+  await page.goBack({waitUntil: 'load'});
+  await page.waitForFunction(id => document.getElementById(id)?.open, memberId);
+  report.tasks.push({id: 'desktop-member-action-keyboard-paints-and-navigates', pass: true});
+};
 try {
   await page.goto(indexUrl);
   await query('kind:function');
@@ -82,16 +124,27 @@ try {
   await page.goto(indexUrl);
   report.tasks.push({ id: 'arrow-up-wraps-to-last-visible-native-result', pass: true });
 
+  // The palette is a combobox: the field keeps DOM focus and names the current
+  // option through aria-activedescendant, so assistive tech follows the same
+  // cursor the reader sees.
+  const activeOption = () => page.evaluate(() => {
+    const input = document.querySelector('[data-cjdoc-search]');
+    const id = input.getAttribute('aria-activedescendant');
+    if (!id) return null;
+    const option = document.getElementById(id);
+    const options = [...document.querySelectorAll('[data-cjdoc-results] [role="option"]')];
+    return { index: options.indexOf(option), selected: option?.getAttribute('aria-selected') };
+  });
   await query('kind:function');
   await next.click();
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await page.locator('[data-cjdoc-results] li a').nth(1)
-    .evaluate(link => link === document.activeElement), true,
-    'ArrowDown must move actual result focus after pagination');
+  await page.locator('[data-cjdoc-search]').press('ArrowDown');
+  assert.deepEqual(await activeOption(), { index: 0, selected: 'true' },
+    'ArrowDown must activate the first visible result after pagination');
+  await page.locator('[data-cjdoc-search]').press('ArrowDown');
+  assert.deepEqual(await activeOption(), { index: 1, selected: 'true' });
   await page.keyboard.press('ArrowUp');
-  assert.equal(await page.locator('[data-cjdoc-results] li a').first()
-    .evaluate(link => link === document.activeElement), true);
-  await keyboardField.focus();
+  assert.deepEqual(await activeOption(), { index: 0, selected: 'true' });
+  await page.locator('[data-cjdoc-search]').focus();
   assert.deepEqual(await links(), expected.slice(20, 40),
     'returning focus to the query must not reset the current result page');
   await keyboardField.press('Control+k');
@@ -104,10 +157,11 @@ try {
   await query('kind:function');
   await next.click();
   await page.keyboard.press('Escape');
-  assert.equal(await page.locator('[data-cjdoc-search-popover]').isVisible(), false,
+  assert.equal(await page.locator('[data-cjdoc-search-dialog]').isVisible(), false,
     'Escape from a paged result must dismiss the search');
-  assert.equal(await keyboardField.evaluate(input => input === document.activeElement), true,
-    'dismissing a focused result must return focus to the search control');
+  assert.equal(await page.locator('[data-cjdoc-search-trigger]')
+    .evaluate(trigger => trigger === document.activeElement), true,
+    'dismissing the palette must return focus to the control that opened it');
   report.tasks.push({ id: 'paged-result-keyboard-and-query-refocus', pass: true });
 
   await query('kind:function');
@@ -150,13 +204,14 @@ try {
   assert.equal(await tail.innerText(), tailContract,
     'opening a distant member must not discard the already-open tail contract from rendered text');
   report.tasks.push({ id: 'distant-open-contract-retains-complete-rendered-text', pass: true });
+  await checkDesktopActionKeyboard(firstMember);
   // Compact action menus are a mobile affordance; desktop exposes direct actions.
   await page.setViewportSize({ width: 390, height: 844 });
   const tailActions = tail.locator('..').locator('[data-cjdoc-member-actions]');
   await tailActions.locator('[data-cjdoc-member-actions-toggle]').click();
   // An off-viewport popup is not paint clipping. Expose the actual menu before
   // independently checking that native pointer hit-testing reaches its action.
-  await tailActions.locator('.member-action-list').scrollIntoViewIfNeeded();
+  await tailActions.locator('.cj-member-actions__list').scrollIntoViewIfNeeded();
   const menuHit = await tailActions.locator('a').first().evaluate(link => {
     const box = link.getBoundingClientRect();
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
@@ -181,8 +236,12 @@ try {
   await page.locator('[data-cjdoc-member-filter]').fill(historyQuery);
   assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
     .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
+  // Lazy navigation stays bounded until the reader requests the full branch.
+  await page.locator('[data-cjdoc-sidebar-filter]').fill('member');
+  assert.ok(await page.locator('.cj-sidebar').evaluate(node =>
+    node.scrollHeight - node.clientHeight >= 160), 'history scenario requires a scrollable sidebar');
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
-    const sidebar = document.querySelector('.docs-sidebar');
+    const sidebar = document.querySelector('.cj-sidebar');
     sidebar.scrollTop = 160;
     // Navigate in the same task, before the scroll event can update the cache.
     location.href = destination;
@@ -192,7 +251,7 @@ try {
     historyQuery);
   assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
     .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
-  assert.ok(Math.abs(await page.locator('.docs-sidebar').evaluate(node => node.scrollTop) - 160) <= 2,
+  assert.ok(Math.abs(await page.locator('.cj-sidebar').evaluate(node => node.scrollTop) - 160) <= 2,
     'pagehide must capture sidebar scroll even before its queued scroll event');
   await page.locator('[data-cjdoc-member-filter]').fill('');
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
@@ -214,15 +273,23 @@ try {
       try {
         const visualPage = await visualContext.newPage();
         await visualPage.goto(indexUrl);
-        const mobile = visualPage.locator('[data-cjdoc-search-trigger]');
-        if (await mobile.isVisible()) await mobile.click();
+        // First request creates the palette; every later capture on a fresh page
+        // starts from the same zero-dialog state.
+        assert.equal(await visualPage.locator('[data-cjdoc-search-dialog]').count(), 0,
+          `a normal load must ship no search dialog: ${name}/${theme}`);
+        const inline = visualPage.locator('[data-cjdoc-search]');
+        if (!await inline.count()) {
+          await visualPage.locator('[data-cjdoc-search-trigger]').click();
+          await visualPage.waitForFunction(() =>
+            document.querySelector('[data-cjdoc-search-dialog]')?.open === true);
+        }
         await visualPage.locator('[data-cjdoc-search]').fill('kind:function');
         await visualPage.evaluate(() => document.fonts.ready);
         // Opening mobile search resizes the header. Observe the settled frame,
         // after ResizeObserver updates the viewport budget used by the popup.
         await frame(visualPage);
         const layout = await visualPage.evaluate(() => {
-          const popup = document.querySelector('[data-cjdoc-search-popover]');
+          const popup = document.querySelector('[data-cjdoc-search-dialog]');
           const box = popup.getBoundingClientRect();
           const buttons = [...popup.querySelectorAll('button')].map(button => {
             const bounds = button.getBoundingClientRect();

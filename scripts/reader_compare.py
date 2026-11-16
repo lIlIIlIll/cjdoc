@@ -14,16 +14,21 @@ try:
     from .strict_json import strict_load, strict_loads, strict_dumps
     from .reader_aria_transition import check_aria_pair
     from .reader_ir_transition import TRANSITION_NAME, compare_ir_transition
-    from .reader_register import REPO, REFERENCE_TEMPLATE, validate_transition_budget
+    from .reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
     from .reader_search_identity import compare_search_identities, verify_search_identity
     from .test_agent_artifacts import ContractError, document
 except ImportError:
     from strict_json import strict_load, strict_loads, strict_dumps
     from reader_aria_transition import check_aria_pair
     from reader_ir_transition import TRANSITION_NAME, compare_ir_transition
-    from reader_register import REPO, REFERENCE_TEMPLATE, validate_transition_budget
+    from reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
     from reader_search_identity import compare_search_identities, verify_search_identity
     from test_agent_artifacts import ContractError, document
+
+FONT_INVENTORY_FAMILIES = (
+    "DejaVu Sans", "DejaVu Sans Mono", "Liberation Mono", "Liberation Sans",
+    "Noto Sans CJK SC", "Noto Serif CJK SC", "WenQuanYi Zen Hei",
+)
 
 
 class EvidenceError(ValueError):
@@ -132,13 +137,26 @@ def presentation_profile(budgets: dict) -> dict | None:
     return profile
 
 
+def installed_fonts(before: dict, after: dict) -> dict:
+    """Require one complete, sorted installed inventory in both observations."""
+    rows = before.get("environment", {}).get("fontFiles") or []
+    require(rows == (after.get("environment", {}).get("fontFiles") or []),
+            "installed font inventory changed between captures")
+    inventory = keyed(rows, "family", "installed fonts")
+    require(tuple(inventory) == FONT_INVENTORY_FAMILIES,
+            "installed font inventory is incomplete or contains unexpected families")
+    require(all(font.get("status") == "measured" for font in inventory.values()),
+            "font file identity unavailable")
+    return inventory
+
+
 def check_font_usage(before: dict, after: dict, profile: dict | None) -> None:
+    inventory = installed_fonts(before, after)
     if profile is None:
         require(before.get("fontUsage") == after.get("fontUsage"), "used font identities changed")
         return
     locale = after["environment"]["requestedUiLocale"]
     require(before["recipe"] == after["recipe"] == profile["recipe"], "presentation corpus recipe changed")
-    inventory = keyed(before["environment"]["fontFiles"], "family", "installed fonts")
     for label, report in (("baseline", before), ("after", after)):
         usage = report.get("fontUsage")
         require(isinstance(usage, list) and bool(usage), "actual font usage is missing")
@@ -237,10 +255,16 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
 
 def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
                     failures: list[str], sites: tuple[Path, Path] | None = None) -> list[dict]:
-    for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "environment", "nativeIndexEntries"):
+    try:
+        validate_browser_contract(before)
+        validate_browser_contract(after)
+    except ValueError as error:
+        raise EvidenceError(str(error)) from error
+    for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "nativeIndexEntries"):
         require(before.get(key) == after.get(key) and before.get(key) is not None, f"browser {key} changed or missing")
+    require(before.get("environment") and before["environment"] == after.get("environment"),
+            "browser environment changed or missing")
     require(before.get("harness") and before["environment"].get("fontFiles"), "missing harness or font identities")
-    require(all(font.get("status") == "measured" for font in before["environment"]["fontFiles"]), "font file identity unavailable")
     profile = presentation_profile(budgets)
     check_font_usage(before, after, profile)
     require(not before["failures"] and not after["failures"], "browser instrumentation failed")

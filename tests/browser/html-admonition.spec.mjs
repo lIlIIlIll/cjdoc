@@ -62,33 +62,33 @@ async function noOverflow(page) {
   expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport + 1);
 }
 async function memberDetails(page, locale) {
-  const details = page.locator('details.member-detail').filter({ hasText: 'commit' }).first();
+  const details = page.locator('details.cj-member[data-member-name="commit"]').first();
   const summary = details.locator('summary');
-  const badges = summary.locator('.admonition-risk-badge');
+  const badges = summary.locator('.cj-risk');
   await expect(badges).toHaveText([locale.danger, locale.warning]);
   expect(await badges.evaluateAll(elements => elements.map(element => element.dataset.admonitionLevel)))
     .toEqual(['danger', 'warning']);
-  await expect(summary.locator('.admonition-risk-badge[data-admonition-level="note"]')).toHaveCount(0);
+  await expect(summary.locator('.cj-risk[data-admonition-level="note"]')).toHaveCount(0);
   for (const icon of await badges.locator('svg').all()) await expect(icon).toHaveAttribute('aria-hidden', 'true');
   expect(await badges.evaluateAll(elements => elements.every(element =>
     element.tabIndex < 0 && element.scrollWidth <= element.clientWidth + 1))).toBe(true);
   return { details, summary };
 }
 async function staticAlerts(page) {
-  await expect(page.locator('aside.admonition[role="alert"], aside.admonition[aria-live]')).toHaveCount(0);
-  await expect(page.locator('aside.admonition svg:not([aria-hidden="true"])')).toHaveCount(0);
+  await expect(page.locator('aside.cj-admonition[role="alert"], aside.cj-admonition[aria-live]')).toHaveCount(0);
+  await expect(page.locator('aside.cj-admonition svg:not([aria-hidden="true"])')).toHaveCount(0);
 }
 async function guideContract(page, locale, checkColors = true) {
-  const asides = page.locator('aside.admonition');
+  const asides = page.locator('aside.cj-admonition');
   await expect(asides).toHaveCount(4);
-  await expect(page.locator('aside.admonition[data-admonition-level="note"]')).toHaveCount(1);
-  await expect(page.locator('aside.admonition[data-admonition-level="warning"]')).toHaveCount(2);
-  await expect(page.locator('aside.admonition[data-admonition-level="danger"]')).toHaveCount(1);
+  await expect(page.locator('aside.cj-admonition[data-admonition-level="note"]')).toHaveCount(1);
+  await expect(page.locator('aside.cj-admonition[data-admonition-level="warning"]')).toHaveCount(2);
+  await expect(page.locator('aside.cj-admonition[data-admonition-level="danger"]')).toHaveCount(1);
   for (const [level, label] of [['note', locale.note], ['warning', locale.warning], ['danger', locale.danger]]) {
-    for (const aside of await page.locator(`aside.admonition[data-admonition-level="${level}"]`).all()) {
+    for (const aside of await page.locator(`aside.cj-admonition[data-admonition-level="${level}"]`).all()) {
       await expect(aside).toBeVisible();
       await expect(aside).toHaveAttribute('aria-label', label);
-      await expect(aside.locator('.admonition-icon svg')).toBeVisible();
+      await expect(aside.locator('.cj-admonition__icon svg')).toBeVisible();
     }
   }
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
@@ -152,8 +152,8 @@ for (const locale of locales) {
             await expect(details).toHaveAttribute('open', '');
             await expect(summary).toBeFocused();
             await expect(details).toContainText('AdmonitionSearchSentinel');
-            await expect(details.locator('aside.admonition[data-admonition-level="warning"]')).toBeVisible();
-            await expect(details.locator('aside.admonition[data-admonition-level="danger"]')).toBeVisible();
+            await expect(details.locator('aside.cj-admonition[data-admonition-level="warning"]')).toBeVisible();
+            await expect(details.locator('aside.cj-admonition[data-admonition-level="danger"]')).toBeVisible();
             await staticAlerts(page);
             await noOverflow(page);
             await page.screenshot({ path: info.outputPath('owner-expanded.png'), fullPage: true });
@@ -183,7 +183,7 @@ for (const locale of locales) {
         await page.keyboard.press('Space');
         await expect(details).not.toHaveAttribute('open', '');
         await summary.tap();
-        await expect(details.locator('aside.admonition[data-admonition-level="danger"]')).toBeVisible();
+        await expect(details.locator('aside.cj-admonition[data-admonition-level="danger"]')).toBeVisible();
         expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
         await noOverflow(page);
         await page.goto(urlFor(pages, pages.guide, locale.id, transport));
@@ -198,24 +198,24 @@ for (const locale of locales) {
     try {
       const page = await context.newPage();
       await page.goto(pathToFileURL(pages.owner).href);
-      const note = page.locator('aside.admonition[data-admonition-level="note"]').first();
+      const note = page.locator('aside.cj-admonition[data-admonition-level="note"]').first();
       await expect(note).toBeVisible();
       await expect(note).toHaveAttribute('aria-label', locale.note);
       const { details, summary } = await memberDetails(page, locale);
-      for (const aside of await details.locator('aside.admonition').all()) await expect(aside).toBeHidden();
+      for (const aside of await details.locator('aside.cj-admonition').all()) await expect(aside).toBeHidden();
       await summary.focus();
       await page.keyboard.press('Enter');
-      await expect(details.locator('aside.admonition[data-admonition-level="danger"]')).toBeVisible();
+      await expect(details.locator('aside.cj-admonition[data-admonition-level="danger"]')).toBeVisible();
       await page.keyboard.press('Space');
       await expect(details).not.toHaveAttribute('open', '');
       await page.emulateMedia({ media: 'print' });
-      await expect(details.locator('aside.admonition[data-admonition-level="danger"]')).toBeVisible();
+      await expect(details.locator('aside.cj-admonition[data-admonition-level="danger"]')).toBeVisible();
       await expect(details).toContainText('AdmonitionSearchSentinel');
       await staticAlerts(page);
       await page.screenshot({ path: info.outputPath('no-js-print-owner.png'), fullPage: true });
       await page.goto(pathToFileURL(pages.guide).href);
       await guideContract(page, locale, false);
-      await expect(page.locator('aside.admonition[data-admonition-level="danger"]'))
+      await expect(page.locator('aside.cj-admonition[data-admonition-level="danger"]'))
         .toContainText('Never publish a partially captured result.');
     } finally { await context.close(); }
   });
@@ -242,8 +242,8 @@ test('native 200% browser zoom keeps risk labels, prose and native disclosure us
       await page.goto(urlFor(pages, pages.owner, locale.id, 'subpath'));
       const snapshot = () => page.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio,
         scroll: document.documentElement.scrollWidth,
-        body: [...document.querySelectorAll('aside.admonition')].map(element => element.textContent),
-        badges: [...document.querySelectorAll('.admonition-risk-badge')].map(element => element.textContent),
+        body: [...document.querySelectorAll('aside.cj-admonition')].map(element => element.textContent),
+        badges: [...document.querySelectorAll('.cj-risk')].map(element => element.textContent),
       }));
       const before = await snapshot();
       const zoom = await worker.evaluate(async url => {
@@ -262,7 +262,7 @@ test('native 200% browser zoom keeps risk labels, prose and native disclosure us
       const { details, summary } = await memberDetails(page, locale);
       await summary.focus();
       await page.keyboard.press('Enter');
-      await expect(details.locator('aside.admonition[data-admonition-level="danger"]')).toBeVisible();
+      await expect(details.locator('aside.cj-admonition[data-admonition-level="danger"]')).toBeVisible();
       await expect(summary).toBeFocused();
       const session = await context.newCDPSession(page);
       const screenshot = await session.send('Page.captureScreenshot', {

@@ -338,25 +338,26 @@ private func tagIndexHref(rootPrefix: String, symbol: SymbolDoc, tagId: String,
  * Render captured classification values. Grouped rows omit the group badge:
  * their parent heading already supplies it, and tag-free rows need no wrapper.
  */
-internal func appendDeclarationClassificationBadges(out: RenderTextBuffer,
+internal func appendDeclarationClassificationBadges(w: HtmlWriter,
     catalog: DeclarationGroupCatalog, snapshotId: String, symbol: SymbolDoc,
     rootPrefix: String, includeGroup!: Bool = true): Unit {
     let classification = catalog.classificationFor(symbol)
     if ((!includeGroup || classification.group.isNone()) && classification.tags.isEmpty()) { return }
-    out.append("<div class=\"declaration-classification\">")
-    if (includeGroup) {
-        match (classification.group) {
-            case Some(group) =>
-                out.append("<span class=\"declaration-group-badge\" data-cjdoc-declaration-group=\"" +
-                    escapeHtml(group.id) + "\">" + escapeHtml(group.title) + "</span>")
-            case None => ()
+    w.element("div", [htmlClass("cj-badges")]) { badges =>
+        if (includeGroup) {
+            match (classification.group) {
+                case Some(group) =>
+                    badges.textElement("span", group.title, attrs: [
+                        htmlClass("cj-badge cj-badge--group"),
+                        htmlAttr("data-cjdoc-declaration-group", group.id)])
+                case None => ()
+            }
+        }
+        for (tag in classification.tags) {
+            let href = tagIndexHref(rootPrefix, symbol, tag.id, snapshotId)
+            badges.element("a", [htmlClass("cj-badge cj-badge--tag"),
+                htmlFlag("data-cjdoc-tag-link"), htmlAttr("data-cjdoc-tag-id", tag.id),
+                htmlHref(documentationRouteHref(href))]) { link => link.text(tag.title) }
         }
     }
-    for (tag in classification.tags) {
-        let href = tagIndexHref(rootPrefix, symbol, tag.id, snapshotId)
-        out.append("<a class=\"declaration-tag-badge\" data-cjdoc-tag-link data-cjdoc-tag-id=\"" +
-            escapeHtml(tag.id) + "\" href=\"" + escapeHtml(href) + "\">" +
-            escapeHtml(tag.title) + "</a>")
-    }
-    out.append("</div>")
 }

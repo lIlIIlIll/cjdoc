@@ -14,9 +14,10 @@ stated instead of a conclusion.
 
 A matched cell is keyed by **(job shape, cache state, environment)**. The environment
 is the runner image, SDK/stdx identity, toolchain fingerprint, toolchain target and
-effective compile options recorded by the job's own stages. The fingerprint matters
-because two SDK installations can report the same `sdkVersion` while differing in
-content, and `stage_environment` records it precisely to tell those apart.
+effective compile options recorded by the job's own stages. The fingerprint binds
+the reported compiler version/target and selected stdx content; it does **not**
+hash compiler executables or LLVM DLLs. Comparing those bytes requires the native
+compiler receipt described below, not merely equal `sdkVersion` or fingerprints.
 
 **The source revision is deliberately NOT part of the key** (ruled 2026-10-20). The
 issue's condition list is "same workflow, runner type, SDK/stdx, effective flags,
@@ -129,6 +130,12 @@ started a separate process.
 This preserves the suite, deadline, serial test scheduling and committed compile
 defaults. A Linux routing/status/cleanup probe is not native Windows compile proof.
 
+Cancellation during launch is deferred until the child handle is bound. Once
+bound, cancellation unwinds the interrupted `Popen.wait()` before blocking group
+cleanup and reaping: a signal handler must not re-enter the same process's
+non-reentrant waitpid lock. The existing deadline, TERM/KILL grace and prior
+default/ignored/custom signal disposition are preserved.
+
 The optional-worker host build receives the running workflow shell through
 `highlight_ci.py --bash`. Windows requires this explicit absolute executable;
 the workflow converts Git Bash's path with `cygpath` when available. A Python
@@ -153,6 +160,60 @@ SDK/stdx discovery paths and keeps native runtime/DLL search paths. Every render
 and API-surface replay uses this environment; the source project is still moved
 away and complete output bytes are compared. An empty PATH is not a portable
 substitute for unavailable generation tools.
+
+## First-attempt Windows provider compiler evidence
+
+`check.sh` enables `ci_stage.py run --capture-native-compiler` only for the
+provider stage on Windows in GitHub Actions. The command rejects other platforms
+or stage kinds. One capture observes one actual invocation; it does not retry the
+compiler or dispatch another workflow.
+
+The provider fixture's `cjpm run` retains the product's `--jobs 1`,
+`-O2 --fno-chir-function-inlining` policy and adds only `-V --save-temps` with a
+unique owned directory under `RUNNER_TEMP`. Both the root dependency and fixture
+entry use the same manifest override path. Ordinary product builds/runs and the
+unit-only `-O1` exception remain unchanged. SDK selection, workflow files, cache
+keys, deadlines and acceptance budgets are not changed. Diagnostic provider wall
+time includes capture overhead and is not a replacement performance sample.
+
+The existing recursive `ci-timing-*` upload carries
+`provider.native-compiler.json`, also embedded as `nativeCompilerEvidence` in
+`stages.json`. The surrounding stage records bind it to the checkout and attempt.
+The receipt contains:
+
+* SHA-256 and size for the selected SDK's `cjc.exe`, `cjc-frontend.exe`, `cjpm.exe`,
+  `opt.exe`, `llc.exe`, `libLLVM-15.dll` and `libLLVM-Foundation-15.dll`, with a
+  before/after comparison.
+* The wrapper's observed product/diagnostic options and per-package compiler
+  commands from the live stream, before the stage log drops its middle. Machine
+  roots are replaced with stable labels; counts and truncation are explicit.
+* Saved-IR file/byte counts and the failed `.opt.bc` module/exit code, selected
+  from the live failure line with a bounded-log fallback.
+
+A successful stage publishes metadata only. On an actual `llc` failure, the
+collector may additionally publish
+`provider.native-compiler/<module>.opt.bc`: the exact original bytes, never a
+rewritten or metadata-stripped substitute. The selected SDK's `opt -S` audits a
+private copy first. Embedded personal/absolute paths, scratch roots, private
+addresses, credentials or email addresses withhold the payload. Conventional
+GitHub checkout/runner roots are permitted and counted only in a CI environment;
+the disassembler's derived `ModuleID` comment is not embedded module metadata.
+The payload limit is 128 MiB and audit-text limit 64 MiB; these are publication
+privacy limits, not relaxed product resource budgets.
+
+Unavailable evidence records a fixed reason instead of uploading unaudited IR.
+The original failing process exit code wins over collector failures; a successful
+process without complete capture fails its evidence gate. Failed preparation
+refuses to run an uncaptured diagnostic attempt. Existing receipts/payloads are
+never replaced, and cleanup removes only this capture's private temporary root.
+
+SDK and payload hashes describe bytes streamed from one opened file. Pathname and
+descriptor identity and size must agree at open; before/after identity, size and
+timestamps are then checked separately within each API. Cross-API timestamp
+semantics are not portable, so a path timestamp is never compared with an
+`fstat` timestamp. An observed replacement or metadata change still withholds
+evidence; no timestamp guard or publication limit is removed.
+
 
 ## What the site-generation time is actually spent on
 

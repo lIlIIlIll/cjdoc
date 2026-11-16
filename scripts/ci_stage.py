@@ -36,9 +36,11 @@ import time
 try:
     from .sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
     from .compiler_failure_evidence import compiler_failure_evidence
+    from .native_compiler_capture import NativeCompilerCapture
 except ImportError:
     from sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
     from compiler_failure_evidence import compiler_failure_evidence
+    from native_compiler_capture import NativeCompilerCapture
 STAGE_SCHEMA = "cjdoc.ci-stage/1"
 WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/2"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
@@ -350,24 +352,26 @@ class _BoundedLog:
         self.handle.close()
 
 
-def _pump(stream, mirror, sink) -> None:
+def _pump(stream, mirror, sink, observer=None) -> None:
     try:
         for line in iter(stream.readline, b""):
             # The console always receives the full stream; only the retained file
             # is bounded.
             mirror.write(line)
             mirror.flush()
+            if observer is not None:
+                observer(line)
             sink.write(line)
     finally:
         stream.close()
 
 
-def _mirror_streams(process: subprocess.Popen, log_path: Path) -> tuple[threading.Thread, ...]:
+def _mirror_streams(process: subprocess.Popen, log_path: Path, observer=None) -> tuple[threading.Thread, ...]:
     """Pass stdout/stderr through unchanged while teeing them into one bounded log."""
     handle = _BoundedLog(log_path)
     threads = [
-        threading.Thread(target=_pump, args=(process.stdout, sys.stdout.buffer, handle), daemon=True),
-        threading.Thread(target=_pump, args=(process.stderr, sys.stderr.buffer, handle), daemon=True),
+        threading.Thread(target=_pump, args=(process.stdout, sys.stdout.buffer, handle, observer), daemon=True),
+        threading.Thread(target=_pump, args=(process.stderr, sys.stderr.buffer, handle, observer), daemon=True),
     ]
     # The last finishing pump closes the log handle; each pump closes only its own
     # stream, so the shared log handle is closed once, after both writers are done.
@@ -385,12 +389,14 @@ def _close_after(threads: list[threading.Thread], handle) -> None:
 
 
 def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
-              extra: dict[str, object] | None = None) -> int:
+              extra: dict[str, object] | None = None, *, capture_native_compiler: bool = False) -> int:
     """Run one external stage, always writing a record, and return its exit code."""
     if kind not in STAGE_KINDS:
         raise SystemExit(f"ci_stage.py: unknown stage kind: {kind}")
     if not command:
         raise SystemExit("ci_stage.py: run requires -- and a command")
+    if capture_native_compiler and (sys.platform != "win32" or stage_id != "provider" or kind != "provider"):
+        raise SystemExit("ci_stage.py: native compiler capture requires the Windows provider stage")
     evidence_dir = Path(evidence_dir)
     evidence_dir.mkdir(parents=True, exist_ok=True)
     # A report left by an earlier stage must never be inherited by this one: the file
@@ -406,8 +412,43 @@ def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
     # reads.
     child_environment = dict(os.environ)
     child_environment[IDENTITY_REPORT_ENV] = str(evidence_dir / IDENTITY_REPORT_FILE)
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               env=child_environment)
+    capture = None
+    if capture_native_compiler:
+        diagnostic = None
+        try:
+            capture = NativeCompilerCapture.prepare(evidence_dir, child_environment)
+            if not capture.active:
+                diagnostic = capture.finish(1, evidence_dir / f"{stage_id}.log")
+        except Exception:
+            diagnostic = {"status": "unavailable", "reason": "capture-setup-failed"}
+        if diagnostic is not None:
+            handle.record_value.update({
+                "wallMs": round((time.perf_counter() - started) * 1000, 3),
+                "exitCode": 1, "status": "failed", "endedAt": utc_now(),
+                "environment": stage_environment(kind=kind),
+                "nativeCompilerEvidence": diagnostic,
+            })
+            write_stage_evidence(evidence_dir / STAGES_FILE, [handle.record_value])
+            return 1
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   env=child_environment)
+    except OSError:
+        if capture is None:
+            raise
+        try:
+            diagnostic = capture.finish(1, evidence_dir / f"{stage_id}.log")
+        except Exception:
+            diagnostic = {"status": "unavailable", "reason": "capture-finalization-failed",
+                          "stageExitCode": 1}
+        handle.record_value.update({
+            "wallMs": round((time.perf_counter() - started) * 1000, 3),
+            "exitCode": 1, "status": "failed", "endedAt": utc_now(),
+            "environment": stage_environment(kind=kind),
+            "nativeCompilerEvidence": diagnostic,
+        })
+        write_stage_evidence(evidence_dir / STAGES_FILE, [handle.record_value])
+        return 1
 
     def cancel(signum, _frame):
         cancelled.append(signum)
@@ -423,15 +464,29 @@ def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
         except (ValueError, OSError):
             pass
     try:
-        threads = _mirror_streams(process, evidence_dir / f"{stage_id}.log")
+        threads = _mirror_streams(process, evidence_dir / f"{stage_id}.log",
+                                  capture.observe if capture is not None else None)
         returncode = process.wait()
         for thread in threads:
-            thread.join(timeout=5)
+            thread.join(timeout=None if capture is not None else 5)
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler)
     exit_code = returncode if returncode >= 0 else 128 - returncode
     environment = stage_environment(kind=kind)
+    if capture is not None:
+        try:
+            diagnostic = capture.finish(exit_code, evidence_dir / f"{stage_id}.log")
+        except Exception:
+            diagnostic = {"status": "unavailable", "reason": "capture-finalization-failed",
+                          "stageExitCode": exit_code}
+        handle.record_value["nativeCompilerEvidence"] = diagnostic
+        handle.record_value["programExitCode"] = exit_code
+        diagnostic_options = ["-V", "--save-temps", "<native-compiler-ir>"]
+        environment["diagnosticCompileOptions"] = diagnostic_options
+        environment["compileOptions"] = [*environment["compileOptions"], *diagnostic_options]
+        if exit_code == 0 and diagnostic.get("status") != "recorded":
+            exit_code = 1
     # Read only after the stage has ended: the value it reports is what it actually
     # ran with. The file is a one-shot channel, so it is deleted once consumed --
     # `stages.json` is the evidence, and a leftover copy would be uploaded as if it
@@ -831,6 +886,8 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--evidence", type=Path, required=True)
     run_parser.add_argument("--cache", help="comma-separated name=hit|miss|unknown")
     run_parser.add_argument("--extra", help="inline JSON merged into the stage record")
+    run_parser.add_argument("--capture-native-compiler", action="store_true",
+                            help="retain first-attempt Windows provider compiler identities and safe failed IR")
     run_parser.add_argument("argv", nargs=argparse.REMAINDER)
     summarize_parser = commands.add_parser("summarize")
     summarize_parser.add_argument("--evidence", type=Path, required=True)
@@ -855,7 +912,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.cache:
             os.environ["CJDOC_CACHE_STATE"] = args.cache
         extra = json.loads(args.extra) if args.extra else {}
-        return run_stage(args.id, args.kind, command, args.evidence, extra)
+        return run_stage(args.id, args.kind, command, args.evidence, extra,
+                         capture_native_compiler=args.capture_native_compiler)
     if args.command == "summarize":
         args.output.write_text(summarize(load_records(args.evidence)), encoding="utf-8", newline="\n")
         return 0

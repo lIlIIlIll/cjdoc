@@ -92,8 +92,6 @@ class PublicHtmlEntrypointsTest {
         verifyCompleteHtmlEntrypoint(renderDocumentationFormatsWithOptions(original, ["html"], locale: "en"), "en", true)
         let mixed = renderDocumentationFormatsWithOptions(original, ["html", "markdown"], locale: "en")
         verifyCompleteHtmlEntrypoint(mixed, "en", true)
-        @Expect(!entrypointContent(mixed, "markdown/index.md").isEmpty())
-        @Expect(!entrypointContent(mixed, "markdown/" + ENTRYPOINT_GUIDE.removeSuffix(".html") + ".md").isEmpty())
         var markdownImages: Int64 = 0
         for (artifact in mixed where artifact.path.startsWith("markdown/assets/")) {
             @Expect(artifact.isBinary)

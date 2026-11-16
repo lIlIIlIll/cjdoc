@@ -20,9 +20,25 @@ xdg-open "$OUT/html/index.html"
 
 macOS 使用 `open "$OUT/html/index.html"`；Windows PowerShell 使用实际输出路径执行 `Start-Process`。如果目录已存在但不是 cjdoc 管理的输出，换一个尚不存在的目录，处理方法见[管理输出](manage-outputs.md)。
 
-浏览器打开的是 `$OUT/html/index.html`。进入 `docdemo` 包和 `greet`，阅读签名、参数、返回与示例。在站点搜索框输入 `greet`，打开匹配的声明；复制页面或成员链接，在新标签页打开，确认能直接回到对应位置。指南也可通过搜索和页面链接进入。
+浏览器打开的是 `$OUT/html/index.html`。进入 `docdemo` 包和 `greet`，阅读签名、参数、返回与示例。点页眉的“搜索文档”打开搜索，输入 `greet`，打开匹配的声明；复制页面或成员链接，在新标签页打开，确认能直接回到对应位置。指南也可通过搜索和页面链接进入。
 
 HTML 中的示例是作者写下的内容和预期输出。需要实际编译或运行它们时，使用[示例检查](check-examples.md)。
+
+站点三栏布局：左侧是包、类型与成员的导航树（顶部输入框按名称筛选），中间是正文，宽屏右侧是本页目录。按 `Ctrl+K`（macOS 为 `⌘K`）或 `/` 打开搜索；右上角的“显示设置”可以切换主题、字体和字号，选择会保存在当前浏览器里，下次打开同一站点时保留。
+
+## 指定站点字体
+
+站点默认使用阅读者系统自带的字体。要让正文或代码优先使用某个字体，在生成时给出字体列表：
+
+```bash
+cjdoc generate --project . --format html --output "$OUT" \
+  --html-font-sans '"Source Han Sans SC", system-ui, sans-serif' \
+  --html-font-mono '"JetBrains Mono", ui-monospace, monospace'
+```
+
+刷新浏览器中的站点，正文和签名会改用列表中第一个已安装的字体。cjdoc 不下载字体文件；阅读者没有安装时按列表顺序回退，所以列表最后保留 `sans-serif` 或 `monospace` 这样的通用字体族。阅读者在“显示设置”里选了字体时，以阅读者的选择为准。
+
+如果命令报 `invalid --html-font-sans value`，检查每一项是否只含字母、数字、空格、`_`、`-`，带空格的名字是否用双引号包住，整串是否超过 256 字节。报 `requires --format html` 时补上 `--format html`。
 
 ## 在本地通过 HTTP 阅读
 

@@ -3,6 +3,76 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+/**
+ * Optional CSS font-family lists for the generated HTML site. Each value is a
+ * comma-separated list of family names (letters, digits, spaces, `_`, `-`,
+ * optionally double-quoted), at most 256 bytes; anything else is rejected so
+ * the value can never break out of its declaration.
+ */
+public struct HtmlFontOptions {
+    public let sans: ?String
+    public let mono: ?String
+
+    public init(sans!: ?String = None, mono!: ?String = None) {
+        for ((value, option) in [(sans, "--html-font-sans"), (mono, "--html-font-mono")]) {
+            if (let Some(list) <- value) {
+                if (!isValidHtmlFontFamilyList(list)) {
+                    throw IllegalArgumentException("invalid ${option} value")
+                }
+            }
+        }
+        this.sans = sans
+        this.mono = mono
+    }
+}
+
+private let HTML_FONT_FAMILY_LIST_LIMIT: Int64 = 256
+
+private func htmlFontNameByte(byte: Byte): Bool {
+    (byte >= b'A' && byte <= b'Z') || (byte >= b'a' && byte <= b'z') ||
+        (byte >= b'0' && byte <= b'9') || byte == b' ' || byte == b'_' || byte == b'-'
+}
+
+private func validHtmlFontFamily(family: String): Bool {
+    let quoted = family.size >= 2 && family.startsWith("\"") && family.endsWith("\"")
+    let name = if (quoted) { family[1..family.size - 1] } else { family }
+    if (name.isEmpty() || name.startsWith(" ") || name.endsWith(" ")) { return false }
+    for (byte in name.toArray()) {
+        if (!htmlFontNameByte(byte)) { return false }
+    }
+    true
+}
+
+// Only the space character may separate list items; other whitespace (tabs,
+// newlines) is rejected rather than silently trimmed into the stylesheet.
+private func trimSpaces(value: String): String {
+    var start: Int64 = 0
+    var end = value.size
+    while (start < end && value[start] == b' ') { start++ }
+    while (end > start && value[end - 1] == b' ') { end-- }
+    value[start..end]
+}
+
+public func isValidHtmlFontFamilyList(value: String): Bool {
+    if (value.isEmpty() || value.size > HTML_FONT_FAMILY_LIST_LIMIT) { return false }
+    for (part in value.split(",")) {
+        if (!validHtmlFontFamily(trimSpaces(part))) { return false }
+    }
+    true
+}
+
+// Appended last so it overrides the default stacks, while the reader's own
+// data-cj-font preference (higher specificity) still wins in the browser.
+internal func renderHtmlStylesheet(fonts: HtmlFontOptions): String {
+    let out = RenderTextBuffer()
+    out.append(HTML_TOKENS_STYLE)
+    out.append(HTML_LAYOUT_STYLE)
+    out.append(HTML_COMPONENT_STYLE)
+    if (let Some(sans) <- fonts.sans) { out.append(":root{--cj-font-sans:${sans};}\n") }
+    if (let Some(mono) <- fonts.mono) { out.append(":root{--cj-font-mono:${mono};}\n") }
+    out.toString()
+}
+
 public class HtmlDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "html" } }
 
@@ -12,9 +82,10 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
     }
 }
 
-internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
+internal func appendHtmlArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet, snapshot: DocumentationReadSnapshot,
-    locale!: String = "en", docVersion!: ?String = None): Unit {
+    locale!: String = "en", docVersion!: ?String = None,
+    htmlFonts!: HtmlFontOptions = HtmlFontOptions()): Unit {
         // Keep the original localized HTML view for asset and hidden-target
         // context; links bind to the one captured reader snapshot.
         let projection = RenderProjection(documentation, snapshotId: snapshot.snapshotId)
@@ -26,39 +97,40 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         validateHtmlRouting(projection, projectedAssets)
         let searchIndex = renderSearchIndex(snapshot)
         let searchSignatures = renderSearchSignatureIndex(documentation, projection)
-        artifacts.addText("html/index.html", "text/html; charset=utf-8",
+        let _ = artifacts.addText("html/index.html", "text/html; charset=utf-8",
             renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
-        artifacts.addText("html/search-index.json", "application/json", searchIndex)
-        artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
+        let _ = artifacts.addText("html/search-index.json", "application/json", searchIndex)
+        let _ = artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex, searchSignatures))
-        artifacts.addText("html/sidebar-index.js", "text/javascript; charset=utf-8",
+        let _ = artifacts.addText("html/sidebar-index.js", "text/javascript; charset=utf-8",
             renderSidebarIndexScript(projection, locale))
-        artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
-        artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
+        let _ = artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8",
+            HTML_THEME_BOOTSTRAP_SCRIPT)
+        let _ = artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
             HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
-        artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8", HTML_SYMBOL_ALIAS_SCRIPT)
-        artifacts.addText("html/style.css", "text/css; charset=utf-8",
-            HTML_STYLE + HTML_RETURN_LAYOUT_STYLE + HTML_TYPE_LINK_STYLE + HTML_NAVIGATION_STYLE +
-                HTML_TOC_STYLE + HTML_LAYOUT_HARDENING_STYLE + HTML_EXAMPLE_STYLE + HTML_REFERENCE_BROWSER_STYLE + HTML_LANGUAGE_STYLE)
+        let _ = artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8",
+            HTML_SYMBOL_ALIAS_SCRIPT)
+        let _ = artifacts.addText("html/style.css", "text/css; charset=utf-8",
+            renderHtmlStylesheet(htmlFonts))
         for (pkg in projection.packages) {
-            artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
+            let _ = artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
                 renderPackagePage(documentation, projection, index, typeLinkIndex, pkg, locale: locale, docVersion: docVersion))
         }
         for (symbol in projection.visibleSymbols) {
-            artifacts.addText("html/${symbolReadablePagePath(symbol)}", "text/html; charset=utf-8",
+            let _ = artifacts.addText("html/${symbolReadablePagePath(symbol)}", "text/html; charset=utf-8",
                 renderSymbolAlias(symbol, locale))
             let rendered = renderSymbolPage(documentation, projection, index, symbol, assetLookup,
                     typeLinkIndex, locale: locale, docVersion: docVersion)
-            artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
+            let _ = artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
                 rendered)
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }
 
-internal func appendApiSurfaceArtifacts(artifacts: RenderArtifactCollector,
+internal func appendApiSurfaceArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet): Unit {
-    artifacts.addText("api-surface/api-surface.json", "application/json",
+    let _ = artifacts.addText("api-surface/api-surface.json", "application/json",
         renderApiContractSnapshot(documentation))
 }
 
@@ -85,9 +157,9 @@ public func documentationCoverageCounts(documentation: DocumentationSet):
     (symbols, documentedSymbols, parameters, documentedParameters)
 }
 
-internal func appendCoverageArtifacts(artifacts: RenderArtifactCollector,
+internal func appendCoverageArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet): Unit {
-    artifacts.addText("coverage/coverage.json", "application/json",
+    let _ = artifacts.addText("coverage/coverage.json", "application/json",
         renderDocumentationCoverageV2(documentation))
     appendDocumentationQualityArtifact(artifacts, documentation)
     appendTranslationCoverageArtifact(artifacts, documentation)
@@ -205,7 +277,7 @@ private func appendMarkdownExposureSource(out: RenderTextBuffer,
     }
 }
 
-internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
+internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet, locale: String): Unit {
     validateTypedDocumentationSet(documentation)
     let projection = RenderProjection(documentation)
@@ -223,7 +295,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         index.append("](${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)})\n")
     }
     appendCapturedPageMarkdownNavigation(index, documentation, locale)
-    artifacts.addText("markdown/index.md", "text/markdown; charset=utf-8", index.toString())
+    let _ = artifacts.addText("markdown/index.md", "text/markdown; charset=utf-8", index.toString())
     for (pkg in projection.packages) {
         let out = RenderTextBuffer()
         out.append("# ${label(locale, "Package", "包")} "); appendMarkdownCodeSpan(out, pkg.source.name)
@@ -333,7 +405,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                 }
             case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
         }
-        artifacts.addText("markdown/${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)}",
+        let _ = artifacts.addText("markdown/${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)}",
             "text/markdown; charset=utf-8", out.toString())
     }
     for (symbol in projection.visibleSymbols where isContainerDeclaration(symbol)) {
@@ -435,20 +507,27 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
             }
             case None => ()
         }
-        artifacts.addText("markdown/${markdownSymbolPagePath(symbol)}",
+        let _ = artifacts.addText("markdown/${markdownSymbolPagePath(symbol)}",
             "text/markdown; charset=utf-8", out.toString())
     }
     appendAssetArtifacts(artifacts, projectedAssets, "markdown")
 }
 
-public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", docVersion!: ?String = None,
+/**
+ * Render every requested format into the caller's artifact store. This is the
+ * single renderer chain: the public array entry points wrap it with an in-memory
+ * collector, and the CLI hands it a rooted spool store.
+ */
+protected func renderDocumentationInto(artifacts: RenderArtifactStore,
+    documentation: DocumentationSet, formats: Array<String>,
+    locale!: String = "zh-CN", docVersion!: ?String = None,
     allLanguages!: Bool = false, agentFull!: Bool = false,
-    reports!: Array<DocumentationReportAttachment> = []):
-    Array<RenderArtifact> {
+    reports!: Array<DocumentationReportAttachment> = [],
+    htmlFonts!: HtmlFontOptions = HtmlFontOptions()): Unit {
     if (allLanguages) {
-        return renderAllDocumentationLanguages(documentation, formats, docVersion,
-            agentFull: agentFull, reports: reports)
+        renderAllDocumentationLanguagesInto(artifacts, documentation, formats, docVersion,
+            agentFull: agentFull, reports: reports, htmlFonts: htmlFonts)
+        return
     }
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
@@ -458,27 +537,18 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
         throw RenderResourceLimitException(
             "selected documentation exceeds the existing Doc IR budget")
     }
-    let artifacts = RenderArtifactCollector()
     let htmlSnapshot: ?DocumentationReadSnapshot = if (formats.contains("html")) {
         Some(DocumentationReadSnapshot(localized, locale: Some(locale), version: docVersion))
     } else { None }
     // Search and Agent companions share one captured reader snapshot. HTML keeps
     // the source view: publication pruning removes asset and hidden-target context.
-    let machineArtifacts: Array<RenderArtifact> = match (htmlSnapshot) {
-        case Some(context) =>
-            let machine = RenderArtifactCollector()
-            appendAgentReadableArtifacts(machine, context, includeFull: agentFull,
-                version: docVersion, includeValidation: true, reports: reports)
-            machine.toArray()
-        case None => []
-    }
     for (format in formats) {
         match (format) {
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => appendMarkdownSiteArtifacts(artifacts, localized, locale)
             case "html" => match (htmlSnapshot) {
                 case Some(context) => appendHtmlArtifacts(artifacts, localized, context,
-                    locale: locale, docVersion: docVersion)
+                    locale: locale, docVersion: docVersion, htmlFonts: htmlFonts)
                 case None => throw IllegalArgumentException(
                     "HTML rendering requires its captured reader snapshot")
             }
@@ -500,11 +570,30 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
         appendCapturedPageArtifacts(artifacts, localized, capturedFormats.toArray(), locale, docVersion)
     }
     if (formats.contains("html")) {
-        artifacts.addText("html/validation.html", "text/html; charset=utf-8",
+        let _ = artifacts.addText("html/validation.html", "text/html; charset=utf-8",
             renderValidationHtml(localized, docVersion, locale))
-        for (artifact in machineArtifacts) { artifacts.add(artifact) }
+        // Machine companions are emitted at their original position, after the
+        // validation page, through the same store instead of a second collector.
+        match (htmlSnapshot) {
+            case Some(context) => appendAgentReadableArtifacts(artifacts, context,
+                includeFull: agentFull, version: docVersion, includeValidation: true,
+                reports: reports)
+            case None => ()
+        }
     }
-    artifacts.toArray()
+}
+
+public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
+    formats: Array<String>, locale!: String = "zh-CN", docVersion!: ?String = None,
+    allLanguages!: Bool = false, agentFull!: Bool = false,
+    reports!: Array<DocumentationReportAttachment> = [],
+    htmlFonts!: HtmlFontOptions = HtmlFontOptions()):
+    Array<RenderArtifact> {
+    let collected = RenderArtifactCollector()
+    renderDocumentationInto(collected, documentation, formats, locale: locale,
+        docVersion: docVersion, allLanguages: allLanguages, agentFull: agentFull,
+        reports: reports, htmlFonts: htmlFonts)
+    collected.toArray()
 }
 
 

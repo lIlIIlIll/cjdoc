@@ -53,7 +53,7 @@ def check_version_members(page, member_url: str, current_index: dict, old_index:
         page.locator(selector).click()
         page.wait_for_url(expected, wait_until="load")
         expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", "demo-v1")
-        expect(page.locator(".api-title-row h1")).to_have_text("TextCatalog")
+        expect(page.locator(".cj-page-header__title-row h1")).to_have_text("TextCatalog")
         selected = page.locator('[data-cjdoc-member][id="' + _anchor(entry["id"]) + '"]')
         expect(selected).to_have_attribute("open", "")
         expect(selected).to_be_visible()
@@ -71,15 +71,15 @@ def check_version_members(page, member_url: str, current_index: dict, old_index:
     expect(page.locator(selector)).to_have_attribute("data-cjdoc-version-state", "missing-symbol")
     page.locator(selector).click()
     page.wait_for_url(expected_owner, wait_until="load")
-    expect(page.locator(".api-title-row h1")).to_have_text("TextCatalog")
+    expect(page.locator(".cj-page-header__title-row h1")).to_have_text("TextCatalog")
 
 
 def _copy_url(page, button) -> str:
     from playwright.sync_api import expect
     expected = urljoin(page.url, button.get_attribute("data-cjdoc-copy-link"))
     button.click()
-    expect(button).to_have_attribute("data-copy-link-result", re.compile("copied|manual"))
-    if button.get_attribute("data-copy-link-result") == "manual":
+    expect(button).to_have_attribute("data-cjdoc-copy-state", re.compile("copied|failed"))
+    if button.get_attribute("data-cjdoc-copy-state") == "manual":
         field = button.locator("..").locator("[data-cjdoc-copy-link-fallback]")
         expect(field).to_have_value(expected)
         if not field.evaluate("node => node.readOnly && node.selectionStart === 0 && node.selectionEnd === node.value.length"):
@@ -106,7 +106,7 @@ def check_readable_links(page, member_url: str, current_index: dict, owner_id: s
     for identity in (owner_id, member_id):
         page.goto(member_url, wait_until="load")
         if identity == owner_id:
-            button = page.locator(".api-title-row [data-cjdoc-copy-link]").first
+            button = page.locator(".cj-page-header__title-row [data-cjdoc-copy-link]").first
         else:
             member = page.locator(f'[id="{_anchor(member_id)}"]')
             button = member_action(member, "[data-cjdoc-copy-link]")
@@ -126,7 +126,7 @@ def check_readable_links(page, member_url: str, current_index: dict, owner_id: s
                           if item.get_attribute("id") == _anchor(member_id))
             expect(target).to_have_attribute("open", "")
         else:
-            expect(page.locator(".api-title-row h1")).to_have_text("add")
+            expect(page.locator(".cj-page-header__title-row h1")).to_have_text("add")
 
 
 def run_navigation_regressions(page, member_url: str, current_index: dict,

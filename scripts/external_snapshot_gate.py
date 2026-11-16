@@ -72,7 +72,7 @@ def main():
     html_page = direct / "html" / direct_entry["href"]
     html = html_page.read_text(encoding="utf-8")
     assert html.count(f'href="{URL}"') == 1
-    assert html.count('class="external-documentation"') == 1
+    assert html.count('class="cj-external"') == 1
     assert len(direct_entry["externalDocs"]) == 1
     markdown = [path for path in (direct / "markdown").rglob("*.md")
                 if URL in path.read_text(encoding="utf-8")]
@@ -103,7 +103,7 @@ def main():
     assert imported_entry["externalDocs"] == direct_entry["externalDocs"]
     imported_html = (imported / "html" / imported_entry["href"]).read_text(encoding="utf-8")
     assert imported_html.count(f'href="{URL}"') == 1
-    assert imported_html.count('class="external-documentation"') == 1
+    assert imported_html.count('class="cj-external"') == 1
     assert load(imported / "docs.json")["externalDocumentation"] == references
     summary.update(sourceDeleted=True, sourceFreeHtmlLinkCount=1, metadataPreserved=True, status="passed")
     (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

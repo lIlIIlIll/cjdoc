@@ -47,7 +47,8 @@ class HtmlPresentationQualityTest {
         @Expect(packageHtml.contains("id=\"functions\""))
         @Expect(!packageHtml.contains("declaration-metadata"))
         @Expect(!packageHtml.contains("Semantic information: partial"))
-        @Expect(packageHtml.contains("<details class=\"package-sources\">"))
+        @Expect(packageHtml.contains("<details class=\"cj-package-sources cj-disclosure\">"), true)
+        @Expect(packageHtml.contains("<summary id=\"sources\""), true)
         @Expect(packageHtml.contains("&lt;script&gt;"))
         @Expect(!packageHtml.contains("<script>alert"))
     }
@@ -79,8 +80,9 @@ class HtmlPresentationQualityTest {
         @Expect(rootPackageFound, true)
         @Expect(rootReExportCount, 9)
         let html = renderedContent(api_render.HtmlDocumentationRenderer().render(documentation))
-        @Expect(html.contains("<details class=\"reexports\"><summary"))
-        @Expect(!html.contains("<details class=\"reexports\" open"))
+        @Expect(html.contains("<details class=\"cj-reexports cj-disclosure\">"), true)
+        @Expect(html.contains("<summary id=\"re-exports\""), true)
+        @Expect(!html.contains("<details class=\"cj-reexports cj-disclosure\" open"), true)
         @Expect(html.contains("data-cjdoc-toc-role=\"group\""))
     }
 

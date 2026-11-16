@@ -55,10 +55,10 @@ def members(journey: Journey):
         expect(second).to_be_visible()
     journey.measured("queryMs", filter_match, field)
     field.fill("")
-    copy_code(journey, current.locator(".code-copy").first)
+    copy_code(journey, current.locator(".cj-code__copy").first)
     # Follow an ordinary link and use real Back/Forward, preserving both contracts.
     origin = page.url
-    journey.click(member_action(current, "a.member-permalink"))
+    journey.click(member_action(current, "a.cj-member-actions__item--standalone"))
     destination = page.url
     require_text(page.locator("main"), "add", "String")
     journey.back(origin)
@@ -76,13 +76,13 @@ def members(journey: Journey):
 def types(journey: Journey):
     from playwright.sync_api import expect
     page, origin = journey.page, journey.page.url
-    link = page.locator(".page-header .symbol-summary a").filter(has_text="pocketkit.io.TextReader").first
+    link = page.locator(".cj-page-header .cj-summary a").filter(has_text="pocketkit.io.TextReader").first
     expect(link).to_be_visible()
     journey.click(link)
     reader = page.url
     assert_native_symbol(journey, "pocketkit.io.TextReader")
     require_text(page.locator("main"), "TextReader", "Readable", "调用方")
-    link = page.locator(".symbol-relationships").get_by_role("link", name="Readable", exact=True)
+    link = page.locator(".cj-relations").get_by_role("link", name="Readable", exact=True)
     journey.click(link)
     assert_native_symbol(journey, "pocketkit.io.Readable")
     require_text(page.locator("main"), "Readable", "read", "close")
@@ -118,7 +118,7 @@ def resources(journey: Journey):
 def guides(journey: Journey):
     from playwright.sync_api import expect
     page, guide = journey.page, journey.page.url
-    links = page.locator(".inline-binding a").filter(has_text="add(String)")
+    links = page.locator(".cj-binding a").filter(has_text="add(String)")
     if not links.count():
         raise AssertionError("guide has no bound overload link")
     if journey.target["version"] == "demo-v2":
@@ -129,7 +129,7 @@ def guides(journey: Journey):
     else:
         # Historical v1 predates explicit task IDs; retain its actual bound chapter.
         anchor = links.first.evaluate("""node => {
-          const headings = [...document.querySelectorAll('.guide-content h2[id]')];
+          const headings = [...document.querySelectorAll('.cj-guide h2[id]')];
           return headings.filter(heading =>
             heading.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1)?.id;
         }""")
@@ -139,17 +139,17 @@ def guides(journey: Journey):
     journey.click(links.first)
     require_text(page.locator("main"), "public func add(value: String): Unit")
     assert_native_symbol(journey, "pocketkit.TextCatalog.add", "public func add(value: String): Unit")
-    backlinks = [link for link in page.locator(".api-usages a").all()
+    backlinks = [link for link in page.locator(".cj-usages a").all()
                  if unquote(urljoin(page.url, link.get_attribute("href"))) == unquote(expected_guide)]
     if len(backlinks) != 1:
         raise AssertionError("selected member needs one exact task-section backlink")
     journey.click(backlinks[0])
     if unquote(page.url) != unquote(expected_guide):
         raise AssertionError("related guide did not return to the exact bound task section")
-    section = next(heading for heading in page.locator(".guide-content h2[id]").all()
+    section = next(heading for heading in page.locator(".cj-guide h2[id]").all()
                    if heading.get_attribute("id") == anchor)
     expect(section).to_be_visible()
-    copy_code(journey, section.locator("xpath=following-sibling::*").locator(".code-copy").first)
+    copy_code(journey, section.locator("xpath=following-sibling::*").locator(".cj-code__copy").first)
     journey.assertions.append("the guide selects the String overload and its API backlink returns to the exact captured task section")
 
 
@@ -201,7 +201,7 @@ def versions(journey: Journey):
     source_matches = [entry for entry in current_index["entries"] if entry["id"] == journey.target["resolved"]["symbolId"]]
     if len(source_matches) != 1:
         raise AssertionError("version source index must identify the selected native symbol exactly once")
-    link = page.locator(".cjdoc-version-selector a").filter(has_text=other).first
+    link = page.locator(".cj-version-select a").filter(has_text=other).first
     label = link.inner_text()
     expected = urljoin(origin, link.get_attribute("href"))
     journey.click(link)
@@ -243,11 +243,11 @@ def external(journey: Journey):
     ):
         candidates = page.locator(f'details[data-cjdoc-member][data-member-name="{name}"]')
         matching = [member for member in candidates.all()
-                    if member.locator("summary .declaration-signature").inner_text().strip() == signature]
+                    if member.locator("summary .cj-signature-inline").inner_text().strip() == signature]
         if len(matching) != 1:
             raise AssertionError("expected one native member signature: " + signature)
         member = matching[0]
-        summary = member.locator("summary .declaration-signature")
+        summary = member.locator("summary .cj-signature-inline")
         expect(member).not_to_have_attribute("open", "")
         for type_name, fragment in expected_types:
             link = summary.get_by_role("link", name=type_name, exact=True)
@@ -258,7 +258,7 @@ def external(journey: Journey):
             expect(link).to_be_focused()
         journey.expand(member)
         for type_name, fragment in expected_types:
-            link = member.locator(".parameter-type-code").get_by_role("link", name=type_name, exact=True)
+            link = member.locator(".cj-params__type").get_by_role("link", name=type_name, exact=True)
             expect(link).to_have_count(1)
             expect(link).to_have_attribute("href", standard_page + "#" + fragment)
         journey.click(member.locator(":scope > summary"), position={"x": 6, "y": 12})
@@ -321,7 +321,7 @@ def extension(journey: Journey):
 def authoring(journey: Journey):
     page = journey.page
     require_text(page.locator("main"), "cjdoc serve --project . --port 8080", "/__cjdoc/status.json", "Static GitHub Pages")
-    code = page.locator("pre").filter(has_text="cjdoc serve").locator(".code-copy")
+    code = page.locator("pre").filter(has_text="cjdoc serve").locator(".cj-code__copy")
     copy_code(journey, code)
     evidence = journey.raw('[data-authoring-evidence]', "cjdoc.showcase-authoring/1")
     if evidence.get("status") != "passed":
@@ -402,7 +402,7 @@ def machine(journey: Journey):
         raise AssertionError("machine Markdown lost the selected declaration's qualified name")
     # Machine identities belong in native indexes, not in the reader-facing API.
     assert_native_id(journey, selected[0]["id"])
-    require_text(journey.page.locator("main .signature-block"), selected[0]["headerSpelling"])
+    require_text(journey.page.locator("main .cj-signature"), selected[0]["headerSpelling"])
     if journey.page.locator("main .declaration-metadata").count():
         raise AssertionError("public API pages must not dump internal declaration diagnostics")
     if not standalone:

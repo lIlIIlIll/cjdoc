@@ -51,12 +51,13 @@ def _script_literal(path: Path, name: str, prefix: str = "") -> str:
 
 
 def canonical_search_script() -> str:
+    """search.js bytes, in the order renderers_output.cj concatenates them."""
     render = SCRIPT.parent.parent / "src/render"
     return (_script_literal(render / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
             + _script_literal(render / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_SCRIPT")
-            + _script_literal(render / "html_scripts.cj", "HTML_SEARCH_SCRIPT",
-                              "HTML_SEARCH_KERNEL_SCRIPT + ")
-            + _script_literal(render / "html_language.cj", "LANGUAGE_NAVIGATION_SCRIPT"))
+            + _script_literal(render / "html_scripts.cj", "HTML_SEARCH_CONTROLLER_SCRIPT")
+            + _script_literal(render / "html_script_reading.cj", "HTML_READING_SCRIPT")
+            + _script_literal(render / "html_script_language.cj", "LANGUAGE_NAVIGATION_SCRIPT"))
 
 
 def canonical_theme_bootstrap_script() -> str:
@@ -74,7 +75,14 @@ class ValidateHtmlSiteTest(unittest.TestCase):
         index = (
             "<!doctype html><html><head>"
             f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'
-            "</head><body><main id=\"top\"><a href=\"#top\">top</a></main>"
+            "</head><body data-cjdoc-route=\"overview\" data-cjdoc-page=\"home\">"
+            '<main id="top"><a href="#top">top</a></main>'
+            '<header class="cj-header">'
+            '<button type="button" data-cjdoc-search-trigger data-cjdoc-root-prefix=""'
+            ' aria-haspopup="dialog" aria-expanded="false" hidden></button>'
+            '<button type="button" data-cjdoc-theme-toggle'
+            ' aria-haspopup="dialog" aria-expanded="false" hidden></button>'
+            '</header>'
             '<script src="theme-bootstrap.js"></script>'
             '<script defer src="search-index.js"></script>'
             '<script defer src="sidebar-index.js"></script>'
@@ -165,11 +173,18 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             encoding="utf-8", newline="\n",
         )
         sidebar = {
-            "packages": {"index.html": [canonical_id]},
-            "members": {},
-            "symbols": {canonical_id: {
-                "path": "index.html", "label": "example", "context": "example",
-                "kind": "function", "signature": "func example(String)", "anchor": "top",
+            "version": 2,
+            "packages": [{
+                "id": "index.html", "label": "Fixture", "href": "index.html",
+                "types": [canonical_id],
+            }],
+            "types": {canonical_id: {
+                "label": "example", "kind": "function", "kindLabel": "function",
+                "href": "index.html", "members": [canonical_id + ":member"],
+            }},
+            "members": {canonical_id + ":member": {
+                "label": "example()", "kind": "function", "kindLabel": "function",
+                "anchor": "top",
             }},
         }
         (root / "sidebar-index.js").write_text(
@@ -288,6 +303,126 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             self.assertIn("invalid search entry fields", result.stderr)
 
 
+    def test_accepts_shell_with_only_hidden_lazy_dialog_triggers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = (root / "index.html").read_text(encoding="utf-8")
+            self.assertNotIn("<dialog", page)
+            self.assertNotIn("<template", page)
+            # A created dialog is a runtime state; the static page keeps only
+            # its trigger, so no server-side dialog control id can be required.
+            self.assertNotIn("cjdoc-search-input", page)
+            result = self.validate(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_eager_dialog_or_template(self) -> None:
+        for mutation, message in (
+            ('<dialog id="cjdoc-search-dialog"></dialog>', "not served statically"),
+            ('<template data-cjdoc-theme-popover></template>', "hidden dialog templates"),
+        ):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.write_site(root)
+                page = (root / "index.html").read_text(encoding="utf-8")
+                (root / "index.html").write_text(
+                    page.replace("</main>", "</main>" + mutation), encoding="utf-8"
+                )
+                result = self.validate(root)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_rejects_trigger_that_pretends_its_dialog_exists(self) -> None:
+        mutations = (
+            ('data-cjdoc-root-prefix="" aria-haspopup="dialog"',
+             'data-cjdoc-root-prefix="" aria-controls="cjdoc-search-dialog"'
+             ' aria-haspopup="dialog"',
+             "aria-controls must not reference cjdoc-search-dialog before first creation"),
+            ('data-cjdoc-theme-toggle aria-haspopup="dialog" aria-expanded="false"',
+             'data-cjdoc-theme-toggle aria-haspopup="dialog" aria-expanded="true"',
+             "must start with aria-expanded=false"),
+            ('data-cjdoc-theme-toggle aria-haspopup="dialog"',
+             'data-cjdoc-theme-toggle aria-haspopup="menu"',
+             "must declare aria-haspopup=dialog"),
+        )
+        for original, replacement, message in mutations:
+            with self.subTest(message=message), \
+                    tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.write_site(root)
+                page = (root / "index.html").read_text(encoding="utf-8")
+                self.assertIn(original, page)
+                (root / "index.html").write_text(
+                    page.replace(original, replacement, 1), encoding="utf-8"
+                )
+                result = self.validate(root)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_rejects_unhidden_or_missing_trigger_and_wrong_root_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = (root / "index.html").read_text(encoding="utf-8")
+            (root / "index.html").write_text(
+                page.replace(' hidden></button>', '></button>', 1),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must stay hidden", result.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = (root / "index.html").read_text(encoding="utf-8")
+            (root / "index.html").write_text(
+                page.replace(' data-cjdoc-root-prefix=""', "", 1), encoding="utf-8"
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("data-cjdoc-root-prefix", result.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = (root / "index.html").read_text(encoding="utf-8")
+            (root / "index.html").write_text(
+                page.replace("data-cjdoc-theme-toggle", "data-cjdoc-theme-toggl"),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("expected one settings trigger", result.stderr)
+
+    def test_rejects_dangling_and_dialog_internal_id_references(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = (root / "index.html").read_text(encoding="utf-8")
+            (root / "index.html").write_text(
+                page.replace(
+                    '<body data-cjdoc-route="overview"',
+                    '<body aria-describedby="cjdoc-search-results" data-cjdoc-route="overview"',
+                ),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("before first creation", result.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = (root / "index.html").read_text(encoding="utf-8")
+            (root / "index.html").write_text(
+                page.replace("<main id=\"top\">", "<main id=\"top\" aria-labelledby=\"absent\">"),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("dangling aria-labelledby reference absent", result.stderr)
+
     def test_rejects_mismatched_real_tags(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -344,7 +479,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             page = (root / "index.html").read_text(encoding="utf-8")
             meta = f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'
             (root / "index.html").write_text(
-                page.replace(meta, "").replace("<body>", "<body>" + meta),
+                page.replace(meta, "").replace("<body", meta + "<body", 1),
                 encoding="utf-8",
             )
             result = self.validate(root)
@@ -392,7 +527,8 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             self.assertIn("payload differs", result.stderr)
 
     def test_rejects_executable_sidebar_payload_and_escaped_targets(self) -> None:
-        for mutation in ("statement", "escaped-target", "unknown-member", "prototype"):
+        for mutation in ("statement", "escaped-target", "unknown-member", "prototype",
+                        "broken-anchor"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.write_site(root)
@@ -404,12 +540,14 @@ class ValidateHtmlSiteTest(unittest.TestCase):
                     text = text[:-2] + ";globalThis.injected=true;\n"
                 else:
                     if mutation == "escaped-target":
-                        payload["symbols"]["cjdoc:v2:fixture:example"]["path"] = "../outside.html"
+                        payload["types"]["cjdoc:v2:fixture:example"]["href"] = "../outside.html"
                     elif mutation == "unknown-member":
-                        payload["members"]["cjdoc:v2:fixture:example"] = ["missing"]
-                    else:
-                        payload["symbols"]["__proto__"] = payload["symbols"].pop(
+                        payload["types"]["cjdoc:v2:fixture:example"]["members"] = ["missing"]
+                    elif mutation == "prototype":
+                        payload["types"]["__proto__"] = payload["types"].pop(
                             "cjdoc:v2:fixture:example")
+                    else:
+                        payload["members"]["cjdoc:v2:fixture:example:member"]["anchor"] = "missing"
                     text = prefix + json.dumps(payload) + ";\n"
                 source.write_text(text, encoding="utf-8")
                 result = self.validate(root)

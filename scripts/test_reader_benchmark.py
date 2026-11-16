@@ -18,8 +18,8 @@ import unittest
 from unittest.mock import patch
 
 from reader_benchmark import file_digest, run, scrub, verify_corpus
-from reader_compare import (EvidenceError, check_font_usage, check_native_ir, check_search_transition,
-                            check_visuals, compare_browser, p95)
+from reader_compare import (EvidenceError, FONT_INVENTORY_FAMILIES, check_font_usage, check_native_ir,
+                            check_search_transition, check_visuals, compare_browser, p95)
 from reader_contract_review import (GUIDE_TASKS, copy_sources, extract_guide_programs,
                                     validate_guide_result)
 from reader_corpus import digest, generate_corpus
@@ -281,25 +281,47 @@ def distribution(value):
     return {"samples": [value] * 20, "p50Ms": value, "p95Ms": value}
 
 
+def font_inventory():
+    return [{"family": family, "file": family.replace(" ", "-") + ".ttf", "status": "measured",
+             "sha256": hashlib.sha256(("fixture-font:" + family).encode()).hexdigest()}
+            for family in FONT_INVENTORY_FAMILIES]
+
+
 def evidence_pair():
     task = {"id": "target", "expected": [{"qualifiedName": "sample.Target"}], "expectedOutcome": "hit"}
     query = {"id": "target", "expectedIds": ["native:target"], "first20Hrefs": ["symbols/target.html"],
              "pass": True, "synchronous": distribution(10), "frame": distribution(20)}
     page = {"firstInteractiveProbeMs": 40}
-    report = {"schemaVersion": "cjdoc.reader-browser/1", "recipe": "test", "sourceSha256": "source",
+    report = {"schemaVersion": "cjdoc.reader-browser/2", "recipe": "test", "sourceSha256": "source",
         "taskManifestSha256": "tasks", "harness": {"test": "same"}, "nativeIndexEntries": 1,
-        "environment": {"fontFiles": [{"family": "Example", "status": "measured", "sha256": "font"}]},
+        "environment": {"fontFiles": font_inventory()},
         "resources": {name: {"sha256": "same", "bytes": 100, "gzipBytes": 50}
                       for name in ("search-index.json", "search-index.js", "search.js")},
         "failures": [], "visuals": [], "accessibility": {"status": "not-applicable", "screenReaderSpeech": None},
         "transports": [{"transport": "file", "queries": [query], "members": [], "overloads": [],
                         "loading": {"cold": page, "warm": page}, "queryLayout": {"jsHeapUsedBytes": 100}}]}
+    report["fontUsage"] = deepcopy(report["environment"]["fontFiles"][:1])
     budget = {"minimumSamples": 20, "transports": ["file"], "baselineQueryFailures": [], "requireScreenshots": False,
               "absolute": {"querySyncP95Ms": 100, "queryFrameP95Ms": 100,
                            "coldInteractiveMs": 200, "warmInteractiveMs": 200,
                            "queryHeapBytes": 1000, "bundleFileBytes": 1000},
               "relative": {name: {"factor": 1.25, "slack": 5} for name in ("latency", "loading", "memory", "bundle")}}
     return report, deepcopy(report), {"queries": [task], "members": [], "overloads": []}, budget
+
+def overload_evidence_pair():
+    before, after, manifest, budget = evidence_pair()
+    details = [{"id": "native:first", "signature": "public func choose(value: Choice00): Int64",
+                "returnType": "Int64",
+                "parameters": [{"name": "value", "type": "Choice00", "defaultValue": '"keep: spaces = here"'}],
+                "authorFields": [{"id": "doc-field-param", "text": "Keep value: Choice00 and a = b exactly."},
+                                 {"id": "doc-field-post", "text": "The result equals 0."}]}]
+    overload = {"id": "overloads", "pass": True,
+                "selections": [{"expectedId": "native:first"}], "comparison": {"details": details}}
+    for report in (before, after):
+        report["transports"][0]["overloads"] = deepcopy([overload])
+    manifest["overloads"] = [{"id": "overloads"}]
+    return before, after, manifest, budget
+
 
 
 def register_presentation(budget, profile):
@@ -311,9 +333,9 @@ def presentation_pair():
     a, b, manifest, budget = evidence_pair()
     for label, report in (("baseline", a), ("after", b)):
         report["environment"]["requestedUiLocale"] = "en"
-        report["fontUsage"] = deepcopy(report["environment"]["fontFiles"])
+        report["fontUsage"] = deepcopy(report["environment"]["fontFiles"][:1])
         report["visuals"] = [{"viewport": "desktop", "theme": "light", "target": "member", "locale": "en",
-            "metrics": {"horizontalOverflowPx": 0, "typography": {"bodyFont": "Example", "bodyFontSize": "15px" if label == "baseline" else "16px"}},
+            "metrics": {"horizontalOverflowPx": 0, "typography": {"bodyFont": "DejaVu Sans", "bodyFontSize": "15px" if label == "baseline" else "16px"}},
             "focus": {"positiveTabindex": 0, "mainLandmark": 1, "headingCount": 1}}]
         report["accessibility"] = {
             "screenReaderSpeech": {"status": "not-measured"},
@@ -325,7 +347,7 @@ def presentation_pair():
         "generatorVersions": {"baseline": "0.7.3", "after": "0.7.5"},
         "typography": {label: report["visuals"][0]["metrics"]["typography"]
                        for label, report in (("baseline", a), ("after", b))},
-        "locales": {"en": {label: {"fontFamilies": ["Example"], "noScriptTreeSha256":
+        "locales": {"en": {label: {"fontFamilies": ["DejaVu Sans"], "noScriptTreeSha256":
             hashlib.sha256(report["accessibility"]["noScript"]["accessibleTree"].encode()).hexdigest()}
             for label, report in (("baseline", a), ("after", b))}}}
     register_presentation(budget, deepcopy(profile))
@@ -333,6 +355,38 @@ def presentation_pair():
 
 
 class EvidenceIntegrityTests(unittest.TestCase):
+    def test_overload_contract_rejects_semantic_changes_and_author_whitespace_changes(self):
+        changes = [
+            lambda row: row.update(signature="public func choose(value: Choice01): Int64"),
+            lambda row: row.update(returnType="String"),
+            lambda row: row["parameters"][0].update(name="other"),
+            lambda row: row["parameters"][0].update(type="Choice01"),
+            lambda row: row["parameters"][0].update(defaultValue='"keep:spaces = here"'),
+            lambda row: row["authorFields"][0].update(id="doc-field-other"),
+            lambda row: row["authorFields"][0].update(text="Keep value:Choice00 and a = b exactly."),
+        ]
+        for index, change in enumerate(changes):
+            before, after, manifest, budget = overload_evidence_pair()
+            change(after["transports"][0]["overloads"][0]["comparison"]["details"][0])
+            with self.subTest(change=index), self.assertRaises(EvidenceError):
+                compare_browser(before, after, manifest, budget, [])
+
+    def test_identically_incomplete_or_legacy_overload_evidence_cannot_pair(self):
+        for change in ("version", "authorFields", "emptyAuthors", "parameters", "parameterType", "returnType"):
+            before, after, manifest, budget = overload_evidence_pair()
+            for report in (before, after):
+                detail = report["transports"][0]["overloads"][0]["comparison"]["details"][0]
+                if change == "version":
+                    report["schemaVersion"] = "cjdoc.reader-browser/1"
+                elif change == "emptyAuthors":
+                    detail["authorFields"] = []
+                elif change == "parameterType":
+                    detail["parameters"][0].pop("type")
+                else:
+                    detail.pop(change)
+            with self.subTest(change=change), self.assertRaises(EvidenceError):
+                compare_browser(before, after, manifest, budget, [])
+
     def test_percentiles_are_recomputed_from_raw_samples(self):
         raw = {"samples": list(range(1, 21)), "p50Ms": 10, "p95Ms": 19}
         self.assertEqual(p95(raw, 20, "query"), 19)
@@ -353,6 +407,49 @@ class EvidenceIntegrityTests(unittest.TestCase):
             change(b)
             with self.subTest(change=changes.index(change)), self.assertRaises(EvidenceError):
                 compare_browser(a, b, manifest, budget, [])
+
+    def test_font_inventory_rejects_one_sided_changes_and_unavailable_files(self):
+        for side in ("baseline", "after"):
+            for change in ("added", "missing", "digest", "unavailable"):
+                a, b, manifest, budget = evidence_pair()
+                report = a if side == "baseline" else b
+                fonts = report["environment"]["fontFiles"]
+                if change == "added":
+                    fonts.append({"family": "Unexpected Sans", "status": "measured", "sha256": "extra"})
+                elif change == "missing":
+                    fonts.pop()
+                elif change == "digest":
+                    fonts[0]["sha256"] = "different"
+                else:
+                    fonts[0]["status"] = "unavailable"
+                with self.subTest(side=side, change=change), self.assertRaises(EvidenceError):
+                    compare_browser(a, b, manifest, budget, [])
+
+    def test_matching_inventories_must_still_be_complete_sorted_and_measured(self):
+        for change in ("added", "missing", "order", "unavailable"):
+            a, b, manifest, budget = evidence_pair()
+            for report in (a, b):
+                fonts = report["environment"]["fontFiles"]
+                if change == "added":
+                    fonts.append({"family": "Unexpected Sans", "status": "measured", "sha256": "extra"})
+                elif change == "missing":
+                    fonts.pop()
+                elif change == "order":
+                    fonts.reverse()
+                else:
+                    fonts[0]["status"] = "unavailable"
+            with self.subTest(change=change), self.assertRaises(EvidenceError):
+                compare_browser(a, b, manifest, budget, [])
+
+    def test_registered_font_usage_may_differ_with_the_same_complete_inventory(self):
+        a, b, manifest, budget = presentation_pair()
+        b["fontUsage"] = deepcopy(b["environment"]["fontFiles"][1:2])
+        profile = deepcopy(budget["presentation"]["profile"])
+        profile["locales"]["en"]["after"]["fontFamilies"] = [b["fontUsage"][0]["family"]]
+        register_presentation(budget, profile)
+        failures = []
+        compare_browser(a, b, manifest, budget, failures)
+        self.assertEqual(failures, [])
 
     def test_real_regressions_fail_even_when_aggregate_task_flag_is_true(self):
         a, b, manifest, budget = evidence_pair()
@@ -593,15 +690,22 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                    "rendererRevision": "a" * 40, "sourceSha256": "b" * 64,
                    "nativeResult": {"docIrSha256": file_digest(before_path)}, "locales": []}
             (baseline / "reader-generation.json").write_text(json.dumps(old), encoding="utf-8")
+            _, _, _, presentation_budget = presentation_pair()
+            profile = deepcopy(presentation_budget["presentation"]["profile"])
+            profile["generatorVersions"] = {label: model["generator"]["version"]
+                for label, model in (("baseline", before), ("after", after))}
+            profile["locales"]["zh-CN"] = deepcopy(profile["locales"]["en"])
+            presentation_path = Path(directory) / "presentation.json"
+            presentation_path.write_text(json.dumps(profile), encoding="utf-8")
             budget = register_reader(
-                baseline, repo / "docs/maintainer/reader-scale-budgets.json",
+                baseline, repo / "docs/maintainer/reader-scale-budgets.json", presentation_path,
                 doc_ir_transition=TRANSITION_NAME)
             frozen = deepcopy(budget)
             after_path = candidate / "native-json/docs.json"
             after_path.parent.mkdir(parents=True)
             after_path.write_text(json.dumps(after), encoding="utf-8")
             new = {"nativeResult": {"docIrSha256": file_digest(after_path)}}
-            check_native_ir(baseline, candidate, old, new, None, budget["docIrTransition"])
+            check_native_ir(baseline, candidate, old, new, profile, budget["docIrTransition"])
             self.assertEqual(file_digest(after_path), new["nativeResult"]["docIrSha256"])
             for field in ("version", "name", "toolchain", "build"):
                 changed = deepcopy(after)
@@ -609,7 +713,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 after_path.write_text(json.dumps(changed), encoding="utf-8")
                 new["nativeResult"]["docIrSha256"] = file_digest(after_path)
                 with self.subTest(field=field), self.assertRaises(ValueError):
-                    check_native_ir(baseline, candidate, old, new, None, budget["docIrTransition"])
+                    check_native_ir(baseline, candidate, old, new, profile, budget["docIrTransition"])
             self.assertEqual(budget, frozen)
 
     def test_ir_registration_accepts_only_the_exact_v17_v18_defaults(self):
@@ -721,7 +825,8 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 site_name = f"sites/{locale}"
                 site, resources, _, _ = write_search_site(baseline / site_name, before_ir, locale)
                 browser_name = f"browser/{locale}.json"
-                browser = {"failures": [], "resources": resources, "transports": []}
+                browser = {"schemaVersion": "cjdoc.reader-browser/2",
+                           "failures": [], "resources": resources, "transports": []}
                 browser_path = baseline / browser_name
                 browser_path.parent.mkdir(parents=True, exist_ok=True)
                 browser_path.write_text(json.dumps(browser), encoding="utf-8")
@@ -746,12 +851,13 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             changed_site, changed_resources, _, _ = write_search_site(
                 Path(directory) / "after/sites/en", after_ir, "en", body="changed published body")
             before_browser = {
-                "schemaVersion": "cjdoc.reader-browser/1", "recipe": "fixture",
+                "schemaVersion": "cjdoc.reader-browser/2", "recipe": "fixture",
                 "sourceSha256": "b" * 64, "taskManifestSha256": "c" * 64,
                 "harness": {"browser": "fixture"},
                 "environment": {"requestedUiLocale": "en",
-                                "fontFiles": [{"family": "Fixture", "status": "measured"}]},
+                                "fontFiles": font_inventory()},
                 "nativeIndexEntries": 1, "failures": [], "resources": baseline_resources,
+                "transports": [],
             }
             after_browser = deepcopy(before_browser)
             after_browser["resources"] = changed_resources
@@ -780,11 +886,11 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                         observation / site_name, model, locale,
                         search_schema_version="cjdoc.search-index/10" if label == "after" else "cjdoc.search-index/11")
                     browser_name = f"browser-{locale}.json"
-                    browser = {"schemaVersion": "cjdoc.reader-browser/1", "recipe": "fixture",
+                    browser = {"schemaVersion": "cjdoc.reader-browser/2", "recipe": "fixture",
                                "sourceSha256": "b" * 64, "taskManifestSha256": file_digest(manifest),
                                "harness": {"browser": "fixture"}, "nativeIndexEntries": 1,
                                "environment": {"requestedUiLocale": locale,
-                                               "fontFiles": [{"status": "measured"}]},
+                                               "fontFiles": font_inventory()},
                                "failures": [], "transports": [], "resources": resources}
                     (observation / browser_name).write_text(json.dumps(browser), encoding="utf-8")
                     locales.append({"locale": locale, "browserReport": browser_name, "site": site_name})
@@ -879,12 +985,13 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             }
 
             before_browser = {
-                "schemaVersion": "cjdoc.reader-browser/1", "recipe": "fixture",
+                "schemaVersion": "cjdoc.reader-browser/2", "recipe": "fixture",
                 "sourceSha256": "source", "taskManifestSha256": "tasks",
                 "harness": {"browser": "fixture"},
                 "environment": {"requestedUiLocale": "en",
-                                "fontFiles": [{"family": "Fixture", "status": "measured"}]},
+                                "fontFiles": font_inventory()},
                 "nativeIndexEntries": 1, "failures": [], "resources": before_resources,
+                "transports": [],
             }
             after_browser = deepcopy(before_browser)
             after_browser["resources"] = after_resources
@@ -1033,7 +1140,8 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                            "detailBodies": 1, "visibleSignatureIds": ["target"],
                            "visibleDetailIds": ["target"]},
                     printCounterexamples=[{"detected": True}] * 3)
-                observation["fontUsage"] = [{"family": "Fixture Sans", "sha256": "font"}]
+                observation["environment"]["fontFiles"] = font_inventory()
+                observation["fontUsage"] = deepcopy(observation["environment"]["fontFiles"][:1])
                 collection.append(observation)
             check_visuals(before[0], after[0], False, [], aria_registration=registration)
             check_font_usage(before[0], after[0], None)
@@ -1053,15 +1161,30 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             budget = json.loads(template.read_text(encoding="utf-8"))
             budget["ariaTransition"] = registration
             budget["transitionTemplate"] = {"sha256": file_digest(template)}
+            # A complete presentation profile coexists with the full, frozen
+            # ARIA pairs while every numeric budget stays fixed.
+            profile = {
+                "schemaVersion": "cjdoc.reader-presentation/1",
+                "recipe": registration["profile"]["recipe"],
+                "generatorVersions": {"baseline": "0.7.3", "after": "0.7.8"},
+                "typography": {label: deepcopy(report["visuals"][0]["metrics"]["typography"])
+                               for label, report in (("baseline", before[0]), ("after", after[0]))},
+                "locales": {locale: {
+                    label: {"fontFamilies": ["DejaVu Sans"], "noScriptTreeSha256":
+                            hashlib.sha256(tree.encode()).hexdigest()}
+                    for label, tree in snapshots.items()
+                } for locale, snapshots in registration["snapshots"].items()},
+            }
+            register_presentation(budget, profile)
+            failures = []
+            check_visuals(before[0], after[0], False, failures, profile, registration)
+            check_font_usage(before[0], after[0], profile)
+            self.assertEqual(failures, [])
             validate_transition_budget(budget, template)
             relaxed = deepcopy(budget)
             relaxed["absolute"]["querySyncP95Ms"] += 1
             with self.assertRaises(ValueError):
                 validate_transition_budget(relaxed, template)
-            presentation = deepcopy(budget)
-            presentation["presentation"] = {"profile": {}}
-            with self.assertRaises(ValueError):
-                validate_transition_budget(presentation, template)
 
             altered_template = deepcopy(budget)
             with tempfile.TemporaryDirectory() as altered_directory:
@@ -1077,13 +1200,6 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as registration_directory:
                 missing_baseline = Path(registration_directory) / "not-captured"
-                missing_presentation = Path(registration_directory) / "presentation.json"
-                with self.assertRaises(ValueError):
-                    register_reader(missing_baseline, template, missing_presentation,
-                                    doc_ir_transition=TRANSITION_NAME)
-                with self.assertRaises(ValueError):
-                    register_reader(missing_baseline, template, missing_presentation,
-                                    aria_transition=missing_presentation)
                 modified_template = json.loads(template.read_text(encoding="utf-8"))
                 modified_template["absolute"]["querySyncP95Ms"] += 1
                 modified_template_path = Path(registration_directory) / "modified-budgets.json"

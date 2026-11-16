@@ -250,12 +250,18 @@ private func serveClient(socket: TcpSocket, siteRoot: Path, state: ServeState,
     }
 }
 
+internal func runServeRebuild(options: NewCliOptions, output: String, cache: ?String,
+    writeOnFailure: Bool): Int64 {
+    withOutputLockResultGuard(output, { lock =>
+        executeDocumentCommand(options, Some(output), cache, Some(lock),
+            writeOnFailure: writeOnFailure)
+    })
+}
+
 private func serveBuild(options: NewCliOptions, output: String, cache: ?String,
     state: ServeState): Unit {
     try {
-        let result = withOutputLockResultGuard(output, { lock =>
-            executeDocumentCommand(options, Some(output), cache, Some(lock), writeOnFailure: false)
-        })
+        let result = runServeRebuild(options, output, cache, false)
         state.markBuild(result)
         if (result == 0) { eprintln("serve: generated html") }
         else { eprintln("serve: generated html with diagnostics") }

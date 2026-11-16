@@ -50,7 +50,8 @@ private func rendererSafetyFenceMarks(marker!: String = "~",
 }
 
 private func rendererOwnerDocumentation(ownerKind: String,
-    ownerDocumentation!: ?DocComment = None): DocumentationSet {
+    ownerDocumentation!: ?DocComment = None,
+    memberDocumentation!: ?DocComment = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:owner-validation"
     let ownerId =
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aowner-validation::fixture::class:Owner#g0()"
@@ -63,7 +64,8 @@ private func rendererOwnerDocumentation(ownerKind: String,
         documentation: ownerDocumentation)
     let member = SymbolDoc(memberId, "function", "member", "fixture.Owner.member", "fixture",
         moduleId, "public", source, "public func member(): Unit",
-        SemanticInfo("partial", "ast"), ownerId: Some(ownerId))
+        SemanticInfo("partial", "ast"), ownerId: Some(ownerId),
+        documentation: memberDocumentation)
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("owner-validation"),
         ConfigurationSnapshot(lintProfile: "off"), providers: [ProviderInfo("ast", "builtin",
             moduleId, "partial", SemanticCapabilities(false, false, false, false, false))],
@@ -115,7 +117,11 @@ class RendererSafetyTest {
             diagnostics: [Diagnostic("warning", "CJDOC3027", "Resource limit reached")])
         let index = rendererSafetyContent(HtmlDocumentationRenderer().render(documentation), "html/index.html")
         @Expect(index.contains("No API declarations are available for this audience."))
-        @Expect(index.contains("<details class=\"generation-metadata\" open>"))
+        // A partial generation opens its status block; diagnostics are listed
+        // under the build-status disclosure as before.
+        @Expect(index.contains("<details class=\"cj-disclosure cj-generation\" open>"), true)
+        @Expect(index.contains("<details id=\"diagnostics\" class=\"cj-disclosure cj-generation\">"), true)
+        @Expect(index.contains("<ul class=\"cj-diagnostics\">"), true)
         @Expect(index.contains("CJDOC3027"))
     }
 
@@ -168,7 +174,7 @@ class RendererSafetyTest {
             rendererSafetyDocumentation(MarkdownNode("document", children: [
                 MarkdownNode("paragraph", children: [target])
             ]))), "html/symbol-index.json")
-        @Expect(htmlPages.contains("<a href=\"../symbols/target-id.html\">API</a>"), true)
+        @Expect(htmlPages.contains("<a class=\"cj-type-link\" href=\"../symbols/target-id.html\">API</a>"), true)
         @Expect(!htmlPages.contains("data-reference-state"), true)
         @Expect(markdown.contains("<a id=\"symbol-${htmlStableSlug(targetId)}\"></a>"), true)
         @Expect(markdown.contains("[API](#symbol-${htmlStableSlug(targetId)})"), true)
@@ -188,8 +194,8 @@ class RendererSafetyTest {
                 let html = renderStandaloneMarkdownHtml(
                     MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])]),
                     locale: locale)
-                @Expect(html.contains("API<span class=\"reference-state-note\" data-reference-state=\"" +
-                    state + "\">"))
+                @Expect(html.contains("API<span class=\"cj-state-note\" data-reference-state=\"" +
+                    state + "\">"), true)
             }
         }
     }
@@ -215,7 +221,8 @@ class RendererSafetyTest {
             MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])])))
         let html = rendererSafetyText(HtmlDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document"), tags: [tag])))
-        @Expect(html.contains("related API<span class=\"reference-state-note\" data-reference-state=\"ambiguous\">"))
+        @Expect(html.contains("related API<span class=\"cj-state-note\" " +
+            "data-reference-state=\"ambiguous\">"), true)
     }
     @TestCase
     func reExportSearchSignaturesUseTokenIdentityAndPreserveUnavailableSource(): Unit {
@@ -365,12 +372,14 @@ class RendererSafetyTest {
         @Expect(!markdown.contains("<script>alert(2)</script>"), true)
         @Expect(markdown.contains("&lt;img src\\=x&gt;"), true)
         @Expect(html.contains("<h3>Examples</h3>"), true)
-        @Expect(html.contains("class=\"example-block\""), true)
+        @Expect(html.contains("class=\"cj-examples\""), true)
+        @Expect(html.contains("class=\"cj-example\""), true)
+        @Expect(html.contains("class=\"cj-example__title\""), true)
         @Expect(html.contains("data-language=\"cangjie\""), true)
         @Expect(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"), true)
         @Expect(html.contains("&lt;img src=x&gt;"), true)
         @Expect(!html.contains("<code><script>alert(1)"), true)
-        @Expect(css.contains(".example-list"), true)
+        @Expect(css.contains(".cj-examples"), true)
 
         let decoded = decodeDocIr(encodeDocIr(documentation))
         let decodedComment = decoded.declarations[0].documentation.getOrThrow()
@@ -409,7 +418,7 @@ class RendererSafetyTest {
         @Expect(!markdown.contains("<script>alert(6)</script>"), true)
         @Expect(markdown.contains("&lt;script&gt;alert\\(7\\)&lt;/script&gt;"), true)
         @Expect(!markdown.contains("<script>alert(7)</script>"), true)
-        @Expect(html.contains("<pre><code"), true)
+        @Expect(html.contains("<pre class=\"cj-code__pre\"><code"), true)
         @Expect(html.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
         @Expect(!html.contains("<script>alert(3)</script>"), true)
         @Expect(!html.contains("<script>alert(6)</script>"), true)
@@ -441,105 +450,105 @@ class RendererSafetyTest {
         let artifacts = HtmlDocumentationRenderer().render(documentation)
         let packagePath = "html/${packagePagePath("cjdoc:module:v1:renderer-safety", "fixture")}"
         let packageHtml = rendererSafetyContent(artifacts, packagePath)
-        let css = rendererSafetyContent(artifacts, "html/style.css")
 
-        @Expect(packageHtml.contains("<a class=\"sidebar-package is-current\""), true)
+        // Currentness is ARIA, not a class: sidebarPageIsCurrent never marks a
+        // link that carries a fragment, and the ancestor modifier only marks the
+        // package branch that contains the current page.
+        @Expect(packageHtml.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
+            "aria-current=\"page\" href=\"../packages/"), true)
+        @Expect(packageHtml.contains("data-cjdoc-sidebar-tree"), true)
         let symbol = documentation.declarations[0]
         let functionPage = rendererSafetyContent(artifacts, "html/${symbolPagePath(symbol)}")
-        @Expect(functionPage.contains("class=\"sidebar-symbols\""), true)
-        @Expect(!functionPage.contains("class=\"sidebar-section sidebar-context\""), true)
-        // Package indexes already expose declarations through the context rail.
-        @Expect(!packageHtml.contains("class=\"sidebar-symbols\""), true)
+        // Only the current package's types are server-rendered; the function page
+        // keeps the package branch and its own symbol link in that branch.
+        @Expect(functionPage.contains("<a class=\"cj-tree__link cj-tree__link--ancestor\" " +
+            "data-cjdoc-nav-link href=\"../packages/"), true)
+        @Expect(functionPage.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
+            "aria-current=\"page\" href=\"../symbols/"), true)
+        @Expect(functionPage.contains("data-cjdoc-tree-item=\"package\""), true)
+        @Expect(functionPage.contains("data-cjdoc-tree-item=\"type\""), true)
+        // The old "In this package" context rail is gone; the tree replaces it.
+        @Expect(!functionPage.contains("data-cjdoc-sidebar-package"), true)
         @Expect(packageHtml.contains("aria-current=\"page\""), true)
         @Expect(packageHtml.contains(
-            "<aside class=\"toc-panel\" data-cjdoc-toc aria-label=\"On this page\" hidden>"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("toc.hidden = headings.length === 0;"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("semanticMode"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("aria-expanded"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("toc-children"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("setActive(link.dataset.tocTarget)"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("menu.getAttribute(\"aria-expanded\") !== \"true\""), true)
-        @Expect(css.contains(".sidebar-package.is-current"), true)
-        @Expect(css.contains(".toc-api-row"), true)
-        @Expect(css.contains(".toc-toggle"), true)
-        @Expect(css.contains(".toc-children"), true)
-        @Expect(css.contains(".parameter-row{padding:0;border-bottom:0}"), true)
-        @Expect(css.contains(".parameter-type{white-space:normal;overflow-wrap:anywhere}"), true)
+            "<aside class=\"cj-toc\" data-cjdoc-toc aria-label=\"On this page\" hidden>"), true)
 
-        @Expect(packageHtml.contains("class=\"declaration-group\""), true)
-        @Expect(uncoloredCode(packageHtml).contains("class=\"declaration-signature\">public func api(): Unit"), true)
+        // Package pages keep their declaration-group anchors and expose the
+        // compact declaration table instead of the old signature rows.
+        @Expect(packageHtml.contains("<section class=\"cj-decl-group\">"), true)
+        @Expect(packageHtml.contains("<table class=\"cj-decl-table\">"), true)
+        @Expect(packageHtml.contains("<tr class=\"cj-decl-table__row\" data-cjdoc-member " +
+            "data-member-symbol-id="), true)
+        @Expect(packageHtml.contains("<td class=\"cj-decl-table__summary\">"), true)
+        @Expect(!packageHtml.contains("data-cjdoc-source"), true)
         @Expect(!packageHtml.contains("semantic: resolved"), true)
         @Expect(!packageHtml.contains("src/fixture.cj:1:"), true)
         @Expect(packageHtml.contains("data-cjdoc-sidebar-filter"), true)
         @Expect(packageHtml.contains("data-cjdoc-menu"), true)
         @Expect(packageHtml.contains("data-cjdoc-menu-backdrop"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("event.key !== \"Tab\""), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("closeMenu(true)"), true)
 
         let containerDocumentation = rendererOwnerDocumentation("class")
         let containerArtifacts = HtmlDocumentationRenderer().render(containerDocumentation)
         let symbolHtml = rendererSafetyContent(containerArtifacts,
             "html/${symbolPagePath(containerDocumentation.declarations[0])}")
-        @Expect(symbolHtml.contains("class=\"symbol-kind\">class"), true)
-        // The editable API reference layout must use real projected symbols,
-        // never a hardcoded PocketKit demonstration or repeated public badges.
+        @Expect(symbolHtml.contains("<span class=\"cj-kind\" data-kind=\"class\">"), true)
+        // The API reference layout must use real projected symbols, never a
+        // hardcoded demonstration or repeated public badges.
         @Expect(symbolHtml.contains("data-cjdoc-page=\"symbol\""), true)
-        @Expect(symbolHtml.contains("class=\"brand-logo\">" + containerDocumentation.project.name + "</span>"), true)
+        @Expect(symbolHtml.contains("<span class=\"cj-header__project\">" +
+            containerDocumentation.project.name + "</span>"), true)
         @Expect(symbolHtml.contains("data-cjdoc-search-trigger"), true)
-        @Expect(symbolHtml.contains("<kbd>Ctrl + K</kbd>"), true)
-        @Expect(symbolHtml.contains("class=\"sidebar-symbols\""), true)
-        @Expect(symbolHtml.contains("class=\"sidebar-symbol is-current\""), true)
-        @Expect(symbolHtml.contains("id=\"declaration\" class=\"section-anchor-alias\""), true)
-        @Expect(symbolHtml.contains("class=\"member-group-heading\""), true)
-        @Expect(symbolHtml.contains("class=\"member-group-count\""), true)
-        @Expect(!symbolHtml.contains("class=\"member-display-name\""), true)
+        @Expect(symbolHtml.contains("<kbd class=\"cj-kbd\" data-cjdoc-search-shortcut>Ctrl K</kbd>"), true)
+        @Expect(symbolHtml.contains("data-cjdoc-tree-item=\"type\""), true)
+        @Expect(symbolHtml.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
+            "aria-current=\"page\""), true)
+        @Expect(symbolHtml.contains("<span id=\"declaration\" class=\"cj-anchor-alias\"></span>"), true)
+        @Expect(symbolHtml.contains("<div class=\"cj-member-group__head\">"), true)
+        @Expect(symbolHtml.contains("<span class=\"cj-member-group__count\">"), true)
         @Expect(symbolHtml.contains("data-cjdoc-toc-role=\"member\""), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("[data-cjdoc-toc-role='member']"), true)
-        @Expect(!symbolHtml.contains("class=\"visibility-badge\">public"), true)
-        @Expect(css.contains("--summary-size: 15px"), true)
-        @Expect(css.contains(".member-row>.member-detail{margin:0;border-top:0"), true)
-        @Expect(css.contains(".mobile-search-trigger{display:inline-grid"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("openMobileSearch()"), true)
         @Expect(!symbolHtml.contains("semantic: resolved"), true)
         @Expect(!symbolHtml.contains("top-source-disabled"), true)
         @Expect(symbolHtml.contains(
-            "<h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
+            "<h1 class=\"cj-page-header__title\" data-cjdoc-toc-role=\"api-root\" " +
+            "data-cjdoc-toc-label=\"class Owner\">"), true)
         @Expect(symbolHtml.contains(
-            "<div class=\"member-row\"><details class=\"declaration-summary member-detail\""), true)
-        @Expect(symbolHtml.contains("data-cjdoc-member"), true)
-        @Expect(symbolHtml.contains("class=\"member-detail-actions\" role=\"group\" aria-label=\"Member actions\""), true)
-        @Expect(symbolHtml.contains("class=\"member-action member-permalink\""), true)
-        @Expect(symbolHtml.contains("class=\"member-action member-action-copy copy-link\""), true)
-        @Expect(symbolHtml.contains("aria-label=\"Open standalone API page\" title=\"Open standalone API page\""), true)
+            "<div class=\"cj-member-row\"><details class=\"cj-member\" id=\"symbol-"), true)
+        @Expect(symbolHtml.contains("data-cjdoc-member data-member-name=\"member\""), true)
+        @Expect(symbolHtml.contains(
+            "<div class=\"cj-member-actions\" role=\"group\" aria-label=\"Member actions\""), true)
+        @Expect(symbolHtml.contains("class=\"cj-member-actions__item " +
+            "cj-member-actions__item--standalone\""), true)
+        @Expect(symbolHtml.contains("class=\"cj-member-actions__item " +
+            "cj-member-actions__item--copy\""), true)
+        @Expect(symbolHtml.contains("aria-label=\"Open standalone API page\" " +
+            "title=\"Open standalone API page\""), true)
         @Expect(symbolHtml.contains("aria-label=\"Copy link\" title=\"Copy link\""), true)
-        @Expect(symbolHtml.contains("class=\"member-action-glyph\""), true)
+        @Expect(symbolHtml.contains("<svg class=\"cj-icon\""), true)
         @Expect(symbolHtml.contains("aria-hidden=\"true\" focusable=\"false\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-copy-status role=\"status\""), true)
         @Expect(symbolHtml.contains("role=\"status\" aria-live=\"polite\""), true)
-        // The full page may contain an unrelated, text-labelled copy button.
-        // Check only the member toolbar: its actions must stay icon-only.
-        let actionMarkup = symbolHtml.split("<div class=\"member-detail-actions\"")[1].split("</div>")[0]
-        @Expect(actionMarkup.contains(">Standalone</a>"), false)
-        @Expect(actionMarkup.contains(">Copy link</button>"), false)
-        @Expect(symbolHtml.contains("class=\"member-action member-source-link\""), false)
-        @Expect(symbolHtml.contains("</div></details><div class=\"member-detail-actions\""), true)
+        @Expect(symbolHtml.contains("</div></details><div class=\"cj-member-actions\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-member-actions-toggle aria-expanded=\"false\""), true)
         @Expect(symbolHtml.contains("aria-controls=\"symbol-"), true)
-        @Expect(symbolHtml.contains("class=\"member-detail-summary\" id=\"symbol-"), true)
+        @Expect(symbolHtml.contains("<summary class=\"cj-member__summary\" id=\"symbol-"), true)
         @Expect(symbolHtml.contains("-summary\" data-cjdoc-toc-role=\"member\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-toc-label=\"member()"), true)
         @Expect(symbolHtml.contains("aria-labelledby=\"symbol-"), true)
-        @Expect(css.contains(".member-detail-actions .member-action-glyph{"), true)
-        @Expect(css.contains(".member-row:hover>.member-detail-actions"), true)
-        @Expect(css.contains("(any-pointer:coarse)"), true)
-        @Expect(css.contains("position:static;inset:auto;align-items:center;width:100%"), true)
-        @Expect(css.contains(".member-row.member-actions-enhanced .member-action-list"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("classList.add(\"member-actions-enhanced\")"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("closeMemberActionBars(true)"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("memberRow.hidden = !matches"), true)
-        @Expect(css.contains("min-width:38px;min-height:38px"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("if (iconOnly) {"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("if (status) status.textContent = message;"), true)
+    }
+
+    @TestCase
+    func memberActionLabelsKeepUntrustedSummaryAsText(): Unit {
+        let attack = "</summary><img src=x onerror=alert(1)>"
+        let comment = DocComment(attack, attack, "", MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: attack)])
+        ]))
+        let documentation = rendererOwnerDocumentation("class",
+            memberDocumentation: Some(comment))
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let html = rendererSafetyContent(artifacts,
+            "html/${symbolPagePath(documentation.declarations[0])}")
+        @Expect(html.contains("<img src=x onerror=alert(1)>"), false)
+        @Expect(html.contains("&lt;img src=x onerror=alert(1)&gt;"), true)
     }
 
     @TestCase
@@ -582,21 +591,24 @@ class RendererSafetyTest {
         let html = rendererSafetyContent(artifacts,
             "html/${symbolPagePath(documentation.declarations[0])}")
         let mainHtml = html[html.indexOf("<main ").getOrThrow()..]
+        let memberBrowserAt = mainHtml.indexOf("<section class=\"cj-members\" " +
+            "data-cjdoc-member-browser").getOrThrow()
         @Expect(mainHtml.contains("sibling-members"), false)
-        @Expect(mainHtml.split("public func member(): Unit").size, 2)
-        @Expect(mainHtml.indexOf("api-page-header").getOrThrow() <
-            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        // The type page shows the member once, as a native disclosure whose
+        // summary is the linked signature; no second copy sits above it.
+        @Expect(mainHtml.split("data-member-symbol-id=").size, 2)
+        @Expect(mainHtml.split("<code class=\"cj-signature-inline cj-member__signature\">").size, 2)
+        @Expect(mainHtml.indexOf("<header class=\"cj-page-header cj-page-header--api\">")
+            .getOrThrow() < memberBrowserAt, true)
         @Expect(mainHtml.contains("declaration-metadata"), false)
         @Expect(mainHtml.contains("Symbol ID"), false)
         @Expect(mainHtml.contains("Semantic information"), false)
-        @Expect(mainHtml.indexOf("No internal synchronization.").getOrThrow() <
-            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("No internal synchronization.").getOrThrow() < memberBrowserAt, true)
         @Expect(mainHtml.indexOf("Callers coordinate concurrent access.").getOrThrow() <
-            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
-        @Expect(mainHtml.indexOf("Example after members.").getOrThrow() >
-            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+            memberBrowserAt, true)
+        @Expect(mainHtml.indexOf("Example after members.").getOrThrow() > memberBrowserAt, true)
         @Expect(mainHtml.split("A compact type summary.").size, 2)
-        @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
+        @Expect(html.contains("<a class=\"cj-skip-link\" href=\"#cjdoc-main\">"), true)
         @Expect(html.contains("id=\"cjdoc-main\""), true)
     }
 
@@ -664,7 +676,8 @@ class RendererSafetyTest {
         @Expect(links.sameUnfilteredTarget(reader.typeRelationships[2].target, contractId), false)
         let page = rendererSafetyContent(HtmlDocumentationRenderer().render(document),
             "html/${symbolPagePath(reader)}")
-        @Expect(page.contains("class=\"symbol-relationships\""), true)
+        @Expect(page.contains("<section class=\"cj-relations\" " +
+            "aria-label=\"Type and member relationships\">"), true)
         @Expect(page.contains("Relationships</h2>"), true)
         @Expect(page.contains("fixture.Readable"), true)
         @Expect(page.contains("Target not present in this documentation"), false)
@@ -675,9 +688,12 @@ class RendererSafetyTest {
         @Expect(page.contains("Parent type"), true)
         // The source TypeRef is partial, but its navigation edge has an exact
         // resolved SymbolId. Render one linked relationship, not both states.
-        @Expect(page.split("<dt>Parent type</dt>").size, 2)
+        @Expect(page.split("<dt class=\"cj-relations__term\">Parent type</dt>").size, 2)
         @Expect(page.contains("Relationship not fully established"), false)
-        @Expect(page.contains("<dt>Parent type</dt><dd><a href="), true)
+        let parentRow = page.split("<dt class=\"cj-relations__term\">Parent type</dt>")[1]
+            .split("</dd>")[0]
+        @Expect(parentRow.contains("cj-type-link"), true)
+        @Expect(parentRow.contains("href=\""), true)
         @Expect(page.contains("Declaration metadata"), false)
         @Expect(page.contains("Symbol ID"), false)
         @Expect(page.contains("Semantic information"), false)
@@ -719,7 +735,7 @@ class RendererSafetyTest {
             "html/${symbolPagePath(symbol)}")
         @Expect(page.contains("Array&lt;String&gt;"), true)
         @Expect(page.contains("Array &lt; String &gt;"), false)
-        @Expect(page.contains("class=\"signature-block\""), true)
+        @Expect(page.contains("<pre class=\"cj-signature\" aria-label=\"Signature\"><code"), true)
     }
 
 
@@ -813,6 +829,38 @@ class RendererSafetyTest {
     }
 
     @TestCase
+    func artifactReplacementChargesOnlyTheFinalPayloadAndPreservesFailedWrites(): Unit {
+        let artifacts = RenderArtifactCollector(artifactLimit: 8, totalLimit: 10, entryLimit: 2)
+        let page = artifacts.addText("page.html", "text/html", "old")
+        let other = artifacts.addText("other.txt", "text/plain", "12345")
+        artifacts.replaceText(page, "newer")
+        @Expect(artifacts.readText(page, 8), "newer")
+        @ExpectThrows[RenderResourceLimitException](artifacts.replaceText(page, "larger"))
+        @Expect(artifacts.readText(page, 8), "newer")
+        @Expect(artifacts.readText(other, 8), "12345")
+        artifacts.replaceText(page, "")
+        artifacts.replaceText(page, "again")
+        @Expect(artifacts.readText(page, 8), "again")
+        @ExpectThrows[RenderResourceLimitException](
+            artifacts.addText("third.txt", "text/plain", ""))
+    }
+
+    @TestCase
+    func artifactTextReadsRespectUtf8BytesAndNeverInterpretBinaryEntries(): Unit {
+        let artifacts = RenderArtifactCollector()
+        let text = artifacts.addText("text.txt", "text/plain", "中\u{0}文")
+        @Expect(artifacts.readText(text, 7), "中\u{0}文")
+        @ExpectThrows[RenderResourceLimitException](artifacts.readText(text, 6))
+        let empty = artifacts.addText("empty.txt", "text/plain", "")
+        @Expect(artifacts.readText(empty, 0), "")
+        for (bytes in [Array<Byte>(), [UInt8(0), UInt8(0xff)]]) {
+            let binary = artifacts.addOwnedBytes("asset.bin", "application/octet-stream", bytes)
+            @ExpectThrows[IllegalArgumentException](artifacts.readText(binary, 64))
+            @ExpectThrows[IllegalArgumentException](artifacts.replaceText(binary, "text"))
+        }
+    }
+
+    @TestCase
     func binaryRenderArtifactClonesCallerAndReturnedBuffers(): Unit {
         let caller = [UInt8(1), UInt8(2), UInt8(3)]
         let artifact = RenderArtifact("asset.bin", "application/octet-stream", caller)
@@ -856,9 +904,10 @@ class RendererSafetyTest {
         let html = rendererSafetyText(artifacts)
         let css = rendererSafetyContent(artifacts, "html/style.css")
 
-        @Expect(html.contains("<th class=\"align-right\">"))
+        @Expect(html.contains("<th class=\"cj-align-right\">"), true)
         @Expect(!html.contains(" style=\""))
-        @Expect(css.contains(".align-right{text-align:right}"))
+        // CSP forbids inline styles, so alignment must come from a class rule.
+        @Expect(css.contains(".cj-align-right { text-align: right; }"), true)
     }
 
     @TestCase

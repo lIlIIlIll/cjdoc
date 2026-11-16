@@ -158,12 +158,19 @@ class HtmlLanguageHomeFallbackTest {
         let html = languageMarkerContent(artifacts, "html/en/" + route)
         let fallbackHref = pageRootPrefix(route) + "../zh-CN/index.html"
         let notice = "This page is unavailable; open the language home"
+        // The placeholder span is replaced by the toggle; the toggle keeps the
+        // language routes, switch state and visible fallback notice contract.
+        @Expect(!html.contains("class=\"language-label\""))
+        @Expect(html.contains("<details class=\"cj-lang-toggle\">"))
+        @Expect(html.contains("class=\"cj-lang-toggle__summary\""))
+        @Expect(html.contains("class=\"cj-lang-toggle__current\">English</span>"))
         @Expect(html.contains("href=\"" + fallbackHref + "\""))
         @Expect(html.contains("hreflang=\"zh-CN\""))
+        @Expect(html.contains("data-language-routes=\""))
         @Expect(html.contains("data-switch-state=\"language-home\""))
         @Expect(html.contains("data-position-state=\"language-home\""))
         @Expect(html.contains("title=\"" + notice + "\""))
-        @Expect(html.contains("<span class=\"language-position-notice\" lang=\"en\">" + notice + "</span>"))
-        @Expect(!html.contains("<span class=\"language-position-notice\" lang=\"en\" hidden>" + notice))
+        @Expect(html.contains("<span class=\"cj-lang-toggle__notice\" lang=\"en\">" + notice + "</span>"))
+        @Expect(!html.contains("class=\"cj-lang-toggle__notice\" lang=\"en\" hidden>" + notice))
     }
 }

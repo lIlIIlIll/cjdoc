@@ -11,7 +11,7 @@
       },
       "after": {
         "snapshot": "docs/maintainer/reader-scale-docs-173-177/after-en.aria.txt",
-        "sha256": "663999326ef5ad0dc47d706c718910b7434be1991f17f595786cfd0bdd6f5bfd"
+        "sha256": "dcf4edbe8ab36981e98ef0328cd5c68e3216389b83cbae2d037062c0e54c61e1"
       }
     },
     "zh-CN": {
@@ -21,7 +21,7 @@
       },
       "after": {
         "snapshot": "docs/maintainer/reader-scale-docs-173-177/after-zh-CN.aria.txt",
-        "sha256": "65b1f36e81bc56691178a7c56ff1460749b1686d7b213042dfeddf73f55f1214"
+        "sha256": "69ffa451637c913c80ce322f9ed53a4e5f1e4abcc90c69d55cb1f79044cdc7c9"
       }
     }
   }

@@ -47,8 +47,8 @@ class CodeHighlightLexerTest {
         @Expect(literals[1], "false")
         let html = api_render.renderStandaloneMarkdownHtml(
             parseStandaloneMarkdown("~~~cj\n" + source + "\n~~~\n"))
-        @Expect(html.contains("<span class=\"code-literal\">true</span>"))
-        @Expect(html.contains("<span class=\"code-literal\">false</span>"))
+        @Expect(html.contains("<span class=\"cj-tok-literal\">true</span>"))
+        @Expect(html.contains("<span class=\"cj-tok-literal\">false</span>"))
     }
 
 
@@ -88,7 +88,7 @@ class CodeHighlightLexerTest {
             let tree = parseStandaloneMarkdown("~~~cj\n" + source + "\n~~~\n")
             let html = api_render.renderStandaloneMarkdownHtml(tree)
             @Expect(html.contains(source.replace("\"", "&quot;")))
-            @Expect(!html.contains("<span class=\"code-"))
+            @Expect(!html.contains("<span class=\"cj-tok-"))
         }
         let oversized = String.fromUtf8(Array<Byte>(MAX_HIGHLIGHT_BLOCK_BYTES + 1, repeat: b'a'))
         let value = highlightCode(oversized, "cangjie", "builtin")
@@ -122,7 +122,7 @@ class CodeHighlightLexerTest {
         let code = tree.children[0]
         @Expect(code.metadata.getOrThrow().codeHighlight.isNone())
         let html = api_render.renderStandaloneMarkdownHtml(tree)
-        @Expect(!html.contains("<span class=\"code-"))
+        @Expect(!html.contains("<span class=\"cj-tok-"))
         @Expect(html.contains("#&quot;raw &lt;script&gt;&quot;#"))
     }
 
@@ -135,9 +135,9 @@ class CodeHighlightLexerTest {
         @Expect(prepared.matchesSource(code.literal))
         @Expect(prepared.state, "complete")
         let html = api_render.renderStandaloneMarkdownHtml(tree)
-        @Expect(html.contains("<span class=\"code-string\">#&quot;raw &lt;script&gt;&quot;#</span>"))
-        @Expect(html.contains("<span class=\"code-comment\">/* a /* b */ c */</span>"))
-        @Expect(html.contains("<span class=\"code-number\">0xFF</span>"))
+        @Expect(html.contains("<span class=\"cj-tok-string\">#&quot;raw &lt;script&gt;&quot;#</span>"))
+        @Expect(html.contains("<span class=\"cj-tok-comment\">/* a /* b */ c */</span>"))
+        @Expect(html.contains("<span class=\"cj-tok-number\">0xFF</span>"))
         @Expect(!html.contains("<script>"))
     }
 }

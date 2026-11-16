@@ -34,7 +34,7 @@ internal func digestRegularFile(path: Path, description: String,
             file.length != beforeSize) {
             throw IllegalArgumentException("${description} changed while opening: '${path}'")
         }
-        let buffer = Array<Byte>(OUTPUT_HASH_CHUNK_BYTES, repeat: 0)
+        let buffer = budget.readBuffer()
         while (true) {
             let count = file.read(buffer)
             if (count < 0 || count > buffer.size) {
@@ -225,47 +225,49 @@ internal func parseOwnedFileEntries(entries: JsonArray, description: String): Ar
     files.toArray()
 }
 
-internal func orderedOwnedFiles(artifacts: Array<RenderArtifact>): Array<OwnedOutputFile> {
-    if (artifacts.size > OUTPUT_ENTRY_LIMIT) {
-        throw IllegalArgumentException("render artifacts exceed ${OUTPUT_ENTRY_LIMIT} entries")
-    }
-    let digests = HashMap<String, String>()
-    let paths = ArrayList<String>()
-    let budget = OutputHashBudget()
-    var manifestWorstCase: Int64 = 256
-    var treeWorstCaseEntries: Int64 = 1
-    for (artifact in artifacts) {
-        if (!isSafeOutputPath(artifact.path) || digests.contains(artifact.path)) {
-            throw IllegalArgumentException("duplicate or unsafe render artifact '${artifact.path}'")
+// Shared admission rules for both renderer spools and array output adapters.
+// Checking is side-effect free; a failed disk write must not reserve a path.
+internal class OutputArtifactPathBudget {
+    private let ordinals = HashMap<String, Int64>()
+    private let paths = ArrayList<String>()
+    private var manifestWorstCase: Int64 = 256
+    private var treeWorstCaseEntries: Int64 = 1
+
+    func check(path: String): (Int64, Int64) {
+        if (paths.size >= OUTPUT_ENTRY_LIMIT) {
+            throw IllegalArgumentException("render artifacts exceed ${OUTPUT_ENTRY_LIMIT} entries")
         }
-        let pathBytes = artifact.path.size
-        // JSON escaping uses at most six ASCII bytes per input byte. The fixed
-        // allowance covers punctuation, the digest, indentation, and separators.
+        if (!isSafeOutputPath(path) || ordinals.contains(path)) {
+            throw IllegalArgumentException("duplicate or unsafe render artifact '${path}'")
+        }
+        let pathBytes = path.size
         if (pathBytes > (OUTPUT_MANIFEST_LIMIT - manifestWorstCase - 128) / 6) {
             throw IllegalArgumentException("render artifacts cannot fit the output manifest limit")
         }
-        manifestWorstCase += pathBytes * 6 + 128
-        let pathEntries = artifact.path.split("/").size
+        let pathEntries = path.split("/").size
         if (pathEntries > OUTPUT_ENTRY_LIMIT - treeWorstCaseEntries) {
             throw IllegalArgumentException("render artifacts exceed staged tree entry limit")
         }
-        treeWorstCaseEntries += pathEntries
-        budget.reserve(artifact.byteSize, "render artifact '${artifact.path}'")
-        let digest = StreamingOutputSha256()
-        if (artifact.isBinary) {
-            let bytes = artifact.bytes
-            digest.update(bytes, bytes.size)
-        } else {
-            digest.update(artifact.content)
-        }
-        digests.add(artifact.path, digest.finish())
-        paths.add(artifact.path)
+        (pathBytes * 6 + 128, pathEntries)
     }
-    let ordered = paths.toArray()
-    sort(ordered)
-    let files = ArrayList<OwnedOutputFile>()
-    for (path in ordered) { files.add(OwnedOutputFile(path, digests[path])) }
-    files.toArray()
+
+    func commit(path: String, allowance: (Int64, Int64)): Unit {
+        ordinals[path] = paths.size
+        paths.add(path)
+        manifestWorstCase += allowance[0]
+        treeWorstCaseEntries += allowance[1]
+    }
+
+    func ordinal(path: String): Int64 { ordinals[path] }
+
+    func orderedPaths(): Array<String> {
+        let ordered = paths.toArray()
+        sort(ordered)
+        if (hasTopologyCollision(ordered)) {
+            throw IllegalArgumentException("render artifacts have conflicting file/directory paths")
+        }
+        ordered
+    }
 }
 
 internal func ensurePlannedTreeEntryBudget(paths: Array<String>, description: String): Unit {

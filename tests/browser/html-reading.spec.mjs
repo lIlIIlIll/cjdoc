@@ -3,6 +3,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import path from 'node:path';
+import {pageMetrics} from './reader-scale-metrics.mjs';
 
 const fixture = process.env.CJDOC_READING_FIXTURE;
 test.skip(!fixture, 'CJDOC_READING_FIXTURE must point to a generated bilingual PocketKit site');
@@ -40,14 +41,74 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { if (server) await new Promise(resolve => server.close(resolve)); });
 
+test('font evidence sampling releases DOM subscriptions before interaction timing', async ({page, context}) => {
+  await page.goto(`${origin}/en/index.html`);
+  const client = await context.newCDPSession(page);
+  try {
+    await client.send('Performance.enable');
+    let changes = 0;
+    client.on('DOM.attributeModified', () => changes++);
+    const metrics = await pageMetrics(page, client);
+    expect(metrics.fonts).not.toBeNull();
+    changes = 0;
+    await page.locator('main').evaluate(node => node.setAttribute('data-reader-probe', 'changed'));
+    await client.send('Runtime.evaluate', {expression:'0'});
+    expect(changes).toBe(0);
+  } finally {
+    await client.detach();
+  }
+});
+
+test('member outline refreshes when its responsive view becomes active', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  const urls = await routes(page, 'en', 'root');
+  await page.goto(urls.api);
+  const members = await page.locator('[data-cjdoc-member]').evaluateAll(nodes =>
+    nodes.map(node => ({id:node.id,name:node.dataset.memberName})));
+  const selected = members[0].name;
+  const expected = members.filter(member => member.name === selected).map(member => member.id);
+  const targets = selector => page.locator(selector).evaluateAll(nodes =>
+    nodes.filter(node => !node.closest('li').hidden).map(node => node.dataset.tocTarget));
+  const desktop = '[data-cjdoc-toc] .cj-toc__item--member > a';
+  const mobile = '[data-cjdoc-mobile-toc] .cj-toc__item--member > a';
+  await page.locator('[data-cjdoc-member-filter]').fill('name:' + selected);
+  await expect.poll(() => targets(desktop)).toEqual(expected);
+  await page.setViewportSize({width:960,height:900});
+  await expect.poll(() => targets(mobile)).toEqual(expected);
+  await page.locator('[data-cjdoc-member-filter]').fill('');
+  await expect.poll(() => targets(mobile)).toEqual(members.map(member => member.id));
+  await page.setViewportSize({width:1440,height:900});
+  await expect.poll(() => targets(desktop)).toEqual(members.map(member => member.id));
+});
+
+test('reduced motion keeps outline activation free of new transitions', async ({page}) => {
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.setViewportSize({width:1440,height:900});
+  const urls = await routes(page, 'en', 'root');
+  await page.goto(urls.api);
+  const links = page.locator('[data-cjdoc-toc] a[data-toc-target]');
+  const selected = await links.evaluateAll(nodes =>
+    nodes.findIndex(node => !node.classList.contains('cj-toc__link--active')));
+  const target = links.nth(selected);
+  const href = await target.getAttribute('href');
+  const transitions = await target.evaluate(link => {
+    link.click();
+    link.getBoundingClientRect();
+    return link.getAnimations().map(animation => animation.transitionProperty);
+  });
+  expect(transitions).toEqual([]);
+  await expect(page).toHaveURL(new URL(href, urls.api).href);
+  await expect(target).toHaveClass(/cj-toc__link--active/);
+});
+
 async function routes(page, locale, transport) {
   const home = transport === 'file'
     ? pathToFileURL(path.resolve(fixture, locale, 'index.html')).href
     : `${origin}${transport === 'subpath' ? '/docs' : ''}/${locale}/index.html`;
   await page.goto(home);
-  const pkg = new URL(await page.locator('.package-index a').first().getAttribute('href'), home).href;
+  const pkg = new URL(await page.locator('.cj-package-index a').first().getAttribute('href'), home).href;
   await page.goto(pkg);
-  const api = new URL(await page.locator('.declaration-row-link').filter({hasText:'TextCatalog'}).first().getAttribute('href'), pkg).href;
+  const api = new URL(await page.locator('.cj-decl-table__link').filter({hasText:'TextCatalog'}).first().getAttribute('href'), pkg).href;
   return {home, package:pkg, api, guide:new URL('concepts/guides/first-catalogue.html',home).href};
 }
 
@@ -56,12 +117,12 @@ async function readingMetrics(page) {
     const visible = selector => [...document.querySelectorAll(selector)].filter(n => n.checkVisibility({checkVisibilityCSS:true}));
     return {
       width:document.documentElement.clientWidth, scroll:document.documentElement.scrollWidth,
-      summaries:visible('.declaration-description,.member-summary-description').map(n => ({
+      summaries:visible('.cj-decl-table__summary,.cj-member__description').map(n => ({
         size:parseFloat(getComputedStyle(n).fontSize), full:n.scrollHeight <= n.clientHeight + 1,
         clamp:getComputedStyle(n).webkitLineClamp,
       })),
-      code:visible('pre code,.declaration-signature').map(n => parseFloat(getComputedStyle(n).fontSize)),
-      prose:visible('.prose > p').map(n => parseFloat(getComputedStyle(n).fontSize)),
+      code:visible('pre code,.cj-signature-inline').map(n => parseFloat(getComputedStyle(n).fontSize)),
+      prose:visible('.cj-prose > p').map(n => parseFloat(getComputedStyle(n).fontSize)),
     };
   });
 }
@@ -86,54 +147,277 @@ for (const transport of ['root','subpath','file']) {
         }
       }
       await page.goto(urls.home);
-      await expect(page.locator('.home-introduction')).toContainText('TextCatalog');
-      await expect(page.locator('.reading-paths a[href*="concepts/packages/"]')).toHaveCount(0);
-      await expect(page.locator('.reading-paths a[href*="concepts/modules/"]')).toHaveCount(0);
-      await expect(page.locator('.reading-paths')).toContainText(locale === 'en' ? 'Catalogue and lifetime' : '目录与资源入门');
-      if (locale === 'en') await expect(page.locator('.home-introduction .content-language')).toHaveAttribute('data-translation-state','fallback');
+      await expect(page.locator('.cj-home-intro')).toContainText('TextCatalog');
+      // The reading-path navigation is distinct from the secondary
+      // "other resources" disclosure that reuses the same block class.
+      const readingPaths = page.locator('nav.cj-reading-paths');
+      await expect(readingPaths.locator('a[href*="concepts/packages/"]')).toHaveCount(0);
+      await expect(readingPaths.locator('a[href*="concepts/modules/"]')).toHaveCount(0);
+      await expect(readingPaths).toContainText(locale === 'en' ? 'Catalogue and lifetime' : '目录与资源入门');
+      if (locale === 'en') await expect(page.locator('.cj-home-intro .cj-content-language')).toHaveAttribute('data-translation-state','fallback');
       await page.goto(urls.package);
-      expect(await page.locator('.package-overview').count()).toBe(1);
+      expect(await page.locator('.cj-package-overview').count()).toBe(1);
       await page.goto(urls.api);
       const overloads = page.locator('[data-cjdoc-member][data-member-name="add"]');
       await expect(overloads).toHaveCount(2);
       for (const member of await overloads.all()) await member.evaluate(n => n.open = true);
       await expect(overloads.filter({hasText:'radix'})).toContainText('10');
       const stringOverload = overloads.filter({hasText:'value: String'});
-      const guideLink = stringOverload.locator('.api-usages a[href*="first-catalogue.html"]').first();
+      const guideLink = stringOverload.locator('.cj-usages a[href*="first-catalogue.html"]').first();
       const expectedGuideUrl = manifestSectionUrl(locale, urls.home, urls.guide, 'store-read');
       expect(new URL(await guideLink.getAttribute('href'), page.url()).href).toBe(expectedGuideUrl);
       await guideLink.click();
       expect(page.url()).toBe(expectedGuideUrl);
       const sectionId = decodeURIComponent(new URL(expectedGuideUrl).hash.slice(1));
-      await expect(page.locator(`.guide-content [id="${sectionId}"]`)).toBeVisible();
-      await expect(page.locator('.inline-binding > .binding-state')).toHaveCount(0);
-      await expect(page.locator('.inline-binding > .related-api-label').first()).toHaveText(locale === 'en' ? 'Related API:' : '相关 API：');
-      await expect(page.locator('.inline-binding a').first()).toHaveAttribute('href', /symbols\/.*\.html(?:#.*)?$/);
+      await expect(page.locator(`.cj-guide [id="${sectionId}"]`)).toBeVisible();
+      await expect(page.locator('.cj-binding > .cj-bindings__state')).toHaveCount(0);
+      await expect(page.locator('.cj-binding > .cj-bindings__label').first()).toHaveText(locale === 'en' ? 'Related API:' : '相关 API：');
+      await expect(page.locator('.cj-binding a').first()).toHaveAttribute('href', /symbols\/.*\.html(?:#.*)?$/);
       const introduction = siteManifest.routes.find(item => item.language === locale &&
         !item.symbolId && !item.sectionId && item.href === `html/${locale}/concepts/index.html`);
       expect(introduction).toBeTruthy();
       const introductionUrl = new URL(introduction.href.replace(`html/${locale}/`, ''), urls.home).href;
-      const introductionHref = await page.locator('.guide-content a[href]').evaluateAll(
+      const introductionHref = await page.locator('.cj-guide a[href]').evaluateAll(
         (links, target) => links.find(link => link.href === target)?.getAttribute('href'), introductionUrl);
       expect(introductionHref).toBeTruthy();
-      await page.locator(`.guide-content a[href=${JSON.stringify(introductionHref)}]`).first().click();
+      await page.locator(`.cj-guide a[href=${JSON.stringify(introductionHref)}]`).first().click();
       await expect(page).toHaveURL(introductionUrl);
-      await expect(page.locator('.guide-content')).toContainText('TextCatalog');
+      await expect(page.locator('.cj-guide')).toContainText('TextCatalog');
     }
   });
 }
 
+test('cold history restores entry-local search filters, not fresh visits or query text', async ({page}) => {
+  const urls = await routes(page, 'en', 'root');
+  const trigger = page.locator('[data-cjdoc-search-trigger]');
+  const kind = page.locator('[data-cjdoc-kind]');
+  const pack = page.locator('[data-cjdoc-package]');
+  const first = new URL(urls.api);
+  first.searchParams.set('theme', 'light');
+  await page.goto(first.href);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await trigger.click();
+  await page.locator('[data-cjdoc-search]').fill('name:find');
+  await kind.selectOption('class');
+  const packageValue = await pack.locator('option').evaluateAll(
+    options => options.find(option => option.value)?.value);
+  await pack.selectOption(packageValue);
+  await page.keyboard.press('Escape');
+  // Theme URL replacement must retain this entry's filters.
+  await page.locator('[data-cjdoc-theme-toggle]').click();
+  await page.locator('[data-cjdoc-theme-value="dark"]').click();
+  await page.keyboard.press('Escape');
+
+  const second = new URL(urls.api);
+  second.searchParams.set('visit', 'second');
+  await page.goto(second.href);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await trigger.click();
+  await expect(kind).toHaveValue('');
+  await expect(pack).toHaveValue('');
+  await kind.selectOption('function');
+  await page.keyboard.press('Escape');
+  await page.goto(urls.home);
+  await page.goBack();
+  await trigger.click();
+  await expect(kind).toHaveValue('function');
+  await expect(pack).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await page.goBack();
+  await trigger.click();
+  await expect(kind).toHaveValue('class');
+  await expect(pack).toHaveValue(packageValue);
+  await expect(page.locator('[data-cjdoc-search]')).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await page.goto(urls.api);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await trigger.click();
+  await expect(kind).toHaveValue('');
+  await expect(pack).toHaveValue('');
+});
+
 test('Chinese display labels preserve raw search kind values and query protocol', async ({page}) => {
   const urls = await routes(page,'zh-CN','file');
   await page.goto(urls.home);
-  await page.locator('[data-cjdoc-filter-toggle]').click();
+  // Kind and package filters are always present inside the search dialog.
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toBeVisible();
   await expect(page.locator('[data-cjdoc-kind] option[value="function"]')).toHaveText('函数');
   await expect(page.locator('[data-cjdoc-kind] option[value="concept"]')).toHaveText('指南');
   await page.locator('[data-cjdoc-search]').fill('kind:function add');
-  await expect(page.locator('[data-cjdoc-results] .search-kind').first()).toHaveText('函数');
+  await expect(page.locator('[data-cjdoc-results] .cj-kind').first()).toHaveText('函数');
   await page.locator('[data-cjdoc-kind]').selectOption('function');
   await expect(page.locator('[data-cjdoc-kind]')).toHaveValue('function');
-  await expect(page.locator('[data-cjdoc-filter-toggle]')).toContainText('(1)');
+  await expect(page.locator('[data-cjdoc-results] [role="option"]')).not.toHaveCount(0);
+});
+
+test('display settings appear only on first open and stay one reusable instance', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  const urls = await routes(page,'en','file');
+  await page.goto(urls.home);
+  const popover = page.locator('[data-cjdoc-theme-popover]');
+  const trigger = page.locator('[data-cjdoc-theme-toggle]');
+  const label = page.locator('[data-cjdoc-theme-label]');
+  const baseline = await page.evaluate(() => ({
+    dialogs: document.querySelectorAll('dialog').length,
+    inlineScripts: document.querySelectorAll('script:not([src])').length,
+  }));
+  // A page that never asked for these controls ships neither dialog nor a
+  // template standing in for one.
+  expect(baseline.dialogs).toBe(0);
+  expect(baseline.inlineScripts).toBe(0);
+  await expect(popover).toHaveCount(0);
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(0);
+  await expect(trigger).toHaveAttribute('aria-haspopup','dialog');
+  await expect(trigger).toHaveAttribute('aria-expanded','false');
+  expect(await trigger.getAttribute('aria-controls')).toBeNull();
+  await expect(label).toHaveText('Theme: System');
+
+  await trigger.click();
+  await expect(popover).toHaveCount(1);
+  await expect(popover).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-controls','cjdoc-theme-popover');
+  await expect(trigger).toHaveAttribute('aria-expanded','true');
+  await expect(popover).toHaveAttribute('aria-labelledby','cjdoc-settings-title');
+  await expect(popover.locator('h2.cj-settings__title')).toHaveText('Display');
+  await expect(popover.locator('.cj-settings__group')).toHaveCount(3);
+  await expect(popover.locator('.cj-settings__legend')).toHaveText(['Theme','Font','Text size']);
+  await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
+  await expect(popover.locator('[data-cjdoc-font-value]')).toHaveCount(3);
+  await expect(popover.locator('[data-cjdoc-size-value]')).toHaveCount(3);
+  await expect(popover.locator('.cj-settings__options--themes')).toHaveCount(1);
+  await expect(popover.locator('[data-cjdoc-theme-value="violet"] .cj-settings__swatch'))
+    .toHaveAttribute('data-cjdoc-swatch','violet');
+  await expect(popover.locator('[data-cjdoc-theme-value="violet"] .cj-settings__swatch'))
+    .toHaveAttribute('aria-hidden','true');
+  const closeButton = popover.locator('[data-cjdoc-theme-close]');
+  await expect(closeButton).toHaveAttribute('aria-label','Close');
+  await expect(closeButton.locator('svg.cj-icon path'))
+    .toHaveAttribute('d','M6 6l12 12M18 6 6 18');
+  await expect(popover.locator('.cj-settings__hint')).toHaveText('System follows your device appearance.');
+  await expect(popover.locator('[data-cjdoc-theme-value="system"]')).toHaveAttribute('aria-pressed','true');
+  await expect(popover.locator('[data-cjdoc-font-value="system"]')).toHaveAttribute('aria-pressed','true');
+  await expect(popover.locator('[data-cjdoc-size-value="m"]')).toHaveAttribute('aria-pressed','true');
+  // Creation must not smuggle styling or executable content of its own.
+  expect(await popover.evaluate(node => node.getAttribute('style'))).toBeNull();
+  expect(await page.evaluate(() => document.querySelectorAll('script:not([src])').length)).toBe(0);
+
+  await popover.locator('[data-cjdoc-theme-value="dark"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await expect(label).toHaveText('Theme: Dark');
+  await expect(popover.locator('[data-cjdoc-theme-value="dark"]')).toHaveAttribute('aria-pressed','true');
+  await expect(popover.locator('[data-cjdoc-theme-value="system"]')).toHaveAttribute('aria-pressed','false');
+  expect(await page.evaluate(() => localStorage.getItem('cjdoc-theme'))).toBe('dark');
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-expanded','false');
+
+  // Reopening reuses the same node: no second dialog, no second set of options.
+  await trigger.click();
+  await expect(popover).toBeVisible();
+  expect(await page.evaluate(() => document.querySelectorAll('dialog').length)).toBe(1);
+  await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
+  await expect(popover.locator('[data-cjdoc-theme-value="dark"]')).toHaveAttribute('aria-pressed','true');
+  await expect(label).toHaveText('Theme: Dark');
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+
+  // The two lazily created dialogs are independent: one request never builds
+  // the other, and building one never duplicates it later.
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(0);
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(1);
+  await expect(popover).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toBeHidden();
+  await trigger.click();
+  await expect(popover).toHaveCount(1);
+  await expect(page.locator('[data-cjdoc-search-dialog]')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+
+  // The label and pressed state survive a reload without opening anything.
+  await page.reload();
+  await expect(popover).toHaveCount(0);
+  await expect(label).toHaveText('Theme: Dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await trigger.click();
+  await expect(popover.locator('[data-cjdoc-theme-value="dark"]')).toHaveAttribute('aria-pressed','true');
+  await page.keyboard.press('Escape');
+});
+
+for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
+  test(`search shortcuts transfer modal ownership at ${viewport.width}px`, async ({page}) => {
+    await page.setViewportSize(viewport);
+    const urls = await routes(page,'en','file');
+    for (const key of ['Control+k','Meta+k']) {
+      await page.goto(urls.home);
+      const settings = page.locator('[data-cjdoc-theme-popover]');
+      const search = page.locator('[data-cjdoc-search-dialog]');
+      const trigger = page.locator('[data-cjdoc-theme-toggle]');
+      await trigger.click();
+      await expect(settings).toBeVisible();
+      await expect(search).toHaveCount(0);
+      await page.keyboard.press(key);
+      await expect(settings).toBeHidden();
+      await expect(trigger).toHaveAttribute('aria-expanded','false');
+      await expect(search).toBeVisible();
+      await expect(page.locator('dialog:modal')).toHaveCount(1);
+      await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(trigger).toBeFocused();
+      await trigger.click();
+      await page.keyboard.press(key);
+      await expect(settings).toBeHidden();
+      await expect(settings).toHaveCount(1);
+      await expect(search).toHaveCount(1);
+      await expect(page.locator('dialog:modal')).toHaveCount(1);
+      await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+    }
+    if (viewport.width < 760) {
+      await page.keyboard.press('Escape');
+      await page.locator('[data-cjdoc-menu]').click();
+      await expect(page.locator('html')).toHaveAttribute('data-cj-drawer','open');
+      await page.keyboard.press('Control+k');
+      await expect(page.locator('html')).not.toHaveAttribute('data-cj-drawer','open');
+      await expect(page.locator('dialog:modal')).toHaveCount(1);
+      await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+    }
+  });
+}
+
+test('Chinese settings copy and the modal sheet stay intact on the first open', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  const urls = await routes(page,'zh-CN','file');
+  await page.goto(urls.home);
+  const popover = page.locator('[data-cjdoc-theme-popover]');
+  const trigger = page.locator('[data-cjdoc-theme-toggle]');
+  await expect(popover).toHaveCount(0);
+  await expect(page.locator('[data-cjdoc-theme-label]')).toHaveText('主题：跟随系统');
+  await trigger.click();
+  await expect(popover).toBeVisible();
+  await expect(popover.locator('#cjdoc-settings-title')).toHaveText('显示');
+  await expect(popover.locator('.cj-settings__legend')).toHaveText(['主题','字体','字号']);
+  await expect(popover.locator('[data-cjdoc-theme-value="paper"] span').last()).toHaveText('纸色');
+  await expect(popover.locator('[data-cjdoc-theme-value="system"] span').last()).toHaveText('跟随系统');
+  await expect(popover.locator('[data-cjdoc-font-value="mono-ui"] span').last()).toHaveText('等宽');
+  await expect(popover.locator('[data-cjdoc-size-value="l"]')).toHaveText('L');
+  await expect(popover.locator('[data-cjdoc-theme-close]')).toHaveAttribute('aria-label','关闭');
+  await expect(popover.locator('.cj-settings__hint')).toHaveText('跟随系统会采用设备的外观设置。');
+  // On a phone viewport this dialog is a modal bottom sheet: focus stays inside
+  // and Escape returns it to the trigger.
+  expect(await popover.evaluate(element => element.matches(':modal'))).toBe(true);
+  await popover.locator('[data-cjdoc-size-value="l"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-cj-size','l');
+  await expect(page.locator('[data-cjdoc-theme-label]')).toHaveText('主题：跟随系统');
+  const buttons = popover.locator('button');
+  await buttons.last().focus();
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => document.activeElement !== document.body &&
+    document.activeElement !== document.documentElement)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 test('mobile member filters yield to the first complete signature and retain active criteria', async ({page}) => {
@@ -144,10 +428,10 @@ test('mobile member filters yield to the first complete signature and retain act
     const toggle = page.locator('[data-cjdoc-member-filter-toggle]');
     await expect(toggle).toHaveAttribute('aria-expanded','false');
     await expect(page.locator('[data-cjdoc-member-filter]')).toBeHidden();
-    const toolbar = await page.locator('.member-browser-toolbar').boundingBox();
+    const toolbar = await page.locator('.cj-members__toolbar').boundingBox();
     expect(toolbar.height).toBeLessThanOrEqual(44);
     if (locale === 'zh-CN') {
-      const first = await page.locator('[data-cjdoc-member] .declaration-signature').first().boundingBox();
+      const first = await page.locator('[data-cjdoc-member] .cj-signature-inline').first().boundingBox();
       expect(first.y + first.height).toBeLessThan(844);
     }
     await toggle.click();
@@ -174,8 +458,9 @@ test('all theme presets keep normal text contrast and use offline font fallbacks
     const urls = await routes(page, locale, 'file');
     for (const [role,url] of Object.entries(urls)) {
       await page.goto(url);
+      // The settings dialog stays open across theme choices, so open it once.
+      await page.locator('[data-cjdoc-theme-toggle]').click();
       for (const theme of ['system','light','dark','paper','ocean','forest','terminal','violet']) {
-        await page.locator('[data-cjdoc-theme-toggle]').click();
         await page.locator(`[data-cjdoc-theme-value="${theme}"]`).click();
         await page.evaluate(() => {
           for (const animation of document.getAnimations()) {
@@ -188,7 +473,7 @@ test('all theme presets keep normal text contrast and use offline font fallbacks
             .reduce((s,c,i)=>s+c*[.2126,.7152,.0722][i],0);
           const failures=[]; let minimum=100, count=0;
           for (const el of document.querySelectorAll('body *')) {
-            if (!el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) || el.closest('svg,.sr-only,.skip-link')) continue;
+            if (!el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) || el.closest('svg,.cj-sr-only,.cj-skip-link')) continue;
             if (![...el.childNodes].some(n=>n.nodeType===3 && n.textContent.trim())) continue;
             const style = getComputedStyle(el);
             if (parseFloat(style.fontSize)>=24) continue;
@@ -204,10 +489,11 @@ test('all theme presets keep normal text contrast and use offline font fallbacks
         observations.push({locale,role,theme,...result});
         expect(result.failures, `${locale}/${role}/${theme}`).toEqual([]);
       }
+      await page.keyboard.press('Escape');
       const session = await page.context().newCDPSession(page);
       await session.send('DOM.enable'); await session.send('CSS.enable');
       const {root} = await session.send('DOM.getDocument');
-      for (const selector of ['h1','.prose > p','pre code','.member-summary-description']) {
+      for (const selector of ['h1','.cj-prose > p','pre code','.cj-member__description']) {
         const {nodeId} = await session.send('DOM.querySelector',{nodeId:root.nodeId,selector});
         if (nodeId) {
           const {fonts} = await session.send('CSS.getPlatformFontsForNode',{nodeId});
@@ -230,13 +516,13 @@ test('native details, guide return and print remain usable without JavaScript at
   const member=page.locator('[data-cjdoc-member][data-member-name="add"]').first();
   await member.locator('summary').click();
   await expect(member).toHaveAttribute('open','');
-  await expect(member.locator('.member-detail-body')).toBeVisible();
-  await expect(page.locator('.member-detail-actions a').first()).toBeVisible();
+  await expect(member.locator('.cj-member__body')).toBeVisible();
+  await expect(page.locator('.cj-member-actions .cj-member-actions__item--standalone').first()).toBeVisible();
   const metrics=await readingMetrics(page); expect(metrics.scroll).toBeLessThanOrEqual(metrics.width+1);
   await page.emulateMedia({media:'print'});
-  await expect(page.locator('.docs-sidebar')).toBeHidden();
-  await expect(page.locator('.member-detail-body').first()).toBeVisible();
+  await expect(page.locator('.cj-sidebar')).toBeHidden();
+  await expect(page.locator('.cj-member__body').first()).toBeVisible();
   await page.goto(urls.guide);
-  await expect(page.locator('.guide-content')).toContainText('String');
+  await expect(page.locator('.cj-guide')).toContainText('String');
   await context.close();
 });

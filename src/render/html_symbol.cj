@@ -3,28 +3,47 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-internal func appendReverseTypeUsages(out: RenderTextBuffer,
+internal func appendReverseTypeUsages(w: HtmlWriter,
     index: HashMap<String, SymbolDoc>, typeLinkIndex: HtmlTypeLinkIndex,
     symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
     let usages = typeLinkIndex.reverseUsages(symbol.id)
     if (usages.isEmpty()) { return }
-    out.append("<details class=\"reverse-type-usages\"><summary>${label(locale, "Used by", "使用于")} · ${usages.size}</summary><p>${label(locale, "Lists declarations that reference this type and where they use it.", "列出引用此类型的声明及其使用位置。")}</p><ul>")
-    for (usage in usages) {
-        out.append("<li><a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, usage.source))}\"><code>${escapeHtml(usage.source.qualifiedName)}</code></a> <span class=\"badge\">${escapeHtml(reverseTypeUsageLabel(usage.kind, locale))}</span></li>")
-    }
-    out.append("</ul></details>")
+    w.open("details", attrs: [htmlClass("cj-usages cj-disclosure")])
+    w.textElement("summary", label(locale, "Used by", "使用于") + " · " + usages.size.toString(),
+        attrs: [htmlClass("cj-disclosure__summary")])
+    w.element("p", [htmlClass("cj-usages__note")], { note =>
+        note.text(label(locale, "Lists declarations that reference this type and where they use it.",
+            "列出引用此类型的声明及其使用位置。"))
+    })
+    w.element("ul", [htmlClass("cj-usages__list")], { list =>
+        for (usage in usages) {
+            list.element("li", [htmlClass("cj-usages__item")], { item =>
+                item.open("a", attrs: [htmlHref(SafeUrl.siteRoute(
+                    rootPrefix + symbolUrl(index, usage.source)))])
+                item.textElement("code", usage.source.qualifiedName)
+                item.close("a")
+                item.text(" ")
+                item.textElement("span", reverseTypeUsageLabel(usage.kind, locale),
+                    attrs: [htmlClass("cj-badge")])
+            })
+        }
+    })
+    w.close("details")
 }
 
 // The public reference is a reader surface, not a dump of compiler/provider
 // metadata. Keep raw identities, source locations and resolution provenance in
 // Doc IR and diagnostics outputs. Only API relationships belong on this page.
-private func appendRelationshipUncertainty(out: RenderTextBuffer,
+private func appendRelationshipUncertainty(w: HtmlWriter,
     state: String, locale: String): Unit {
-    match (state) {
-        case "resolved" => ()
-        case "ambiguous" => out.append(" <span class=\"relation-note\">${label(locale, "Relationship target is ambiguous", "关联目标不明确")}</span>")
-        case _ => out.append(" <span class=\"relation-note\">${label(locale, "Relationship not fully established", "关联关系尚未完全确认")}</span>")
+    let note = match (state) {
+        case "resolved" => ""
+        case "ambiguous" => label(locale, "Relationship target is ambiguous", "关联目标不明确")
+        case _ => label(locale, "Relationship not fully established", "关联关系尚未完全确认")
     }
+    if (note.isEmpty()) { return }
+    w.text(" ")
+    w.textElement("span", note, attrs: [htmlClass("cj-relations__note")])
 }
 
 // Human-facing labels should not expose internal relation-kind spellings.
@@ -90,96 +109,142 @@ private func readerSymbolRelationshipIsVisible(index: HashMap<String, SymbolDoc>
     }
 }
 
-internal func appendReaderRelationships(out: RenderTextBuffer,
+// A row is only suppressed when a navigation edge carries the same fact. The
+// published index deliberately cannot resolve a filtered target, so a hidden
+// navigation edge with the same kind and *exact* source spelling drops the
+// weaker source row instead of disclosing its name.
+private func typeRelationshipSuppressed(typeRelation: TypeRelationship, symbol: SymbolDoc,
+    index: HashMap<String, SymbolDoc>, typeLinkIndex: HtmlTypeLinkIndex): Bool {
+    for (navigation in symbol.symbolRelationships) {
+        if (!readerSymbolRelationshipIsVisible(index, navigation) &&
+            typeRelation.kind == navigation.kind &&
+            typeLinkIndex.targetUrl(typeRelation.target).isNone() &&
+            typeRelation.target.spelling.trimAscii() == navigation.targetDisplay.trimAscii()) {
+            return true
+        }
+        if (!sameReaderRelationshipTarget(typeRelation, navigation, index, typeLinkIndex)) {
+            continue
+        }
+        // Do not disclose a filtered target through its weaker source edge.
+        if (!readerSymbolRelationshipIsVisible(index, navigation) ||
+            preferReaderSymbolRelationship(typeRelation, navigation)) {
+            return true
+        }
+    }
+    false
+}
+
+private func symbolRelationshipSuperseded(relationship: SymbolRelationship,
+    symbol: SymbolDoc, index: HashMap<String, SymbolDoc>,
+    typeLinkIndex: HtmlTypeLinkIndex): Bool {
+    for (source in symbol.typeRelationships) {
+        if (sameReaderRelationshipTarget(source, relationship, index, typeLinkIndex) &&
+            !preferReaderSymbolRelationship(source, relationship)) {
+            return true
+        }
+    }
+    false
+}
+
+private func appendRelationshipLabel(w: HtmlWriter, kind: String, locale: String): Unit {
+    w.textElement("dt", readerRelationshipLabel(kind, locale),
+        attrs: [htmlClass("cj-relations__term")])
+    w.open("dd", attrs: [htmlClass("cj-relations__value")])
+}
+
+private func appendTypeRelationshipRows(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+    symbol: SymbolDoc, rootPrefix: String, typeLinkIndex: HtmlTypeLinkIndex,
+    locale: String): Unit {
+    for (relationship in symbol.typeRelationships) {
+        if (typeRelationshipSuppressed(relationship, symbol, index, typeLinkIndex)) { continue }
+        appendRelationshipLabel(w, relationship.kind, locale)
+        appendTypeRefCodeHtml(w, relationship.target, typeLinkIndex, rootPrefix, locale)
+        appendRelationshipUncertainty(w, relationship.target.semantic.state, locale)
+        w.close("dd")
+    }
+}
+
+private func appendSymbolRelationshipRows(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+    symbol: SymbolDoc, rootPrefix: String, typeLinkIndex: HtmlTypeLinkIndex,
+    locale: String): Unit {
+    for (relationship in symbol.symbolRelationships) {
+        if (!readerSymbolRelationshipIsVisible(index, relationship)) { continue }
+        if (symbolRelationshipSuperseded(relationship, symbol, index, typeLinkIndex)) { continue }
+        appendRelationshipLabel(w, relationship.kind, locale)
+        appendSymbolRelationshipTarget(w, index, relationship, rootPrefix)
+        appendRelationshipUncertainty(w, relationship.state, locale)
+        w.close("dd")
+    }
+}
+
+private func appendSymbolRelationshipTarget(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+    relationship: SymbolRelationship, rootPrefix: String): Unit {
+    let isExtensionTarget = relationship.kind == "extensionTarget"
+    let display = if (isExtensionTarget) {
+        genericTypeDisplaySpelling(relationship.targetDisplay)
+    } else { relationship.targetDisplay }
+    match (relationship.targetSymbolId) {
+        case Some(targetId) => match (findSymbol(index, targetId)) {
+            case Some(target) =>
+                let cssClass = if (isExtensionTarget) {
+                    "cj-type-link cj-relations__target"
+                } else { "cj-type-link" }
+                w.open("a", attrs: [htmlClass(cssClass),
+                    htmlHref(SafeUrl.siteRoute(rootPrefix + symbolUrl(index, target)))])
+                w.textElement("code", display)
+                w.close("a")
+            // The visibility check above already discarded filtered targets.
+            case None => ()
+        }
+        case None => w.textElement("code", display)
+    }
+}
+
+internal func appendReaderRelationships(w: HtmlWriter,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String,
     headingTag!: String = "h2"): Unit {
-    let rows = RenderTextBuffer()
-    for (relationship in symbol.typeRelationships) {
-        var suppress = false
-        for (navigation in symbol.symbolRelationships) {
-            // The published index deliberately cannot resolve a filtered target.
-            // When a hidden navigation edge has the same kind and *exact* source
-            // spelling, drop the weaker source row rather than disclosing its
-            // name. Do not suppress a separately resolved, visible TypeRef.
-            if (!readerSymbolRelationshipIsVisible(index, navigation) &&
-                relationship.kind == navigation.kind &&
-                typeLinkIndex.targetUrl(relationship.target).isNone() &&
-                relationship.target.spelling.trimAscii() == navigation.targetDisplay.trimAscii()) {
-                suppress = true
-                break
-            }
-            if (!sameReaderRelationshipTarget(relationship, navigation, index, typeLinkIndex)) {
-                continue
-            }
-            // Do not disclose a filtered target through its weaker source edge.
-            if (!readerSymbolRelationshipIsVisible(index, navigation) ||
-                preferReaderSymbolRelationship(relationship, navigation)) {
-                suppress = true
-                break
-            }
-        }
-        if (suppress) { continue }
-        rows.append("<dt>${escapeHtml(readerRelationshipLabel(relationship.kind, locale))}</dt><dd>")
-        appendTypeRefCodeHtml(rows, relationship.target, typeLinkIndex, rootPrefix, locale)
-        appendRelationshipUncertainty(rows, relationship.target.semantic.state, locale)
-        rows.append("</dd>")
-    }
-    for (relationship in symbol.symbolRelationships) {
-        if (!readerSymbolRelationshipIsVisible(index, relationship)) { continue }
-        var superseded = false
-        for (source in symbol.typeRelationships) {
-            if (sameReaderRelationshipTarget(source, relationship, index, typeLinkIndex) &&
-                !preferReaderSymbolRelationship(source, relationship)) {
-                superseded = true
-                break
-            }
-        }
-        if (superseded) { continue }
-        rows.append("<dt>${escapeHtml(readerRelationshipLabel(relationship.kind, locale))}</dt><dd>")
-        let display = if (relationship.kind == "extensionTarget") {
-            genericTypeDisplaySpelling(relationship.targetDisplay)
-        } else { relationship.targetDisplay }
-        let linkClass = if (relationship.kind == "extensionTarget") {
-            " class=\"type-link relation-target\""
-        } else { "" }
-        match (relationship.targetSymbolId) {
-            case Some(targetId) => match (findSymbol(index, targetId)) {
-                case Some(target) => rows.append("<a${linkClass} href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(display)}</code></a>")
-                // The visibility check above already discarded filtered targets.
-                case None => ()
-            }
-            case None => rows.append("<code>${escapeHtml(display)}</code>")
-        }
-        appendRelationshipUncertainty(rows, relationship.state, locale)
-        rows.append("</dd>")
-    }
-    let content = rows.toString()
-    if (content.isEmpty()) { return }
-    out.append("<section class=\"symbol-relationships\" aria-label=\"${label(locale, "Type and member relationships", "类型与成员关系")}\">")
-    out.append("<${headingTag}>${label(locale, "Relationships", "关联关系")}</${headingTag}><dl>")
-    out.append(content)
-    out.append("</dl></section>\n")
+    // Rows are captured first so a symbol without reader-visible relationships
+    // renders no empty section and no heading.
+    let rows = TrustedHtml.capture({ captured =>
+        appendTypeRelationshipRows(captured, index, symbol, rootPrefix, typeLinkIndex, locale)
+        appendSymbolRelationshipRows(captured, index, symbol, rootPrefix, typeLinkIndex, locale)
+    })
+    if (rows.value.isEmpty()) { return }
+    w.open("section", attrs: [htmlClass("cj-relations"),
+        htmlAttr("aria-label", label(locale, "Type and member relationships", "类型与成员关系"))])
+    w.textElement(headingTag, label(locale, "Relationships", "关联关系"),
+        attrs: [htmlClass("cj-relations__title")])
+    w.open("dl", attrs: [htmlClass("cj-relations__list")])
+    w.trusted(rows)
+    w.close("dl")
+    w.close("section")
+    w.newline()
 }
 
-internal func appendSymbolMetadata(out: RenderTextBuffer,
+internal func appendSymbolMetadata(w: HtmlWriter,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     locale!: String = "en", includeSummary!: Bool = true,
     pagePresentation!: Bool = false): Unit {
-    out.append("<div class=\"symbol-meta\">")
+    w.open("div", attrs: [htmlClass("cj-symbol-meta")])
     if (includeSummary) {
         match (symbol.documentation) {
-            case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix, locale: locale)
+            case Some(comment) => appendSummaryHtml(w, comment, symbol, assetLookup, rootPrefix,
+                locale: locale)
             case None => ()
         }
     }
     if (pagePresentation) {
-        out.append("<span id=\"declaration\" class=\"section-anchor-alias\"></span>")
+        w.open("span", attrs: [htmlAttr("id", "declaration"), htmlClass("cj-anchor-alias")])
+        w.close("span")
     }
-    out.append("<pre class=\"signature-block\" aria-label=\"${label(locale, "Signature", "签名")}\"><code")
-    appendCodeSourceAttribute(out, symbol.headerSpelling)
-    out.append(">")
-    appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)
-    out.append("</code></pre></div>\n")
+    w.open("pre", attrs: [htmlClass("cj-signature"),
+        htmlAttr("aria-label", label(locale, "Signature", "签名"))])
+    w.open("code", attrs: [codeSourceAttr(symbol.headerSpelling)])
+    appendLinkedSignatureHtml(w, symbol, typeLinkIndex, rootPrefix)
+    w.close("code")
+    w.close("pre")
+    w.close("div")
+    w.newline()
 }

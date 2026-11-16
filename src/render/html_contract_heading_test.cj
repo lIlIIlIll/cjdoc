@@ -6,9 +6,9 @@ import std.unittest.testmacro.*
 
 private func renderedBehaviorContractTags(tags: Array<DocTag>, locale: String): String {
     let comment = DocComment("raw", "summary", "", MarkdownNode("document"), tags: tags)
-    let out = RenderTextBuffer()
-    appendDocumentationContractsHtml(out, comment, locale, "contract-fixture")
-    out.toString()
+    let writer = HtmlWriter()
+    appendDocumentationContractsHtml(writer, comment, locale, "contract-fixture")
+    writer.toString()
 }
 
 @Test
@@ -20,10 +20,11 @@ class HtmlContractHeadingTest {
         let en = renderedBehaviorContractTags(tags, "en")
         @Expect(zh.contains("id=\"contract-fixture--behavior-contracts-heading\">后置条件</h3>"), true)
         @Expect(en.contains("id=\"contract-fixture--behavior-contracts-heading\">Postcondition</h3>"), true)
-        @Expect(zh.contains("behavior-contract-single"), true)
+        @Expect(zh.contains("cj-contracts--single"), true)
         @Expect(zh.contains("value.toString()"), true)
         @Expect(!zh.contains("行为契约"), true)
         @Expect(!zh.contains("<dt>"), true)
+        @Expect(zh.contains("cj-contracts"), true)
     }
 
     @TestCase
@@ -31,7 +32,7 @@ class HtmlContractHeadingTest {
         let present = renderedBehaviorContractTags([
             DocTag("precondition", "index", "index is within bounds")], "zh-CN")
         @Expect(present.contains("前置条件</h3>"), true)
-        @Expect(present.contains("behavior-contract-subject"), true)
+        @Expect(present.contains("cj-contracts__subject"), true)
         @Expect(present.contains("<code>index</code>"), true)
         @Expect(present.contains("index is within bounds"), true)
 

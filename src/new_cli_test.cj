@@ -1,11 +1,13 @@
 package cjdoc
 
 import cjdoc.model as public_model
+import cjdoc.render as api_render
 import cjdoc.schema_data.*
 import std.env.*
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import yjson.*
 
 private func createNewCliTestTempDirectory(): Path {
     Directory.createTemp(canonicalize(getTempDirectory()))
@@ -193,6 +195,110 @@ class NewCliRegressionTest {
             }, { => announced[0] = true }))
             @Expect(announced[0], false)
             @Expect(exists(parent.join(".cjdoc-output-parent.lock")))
+        } finally { let _ = removeIfExists(parent, recursive: true) }
+    }
+}
+
+private func cliSpoolInputDocumentation(
+    diagnostics!: Array<public_model.Diagnostic> = []): public_model.DocumentationSet {
+    public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "test"), "partial",
+        public_model.ProjectInfo("spool-cli"), public_model.ConfigurationSnapshot(lintProfile: "off"),
+        diagnostics: diagnostics)
+}
+
+private func cliSpoolWriteInput(path: Path, documentation: public_model.DocumentationSet): Unit {
+    File.writeTo(path, api_render.encodeDocIr(documentation).toArray())
+}
+
+@Test
+class CliOutputSpoolTest {
+    @TestCase
+    func rejectedWriteOnFailureRebuildKeepsOldOwnedAndUnownedFiles(): Unit {
+        let parent = createNewCliTestTempDirectory()
+        let output = parent.join("site")
+        let input = parent.join("docs.json")
+        try {
+            cliSpoolWriteInput(input, cliSpoolInputDocumentation())
+            let options = parseNewCli(["render", "--input", input.toString(),
+                "--format", "html", "--output", output.toString()])
+            let (prepared, cache) = prepareOutputAndCacheDirectories(output.toString(), None<String>)
+            // First serve-style rebuild publishes, the second is gated off by a
+            // diagnostic error, exactly like serve's writeOnFailure=false.
+            @Expect(runServeRebuild(options, prepared, cache, false), 0)
+            let accepted = File.readFrom(output.join("html/index.html"))
+            File.writeTo(output.join("CNAME"), "docs.example.test\n".toArray())
+            cliSpoolWriteInput(input, cliSpoolInputDocumentation(
+                diagnostics: [public_model.Diagnostic("error", "CJDOC4027", "Presentation failed")]))
+            @Expect(runServeRebuild(options, prepared, cache, false), 1)
+            @Expect(File.readFrom(output.join("html/index.html")), accepted)
+            @Expect(File.readFrom(output.join("CNAME")), "docs.example.test\n".toArray())
+            // The rejected spool and its lock state must not survive.
+            @Expect(!exists(parent.join(OUTPUT_LOCK_NAME)))
+            @Expect(!exists(parent.join(OUTPUT_PREPARING_NAME)))
+            @Expect(!exists(parent.join(OUTPUT_TRANSACTION_NAME)))
+        } finally { let _ = removeIfExists(parent, recursive: true) }
+    }
+
+    @TestCase
+    func rendererResourceFallbackRestartsFromAnEmptySpool(): Unit {
+        let parent = createNewCliTestTempDirectory()
+        let output = parent.join("site")
+        let handle = acquireOutputLock(output)
+        var actionError: ?Exception = None
+        try {
+            let spool = OutputArtifactSpool(handle)
+            spool.appendArtifacts([
+                api_render.RenderArtifact("stale.html", "text/html", "<p>stale</p>")])
+            let fallback = renderArtifactsIntoWithCommandFallback(spool,
+                cliSpoolInputDocumentation(), ["json"],
+                Some(GenerationRequest("unused", lintProfile: "off")),
+                injectResourceLimitForTest: true)
+            @Expect(fallback.project.name, "resource-limited")
+            @Expect(fallback.apiCollectionState, "unavailable")
+            @Expect(fallback.diagnostics[0].code, "CJDOC3027")
+            let files = spool.seal()
+            @Expect(files.size, 1)
+            @Expect(files[0].path, "docs.json")
+            writeOwnedSpoolWithLockHeld(output.toString(), spool, handle)
+            ensureOutputLockCurrent(handle)
+        } catch (error: Exception) { actionError = Some(error) }
+        finishOutputLock(handle, actionError)
+        try {
+            @Expect(!exists(output.join("stale.html")))
+            let published = api_render.decodeDocIr(
+                String.fromUtf8(File.readFrom(output.join("docs.json"))))
+            @Expect(published.project.name, "resource-limited")
+        } finally { let _ = removeIfExists(parent, recursive: true) }
+    }
+
+    @TestCase
+    func directoryOutputPublishesVersionAndLanguageHomes(): Unit {
+        let parent = createNewCliTestTempDirectory()
+        let output = parent.join("multilingual")
+        let input = parent.join("docs.json")
+        try {
+            cliSpoolWriteInput(input, public_model.DocumentationSet(
+                public_model.GeneratorInfo("cjdoc", "test"), "partial",
+                public_model.ProjectInfo("spool-multilingual"),
+                public_model.ConfigurationSnapshot(lintProfile: "off"),
+                languageOptions: Some(public_model.DocumentationLanguageOptions("en",
+                    languages: ["en", "zh-CN"]))))
+            @Expect(runCli(["render", "--input", input.toString(), "--format", "html",
+                "--all-languages", "--doc-version", "v1.2.0", "--output", output.toString()]), 0)
+            for (language in ["en", "zh-CN"]) {
+                let home = String.fromUtf8(File.readFrom(output.join("html/${language}/index.html")))
+                @Expect(home.contains("spool-multilingual"))
+            }
+            let manifest = JsonNode.parse(String.fromUtf8(
+                File.readFrom(output.join("site-manifest.json")))).asObject()
+            @Expect(manifest["schemaVersion"].asString(), "cjdoc.site-manifest/1")
+            @Expect(manifest["version"].asString(), "v1.2.0")
+            let version = JsonNode.parse(String.fromUtf8(
+                File.readFrom(output.join("html/version.json")))).asObject()
+            @Expect(version["schemaVersion"].asString(), "cjdoc.version/1")
+            @Expect(version["id"].asString(), "v1.2.0")
+            @Expect(version["label"].asString(), "v1.2.0")
+            @Expect(version["project"].asString(), "spool-multilingual")
         } finally { let _ = removeIfExists(parent, recursive: true) }
     }
 }

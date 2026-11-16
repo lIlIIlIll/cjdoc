@@ -82,7 +82,7 @@ class ReaderUiTests(unittest.TestCase):
 
     def test_diagnostics_link_exact_native_identity_and_source_without_guessing(self) -> None:
         (self.root / "symbols").mkdir()
-        (self.root / "symbols/api.html").write_text('<p class="source-action"><a href="https://github.com/o/r/blob/revision/src/a.cj#L7-L9">Source</a></p>', encoding="utf-8")
+        (self.root / "symbols/api.html").write_text('<p class="cj-page-header__source"><a href="https://github.com/o/r/blob/revision/src/a.cj#L7-L9">Source</a></p>', encoding="utf-8")
         entry = {"qualifiedName": "fixture.BeforeClass", "href": "symbols/api.html"}
         diagnostic = {"code": "CJDOC3035", "severity": "warning", "message": 'missing <summary>',
                       "symbolId": "symbol:real", "source": {"path": "src/a.cj", "start": {"line": 7}}}
@@ -183,7 +183,7 @@ class ReaderUiTests(unittest.TestCase):
             (self.root / version).mkdir()
         (self.root / "demo-v1/report-coverage.html").write_text("old", encoding="utf-8")
         (self.root / "demo-v2/report-diff.html").write_text("diff", encoding="utf-8")
-        source = '<nav class="cjdoc-version-selector"><a href="../demo-v1/validation.html">demo-v1</a><a href="../demo-v2/validation.html" aria-current="page">demo-v2</a><a href="../demo-v2/api-diff.json">Changes</a></nav>'
+        source = '<nav class="cj-version-select"><a href="../demo-v1/validation.html">demo-v1</a><a href="../demo-v2/validation.html" aria-current="page">demo-v2</a><a href="../demo-v2/api-diff.json">Changes</a></nav>'
         result = VersionLinks(source, self.root / "demo-v2/report-coverage.html", "zh-CN").result()
         self.assertIn('href="../demo-v1/report-coverage.html"', result)
         self.assertIn('aria-disabled="true">demo-v2 — 无对应报告', result)
@@ -201,7 +201,7 @@ class ReaderUiTests(unittest.TestCase):
             "exact": "",
             "missing-section": " (section unavailable; opening an available position)"
         }}
-        source = '<nav class="cjdoc-version-selector"><a data-cjdoc-version-link data-cjdoc-version-label="demo-v1" data-cjdoc-version-state="exact" data-cjdoc-version-routes="' + routes + '" href="../demo-v1/validation.html">demo-v1</a></nav>'
+        source = '<nav class="cj-version-select"><a data-cjdoc-version-link data-cjdoc-version-label="demo-v1" data-cjdoc-version-state="exact" data-cjdoc-version-routes="' + routes + '" href="../demo-v1/validation.html">demo-v1</a></nav>'
         rendered = VersionLinks(source, self.root / "demo-v2/report-coverage.html", "en").result()
         from html.parser import HTMLParser
         class Anchor(HTMLParser):

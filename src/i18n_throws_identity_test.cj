@@ -8,7 +8,7 @@ import std.unittest.testmacro.*
 
 private func localizedThrowsHtml(documentation: api_model.DocumentationSet, locale: String): String {
     for (artifact in api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: locale)) {
-        if (artifact.path.startsWith("html/symbols/") && artifact.content.contains("<dl class=\"throws-list\"")) { return artifact.content }
+        if (artifact.path.startsWith("html/symbols/") && artifact.content.contains("<dl class=\"cj-throws\"")) { return artifact.content }
     }
     throw IllegalArgumentException("missing symbol HTML artifact")
 }
@@ -56,7 +56,7 @@ class I18nThrowsIdentityTest {
             ]) {
                 @Expect(localizedThrowsCount(imported, locale), 1)
                 let html = localizedThrowsHtml(imported, locale)
-                @Expect(html.split("class=\"throws-row\"").size, 2)
+                @Expect(html.split("class=\"cj-throws__row\"").size, 2)
                 @Expect(html.contains(wanted))
                 @Expect(!html.contains(other))
                 @Expect(!html.contains("原文：en"))
@@ -84,7 +84,7 @@ class I18nThrowsIdentityTest {
             @Expect(localizedThrowsCount(imported, "zh-CN"), 1)
             @Expect(localizedThrowsCount(imported, "en"), 1)
             let chinese = localizedThrowsHtml(imported, "zh-CN")
-            @Expect(chinese.split("class=\"throws-row\"").size, 2)
+            @Expect(chinese.split("class=\"cj-throws__row\"").size, 2)
             @Expect(chinese.contains("Index is out of range."))
             @Expect(chinese.contains("暂无当前语言翻译，原文：en"))
             let english = localizedThrowsHtml(imported, "en")
@@ -122,7 +122,7 @@ class I18nThrowsIdentityTest {
             @Expect(!publicHasDiagnostic(generated, "CJDOC3114"))
             for (locale in ["en", "zh-CN"]) {
                 @Expect(localizedThrowsCount(generated, locale), 2)
-                @Expect(localizedThrowsHtml(generated, locale).split("class=\"throws-row\"").size, 3)
+                @Expect(localizedThrowsHtml(generated, locale).split("class=\"cj-throws__row\"").size, 3)
             }
             let en = localizedThrowsHtml(generated, "en")
             @Expect(en.contains("Index too large."))
@@ -151,7 +151,7 @@ class I18nThrowsIdentityTest {
                 }
                 @Expect(independent, 2)
                 let html = localizedThrowsHtml(generated, "zh-CN")
-                @Expect(html.split("class=\"throws-row\"").size, 3)
+                @Expect(html.split("class=\"cj-throws__row\"").size, 3)
             } finally { let _ = removeIfExists(project, recursive: true) }
         }
     }

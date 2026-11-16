@@ -52,28 +52,51 @@ private func externalReferenceStatus(value: ExternalDocumentationReference, loca
     else { label(locale, "No external reference", "无外部参考") }
 }
 
-private func appendExternalReference(out: RenderTextBuffer, value: ExternalDocumentationReference,
+private func appendExternalReference(w: HtmlWriter, value: ExternalDocumentationReference,
     locale: String): Unit {
-    out.append("<li><strong>" + escapeHtml(value.name) + "</strong> ")
+    w.open("li", attrs: [htmlClass("cj-external__item")])
+    w.textElement("strong", value.name, attrs: [htmlClass("cj-external__name")])
+    w.text(" ")
     if (value.state == "available") {
         let url = if (value.url.startsWith("./")) { "../" + value.url.removePrefix("./") } else { value.url }
-        out.append("<a rel=\"noreferrer\" href=\"" + escapeHtml(url) + "\">" +
-            label(locale, "Open external reference", "打开外部参考") + "</a>")
+        // Doc IR admits absolute and validated plain relative destinations; the
+        // rebased relative form stays a same-site route.
+        let destination = match (SafeUrl.external(url)) {
+            case Some(external) => Some(external)
+            case None => SafeUrl.site(url)
+        }
+        match (destination) {
+            case Some(safe) =>
+                w.open("a", attrs: [htmlClass("cj-external__link"), htmlAttr("rel", "noreferrer"),
+                    htmlHref(safe)])
+                w.text(label(locale, "Open external reference", "打开外部参考"))
+                w.close("a")
+            case None => ()
+        }
     } else {
-        out.append("<span class=\"badge\" data-state=\"" + value.state + "\">" +
-            externalReferenceStatus(value, locale) + "</span> " + escapeHtml(value.reason))
+        w.textElement("span", externalReferenceStatus(value, locale),
+            attrs: [htmlClass("cj-badge cj-badge--state"), htmlAttr("data-state", value.state)])
+        w.text(" " + value.reason)
     }
     for ((key, text) in [("version", value.version), ("index", value.index),
         ("format", value.format), ("fingerprint", value.fingerprint)]) {
-        if (!text.isEmpty()) { out.append(" <span class=\"binding-meta\">" + key + ": " + escapeHtml(text) + "</span>") }
+        if (!text.isEmpty()) {
+            w.text(" ")
+            w.textElement("span", key + ": " + text, attrs: [htmlClass("cj-bindings__meta")])
+        }
     }
-    out.append("</li>")
+    w.close("li")
 }
 
-internal func externalDocumentationHtml(documentation: DocumentationSet, symbol: SymbolDoc,
-    locale: String, relatedSymbolIds!: HashSet<String> = HashSet<String>(),
-    compactUnavailable!: Bool = false, headingLevel!: Int64 = 0): String {
-    let out = RenderTextBuffer()
+private func externalDocumentationHeading(headingLevel: Int64, compactUnavailable: Bool): Int64 {
+    if (headingLevel > 0) { return min(6, headingLevel) }
+    if (compactUnavailable) { return 3 }
+    2
+}
+
+internal func appendExternalDocumentationHtml(w: HtmlWriter, documentation: DocumentationSet,
+    symbol: SymbolDoc, locale: String, relatedSymbolIds!: HashSet<String> = HashSet<String>(),
+    compactUnavailable!: Bool = false, headingLevel!: Int64 = 0): Unit {
     let failures = ArrayList<ExternalDocumentationReference>()
     let seen = HashSet<String>()
     var opened = false
@@ -87,29 +110,47 @@ internal func externalDocumentationHtml(documentation: DocumentationSet, symbol:
         }
         if (!local) { continue }
         if (!opened) {
-            let level = if (headingLevel > 0) { min(6, headingLevel) }
-                else if (compactUnavailable) { 3 } else { 2 }
-            let heading = "h${level}"
-            out.append("<section class=\"external-documentation\"><" + heading + ">" +
-                label(locale, "External documentation", "外部文档") + "</" + heading + "><ul>")
+            let heading = "h${externalDocumentationHeading(headingLevel, compactUnavailable)}"
+            w.open("section", attrs: [htmlClass("cj-external")])
+            w.textElement(heading, label(locale, "External documentation", "外部文档"),
+                attrs: [htmlClass("cj-external__title")])
+            w.open("ul", attrs: [htmlClass("cj-external__list")])
             opened = true
         }
-        appendExternalReference(out, value, locale)
+        appendExternalReference(w, value, locale)
     }
-    if (opened) { out.append("</ul></section>") }
-    if (compactUnavailable) {
-        for (value in failures) {
-            out.append("<p class=\"external-reference-note\"><strong>" + escapeHtml(value.name) + "</strong> · " +
-                externalReferenceStatus(value, locale) + " · <a href=\"#external-reference-status\">" +
-                label(locale, "Reference details", "参考详情") + "</a></p>")
-        }
-    } else if (!failures.isEmpty()) {
-        out.append("<details class=\"external-reference-status\" id=\"external-reference-status\"><summary>" +
-            label(locale, "External reference status", "外部参考状态") + "</summary><ul>")
-        for (value in failures) { appendExternalReference(out, value, locale) }
-        out.append("</ul></details>")
+    if (opened) {
+        w.close("ul")
+        w.close("section")
     }
-    out.toString()
+    appendExternalFailures(w, failures, locale, compactUnavailable)
+}
+
+private func appendExternalFailures(w: HtmlWriter,
+    failures: ArrayList<ExternalDocumentationReference>, locale: String,
+    compactUnavailable: Bool): Unit {
+    if (failures.isEmpty()) { return }
+    if (!compactUnavailable) {
+        w.open("details", attrs: [htmlClass("cj-external__status cj-disclosure"),
+            htmlAttr("id", "external-reference-status")])
+        w.textElement("summary", label(locale, "External reference status", "外部参考状态"),
+            attrs: [htmlClass("cj-disclosure__summary")])
+        w.open("ul", attrs: [htmlClass("cj-external__list")])
+        for (value in failures) { appendExternalReference(w, value, locale) }
+        w.close("ul")
+        w.close("details")
+        return
+    }
+    for (value in failures) {
+        w.open("p", attrs: [htmlClass("cj-external__note")])
+        w.textElement("strong", value.name)
+        w.text(" · " + externalReferenceStatus(value, locale) + " · ")
+        w.open("a", attrs: [htmlClass("cj-external__note-link"),
+            htmlHref(SafeUrl.fragment("external-reference-status"))])
+        w.text(label(locale, "Reference details", "参考详情"))
+        w.close("a")
+        w.close("p")
+    }
 }
 
 internal func appendExternalDocumentationMarkdown(out: RenderTextBuffer,

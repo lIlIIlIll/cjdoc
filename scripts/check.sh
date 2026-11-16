@@ -110,8 +110,14 @@ run_stage() {
     if [[ ${#inner_args[@]} -gt 0 && "${inner_args[0]}" != -* ]]; then
         inner_args=("${inner_args[@]:1}")
     fi
+    local diagnostic_args=()
+    if [[ "${id}" == "provider" && "${OS:-}" == "Windows_NT" &&
+          "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        diagnostic_args=(--capture-native-compiler)
+    fi
     "${python_cmd}" "${repo}/scripts/ci_stage.py" run \
         --id "${id}" --kind "${kind}" --evidence "${evidence_dir}" \
+        ${diagnostic_args[@]+"${diagnostic_args[@]}"} \
         -- "${BASH:-bash}" "${self_path}" --inner "${id}" \
         ${inner_args[@]+"${inner_args[@]}"}
 }

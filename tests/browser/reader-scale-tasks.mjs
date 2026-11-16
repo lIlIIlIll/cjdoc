@@ -3,6 +3,10 @@ import { distribution, frame, matchEntry, pageMetrics, timedQuery, typeEntry } f
 
 export const anchorFor = entry => 'symbol-' + Buffer.from(entry.id, 'utf8').toString('hex');
 const locationKey = (value, base) => { const url = new URL(value, base); return url.pathname + url.hash; };
+// A capture pairs the current generator with a pinned older baseline, so the
+// harness addresses both markup generations by contract, not by one class set.
+export const MEMBER_BODY = '.cj-member__body, .member-detail-body';
+export const MEMBER_SIGNATURE = '.cj-signature-inline, .declaration-signature';
 const matching = (hrefs, expected, base) => expected.every(entry => hrefs.some(href => locationKey(href, base) === locationKey(entry.href, base)));
 
 export async function instrumentedPage(context, url, cacheDisabled = false) {
@@ -13,13 +17,48 @@ export async function instrumentedPage(context, url, cacheDisabled = false) {
   await client.send('Network.setCacheDisabled', { cacheDisabled });
   await client.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   await page.goto(url, { waitUntil: 'load' });
-  await page.waitForSelector('[data-cjdoc-search]', { state: 'attached' });
-  await page.waitForFunction(() => Array.isArray(globalThis.__CJDOC_SEARCH_INDEX__?.entries));
+  // Readiness is the native index plus a search affordance. The current
+  // generator ships only a trigger and creates the field on first request, so
+  // waiting for the field would hang; opening it early would contaminate the
+  // initial DOM and heap measurements. The older generator's inline field
+  // satisfies the same predicate.
+  await page.waitForFunction(() => Array.isArray(globalThis.__CJDOC_SEARCH_INDEX__?.entries) &&
+    Boolean(document.querySelector('[data-cjdoc-search], [data-cjdoc-search-trigger]')));
   return { page, client };
+}
+
+// Two markup generations are addressed by contract. The older generator renders
+// search as a visible inline field. The current one ships only a hidden trigger
+// and builds the palette on first request, so an absent palette is not "open".
+const searchSurface = page => page.evaluate(() => {
+  const dialog = document.querySelector('[data-cjdoc-search-dialog]');
+  const inline = document.querySelector('[data-cjdoc-search]');
+  return { open: dialog ? dialog.open === true : false, inline: Boolean(inline) && !dialog };
+});
+
+export async function openSearch(page) {
+  const state = await searchSurface(page);
+  if (state.inline) return;
+  if (state.open) return;
+  const trigger = page.locator('[data-cjdoc-search-trigger]');
+  await trigger.waitFor({ state: 'visible' });
+  await trigger.click();
+  await page.waitForFunction(() =>
+    document.querySelector('[data-cjdoc-search-dialog]')?.open === true);
+  await page.waitForSelector('[data-cjdoc-search]', { state: 'visible' });
+}
+
+export async function closeSearch(page) {
+  const state = await searchSurface(page);
+  if (!state.open) return;
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() =>
+    document.querySelector('[data-cjdoc-search-dialog]')?.open !== true);
 }
 
 export async function queryTasks(page, index, manifest, samples, base) {
   const records = [];
+  await openSearch(page);
   const input = page.locator('[data-cjdoc-search]');
   for (const task of manifest.queries) {
     const matchedTargets = task.expected.map(spec => index.entries.filter(entry => matchEntry(entry, spec)));
@@ -73,6 +112,7 @@ export async function queryTasks(page, index, manifest, samples, base) {
       synchronous: distribution(sync), frame: distribution(frames) });
     await input.fill('');
   }
+  await closeSearch(page);
   return records;
 }
 
@@ -118,8 +158,8 @@ export async function memberTasks(context, index, manifest, base, samples) {
         const state = await page.evaluate(() => ({
           filter: document.querySelector('[data-cjdoc-member-filter]')?.value,
           visibleMembers: [...document.querySelectorAll('[data-cjdoc-member]')].filter(row => !row.hidden).length,
-          sidebarTruncated: Boolean(document.querySelector('.sidebar-limit')),
-          contextItems: document.querySelectorAll('[data-cjdoc-context-item]').length,
+          sidebarTruncated: Boolean(document.querySelector('.cj-tree__more, .sidebar-limit')),
+          contextItems: document.querySelectorAll('[data-cjdoc-tree-item], [data-cjdoc-context-item]').length,
         }));
         records.push({ id: task.id, owner, expectedId: expected.id, ordinal: task.ordinal,
           foundByBodyFilter, deepLink, state, pass: foundByBodyFilter && deepLink,
@@ -133,6 +173,29 @@ export async function memberTasks(context, index, manifest, base, samples) {
   }
   return records;
 }
+export async function overloadDetailEvidence(row, target) {
+  const signature = await row.locator(':scope > summary code').first().textContent();
+  const content = await row.locator(MEMBER_BODY).evaluate(body => {
+    const parameters = [...body.querySelectorAll('.cj-params__row, .parameter-row')].map(parameter => {
+      const name = parameter.querySelector('.cj-params__name, .parameter-name');
+      if (!name) throw new Error('Rendered parameter name is absent');
+      const type = parameter.querySelector('.cj-params__type > code, .parameter-type-code');
+      const defaultValue = parameter.querySelector('.cj-params__default code, .parameter-default code');
+      return { name: name.textContent, type: type ? type.textContent : null,
+        defaultValue: defaultValue ? defaultValue.textContent : null };
+    });
+    const returnType = body.querySelector('.cj-returns__type > code, .return-type');
+    const authorFields = [...body.querySelectorAll('[id^="doc-field-"]')]
+      .map(field => ({ id: field.id, text: field.innerText }));
+    return { parameters, returnType: returnType ? returnType.textContent : null, authorFields };
+  });
+  if (content.parameters.length !== target.parameterTypes.length) {
+    throw new Error('Rendered parameter inventory differs from the native target');
+  }
+  if (!content.authorFields.length) throw new Error('Rendered author contract fields are absent');
+  return { id: target.id, signature, ...content };
+}
+
 
 export async function overloadTasks(context, index, manifest, base) {
   const records = [];
@@ -147,6 +210,7 @@ export async function overloadTasks(context, index, manifest, base) {
         if (!expected) { selections.push({ callShape: target.callShape, pass: false, reason: 'native structured identity absent' }); continue; }
         const query = 'owner:' + task.owner.split('.').at(-1) + ' param:' + target.parameterTypes[0];
         const started = performance.now();
+        await openSearch(page);
         await page.locator('[data-cjdoc-search]').fill(query);
         await frame(page);
         const first = page.locator('[data-cjdoc-results] li a').first();
@@ -170,8 +234,7 @@ export async function overloadTasks(context, index, manifest, base) {
         if (!target) continue;
         const row = page.locator('#' + anchorFor(target));
         await row.locator(':scope > summary').click();
-        details.push({ id: target.id, signature: await row.locator(':scope > summary code').first().textContent(),
-          authoredDetails: await row.locator('.member-detail-body').innerText() });
+        details.push(await overloadDetailEvidence(row, target));
       }
       const openIds = await page.locator('[data-cjdoc-member][open]').evaluateAll(rows => rows.map(row => row.id));
       const simultaneouslyOpen = targets.every(target => target && openIds.includes(anchorFor(target)));

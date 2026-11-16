@@ -3,13 +3,17 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+
+// Markdown block/inline dispatch lives in html_markdown_nodes.cj so this file
+// stays within the repository size guidance.
+
 internal func escapeHtml(value: String): String {
     let out = RenderTextBuffer()
     appendHtmlEscapedValue(out, value)
     out.toString()
 }
 
-private func safeMappedRelativeLinkDestination(value: String): Bool {
+internal func safeMappedRelativeLinkDestination(value: String): Bool {
     let parts = value.split("#", 2)
     var path = parts[0]
     while (path.startsWith("../")) { path = path.removePrefix("../") }
@@ -17,27 +21,52 @@ private func safeMappedRelativeLinkDestination(value: String): Bool {
     parts.size == 1 || safeLinkDestination("#" + parts[1])
 }
 
+/**
+ * Standalone Markdown as a self-contained HTML fragment.
+ *
+ * This is the only HTML entry point in the renderer that still returns a String:
+ * callers outside the `cjdoc.render` package cannot name `HtmlWriter`, so the
+ * value is produced by capturing a writer and therefore still passes every
+ * escaping and balance check. Renderer-internal callers append through
+ * `appendStandaloneMarkdownHtml` instead of building a string first.
+ */
 public func renderStandaloneMarkdownHtml(node: MarkdownNode,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
     pageTitle!: ?String = None, locale!: String = "en"): String {
-    renderStandaloneMarkdownHtmlWithAssets(node, HashMap<String, String>(), "",
-        sourceLinks: sourceLinks, pageTitle: pageTitle, locale: locale)
+    TrustedHtml.capture({ w =>
+        appendStandaloneMarkdownHtml(w, node, sourceLinks: sourceLinks, pageTitle: pageTitle,
+            locale: locale)
+    }).value
 }
 
-internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
+internal func appendStandaloneMarkdownHtml(w: HtmlWriter, node: MarkdownNode,
+    sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
+    pageTitle!: ?String = None,
+    sectionIds!: HashMap<String, String> = HashMap<String, String>(),
+    locale!: String = "en"): Unit {
+    appendStandaloneMarkdownHtmlWithAssets(w, node, HashMap<String, String>(), "",
+        sourceLinks: sourceLinks, pageTitle: pageTitle, sectionIds: sectionIds, locale: locale)
+}
+
+internal func appendStandaloneMarkdownHtmlWithAssets(w: HtmlWriter, node: MarkdownNode,
     assetLookup: HashMap<String, String>, rootPrefix: String,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
     pageTitle!: ?String = None, bindingSource!: String = "",
-    bindingChips!: ?HashMap<Int64, String> = None, headingBase!: Int64 = 2,
-    afterFirstCode!: String = "", locale!: String = "en"): String {
+    bindingChips!: ?HashMap<Int64, TrustedHtml> = None, headingBase!: Int64 = 2,
+    afterFirstCode!: ?TrustedHtml = None,
+    sectionIds!: HashMap<String, String> = HashMap<String, String>(),
+    locale!: String = "en"): Unit {
     let context = HtmlMarkdownContext(headingBase, sourceLinks: sourceLinks,
         bindingSource: bindingSource, bindingChips: bindingChips, locale: locale)
+    context.sectionIds = sectionIds
     collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
-    let out = RenderTextBuffer()
-    appendStandaloneMarkdownHtml(out, node, context, pageTitle, assetLookup, rootPrefix, afterFirstCode)
-    out.toString()
+    appendStandaloneDocumentHtml(w, node, context, pageTitle, assetLookup, rootPrefix,
+        afterFirstCode)
 }
 
+private func appendAfterFirstCode(w: HtmlWriter, fragment: ?TrustedHtml): Unit {
+    if (let Some(value) <- fragment) { w.trusted(value) }
+}
 
 // Suppress exactly the Markdown's own leading level-1 heading when the page
 // shell already rendered the same title as the page <h1>. A differently titled
@@ -66,12 +95,12 @@ private func standaloneTitleHeadingIndex(node: MarkdownNode, pageTitle: ?String)
     None
 }
 
-private func appendStandaloneMarkdownHtml(out: RenderTextBuffer, node: MarkdownNode,
-    context: HtmlMarkdownContext, pageTitle: ?String,
-    assetLookup: HashMap<String, String>, rootPrefix: String, afterFirstCode: String): Unit {
+private func appendStandaloneDocumentHtml(w: HtmlWriter, node: MarkdownNode,
+    context: HtmlMarkdownContext, pageTitle: ?String, assetLookup: HashMap<String, String>,
+    rootPrefix: String, afterFirstCode: ?TrustedHtml): Unit {
     if (node.kind != "document") {
-        appendMarkdownNodeHtml(out, node, assetLookup, rootPrefix, context)
-        out.append(afterFirstCode)
+        appendMarkdownNodeHtml(w, node, assetLookup, rootPrefix, context)
+        appendAfterFirstCode(w, afterFirstCode)
         return
     }
     let titleIndex = standaloneTitleHeadingIndex(node, pageTitle)
@@ -79,17 +108,31 @@ private func appendStandaloneMarkdownHtml(out: RenderTextBuffer, node: MarkdownN
     for (index in 0..node.children.size) {
         let child = node.children[index]
         if (titleIndex == Some(index)) {
-            out.append("<span id=\"${escapeHtml(context.headingIds[context.nextHeading])}\"></span>\n")
+            let id = context.headingIds[context.nextHeading]
             context.nextHeading++
+            w.open("span", attrs: anchorAttrs(id, context))
+            w.close("span")
+            w.newline()
         } else {
-            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+            appendMarkdownNodeHtml(w, child, assetLookup, rootPrefix, context)
         }
         if (!inserted && child.kind == "code_block") {
-            out.append(afterFirstCode)
+            appendAfterFirstCode(w, afterFirstCode)
             inserted = true
         }
     }
-    if (!inserted) { out.append(afterFirstCode) }
+    if (!inserted) { appendAfterFirstCode(w, afterFirstCode) }
+}
+
+// `id` stays the first attribute: the captured-page producer splices a section
+// identity onto these anchors by matching `id="…"` byte-for-byte.
+internal func anchorAttrs(id: String, context: HtmlMarkdownContext): Array<HtmlAttr> {
+    let attrs = ArrayList<HtmlAttr>()
+    attrs.add(htmlAttr("id", id))
+    if (let Some(sectionId) <- context.sectionIds.get(id)) {
+        attrs.add(htmlAttr("data-semantic-section", sectionId))
+    }
+    attrs.toArray()
 }
 
 /** Resolve a source Markdown fragment using the same heading IDs as standalone HTML. */
@@ -101,9 +144,11 @@ public func standaloneMarkdownFragment(node: MarkdownNode, fragment: String): ?S
         case None => None
     }
 }
+
 public func escapeStandaloneHtml(value: String): String {
     escapeHtml(value)
 }
+
 internal func assetMediaExtension(mediaType: String): String {
     match (mediaType) {
         case "image/png" => "png"
@@ -163,8 +208,10 @@ internal func decodeAssetBase64(value: String): Array<Byte> {
     decoded.toArray()
 }
 
-internal func appendStructuredTextHtml(out: RenderTextBuffer, value: String): Unit {
-    if (!value.isEmpty()) { out.append("<p>${escapeHtml(value)}</p>\n") }
+internal func appendStructuredTextHtml(w: HtmlWriter, value: String): Unit {
+    if (value.isEmpty()) { return }
+    w.textElement("p", value)
+    w.newline()
 }
 
 internal class ExampleFenceOpening {
@@ -246,18 +293,37 @@ internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): B
     length >= fence.length && value[length..].trimAscii().isEmpty()
 }
 
-internal func appendExampleCodeHtml(out: RenderTextBuffer, code: String, language: String): Unit {
-    let normalizedLanguage = normalizeCodeLanguage(language)
-    out.append("<pre><code")
-    appendCodeSourceAttribute(out, code)
-    if (!normalizedLanguage.isEmpty()) {
-        out.append(" class=\"language-${htmlStableSlug(normalizedLanguage)}\"")
-        out.append(" data-language=\"${escapeHtml(normalizedLanguage)}\"")
-    }
-    out.append(">"); appendHighlightedCodeHtml(out, code, normalizedLanguage); out.append("</code></pre>\n")
+internal func appendExampleCodeHtml(w: HtmlWriter, code: String, language: String): Unit {
+    appendCodeBlockHtml(w, code, codeBlockAttrs(code, normalizeCodeLanguage(language)), None)
 }
 
-internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
+/** Code-block attributes shared by author examples and Markdown fences. */
+internal func codeBlockAttrs(raw: String, language: String,
+    attributesRaw!: String = ""): Array<HtmlAttr> {
+    let attrs = ArrayList<HtmlAttr>()
+    attrs.add(codeSourceAttr(raw))
+    if (!language.isEmpty()) { attrs.add(htmlAttr("data-language", language)) }
+    if (!attributesRaw.isEmpty()) {
+        attrs.add(htmlAttr("data-cjdoc-attributes", attributesRaw))
+    }
+    attrs.toArray()
+}
+
+// Author examples and Markdown fences share one code-block structure, so the
+// copy controller sees a single DOM shape everywhere.
+internal func appendCodeBlockHtml(w: HtmlWriter, code: String,
+    attrs: Array<HtmlAttr>, highlight: ?CodeHighlight): Unit {
+    w.element("div", [htmlClass("cj-code")]) { block =>
+        block.element("pre", [htmlClass("cj-code__pre")]) { pre =>
+            pre.open("code", attrs: attrs)
+            appendHighlightedCodeHtml(pre, code, "", highlight: highlight)
+            pre.close("code")
+        }
+    }
+    w.newline()
+}
+
+internal func appendExampleHtml(w: HtmlWriter, value: String): Unit {
     let content = trimExampleBlankLines(value)
     if (content.isEmpty()) { return }
     var prose = StringBuilder()
@@ -269,7 +335,7 @@ internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
         match (activeFence) {
             case Some(fence) =>
                 if (isExampleFenceClosing(line, fence)) {
-                    appendExampleCodeHtml(out, code.toString(), fence.language)
+                    appendExampleCodeHtml(w, code.toString(), fence.language)
                     activeFence = None
                     code = StringBuilder()
                     codeLineCount = 0
@@ -281,7 +347,7 @@ internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
             case None =>
                 match (exampleFenceOpening(line)) {
                     case Some(fence) =>
-                        appendStructuredTextHtml(out, trimExampleBlankLines(prose.toString()))
+                        appendStructuredTextHtml(w, trimExampleBlankLines(prose.toString()))
                         prose = StringBuilder()
                         proseLineCount = 0
                         activeFence = Some(fence)
@@ -293,10 +359,10 @@ internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
         }
     }
     match (activeFence) {
-        case Some(fence) => appendExampleCodeHtml(out, code.toString(), fence.language)
+        case Some(fence) => appendExampleCodeHtml(w, code.toString(), fence.language)
         case None => ()
     }
-    appendStructuredTextHtml(out, trimExampleBlankLines(prose.toString()))
+    appendStructuredTextHtml(w, trimExampleBlankLines(prose.toString()))
 }
 
 // The single-kind heading is the reader's entry point, not an internal
@@ -319,7 +385,12 @@ private func behaviorContractHeading(name: String, locale: String): String {
     }
 }
 
-internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
+private func appendIncompleteBadge(w: HtmlWriter, locale: String): Unit {
+    w.textElement("span", label(locale, "incomplete", "不完整"),
+        attrs: [htmlClass("cj-badge"), htmlAttr("data-state", "incomplete")])
+}
+
+internal func appendDocumentationContractsHtml(w: HtmlWriter, comment: DocComment,
     locale: String, anchor: String, assetLookup!: HashMap<String, String> = HashMap<String, String>(),
     rootPrefix!: String = "", markdownContext!: HtmlMarkdownContext = HtmlMarkdownContext(2),
     headingLevel!: Int64 = 3): Unit {
@@ -335,87 +406,124 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
 
     // Keep the previously published heading anchor stable, including when
     // the visible heading becomes more specific.
-    let headingId = escapeHtml(anchor + "--behavior-contracts-heading")
-    out.append("<section class=\"behavior-contracts\" aria-labelledby=\"${headingId}\">\n")
+    let headingId = anchor + "--behavior-contracts-heading"
+    w.open("section", attrs: [htmlClass("cj-contracts"),
+        htmlAttr("aria-labelledby", headingId)])
     if (contractCount == 1) {
         match (soleContract) {
             case Some(tag) =>
-                out.append("<${heading} id=\"${headingId}\">" +
-                    escapeHtml(behaviorContractHeading(tag.name, locale)) +
-                    "</${heading}><div class=\"behavior-contract-single\">")
-                if (!tag.subject.isEmpty()) {
-                    out.append("<p class=\"behavior-contract-subject\"><code>" +
-                        escapeHtml(tag.subject) + "</code></p>")
-                }
-                if (tag.description.trimAscii().isEmpty()) {
-                    out.append("<span class=\"badge\" data-state=\"incomplete\">" +
-                        label(locale, "incomplete", "不完整") + "</span>")
-                } else {
-                    appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
-                }
-                out.append("</div></section>\n")
+                w.textElement(heading, behaviorContractHeading(tag.name, locale),
+                    attrs: [htmlAttr("id", headingId)])
+                w.open("div", attrs: [htmlClass("cj-contracts--single")])
+                appendSoleContractBody(w, tag, locale, assetLookup, rootPrefix, markdownContext)
+                w.close("div")
             case None => ()
         }
+        w.close("section")
+        w.newline()
         return
     }
-
-    out.append("<${heading} id=\"${headingId}\">" +
-        label(locale, "Behavioral constraints", "行为约束") + "</${heading}><dl>\n")
-    for (tag in comment.tags) {
-        if (!isBehaviorContractTag(tag.name)) { continue }
-        out.append("<dt><code>" + escapeHtml(behaviorContractLabel(tag.name, locale)) + "</code>")
-        if (!tag.subject.isEmpty()) { out.append(" <code>" + escapeHtml(tag.subject) + "</code>") }
-        out.append("</dt><dd>")
-        if (tag.description.trimAscii().isEmpty()) {
-            out.append("<span class=\"badge\" data-state=\"incomplete\">" +
-                label(locale, "incomplete", "不完整") + "</span>")
-        } else {
-            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
-        }
-        out.append("</dd>\n")
-    }
-    out.append("</dl></section>\n")
+    w.textElement(heading, label(locale, "Behavioral constraints", "行为约束"),
+        attrs: [htmlAttr("id", headingId)])
+    appendContractTerms(w, comment, locale, assetLookup, rootPrefix, markdownContext)
+    w.close("section")
+    w.newline()
 }
 
-internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
+private func appendContractTerms(w: HtmlWriter, comment: DocComment, locale: String,
+    assetLookup: HashMap<String, String>, rootPrefix: String,
+    markdownContext: HtmlMarkdownContext): Unit {
+    w.open("dl")
+    w.newline()
+    for (tag in comment.tags) {
+        if (!isBehaviorContractTag(tag.name)) { continue }
+        w.element("dt", Array<HtmlAttr>()) { term =>
+            term.textElement("code", behaviorContractLabel(tag.name, locale))
+            if (!tag.subject.isEmpty()) {
+                term.text(" ")
+                term.textElement("code", tag.subject)
+            }
+        }
+        w.element("dd", Array<HtmlAttr>()) { body =>
+            if (tag.description.trimAscii().isEmpty()) {
+                appendIncompleteBadge(body, locale)
+            } else {
+                appendDocumentationTagHtml(body, tag, locale, assetLookup, rootPrefix,
+                    markdownContext)
+            }
+        }
+        w.newline()
+    }
+    w.close("dl")
+}
+
+private func appendSoleContractBody(w: HtmlWriter, tag: DocTag, locale: String,
+    assetLookup: HashMap<String, String>, rootPrefix: String,
+    markdownContext: HtmlMarkdownContext): Unit {
+    if (!tag.subject.isEmpty()) {
+        w.element("p", [htmlClass("cj-contracts__subject")]) { body =>
+            body.textElement("code", tag.subject)
+        }
+    }
+    if (tag.description.trimAscii().isEmpty()) {
+        appendIncompleteBadge(w, locale)
+    } else {
+        appendDocumentationTagHtml(w, tag, locale, assetLookup, rootPrefix, markdownContext)
+    }
+}
+
+internal func appendDocumentationExamplesHtml(w: HtmlWriter, comment: DocComment,
     locale: String, headingLevel!: Int64 = 3, symbol!: ?SymbolDoc = None,
     assetLookup!: HashMap<String, String> = HashMap<String, String>(), rootPrefix!: String = "",
     markdownContext!: HtmlMarkdownContext = HtmlMarkdownContext(2)): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
-    out.append("<h${headingLevel}>${label(locale, "Examples", "示例")}</h${headingLevel}><div class=\"example-list\">\n")
+    w.textElement("h${headingLevel}", label(locale, "Examples", "示例"))
+    w.open("div", attrs: [htmlClass("cj-examples")])
+    w.newline()
     var exampleIndex: Int64 = 0
     let symbolPrefix = match (symbol) { case Some(value) => symbolAnchor(value) case None => "examples" }
     for (tag in comment.tags) {
         if (tag.name != "example") { continue }
         exampleIndex++
-        out.append("<div class=\"example-block\">")
-        appendContentLanguageHtml(out, tag, locale)
+        w.open("div", attrs: [htmlClass("cj-example")])
+        appendContentLanguageHtml(w, tag, locale)
         if (!tag.subject.isEmpty()) {
-            out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
+            w.textElement("h${min(6, headingLevel + 1)}", tag.subject,
+                attrs: [htmlClass("cj-example__title")])
         }
-        if (trimExampleBlankLines(tag.description).isEmpty()) {
-            let emptyLabel = label(locale, "No example content.", "示例内容为空。")
-            out.append("<p class=\"empty-state\">${emptyLabel}</p>\n")
-        } else {
-            match (tag.exampleMarkdown) {
-                case Some(tree) =>
-                    // Share the enclosing heading stream, but scope source fragments
-                    // to this example so repeated #usage links stay local.
-                    let enclosingTargets = markdownContext.fragmentTargets
-                    markdownContext.fragmentTargets = HashMap<String, String>()
-                    markdownContext.nextHeading = markdownContext.headingIds.size
-                    collectMarkdownHeadings(tree, "${symbolPrefix}--example-${exampleIndex}",
-                        HashMap<String, Int64>(), markdownContext)
-                    appendMarkdownNodeHtml(out, tree, assetLookup, rootPrefix, markdownContext)
-                    markdownContext.fragmentTargets = enclosingTargets
-                case None => appendExampleHtml(out, tag.description)
-            }
-        }
-        out.append("</div>\n")
+        appendExampleBodyHtml(w, tag, locale, assetLookup, rootPrefix, markdownContext,
+            symbolPrefix, exampleIndex)
+        w.close("div")
+        w.newline()
     }
-    out.append("</div>\n")
+    w.close("div")
+    w.newline()
+}
+
+private func appendExampleBodyHtml(w: HtmlWriter, tag: DocTag, locale: String,
+    assetLookup: HashMap<String, String>, rootPrefix: String,
+    markdownContext: HtmlMarkdownContext, symbolPrefix: String, exampleIndex: Int64): Unit {
+    if (trimExampleBlankLines(tag.description).isEmpty()) {
+        w.textElement("p", label(locale, "No example content.", "示例内容为空。"),
+            attrs: [htmlClass("cj-empty")])
+        w.newline()
+        return
+    }
+    match (tag.exampleMarkdown) {
+        case Some(tree) =>
+            // Share the enclosing heading stream, but scope source fragments to
+            // this example so repeated #usage links stay local.
+            let enclosingTargets = markdownContext.fragmentTargets
+            markdownContext.fragmentTargets = HashMap<String, String>()
+            markdownContext.nextHeading = markdownContext.headingIds.size
+            collectMarkdownHeadings(tree, "${symbolPrefix}--example-${exampleIndex}",
+                HashMap<String, Int64>(), markdownContext)
+            appendMarkdownNodeHtml(w, tree, assetLookup, rootPrefix, markdownContext)
+            markdownContext.fragmentTargets = enclosingTargets
+        case None => appendExampleHtml(w, tag.description)
+    }
 }
 
 internal func markdownFragmentSlug(value: String): String {
@@ -453,14 +561,16 @@ internal class HtmlMarkdownContext {
     let usedHeadingSlugs = HashSet<String>()
     let sourceLinks: HashMap<String, String>
     let bindingSource: String
-    let bindingChips: ?HashMap<Int64, String>
+    let bindingChips: ?HashMap<Int64, TrustedHtml>
     let locale: String
     let fieldAnchorNamespace: String
     var nextHeading: Int64 = 0
+    // Filled by the standalone page renderer; empty for symbol/field contexts.
+    var sectionIds = HashMap<String, String>()
 
     init(headingBase: Int64, allowExternalLinks!: Bool = true,
         sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
-        bindingSource!: String = "", bindingChips!: ?HashMap<Int64, String> = None,
+        bindingSource!: String = "", bindingChips!: ?HashMap<Int64, TrustedHtml> = None,
         locale!: String = "en", fieldAnchorNamespace!: String = "") {
         this.headingBase = headingBase
         this.allowExternalLinks = allowExternalLinks
@@ -481,8 +591,6 @@ internal func markdownHtmlContext(comment: DocComment, symbol: SymbolDoc,
     context
 }
 
-
-
 internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
     counts: HashMap<String, Int64>, context: HtmlMarkdownContext): Unit {
     if (node.kind == "heading") {
@@ -496,247 +604,10 @@ internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
     }
 }
 
-
-internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
-    assetLookup: HashMap<String, String>, rootPrefix: String, context: HtmlMarkdownContext,
-    tableHeader!: Bool = false, tightListItem!: Bool = false): Unit {
-    match (node.kind) {
-        case "document" => for (child in node.children) {
-            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-        }
-        case "paragraph" =>
-            out.append("<p>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</p>\n")
-        case "heading" =>
-            let level = markdownHeadingLevel(node, context.headingBase)
-            let id = context.headingIds[context.nextHeading]
-            context.nextHeading++
-            out.append("<h${level} id=\"${escapeHtml(id)}\">"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</h${level}>\n")
-        case "text" => out.append(escapeHtml(node.literal))
-        case "soft_break" => out.append("\n")
-        case "hard_break" => out.append("<br>\n")
-        case "emphasis" =>
-            out.append("<em>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</em>")
-        case "strong" =>
-            out.append("<strong>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</strong>")
-        case "strikethrough" =>
-            out.append("<del>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</del>")
-        case "code_span" => out.append("<code>${escapeHtml(node.literal)}</code>")
-        case "code_block" =>
-            out.append("<pre><code")
-            appendCodeSourceAttribute(out, node.literal)
-            var displayLanguage = ""
-            var preparedHighlight: ?CodeHighlight = None
-            if (let Some(metadata) <- node.metadata) {
-                if (metadata.kind == "code_block") {
-                    let language = normalizeCodeLanguage(metadata.language.getOrThrow())
-                    displayLanguage = language
-                    preparedHighlight = metadata.codeHighlight
-                    if (!language.isEmpty()) {
-                        out.append(" class=\"language-${htmlStableSlug(language)}\"")
-                        out.append(" data-language=\"${escapeHtml(language)}\"")
-                    }
-                    if (!metadata.attributesRaw.getOrThrow().isEmpty()) {
-                        out.append(" data-cjdoc-attributes=\"${escapeHtml(metadata.attributesRaw.getOrThrow())}\"")
-                    }
-                }
-            }
-            out.append(">")
-            appendHighlightedCodeHtml(out, node.literal, displayLanguage, highlight: preparedHighlight)
-            out.append("</code></pre>\n")
-        case "thematic_break" => out.append("<hr>\n")
-        case "admonition" =>
-            appendAdmonitionHtml(out, node, assetLookup, rootPrefix, context)
-        case "block_quote" =>
-            out.append("<blockquote>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</blockquote>\n")
-        case "list" =>
-            var ordered = false
-            var start: Int64 = 1
-            var tight = true
-            if (let Some(metadata) <- node.metadata) {
-                if (metadata.kind == "list") {
-                    ordered = metadata.listKind.getOrThrow() == "ordered"
-                    start = metadata.listStart.getOrThrow()
-                    tight = metadata.listTight.getOrThrow()
-                }
-            }
-            if (ordered) { out.append("<ol start=\"${start}\">") } else { out.append("<ul>") }
-            for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context,
-                    tightListItem: tight)
-            }
-            if (ordered) { out.append("</ol>\n") } else { out.append("</ul>\n") }
-        case "list_item" =>
-            out.append("<li>")
-            if (let Some(metadata) <- node.metadata) {
-                if (metadata.kind == "list_item") {
-                    match (metadata.taskState.getOrThrow()) {
-                        case "checked" => out.append("<input type=\"checkbox\" disabled checked> ")
-                        case "unchecked" => out.append("<input type=\"checkbox\" disabled> ")
-                        case _ => ()
-                    }
-                }
-            }
-            for (child in node.children) {
-                if (tightListItem && child.kind == "paragraph") {
-                    for (grandchild in child.children) {
-                        appendMarkdownNodeHtml(out, grandchild, assetLookup, rootPrefix, context)
-                    }
-                } else {
-                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-                }
-            }; out.append("</li>")
-        case "link" =>
-            let sourceDestination = context.sourceLinks.get(node.literal)
-            let destination = match (sourceDestination) {
-                case Some(target) => target
-                case None => match (context.fragmentTargets.get(node.literal)) {
-                    case Some(target) => "#${target}"
-                    case None => node.literal
-                }
-            }
-            let isRemote = destination.startsWith("http://") || destination.startsWith("https://")
-            let safeDestination = safeLinkDestination(destination) ||
-                safeRelativeLinkDestination(destination) ||
-                (sourceDestination.isSome() && safeMappedRelativeLinkDestination(destination))
-            if (safeDestination && (context.allowExternalLinks || !isRemote)) {
-                out.append("<a href=\"${escapeHtml(destination)}\"")
-                if (destination.startsWith("http://") || destination.startsWith("https://")) {
-                    out.append(" rel=\"noopener noreferrer\"")
-                }
-                out.append(">")
-                for (child in node.children) {
-                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-                }
-                out.append("</a>")
-            } else {
-                for (child in node.children) {
-                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-                }
-            }
-        case "semantic_link" =>
-            let navigation: ?TypeNavigation = match (node.metadata) {
-                case Some(metadata) => metadata.semanticNavigation
-                case None => None
-            }
-            let semanticState: ?String = match (node.metadata) {
-                case Some(metadata) => metadata.semanticState
-                case None => None
-            }
-            let destination: ?String = match (node.metadata) {
-                case Some(metadata) => match (navigation) {
-                    case Some(value) => if (value.state == "resolved") { Some(value.url) } else { None }
-                    case None => metadata.semanticExternalUrl
-                }
-                case None => None
-            }
-            match (destination) {
-                case Some(value) =>
-                    let href = if (navigation.isSome()) {
-                        navigationHref(rootPrefix, value).getOrDefault({ => "" })
-                    } else if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("#")) {
-                        value
-                    } else {
-                        rootPrefix + value
-                    }
-                    let isRemote = value.startsWith("http://") || value.startsWith("https://")
-                    let isFragment = value.startsWith("#")
-                    let permitted = if (href.isEmpty()) { false } else if (isRemote) {
-                        context.allowExternalLinks && safeLinkDestination(href)
-                    } else if (navigation.isSome()) { true } else if (isFragment) {
-                        safeLinkDestination(href)
-                    } else {
-                        safeRelativeLinkDestination(value)
-                    }
-                    if (permitted) {
-                        out.append("<a href=\"" + escapeHtml(href) + "\"")
-                        appendNavigationAttributes(out, navigation)
-                        out.append(">")
-                        for (child in node.children) {
-                            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-                        }
-                        out.append("</a>")
-                    } else {
-                        for (child in node.children) {
-                            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-                        }
-                    }
-                case None => for (child in node.children) {
-                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-                }
-            }
-            match (semanticState) {
-                case Some(state) => if (state != "resolved") {
-                    let status = match (state) {
-                        case "unresolved" => label(context.locale, "Reference semantics unresolved", "引用语义未解析")
-                        case "ambiguous" => label(context.locale, "Reference semantics ambiguous", "引用语义不明确")
-                        case _ => label(context.locale, "Reference semantics unavailable", "暂无引用语义信息")
-                    }
-                    out.append("<span class=\"reference-state-note\" data-reference-state=\"" +
-                        escapeHtml(state) + "\">" + escapeHtml(status) + "</span>")
-                }
-                case None => ()
-            }
-        case "image" =>
-            let alt = markdownNodeText(node)
-            match (assetReference(assetLookup, node.literal)) {
-                case Some(path) => out.append("<img src=\"${rootPrefix}${escapeHtml(path)}\" alt=\"${escapeHtml(alt)}\" loading=\"lazy\">")
-                case None => out.append(escapeHtml(alt))
-            }
-        case "table" =>
-            out.append("<table>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</table>\n")
-        case "table_row" =>
-            let header = match (node.metadata) {
-                case Some(metadata) => metadata.kind == "table_row" && metadata.tableHeader.getOrThrow()
-                case None => false
-            }
-            out.append("<tr>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context,
-                    tableHeader: header)
-            }; out.append("</tr>")
-        case "table_cell" =>
-            let tag = if (tableHeader) { "th" } else { "td" }
-            out.append("<${tag}")
-            if (let Some(metadata) <- node.metadata) {
-                if (metadata.kind == "table_cell" && metadata.tableAlignment.getOrThrow() != "none") {
-                    out.append(" class=\"align-${metadata.tableAlignment.getOrThrow()}\"")
-                }
-            }
-            out.append(">"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-            }; out.append("</${tag}>")
-        case "html_block" =>
-            if (node.literal == "<!-- cjdoc-bind -->" && node.source.isSome() && context.bindingChips.isSome() &&
-                node.source.getOrThrow().path == context.bindingSource) {
-                match (context.bindingChips.getOrThrow().get(node.source.getOrThrow().start.line)) {
-                    case Some(chip) => out.append(chip)
-                    case None => out.append("<pre>${escapeHtml(node.literal)}</pre>\n")
-                }
-            } else { out.append("<pre>${escapeHtml(node.literal)}</pre>\n") }
-        case "html_inline" =>
-            if (node.literal == "<!-- cjdoc-bind -->" && node.source.isSome() && context.bindingChips.isSome() &&
-                node.source.getOrThrow().path == context.bindingSource) {
-                match (context.bindingChips.getOrThrow().get(node.source.getOrThrow().start.line)) {
-                    case Some(chip) => out.append(chip)
-                    case None => out.append(escapeHtml(node.literal))
-                }
-            } else { out.append(escapeHtml(node.literal)) }
-        case "custom_block" | "custom_inline" => for (child in node.children) {
-            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
-        }
-        case _ => out.append(escapeHtml(markdownNodeText(node)))
+internal func appendMarkdownChildrenHtml(w: HtmlWriter, node: MarkdownNode,
+    assetLookup: HashMap<String, String>, rootPrefix: String,
+    context: HtmlMarkdownContext): Unit {
+    for (child in node.children) {
+        appendMarkdownNodeHtml(w, child, assetLookup, rootPrefix, context)
     }
 }

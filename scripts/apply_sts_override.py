@@ -10,26 +10,39 @@ There is deliberately no "what I applied" output: the check reads the manifest t
 real `cjpm` would read, so the patcher's own account could not add anything and
 could only disagree with the thing that decides.
 
-Usage: apply_sts_override.py MANIFEST BACKUP_DIR [--manifest-path PATH] [--command build|test|run]
+`--diagnostics-dir` is the one exception to "the phase option only": it appends
+`-V --save-temps DIR` for a product invocation whose compiler output is retained
+as evidence. The optimisation option is unchanged, so the retained IR belongs to
+the same build, and the value is escaped as TOML and handed to `cjpm` as it is
+(not as POSIX shell text, which is a different splitter).
+
+Usage: apply_sts_override.py MANIFEST BACKUP_DIR [--manifest-path PATH]
+                          [--command build|test|run] [--diagnostics-dir DIR]
 """
 
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from sts_compile_override import applied_option, apply_to, manifest_package, option_for
+from sts_compile_override import (
+    applied_option,
+    apply_to,
+    invocation_option,
+    manifest_package,
+)
 
 sys.dont_write_bytecode = True
 
 
-def patch(manifests: list[Path], backup_dir: Path, command: str = "build") -> None:
+def patch(manifests: list[Path], backup_dir: Path, command: str = "build", *,
+          diagnostics_dir: str | Path | None = None) -> None:
     """Rewrite each manifest and record the originals for the caller's restore."""
-    expected_option = option_for(command)
+    expected_option = invocation_option(command, diagnostics_dir)
     updates = []
     for manifest in manifests:
         contents = manifest.read_text(encoding="utf-8")
@@ -37,8 +50,8 @@ def patch(manifests: list[Path], backup_dir: Path, command: str = "build") -> No
         # directory and package names differ, and a caller-supplied name could point
         # the rewrite at a manifest the release does not build.
         manifest_package(contents)
-        rewritten = apply_to(contents, command)
-        option = applied_option(rewritten, command)
+        rewritten = apply_to(contents, command, diagnostics_dir=diagnostics_dir)
+        option = applied_option(rewritten, command, diagnostics_dir=diagnostics_dir)
         if option != expected_option:
             raise SystemExit(
                 f"rewriting {manifest} produced override-compile-option={option!r}, not "
@@ -60,11 +73,13 @@ def main() -> int:
     parser.add_argument("backup_dir", type=Path)
     parser.add_argument("--manifest-path", type=Path)
     parser.add_argument("--command", choices=("build", "test", "run"), default="build")
+    parser.add_argument("--diagnostics-dir",
+                        help="retain compiler IR there for this product invocation")
     args = parser.parse_args()
     manifests = [args.manifest]
     if args.manifest_path is not None:
         manifests.append(args.manifest_path)
-    patch(manifests, args.backup_dir, args.command)
+    patch(manifests, args.backup_dir, args.command, diagnostics_dir=args.diagnostics_dir)
     return 0
 
 

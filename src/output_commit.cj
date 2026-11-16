@@ -7,9 +7,9 @@ import std.fs.*
 import std.process.*
 import std.sort.*
 
-internal func prepareOutputTransaction(root: Path, artifacts: Array<RenderArtifact>,
-    previous: OwnedOutputSnapshot, previousFiles: Array<PreviousOutputFile>,
-    nextFiles: Array<OwnedOutputFile>, initialRootExisted: Bool,
+internal func prepareOutputTransaction(root: Path, nextFiles: Array<OwnedOutputFile>,
+    spool: OutputArtifactSpool, previous: OwnedOutputSnapshot,
+    previousFiles: Array<PreviousOutputFile>, initialRootExisted: Bool,
     faults: TransactionFaultController, lock: OutputLockHandle): Path {
     let parent = root.parent
     let manifestBytes = outputManifest(nextFiles).toArray()
@@ -60,19 +60,9 @@ internal func prepareOutputTransaction(root: Path, artifacts: Array<RenderArtifa
         let backup = preparing.join("backup")
         lockedDirectoryCreate(stage, lock)
         lockedDirectoryCreate(backup, lock)
-        let stageBudget = OutputHashBudget()
-        let nextByPath = ownedFileIndex(nextFiles)
-        for (artifact in artifacts) {
-            let target = stage.join(artifact.path)
-            let ignored = ArrayList<Path>()
-            ensureParentDirectories(stage, artifact.path, ignored, lock)
-            if (artifact.isBinary) { lockedFileWrite(target, artifact.bytes, lock) }
-            else { lockedTextFileWrite(target, artifact.content, lock) }
-            let expected = nextByPath[artifact.path].digest
-            if (digestRegularFile(target, "staged output artifact", stageBudget) != expected) {
-                throw IllegalStateException("staged output digest mismatch for '${artifact.path}'")
-            }
-        }
+        // The sealed spool is the only payload source. It proves its complete
+        // inventory before moving a single payload and keeps no payload array.
+        spool.stageInto(stage)
         let stagedManifest = stage.join(OUTPUT_MANIFEST_NAME)
         lockedFileWrite(stagedManifest, manifestBytes, lock)
         if (readFileBounded(stagedManifest, OUTPUT_MANIFEST_LIMIT) != manifestBytes) {
@@ -215,7 +205,7 @@ internal func commitOutput(root: Path, transaction: Path, plan: OutputTransactio
     retireFixedState(transaction, "output transaction", faults, lock)
 }
 
-internal func writeOwnedArtifactsLocked(outputDirectory: String, artifacts: Array<RenderArtifact>,
+internal func writeOwnedSpoolLocked(outputDirectory: String, spool: OutputArtifactSpool,
     forceOwned: Bool, faultAfterOperation: ?Int64, interruptAfterOperation: ?Int64,
     transactionFaultPoint: ?String, lock: OutputLockHandle,
     beforeCommit: () -> Unit): Unit {
@@ -225,14 +215,18 @@ internal func writeOwnedArtifactsLocked(outputDirectory: String, artifacts: Arra
     if (root.toString() != lock.root) {
         throw IllegalStateException("output path does not match the held output lock")
     }
+    // The spool verifies its own lock identity while sealing; this comparison
+    // ties that verified handle to the handle this commit mutates through.
+    if (spool.lock.path != lock.path || spool.lock.token != lock.token ||
+        spool.lock.root != lock.root) {
+        throw IllegalStateException("output spool does not belong to the held output lock")
+    }
+    // Seal before touching any transaction state: the next generation must be a
+    // complete, digest-verified inventory before recovery, preflight, or the
+    // preparation marker can depend on it.
+    let nextFiles = spool.seal()
     recoverPendingOutputState(root, faults, lock)
     ensureOutputRoot(root)
-    let nextFiles = orderedOwnedFiles(artifacts)
-    let nextPaths = ArrayList<String>()
-    for (file in nextFiles) { nextPaths.add(file.path) }
-    if (hasTopologyCollision(nextPaths.toArray())) {
-        throw IllegalArgumentException("render artifacts have conflicting file/directory paths")
-    }
 
     let rootExisted = exists(root)
     let previous = if (rootExisted) {
@@ -243,7 +237,7 @@ internal func writeOwnedArtifactsLocked(outputDirectory: String, artifacts: Arra
     let previousFiles = if (rootExisted) {
         preflightOutput(root, previous.manifest, nextFiles, forceOwned)
     } else { Array<PreviousOutputFile>() }
-    let transaction = prepareOutputTransaction(root, artifacts, previous, previousFiles, nextFiles,
+    let transaction = prepareOutputTransaction(root, nextFiles, spool, previous, previousFiles,
         rootExisted, faults, lock)
     let plan = readOutputTransactionPlan(transaction)
     validateTransactionIdentity(transaction, plan)
@@ -253,6 +247,30 @@ internal func writeOwnedArtifactsLocked(outputDirectory: String, artifacts: Arra
     beforeCommit()
     ensureOutputLockCurrent(lock)
     commitOutput(root, transaction, plan, faultAfterOperation, interruptAfterOperation, faults, lock)
+}
+
+internal func writeOwnedSpoolWithLockHeld(outputDirectory: String,
+    spool: OutputArtifactSpool, lock: OutputLockHandle, forceOwned!: Bool = false,
+    faultAfterOperation!: ?Int64 = None, interruptAfterOperation!: ?Int64 = None,
+    transactionFaultPoint!: ?String = None): Unit {
+    writeOwnedSpoolLocked(outputDirectory, spool, forceOwned, faultAfterOperation,
+        interruptAfterOperation, transactionFaultPoint, lock, { => })
+}
+
+internal func writeOwnedArtifactsLocked(outputDirectory: String, artifacts: Array<RenderArtifact>,
+    forceOwned: Bool, faultAfterOperation: ?Int64, interruptAfterOperation: ?Int64,
+    transactionFaultPoint: ?String, lock: OutputLockHandle,
+    beforeCommit: () -> Unit): Unit {
+    // Reject a mismatched root before the adapter creates any spool state.
+    let root = canonicalForWrite(Path(outputDirectory), "output path")
+    ensureOutputLockCurrent(lock)
+    if (root.toString() != lock.root) {
+        throw IllegalStateException("output path does not match the held output lock")
+    }
+    let spool = OutputArtifactSpool(lock)
+    spool.appendArtifacts(artifacts)
+    writeOwnedSpoolLocked(outputDirectory, spool, forceOwned, faultAfterOperation,
+        interruptAfterOperation, transactionFaultPoint, lock, beforeCommit)
 }
 
 internal func writeOwnedArtifactsWithLockHeld(outputDirectory: String,
@@ -299,14 +317,6 @@ internal func withOutputLockReleaseFailureForTest(outputDirectory: String,
         File.writeTo(handle.path.join("owner.json"), "{}".toArray())
     } catch (error: Exception) { actionError = Some(error) }
     finishOutputLock(handle, actionError)
-}
-
-internal func staleLockQueryFailureAllowsRecoveryForTest(queryFailed: Bool): Bool {
-    let state = if (queryFailed) { OutputProcessState.Unknown } else { OutputProcessState.Dead }
-    match (state) {
-        case OutputProcessState.Dead => true
-        case OutputProcessState.Alive | OutputProcessState.Unknown => false
-    }
 }
 
 internal func validateOutputArtifactBudgetForTest(sizes: Array<Int64>): Unit {

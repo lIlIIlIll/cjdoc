@@ -58,16 +58,6 @@ private func overloadLayoutDocumentation(): DocumentationSet {
 @Test
 class HtmlOverloadContractLayoutTest {
     @TestCase
-    func compactContractColumnsDoNotReserveAFixedNineteenRemSlot(): Unit {
-        @Expect(HTML_STYLE.contains(".parameter-row{display:grid;grid-template-columns:fit-content(14rem)"))
-        @Expect(HTML_RETURN_LAYOUT_STYLE.contains("grid-template-columns:fit-content(14rem)"))
-        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains(".throws-row{display:grid;grid-template-columns:fit-content(14rem)"))
-        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains(".throws-row:last-child{border-bottom:0}"))
-        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains(".throws-list + .behavior-contracts{border-top:0"))
-        @Expect(HTML_RETURN_LAYOUT_STYLE.contains("@media(max-width:760px)"))
-    }
-
-    @TestCase
     func overloadBoundaryDoesNotAbsorbOtherMemberNames(): Unit {
         let documentation = overloadLayoutDocumentation()
         let owner = documentation.declarations[0]
@@ -78,6 +68,7 @@ class HtmlOverloadContractLayoutTest {
             if (artifact.path == "html/${symbolPagePath(owner)}") { html = artifact.content }
         }
         @Expect(!html.isEmpty(), true)
+        // One role="group" wrapper per overload family, never one per member.
         @Expect(html.split("data-cjdoc-overload-group").size, 2)
         @Expect(html.contains("data-overload-total=\"2\""), true)
         @Expect(html.contains("aria-labelledby=\"overloads-"), true)
@@ -87,17 +78,22 @@ class HtmlOverloadContractLayoutTest {
         @Expect(html.contains("data-cjdoc-toc-label=\"add(Int64"), true)
         @Expect(html.contains("data-cjdoc-toc-label=\"add(String"), true)
 
-        @Expect(html.contains("</div>\n<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${symbolAnchor(addAll)}\""), true)
+        // A member is a native <details> whose summary is the signature line.
+        @Expect(html.contains("</div>\n<div class=\"cj-member-row\"><details class=\"cj-member\"" +
+            " id=\"${symbolAnchor(addAll)}\""), true)
         @Expect(html.contains("data-member-name=\"addAll\""), true)
         @Expect(html.contains("id=\"${symbolAnchor(addAll)}-summary\""), true)
-        @Expect(html.contains("aria-labelledby=\"${symbolAnchor(addAll)}-actions-group-label ${symbolAnchor(addAll)}-summary\""), true)
-        @Expect(html.contains("class=\"parameter-declaration\""), true)
-        @Expect(html.contains("<span class=\"parameter-default\">= <code>10</code></span>"), true)
+        @Expect(html.contains("aria-labelledby=\"${symbolAnchor(addAll)}-actions-group-label " +
+            "${symbolAnchor(addAll)}-summary\""), true)
+        @Expect(html.contains("aria-controls=\"${symbolAnchor(addAll)}-actions\""), true)
+        @Expect(html.contains("class=\"cj-signature-inline cj-member__signature\""), true)
+        @Expect(html.contains("class=\"cj-params__declaration\""), true)
+        @Expect(html.contains("<span class=\"cj-params__default\">= <code>10</code></span>"), true)
         @Expect(html.contains("Only base ten is supported"), true)
-        @Expect(html.contains("<dl class=\"throws-list\""), true)
-        @Expect(html.contains("class=\"throws-row\""), true)
+        @Expect(html.contains("id=\"${docBlockAnchor(addAll, "parameters")}\""), true)
+        @Expect(html.contains("<dl class=\"cj-throws\""), true)
+        @Expect(html.contains("class=\"cj-throws__row\""), true)
         @Expect(html.contains("radix must equal 10"), true)
-        @Expect(html.contains("behavior-contract-single"), true)
         // A member detail heading follows its real structural parent. This
         // page has no custom group, so the chain is kind H2 -> overload H3 ->
         // detail H4: the contract inside an overload family is one level below
@@ -107,22 +103,45 @@ class HtmlOverloadContractLayoutTest {
         @Expect(html.contains("new entry matches value.toString()"), true)
         @Expect(!html.contains(">Behavior contracts</h3>"), true)
         @Expect(!html.contains(">Behavior contracts</h4>"), true)
-        @Expect(!html.contains("class=\"badge reference-state\""), true)
     }
 
     @TestCase
-    func filterKeepsOverloadCountInSyncWithoutExtraToggle(): Unit {
-        let script = HTML_SEARCH_SCRIPT
-        @Expect(script.contains("data-cjdoc-overload-group"), true)
-        @Expect(script.contains("matches === total"), true)
-        @Expect(script.contains("group.hidden = matches === 0"), true)
-        @Expect(script.contains("matches + \" / \" + total"), true)
-        // Other navigation groups legitimately assign group.open. Only the
-        // overload filtering block must avoid adding another accordion layer.
-        let start = script.indexOf("for (const group of overloadGroups) {").getOrThrow()
-        let end = script.indexOf("for (const group of memberGroups) {").getOrThrow()
-        @Expect(start < end, true)
-        let overloadFilter = script[start..end]
-        @Expect(!overloadFilter.contains("group.open ="), true)
+    func memberScriptsKeepTheDataHookContract(): Unit {
+        // The controller implementation is free to change, but the hooks the
+        // server markup exposes are a contract and must keep being consumed.
+        for (hook in ["data-cjdoc-overload-group", "data-cjdoc-member-actions",
+            "data-cjdoc-member-filter", "data-cjdoc-member-origin",
+            "data-cjdoc-members-expand", "data-cjdoc-members-collapse",
+            "data-cjdoc-copy-link", "data-cjdoc-copy-status"]) {
+            @Expect(HTML_SEARCH_SCRIPT.contains(hook), true)
+        }
+    }
+
+    @TestCase
+    func memberRowsKeepStableAnchorsAndActionChains(): Unit {
+        let documentation = overloadLayoutDocumentation()
+        let owner = documentation.declarations[0]
+        let intAdd = documentation.declarations[1]
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        var html = ""
+        for (artifact in artifacts) {
+            if (artifact.path == "html/${symbolPagePath(owner)}") { html = artifact.content }
+        }
+        let anchor = symbolAnchor(intAdd)
+        @Expect(html.contains("role=\"group\""), true)
+        @Expect(html.contains("data-cjdoc-member-actions"), true)
+        @Expect(html.contains("data-cjdoc-member-actions-toggle"), true)
+        @Expect(html.contains("data-cjdoc-copy-link=\"../" +
+            symbolReadablePagePath(intAdd) + "\""), true)
+        @Expect(html.contains("id=\"${anchor}-actions-copy-label\""), true)
+        @Expect(html.contains("id=\"${anchor}-actions-standalone-label\""), true)
+        @Expect(html.contains("data-cjdoc-copy-status"), true)
+        // Legacy vocabulary must not come back.
+        for (legacy in ["class=\"member-row\"", "class=\"declaration-summary member-detail\"",
+            "class=\"declaration-signature\"", "class=\"parameter-declaration\"",
+            "class=\"type-link\"", "class=\"signature-block\"", "class=\"member-detail-actions\"",
+            "class=\"member-browser-toolbar\"", "class=\"parameter-row\""]) {
+            @Expect(html.contains(legacy), false)
+        }
     }
 }

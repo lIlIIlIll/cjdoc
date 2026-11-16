@@ -59,7 +59,7 @@ private func expectCapturedPageHighlightPolicy(setting: String, expectedState: S
         @Expect(!html.isEmpty())
         @Expect(html.contains("&lt;script&gt;"))
         @Expect(!html.contains("<script>"))
-        @Expect(html.contains("<span class=\"code-"), expectedState == "complete")
+        @Expect(html.contains("<span class=\"cj-tok-"), expectedState == "complete")
     } finally { let _ = removeIfExists(project, recursive: true) }
 }
 
@@ -115,8 +115,8 @@ class CapturedPageHighlightGenerationTest {
                 if (artifact.path == "html/index.html") { home = artifact.content }
             }
             @Expect(home.contains("href=\"concepts/bindings.html\""))
-            @Expect(guide.split("class=\"inline-binding\"").size, 4)
-            let chipAt = guide.indexOf("class=\"inline-binding\"").getOrThrow()
+            @Expect(guide.split("<div class=\"cj-binding\">").size, 4)
+            let chipAt = guide.indexOf("<div class=\"cj-binding\">").getOrThrow()
             @Expect(guide.indexOf("Before real binding.").getOrThrow() < chipAt)
             @Expect(chipAt < guide.indexOf("After real binding.").getOrThrow())
             let indexAt = guide.indexOf("id=\"conceptual-bindings-heading\"").getOrThrow()
@@ -129,14 +129,14 @@ class CapturedPageHighlightGenerationTest {
             @Expect(!guide.contains("private/source.cj"))
             @Expect(guide.contains("Ordinary cjdoc-inline-binding-0 text."))
             @Expect(guide.contains("<blockquote><pre>&lt;!-- cjdoc-bind target="))
-            @Expect(!guide.contains("<p><div class=\"inline-binding\""))
-            @Expect(guide.split("<table>").size, 2)
-            let tableStart = guide.indexOf("<table>").getOrThrow()
+            @Expect(!guide.contains("<p><div class=\"cj-binding\">"))
+            @Expect(guide.split("<table class=\"cj-table\">").size, 2)
+            let tableStart = guide.indexOf("<table class=\"cj-table\">").getOrThrow()
             let tableEnd = guide.indexOf("</table>", tableStart).getOrThrow()
             let table = guide[tableStart..tableEnd]
             @Expect(table.contains("one"))
             @Expect(table.contains("three"))
-            @Expect(table.contains("class=\"inline-binding\""))
+            @Expect(table.contains("<div class=\"cj-binding\">"), true)
             @Expect(table.contains("TableTarget"))
         } finally { let _ = removeIfExists(project, recursive: true) }
     }
@@ -186,8 +186,8 @@ class CapturedPageHighlightGenerationTest {
                 }
                 @Expect(html.contains(api_render.renderStandaloneMarkdownHtml(original)))
                 @Expect(markdown, expectedMarkdown)
-                @Expect(!html.contains("class=\"inline-binding\""))
-                @Expect(!html.contains("class=\"conceptual-bindings\""))
+                @Expect(!html.contains("<div class=\"cj-binding\">"), true)
+                @Expect(!html.contains("class=\"cj-bindings cj-disclosure\""), true)
                 var captured = false
                 for (page in imported.pages where page.id == id) {
                     @Expect(page.bindings.isEmpty())
@@ -232,8 +232,8 @@ class CapturedPageHighlightGenerationTest {
                     if (artifact.path == "html/concepts/" + id + ".html") { html = artifact.content }
                     if (artifact.path == "markdown/concepts/" + id + ".md") { markdown = artifact.content }
                 }
-                @Expect(html.split("class=\"inline-binding\"").size, if (id == "lazy") { 1 } else { 2 })
-                @Expect(html.contains("class=\"conceptual-bindings\""), id != "lazy")
+                @Expect(html.split("<div class=\"cj-binding\">").size, if (id == "lazy") { 1 } else { 2 })
+                @Expect(html.contains("class=\"cj-bindings cj-disclosure\""), id != "lazy")
                 if (id == "inline") {
                     @Expect(html.contains("Inline `prefix"))
                     @Expect(html.contains("suffix` end."))

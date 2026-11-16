@@ -12,18 +12,18 @@ YJSON_COMMIT = "54b4965dee0f0b96710cbc678ec5ec9a126b055c"
 YJSON_MACROS_COMMIT = "fec0adce41f73d037d876cbac7a28aee8108bb5c"
 YJSON_LICENSE_SHA256 = "ff2bfac16f9884d002e66b1b2c75c20c626bc41ff31cdf411c5acdf224288295"
 YJSON_PACKAGE_MANIFEST_SHA256 = "b5500422a100a4bbfa44ec2bd93494a1b8ca545c51ebff37fce1719d484f1e95"
-YJSON_UPSTREAM_NOTICE_SHA256 = "bb2c645eed19b9243804ba40ca1b23161dbe7f2692d946e189f96866213628eb"
+YJSON_UPSTREAM_NOTICE_SHA256 = "e995c491fdc79fc8e90d25bc82e4455ceedd7cb1d7f39a29606f0aaca1f79804"
 YJSON_SOURCE_SHA256 = {
     "src/lib_json_patch.cj": "82115f63f01807f3e7057518579cea4e058baf51c0e767e93e867a3a9c34a5de",
     "src/lib_json_pointer.cj": "ac5ffe300745a4123fbf0f6ecfb73aa2fc3743c89945dda4bc56c11d1fadf012",
-    "src/lib_json_schema.cj": "bbaac0a63e4a28c57568a0d33bf7a9da7cdddb0457062ead6cc7649849326d21",
+    "src/lib_json_schema.cj": "ef7d2f872b8ed1557d10ae9e4f5a60931138ab2cef8002795892e7b694ea1091",
     "src/linear_regex.cj": "21a233eb8915bf9b78f4881093e30e007626e23c8be59bcac7282cf6ad62e3c5",
     "src/work_limits.cj": "6af3af0f970f47e87ab045ceaf9d9c4675ef7cdc23f27df2870a275b3f057e21",
 }
 YJSON_VENDOR_PATCHES = (
     {
         "path": "src/lib_json_schema.cj",
-        "reason": "Avoid large RuneArray allocation while counting JSON Schema string length.",
+        "reason": "Avoid large RuneArray allocation while counting JSON Schema string length; reuse private compiled-schema pointer targets without per-reference deep copies.",
     },
 )
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"

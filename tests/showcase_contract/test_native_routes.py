@@ -26,10 +26,13 @@ class NativeRouteTests(unittest.TestCase):
         write(f.site, "demo/types/other-overload.html", '<html lang="en"><h1>Other overload</h1></html>')
         self.owner = "demo/types/generated-owner.html"
         self.anchor = "native-not-a-symbolid-hash"
-        self.owner_html = ('<html lang="en"><details data-cjdoc-member id="' + self.anchor + '">'
-                           '<summary>add</summary><details><summary>More</summary></details>'
-                           '<a class="member-permalink" href="generated-route.html">Permalink</a>'
-                           '</details></html>')
+        self.owner_html = ('<html lang="en"><div class="cj-member-row">'
+                           '<details class="cj-member" data-cjdoc-member id="' + self.anchor + '">'
+                           '<summary class="cj-member__summary">add</summary>'
+                           '<div class="cj-member__body"><details><summary>More</summary></details></div>'
+                           '</details><div class="cj-member-actions">'
+                           '<a class="cj-member-actions__item cj-member-actions__item--standalone"'
+                           ' href="generated-route.html">Permalink</a></div></div></html>')
         write(f.site, self.owner, self.owner_html)
         self.declaration = {"id": f.page["symbolId"], "ownerId": "owner-id", "name": "add",
                             "qualifiedName": "Bag.add", "packageName": "demo.collections",
@@ -142,7 +145,7 @@ class NativeRouteTests(unittest.TestCase):
             self.resolved()
 
     def test_nonmember_link_cannot_supply_inline_anchor(self):
-        write(self.fixture.site, self.owner, '<html lang="en"><a class="member-permalink" '
+        write(self.fixture.site, self.owner, '<html lang="en"><a class="cj-member-actions__item cj-member-actions__item--standalone" '
                                            'href="generated-route.html">X</a></html>')
         with self.assertRaises(ContractError):
             self.resolved()
@@ -159,7 +162,8 @@ class NativeRouteTests(unittest.TestCase):
 
     def test_unclosed_details_are_rejected(self):
         with self.assertRaises(ContractError):
-            MemberLinks('<details id="x" data-cjdoc-member><summary>X</summary>')
+            MemberLinks('<details id="x" class="cj-member" data-cjdoc-member>'
+                        '<summary>X</summary>')
 
     def test_signature_requires_docir(self):
         del self.fixture.target["docIr"]

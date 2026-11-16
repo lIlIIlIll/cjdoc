@@ -62,7 +62,7 @@ async function measure(browser, root) {
       memberBrowserHeightPx: Math.round(document.querySelector('[data-cjdoc-member-browser]').getBoundingClientRect().height * 100) / 100,
       domNodes: document.getElementsByTagName('*').length,
       filterFrameMedianMs: frameTimes.length ? Math.round(frameTimes[Math.floor(frameTimes.length / 2)] * 100) / 100 : null,
-      inlineFullDetail: Boolean(first && first.tagName === 'DETAILS' && first.querySelector('.member-detail-body')),
+      inlineFullDetail: Boolean(first && first.tagName === 'DETAILS' && first.querySelector('.cj-member__body')),
     };
   });
   layout.typePageBytes = (await stat(typePage)).size;

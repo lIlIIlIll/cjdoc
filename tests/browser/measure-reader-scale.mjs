@@ -11,13 +11,28 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { chromium, playwrightVersion, distribution, entryIndex, installMetrics, pageMetrics,
   resourceSizes, screenshot, sha256, timedQuery, typeEntry } from './reader-scale-metrics.mjs';
-import { anchorFor, instrumentedPage, memberTasks, overloadTasks, queryTasks } from './reader-scale-tasks.mjs';
+import { anchorFor, instrumentedPage, memberTasks, openSearch, overloadTasks, queryTasks } from './reader-scale-tasks.mjs';
+
+async function cpuAffinityIdentity() {
+  if (process.platform !== 'linux') {
+    return { status: 'not-supported', reason: 'process CPU affinity is reported only on Linux' };
+  }
+  const status = await readFile('/proc/self/status', 'utf8');
+  const row = status.split('\n').find(line => line.startsWith('Cpus_allowed_list:'));
+  if (!row) throw new Error('Linux process CPU affinity is missing');
+  const logicalCpuList = row.slice('Cpus_allowed_list:'.length).trim();
+  if (!/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/.test(logicalCpuList)) {
+    throw new Error('Linux process CPU affinity is invalid');
+  }
+  return { status: 'measured', logicalCpuList,
+    scope: 'Node launcher process affinity; child processes inherit it' };
+}
 
 async function fontIdentities(report, inventory = false) {
-  // The installed environment is independent of which fonts the edited page uses.
-  // Actual per-node usage remains in the report and has its own registered check.
+  // Installed identity is a fixed host contract, independent of which families
+  // either reader happened to use. Usage is collected separately from the page.
   const families = new Set(inventory ? [
-    'DejaVu Sans Mono', 'Liberation Mono', 'Liberation Sans',
+    'DejaVu Sans', 'DejaVu Sans Mono', 'Liberation Mono', 'Liberation Sans',
     'Noto Sans CJK SC', 'Noto Serif CJK SC', 'WenQuanYi Zen Hei',
   ] : []);
   const visit = value => {
@@ -86,15 +101,23 @@ async function loadingTask(context, index, base) {
   try {
     const firstQuery = index.entries.find(entry => entry.kind === 'function');
     if (!firstQuery) throw new Error('Native corpus has no function entries');
+    // Keep initial DOM/heap independent of the first interaction. The
+    // navigation-relative probe time below still includes creating the dialog.
+    const coldMetrics = await pageMetrics(page, client);
+    await openSearch(page);
     const coldProbe = await timedQuery(page, firstQuery.qualifiedName);
+    if (!coldProbe.supported) throw new Error(`Cold loading search probe is unavailable: ${coldProbe.reason}`);
     const cold = { firstInteractiveProbeMs: await page.evaluate(() => performance.now()),
-      probeDeliveredResults: coldProbe.displayed > 0, ...await pageMetrics(page, client) };
+      probeDeliveredResults: coldProbe.displayed > 0, ...coldMetrics };
     await client.send('Network.setCacheDisabled', { cacheDisabled: false });
     await page.reload({ waitUntil: 'load' }); // Prime an enabled browser cache explicitly.
     await page.reload({ waitUntil: 'load' });
+    const warmMetrics = await pageMetrics(page, client);
+    await openSearch(page);
     const warmProbe = await timedQuery(page, firstQuery.qualifiedName);
+    if (!warmProbe.supported) throw new Error(`Warm loading search probe is unavailable: ${warmProbe.reason}`);
     const warm = { firstInteractiveProbeMs: await page.evaluate(() => performance.now()),
-      probeDeliveredResults: warmProbe.displayed > 0, ...await pageMetrics(page, client) };
+      probeDeliveredResults: warmProbe.displayed > 0, ...warmMetrics };
     const bytes = await readFile(path.join(config.site, 'search-index.json'), 'utf8');
     const parse = await page.evaluate(text => {
       const samples = [];
@@ -164,6 +187,12 @@ async function visualTasks(browser, index, manifest, base, output, locale, recor
   return records;
 }
 
+// A measurement pairs the current generator with a pinned older baseline, so
+// the observer addresses both markup generations by contract.
+const SIGNATURE_SELECTOR = '[data-cjdoc-member] summary .cj-signature-inline, ' +
+  '[data-cjdoc-member] summary .declaration-signature';
+const BODY_SELECTOR = '.cj-member__body, .member-detail-body';
+
 async function noScriptAndPrint(browser, index, manifest, base) {
   const ownerName = manifest.overloads[0]?.owner || manifest.visuals?.[0]?.qualifiedName;
   if (!ownerName) return { status: 'not-applicable', reason: 'external corpus defines no type-page task' };
@@ -181,7 +210,7 @@ async function noScriptAndPrint(browser, index, manifest, base) {
     const noScript = { memberCount: count, independentlyOpen: count >= 2 ? await page.locator('[data-cjdoc-member][open]').count() === 2 : null,
       accessibleTree: await page.locator('main').ariaSnapshot() };
     await page.emulateMedia({ media: 'print' });
-    const observePrint = () => page.evaluate(() => {
+    const observePrint = () => page.evaluate(([SIGNATURE, BODY]) => {
       const visible = element => {
         if (!element) return false;
         for (let node = element; node; node = node.parentElement) {
@@ -191,8 +220,8 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         }
         return [...element.getClientRects()].some(rect => rect.width > 0 && rect.height > 0);
       };
-      const signatures = [...document.querySelectorAll('[data-cjdoc-member] summary .declaration-signature')];
-      const bodies = [...document.querySelectorAll('.member-detail-body')];
+      const signatures = [...document.querySelectorAll(SIGNATURE)];
+      const bodies = [...document.querySelectorAll(BODY)];
       const ids = nodes => nodes.filter(visible).map(node => node.closest('[data-cjdoc-member]').id);
       const visibleSignatureIds = ids(signatures), visibleDetailIds = ids(bodies);
       return { contentVisible: visible(document.querySelector('main')),
@@ -201,7 +230,7 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         visibleSignatureIds, visibleDetailIds,
         overflowPx: Math.max(0, document.documentElement.scrollWidth - innerWidth),
         semantics: 'computed ancestor visibility and rendered boxes under print media, not paper pagination' };
-    });
+    }, [SIGNATURE_SELECTOR, BODY_SELECTOR]);
     const print = await observePrint();
     const printCounterexamples = [];
     if (count >= 2) {
@@ -212,13 +241,13 @@ async function noScriptAndPrint(browser, index, manifest, base) {
         await route.fulfill({ response, body: await response.text() +
           '\n@media print{' + hiddenSelector + '{display:none!important}}' });
       });
-      for (const selector of ['.member-detail-body', '[data-cjdoc-member] summary .declaration-signature', 'main']) {
+      for (const selector of [BODY_SELECTOR, SIGNATURE_SELECTOR, 'main']) {
         hiddenSelector = selector;
         await page.reload();
         await rows.evaluateAll(nodes => { nodes[0].open = true; nodes[nodes.length - 1].open = true; });
         const hidden = await observePrint();
         const detected = selector === 'main' ? !hidden.contentVisible && !hidden.signatures && !hidden.detailBodies
-          : selector === '.member-detail-body' ? hidden.detailBodies === 0 : hidden.signatures === 0;
+          : selector === BODY_SELECTOR ? hidden.detailBodies === 0 : hidden.signatures === 0;
         if (!detected) throw new Error('print observer missed CSS counterexample: ' + selector);
         printCounterexamples.push({ selector, detected, observation: hidden });
       }
@@ -241,6 +270,7 @@ const resources = await resourceSizes(config.site);
 const harness = Object.fromEntries(await Promise.all(
   ['measure-reader-scale.mjs', 'reader-scale-metrics.mjs', 'reader-scale-tasks.mjs']
     .map(async name => [name, sha256(await readFile(new URL(name, import.meta.url)))])));
+const affinity = await cpuAffinityIdentity();
 const hosted = await serve(config.site);
 let browser;
 try {
@@ -249,12 +279,13 @@ try {
   await new Promise(resolve => hosted.server.close(resolve));
   throw error;
 }
-const report = { schemaVersion: 'cjdoc.reader-browser/1', label: config.label,
+const report = { schemaVersion: 'cjdoc.reader-browser/2', label: config.label,
   recipe: manifest.recipe, sourceSha256: manifest.sourceSha256, taskManifestSha256: sha256(manifestBytes),
   harness,
   environment: { browser: await browser.version(), playwright: playwrightVersion, node: process.version,
     platform: process.platform, architecture: process.arch, locale: 'en-US', requestedUiLocale: config.locale,
     cpuThrottlingRate: 1,
+    cpuAffinity: affinity,
     jsHeapLimitMiB: 512, baselineViewport: { width: 1440, height: 900, deviceScaleFactor: 1 },
     network: 'local static server without transfer compression; file has no HTTP transfer',
     taskSemantics: 'scripted browser operations and elapsed automation time, not human completion time' },

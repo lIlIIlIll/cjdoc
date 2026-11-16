@@ -229,7 +229,8 @@ class ModelCodecCurrentSuite5 {
         @Expect(html.contains("--doc-topic"))
         @Expect(html.contains("<ol start=\"3\">"))
         @Expect(html.contains("type=\"checkbox\" disabled checked"))
-        @Expect(html.contains("<th class=\"align-center\">"))
+        @Expect(html.contains("<div class=\"cj-table-wrap\"><table class=\"cj-table\">"), true)
+        @Expect(html.contains("<th class=\"cj-align-center\">"))
         @Expect(html.contains("data-language=\"cangjie\""))
         @Expect(html.contains("data-cjdoc-attributes=\"{.numberLines}\""))
     }
@@ -287,13 +288,15 @@ class ModelCodecCurrentSuite5 {
             parameters: [ParameterDoc("left", intType), ParameterDoc("right", arrayType)],
             declarations: declarations)
         let html = codecRenderedText(HtmlDocumentationRenderer().render(documentation))
-        @Expect(html.contains("<dt class=\"parameter-declaration\"><code class=\"parameter-name\">left</code>"))
-        @Expect(html.contains("<dt class=\"parameter-declaration\"><code class=\"parameter-name\">right</code>"))
-        @Expect(html.contains("<a class=\"type-link\" href=\"../symbols/symbol-"))
+        @Expect(html.contains("<dt class=\"cj-params__term\"><code class=\"cj-params__declaration\">" +
+            "<span class=\"cj-params__name\">left</span>"), true)
+        @Expect(html.contains("<dt class=\"cj-params__term\"><code class=\"cj-params__declaration\">" +
+            "<span class=\"cj-params__name\">right</span>"), true)
+        @Expect(html.contains("<a class=\"cj-type-link\" href=\"../symbols/symbol-"))
         @Expect(html.contains(">Int64</a>"))
-        @Expect(html.contains(">Array</a>&lt;<a class=\"type-link\" href=\"../symbols/symbol-"))
+        @Expect(html.contains(">Array</a>&lt;<a class=\"cj-type-link\" href=\"../symbols/symbol-"))
         @Expect(html.contains(">String</a>&gt;"))
-        @Expect(html.contains("<code class=\"return-type\"><a class=\"type-link\""))
+        @Expect(html.contains("<span class=\"cj-returns__type\"><code><a class=\"cj-type-link\""))
         @Expect(!html.contains(">left</a>"))
     }
 
@@ -307,9 +310,13 @@ class ModelCodecCurrentSuite5 {
         let documentation = codecTypeLinkDocument(externalType,
             parameters: [ParameterDoc("unknown", unavailableType), ParameterDoc("maybe", ambiguousType)])
         let html = codecRenderedText(HtmlDocumentationRenderer().render(documentation))
-        @Expect(html.contains("<code class=\"parameter-type-code\" title=\"Documentation link unavailable\">UnknownType</code>"))
-        @Expect(html.contains("<code class=\"parameter-type-code\">MaybeType</code>"))
-        @Expect(html.contains("<code class=\"return-type\" title=\"Documentation link unavailable\">ExternalType</code>"))
+        // Unavailable and ambiguous types stay plain code inside the parameter
+        // type slot; only the resolved-but-unlinked case keeps a reason title.
+        @Expect(html.contains("<span class=\"cj-params__type\"><code " +
+            "title=\"Documentation link unavailable\">UnknownType</code></span>"), true)
+        @Expect(html.contains("<span class=\"cj-params__type\"><code>MaybeType</code></span>"), true)
+        @Expect(html.contains("<span class=\"cj-returns__type\"><code " +
+            "title=\"Documentation link unavailable\">ExternalType</code></span>"), true)
         @Expect(!html.contains(">UnknownType</a>"))
         @Expect(!html.contains(">MaybeType</a>"))
         @Expect(!html.contains(">ExternalType</a>"))
@@ -326,6 +333,9 @@ class ModelCodecCurrentSuite5 {
         let html = codecRenderedText(HtmlDocumentationRenderer().render(codecTypeDocument(
             returnType, canonicalTypes: true, documentation: documentation)))
         @Expect(html.contains("Returns"))
-        @Expect(html.contains("<div class=\"return-value\"><code class=\"return-type\" title=\"Documentation link unavailable\">Int64</code><div class=\"return-description\"><p>The computed result.</p>"))
+        // The type and its description stay on one row of the returns block.
+        @Expect(html.contains("<div class=\"cj-returns\"><span class=\"cj-returns__type\">" +
+            "<code title=\"Documentation link unavailable\">Int64</code></span>" +
+            "<div class=\"cj-returns__description\"><p>The computed result.</p>"))
     }
 }

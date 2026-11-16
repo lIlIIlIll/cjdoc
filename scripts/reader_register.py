@@ -33,8 +33,10 @@ REGISTRATION_FIELDS = {"baseline", "baselineQueryFailures", "presentation", "doc
 def validate_transition_budget(budget: dict, reference: Path) -> None:
     if "docIrTransition" not in budget and "ariaTransition" not in budget:
         return
-    if "presentation" in budget:
-        raise ValueError("exact IR/ARIA transitions cannot waive presentation or font equality")
+    # A transition freezes the exact IR/ARIA difference it allows; it never
+    # changes the numeric budgets. A presentation profile may be registered
+    # alongside it because a redesign changes typography and the accessible tree
+    # together, and both must be stated explicitly rather than derived.
     encoded = reference.read_bytes()
     registration = budget.get("transitionTemplate", {})
     if set(registration) != {"sha256"} or registration["sha256"] != hashlib.sha256(encoded).hexdigest():
@@ -42,6 +44,45 @@ def validate_transition_budget(budget: dict, reference: Path) -> None:
     core = {key: value for key, value in budget.items() if key not in REGISTRATION_FIELDS}
     if core != strict_loads(encoded, description="committed Reader threshold template"):
         raise ValueError("registered transition cannot modify the fixed Reader budgets")
+
+def validate_browser_contract(browser: dict) -> None:
+    if browser.get("schemaVersion") != "cjdoc.reader-browser/2":
+        raise ValueError("current cjdoc.reader-browser/2 evidence is required")
+    for transport in browser["transports"]:
+        for overload in transport["overloads"]:
+            details = overload.get("comparison", {}).get("details")
+            if not isinstance(details, list) or not details:
+                raise ValueError("overload contract details are absent")
+            for detail in details:
+                if not isinstance(detail, dict) or set(detail) != {
+                        "id", "signature", "parameters", "returnType", "authorFields"}:
+                    raise ValueError("overload contract must separate parameter fields and author text")
+                if not isinstance(detail["id"], str) or not isinstance(detail["signature"], str):
+                    raise ValueError("overload identity and original signature must be strings")
+                if detail["returnType"] is not None and not isinstance(detail["returnType"], str):
+                    raise ValueError("overload return type must remain an exact string or null")
+                parameters = detail["parameters"]
+                if not isinstance(parameters, list):
+                    raise ValueError("overload parameter inventory must be a list")
+                for parameter in parameters:
+                    if not isinstance(parameter, dict) or set(parameter) != {"name", "type", "defaultValue"}:
+                        raise ValueError("overload parameter fields are incomplete")
+                    if not isinstance(parameter["name"], str) or any(
+                            value is not None and not isinstance(value, str)
+                            for value in (parameter["type"], parameter["defaultValue"])):
+                        raise ValueError("overload parameter text must remain exact strings or null")
+                fields = detail["authorFields"]
+                if not isinstance(fields, list) or not fields:
+                    raise ValueError("overload author contract fields are absent")
+                ids = set()
+                for field in fields:
+                    if not isinstance(field, dict) or set(field) != {"id", "text"} or not all(
+                            isinstance(field[name], str) for name in ("id", "text")):
+                        raise ValueError("overload author field identity and text are incomplete")
+                    if not field["id"] or field["id"] in ids:
+                        raise ValueError("overload author field identity is empty or duplicated")
+                    ids.add(field["id"])
+
 
 
 def register(baseline: Path, template: Path, presentation: Path | None = None, *,
@@ -53,8 +94,6 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
         raise ValueError("registered percentiles require at least 20 raw samples")
     has_transition = doc_ir_transition is not None or aria_transition is not None
     if has_transition:
-        if presentation is not None:
-            raise ValueError("exact transitions cannot be combined with a presentation exemption")
         reference_bytes = REFERENCE_TEMPLATE.read_bytes()
         if budget != strict_loads(reference_bytes, description="committed Reader threshold template"):
             raise ValueError("exact transitions require unchanged committed Reader budgets")
@@ -86,6 +125,7 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
         browser_file = document(baseline, locale["browserReport"])
         browser_bytes = browser_file.read_bytes()
         browser = strict_loads(browser_bytes, description="baseline browser observation")
+        validate_browser_contract(browser)
         if browser["failures"]:
             raise ValueError("instrumentation failure cannot become a registered baseline")
         browser_hashes[locale["locale"]] = hashlib.sha256(browser_bytes).hexdigest()

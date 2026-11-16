@@ -21,11 +21,11 @@ internal class PublishedLanguageRoute {
 }
 
 private func addPublishedLanguageRoute(routes: ArrayList<PublishedLanguageRoute>,
-    files: HashMap<String, String>, route: PublishedLanguageRoute): Unit {
+    files: HashMap<String, LanguageHtmlPage>, route: PublishedLanguageRoute): Unit {
     let parts = route.href.split("#", 2)
     let file = files.get(route.language + ":" + parts[0])
     if (file.isNone()) { return }
-    if (parts.size == 2 && !file.getOrThrow().contains("id=\"" + escapeHtml(parts[1]) + "\"")) { return }
+    if (parts.size == 2 && !file.getOrThrow().anchorMembership.contains(escapeHtml(parts[1]))) { return }
     routes.add(route)
 }
 
@@ -49,14 +49,9 @@ protected func documentationHtmlAnchors(content: String): Array<String> {
 }
 
 internal func publishedLanguageRoutes(documentation: DocumentationSet, languages: Array<String>,
-    rendered: HashMap<String, Array<RenderArtifact>>): ArrayList<PublishedLanguageRoute> {
+    inventory: LanguageHtmlInventory): ArrayList<PublishedLanguageRoute> {
     let routes = ArrayList<PublishedLanguageRoute>()
-    let files = HashMap<String, String>()
-    for (language in languages) {
-        for (artifact in rendered[language] where artifact.path.startsWith("html/") && artifact.path.endsWith(".html")) {
-            files[language + ":" + artifact.path.removePrefix("html/")] = artifact.content
-        }
-    }
+    let files = inventory.files
     for (language in languages) {
         let view = projectDocumentationLanguage(documentation, language)
         let projection = RenderProjection(view)
@@ -101,11 +96,12 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
                 for (tag in comment.tags where !tag.fieldId.isEmpty()) { anchors[documentationFieldAnchor(tag.fieldId)] = (symbol.id, Some(tag.fieldId)) }
             }
         }
-        for (artifact in rendered[language] where artifact.path.startsWith("html/symbols/") && artifact.path.endsWith(".html")) {
-            let page = artifact.path.removePrefix("html/")
+        for (published in inventory.pages where published.language == language &&
+            published.route.startsWith("symbols/")) {
+            let page = published.route
             let owner = contexts.get(page)
             if (owner.isNone()) { continue }
-            for (anchor in documentationHtmlAnchors(artifact.content)) {
+            for (anchor in published.anchors) {
                 if (let Some((symbolId, sectionId)) <- anchors.get(anchor)) {
                     routes.add(PublishedLanguageRoute(language, page + "#" + anchor,
                         pageId: Some("context:" + owner.getOrThrow()), symbolId: Some(symbolId), sectionId: sectionId,

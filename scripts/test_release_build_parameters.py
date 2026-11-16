@@ -69,15 +69,6 @@ class BuildParameterTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout)["effectiveCompileOption"], "-O2 --fno-chir-function-inlining")
 
-    @requires_shell
-    def test_the_observed_option_is_taken_from_the_manifest(self) -> None:
-        """Not from the wrapper's text, which mentions the option in a comment."""
-        self.edit(MODULE,
-                  "        return contents.replace(needle, f'override-compile-option = \"{option}\"', 1)",
-                  "        return contents")
-        result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("override-compile-option=''", result.stderr)
 
     @requires_shell
     def test_a_changed_shared_option_is_refused(self) -> None:

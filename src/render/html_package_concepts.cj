@@ -61,12 +61,10 @@ private func packagePageExcerpt(page: DocumentationPage): String {
     ""
 }
 
-
-internal func appendPackageConceptualOverview(out: RenderTextBuffer, documentation: DocumentationSet,
-    projection: RenderProjection, pkg: PackageDoc, locale: String): Unit {
+private func selectedPackageOverviewPage(documentation: DocumentationSet,
+    projection: RenderProjection, pkg: PackageDoc, locale: String): ?DocumentationPage {
     var selected: ?DocumentationPage = None
-    let pages = selectedDocumentationPages(documentation, locale)
-    for (page in pages) {
+    for (page in selectedDocumentationPages(documentation, locale)) {
         if (let Some(owner) <- conceptualPackageOwner(documentation, projection, page)) {
             if (owner.moduleId != pkg.moduleId || owner.name != pkg.name) { continue }
             // The first configured guide is the entry when no dedicated overview
@@ -76,42 +74,71 @@ internal func appendPackageConceptualOverview(out: RenderTextBuffer, documentati
             }
         }
     }
-    if (let Some(page) <- selected) {
-        out.append("<section class=\"package-overview\" aria-label=\"" + label(locale, "Package overview", "包概述") + "\">")
-        let excerpt = packagePageExcerpt(page)
-        if (!excerpt.isEmpty()) {
-            out.append("<p")
-            if (let Some(language) <- page.language) {
-                out.append(" lang=\"")
-                out.append(escapeHtml(language))
-                out.append("\"")
+    selected
+}
+
+private func appendPackageExcerpt(w: HtmlWriter, page: DocumentationPage, locale: String): Unit {
+    let excerpt = packagePageExcerpt(page)
+    if (excerpt.isEmpty()) { return }
+    let attrs = ArrayList<HtmlAttr>()
+    if (let Some(language) <- page.language) { attrs.add(htmlAttr("lang", language)) }
+    w.textElement("p", excerpt, attrs: attrs.toArray())
+    let state = if (page.language.isNone()) { "unknown" } else if (page.language == Some(locale)) { "complete" } else { "fallback" }
+    appendContentLanguageHtml(w, DocTag("description", "", "", contentLanguage: page.language,
+        translationState: state), locale)
+}
+
+private func relatedPackagePages(documentation: DocumentationSet,
+    projection: RenderProjection, pkg: PackageDoc, page: DocumentationPage,
+    locale: String): Array<DocumentationPage> {
+    let result = ArrayList<DocumentationPage>()
+    let linkedSources = HashSet<String>()
+    let _ = linkedSources.add(page.source)
+    for (related in selectedDocumentationPages(documentation, locale) where related.id != page.id) {
+        if (linkedSources.contains(related.source)) { continue }
+        if (let Some(owner) <- conceptualPackageOwner(documentation, projection, related)) {
+            if (owner.moduleId == pkg.moduleId && owner.name == pkg.name) {
+                let _ = linkedSources.add(related.source)
+                result.add(related)
             }
-            out.append(">")
-            out.append(escapeHtml(excerpt))
-            out.append("</p>")
         }
-        let state = if (page.language.isNone()) { "unknown" } else if (page.language == Some(locale)) { "complete" } else { "fallback" }
-        appendContentLanguageHtml(out, DocTag("description", "", "", contentLanguage: page.language, translationState: state), locale)
-        out.append("<nav class=\"package-reading-paths\" aria-label=\"" + label(locale, "Read next", "接下来阅读") + "\"><ul><li><a class=\"package-overview-link\" href=\"../" + escapeHtml(page.route) + "\">" +
-            label(locale, "Read package overview", "阅读完整包概述") + "</a></li>")
-        let linkedSources = HashSet<String>()
-        let _ = linkedSources.add(page.source)
-        for (related in pages where related.id != page.id) {
-            if (linkedSources.contains(related.source)) { continue }
-            if (let Some(owner) <- conceptualPackageOwner(documentation, projection, related)) {
-                if (owner.moduleId == pkg.moduleId && owner.name == pkg.name) {
-                    let _ = linkedSources.add(related.source)
-                    out.append("<li><a href=\"../" + escapeHtml(related.route) + "\">" + escapeHtml(related.title) + "</a></li>")
+    }
+    result.toArray()
+}
+
+internal func appendPackageConceptualOverview(w: HtmlWriter, documentation: DocumentationSet,
+    projection: RenderProjection, pkg: PackageDoc, locale: String): Unit {
+    let selected = selectedPackageOverviewPage(documentation, projection, pkg, locale)
+    if (selected.isNone()) { return }
+    let page = selected.getOrThrow()
+    w.open("section", attrs: [htmlClass("cj-package-overview"),
+        htmlAttr("aria-label", label(locale, "Package overview", "包概述"))])
+    appendPackageExcerpt(w, page, locale)
+    w.element("nav", [htmlClass("cj-reading-paths"),
+        htmlAttr("aria-label", label(locale, "Read next", "接下来阅读"))]) { nav =>
+        nav.open("ul")
+        nav.element("li", []) { item =>
+            item.element("a", [htmlClass("cj-package-overview__link"),
+                htmlHref(documentationRouteHref("../" + page.route))]) { link =>
+                link.text(label(locale, "Read package overview", "阅读完整包概述"))
+            }
+        }
+        for (related in relatedPackagePages(documentation, projection, pkg, page, locale)) {
+            nav.element("li", []) { item =>
+                item.element("a", [htmlHref(documentationRouteHref("../" + related.route))]) { link =>
+                    link.text(related.title)
                 }
             }
         }
-        out.append("</ul></nav>")
-        out.append("<details class=\"page-source\"><summary>" + label(locale, "Source", "来源") +
-            "</summary><code>" + escapeHtml(page.source) + "</code></details></section>\n")
+        nav.close("ul")
     }
+    w.newline()
+    appendSourceDisclosure(w, page.source, label(locale, "Source", "来源"))
+    w.close("section")
+    w.newline()
 }
 
-internal func appendConceptualPackageReturn(out: RenderTextBuffer, documentation: DocumentationSet,
+internal func appendConceptualPackageReturn(w: HtmlWriter, documentation: DocumentationSet,
     projection: RenderProjection, route: ?String, source: ?String, prefix: String, locale: String): Unit {
     if (source.isNone() && route.isNone()) { return }
     var selected: ?DocumentationPage = None
@@ -122,9 +149,14 @@ internal func appendConceptualPackageReturn(out: RenderTextBuffer, documentation
     }
     if (let Some(page) <- selected) {
         if (let Some(pkg) <- conceptualPackageOwner(documentation, projection, page)) {
-            out.append("<p class=\"package-api-return\"><a href=\"" + prefix +
-                escapeHtml(packagePagePath(pkg.moduleId, pkg.name)) + "#declarations\">" +
-                label(locale, "Package API", "包 API") + " <code>" + escapeHtml(pkg.name) + "</code></a></p>\n")
+            let href = documentationRouteHref(prefix + packagePagePath(pkg.moduleId, pkg.name) + "#declarations")
+            w.element("p", [htmlClass("cj-package-return")]) { paragraph =>
+                paragraph.element("a", [htmlHref(href)]) { link =>
+                    link.text(label(locale, "Package API", "包 API") + " ")
+                    link.textElement("code", pkg.name)
+                }
+            }
+            w.newline()
         }
     }
 }

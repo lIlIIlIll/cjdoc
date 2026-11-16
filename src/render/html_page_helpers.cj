@@ -70,16 +70,16 @@ internal func summaryPlainText(comment: DocComment): String {
     }
 }
 
-internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
+internal func appendSummaryHtml(w: HtmlWriter, comment: DocComment,
     symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String,
     locale!: String = "en", fieldAnchorNamespace!: String = ""): Unit {
     if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
         if (let Some(tag) <- findTag(comment, "summary")) {
-            out.append("<div class=\"symbol-summary\">")
-            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix,
+            w.open("div", attrs: [htmlClass("cj-summary")])
+            appendDocumentationTagHtml(w, tag, locale, assetLookup, rootPrefix,
                 markdownHtmlContext(comment, symbol, 2, locale: locale,
                     fieldAnchorNamespace: fieldAnchorNamespace))
-            out.append("</div>")
+            w.close("div")
         }
         return
     }
@@ -87,18 +87,18 @@ internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
         case Some(paragraph) =>
             let context = markdownHtmlContext(comment, symbol, 2, locale: locale,
                 fieldAnchorNamespace: fieldAnchorNamespace)
-            out.append("<div class=\"symbol-summary\">")
-            appendMarkdownNodeHtml(out, paragraph, assetLookup, rootPrefix, context)
-            out.append("</div>\n")
-            ()
+            w.open("div", attrs: [htmlClass("cj-summary")])
+            appendMarkdownNodeHtml(w, paragraph, assetLookup, rootPrefix, context)
+            w.close("div")
+            w.newline()
         case None =>
             if (comment.markdown.children.isEmpty() && comment.markdown.literal.isEmpty() &&
                 !comment.summary.trimAscii().isEmpty()) {
-                out.append("<div class=\"symbol-summary\"><p>")
-                out.append(escapeHtml(comment.summary.trimAscii()))
-                out.append("</p></div>\n")
-                ()
-            } else { () }
+                w.element("div", [htmlClass("cj-summary")], { summary =>
+                    summary.textElement("p", comment.summary.trimAscii())
+                })
+                w.newline()
+            }
     }
 }
 
@@ -108,7 +108,7 @@ internal func docBlockAnchor(symbol: SymbolDoc, block: String): String {
     symbolAnchor(symbol) + "--" + block
 }
 
-internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+internal func appendDocumentationIntroductionHtml(w: HtmlWriter, symbol: SymbolDoc,
     rootPrefix: String, assetLookup: HashMap<String, String>, headingBase: Int64,
     locale: String, context!: ?HtmlMarkdownContext = None): Unit {
     let comment = match (symbol.documentation) {
@@ -119,25 +119,28 @@ internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol:
         case Some(value) => value
         case None => markdownHtmlContext(comment, symbol, headingBase, locale: locale)
     }
-    appendDocumentationIntroductionBodyHtml(out, comment, rootPrefix, assetLookup, locale, markdownContext)
-    appendDocumentationAdmonitionsHtml(out, comment, locale, assetLookup, rootPrefix, markdownContext)
+    appendDocumentationIntroductionBodyHtml(w, comment, rootPrefix, assetLookup, locale, markdownContext)
+    appendDocumentationAdmonitionsHtml(w, comment, locale, assetLookup, rootPrefix, markdownContext)
 }
 
-private func appendDocumentationIntroductionBodyHtml(out: RenderTextBuffer, comment: DocComment,
+private func appendDocumentationIntroductionBodyHtml(w: HtmlWriter, comment: DocComment,
     rootPrefix: String, assetLookup: HashMap<String, String>, locale: String,
     context: HtmlMarkdownContext): Unit {
     match (findTag(comment, "deprecated")) {
         case Some(tag) =>
-            out.append("<aside class=\"callout\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
-            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, context)
-            out.append("</aside>\n")
+            w.open("aside", attrs: [htmlClass("cj-note cj-note--callout")])
+            w.textElement("strong", label(locale, "Deprecated.", "已弃用。"))
+            w.text(" ")
+            appendDocumentationTagHtml(w, tag, locale, assetLookup, rootPrefix, context)
+            w.close("aside")
+            w.newline()
         case None => ()
     }
     if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
         if (let Some(tag) <- findTag(comment, "description")) {
-            out.append("<div class=\"description\">")
-            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, context)
-            out.append("</div>")
+            w.open("div", attrs: [htmlClass("cj-description")])
+            appendDocumentationTagHtml(w, tag, locale, assetLookup, rootPrefix, context)
+            w.close("div")
         }
         return
     }
@@ -145,15 +148,16 @@ private func appendDocumentationIntroductionBodyHtml(out: RenderTextBuffer, comm
     let summaryIndex = topLevelParagraphIndex(comment)
     if (comment.markdown.children.isEmpty() ||
         (comment.markdown.children.size == 1 && summaryIndex == 0)) { return }
-    out.append("<div class=\"description\">")
+    w.open("div", attrs: [htmlClass("cj-description")])
     var childIndex: Int64 = 0
     for (child in comment.markdown.children) {
         if (childIndex != summaryIndex) {
-            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+            appendMarkdownNodeHtml(w, child, assetLookup, rootPrefix, context)
         }
         childIndex++
     }
-    out.append("</div>\n")
+    w.close("div")
+    w.newline()
 }
 
 internal func markdownTreeHasDescriptionContent(node: MarkdownNode,
@@ -179,12 +183,12 @@ private func tagHasDescriptionContent(tag: DocTag, assets: HashMap<String, Strin
     }
 }
 
-private func appendEmptyDescriptionNoticeHtml(out: RenderTextBuffer, locale: String): Unit {
-    out.append("<span class=\"documentation-note\" data-documentation-state=\"empty\">" +
-        escapeHtml(label(locale, "Description is empty.", "说明为空。")) + "</span>")
+private func appendEmptyDescriptionNoticeHtml(w: HtmlWriter, locale: String): Unit {
+    w.textElement("span", label(locale, "Description is empty.", "说明为空。"),
+        attrs: [htmlClass("cj-note"), htmlAttr("data-documentation-state", "empty")])
 }
 
-private func appendParameterDescriptionHtml(out: RenderTextBuffer, parameter: ParameterDoc,
+private func appendParameterDescriptionHtml(w: HtmlWriter, parameter: ParameterDoc,
     comment: ?DocComment, locale: String, assets: HashMap<String, String>,
     rootPrefix: String, markdownContext: ?HtmlMarkdownContext): Unit {
     var tag: ?DocTag = None
@@ -192,60 +196,75 @@ private func appendParameterDescriptionHtml(out: RenderTextBuffer, parameter: Pa
         case Some(value) => tag = findTag(value, "param", subject: Some(parameter.name))
         case None => ()
     }
-    out.append("<dd class=\"parameter-description\"")
+    let attrs = ArrayList<HtmlAttr>([htmlClass("cj-params__description")])
     if (tag.isNone() && parameter.documentation.isNone()) {
-        out.append(" data-documentation-state=\"missing\"")
+        attrs.add(htmlAttr("data-documentation-state", "missing"))
     }
-    out.append(">")
+    w.open("dd", attrs: attrs.toArray())
     match (tag) {
         case Some(value) =>
             if (value.translationState.isEmpty() && !tagHasDescriptionContent(value, assets)) {
-                appendEmptyDescriptionNoticeHtml(out, locale)
+                appendEmptyDescriptionNoticeHtml(w, locale)
             } else {
-                appendDocumentationTagHtml(out, value, locale, assets,
+                appendDocumentationTagHtml(w, value, locale, assets,
                     rootPrefix, markdownContext.getOrThrow())
             }
         case None =>
             match (parameter.documentation) {
                 case Some(value) =>
                     if (value.trimAscii().isEmpty()) {
-                        appendEmptyDescriptionNoticeHtml(out, locale)
+                        appendEmptyDescriptionNoticeHtml(w, locale)
                     } else {
-                        appendStructuredTextHtml(out, value)
+                        appendStructuredTextHtml(w, value)
                     }
-                case None => out.append(escapeHtml(label(locale,
-                    "No description has been provided.", "尚未提供说明。")))
+                case None => w.text(label(locale,
+                    "No description has been provided.", "尚未提供说明。"))
             }
     }
-    out.append("</dd>")
+    w.close("dd")
 }
 
-private func appendParameterDocumentationHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+private func appendParameterDocumentationHtml(w: HtmlWriter, symbol: SymbolDoc,
     comment: ?DocComment, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String,
     locale: String, sectionHeading: String, assets: HashMap<String, String>,
     markdownContext: ?HtmlMarkdownContext): Unit {
     if (symbol.parameters.isEmpty()) { return }
-    out.append("<${sectionHeading} id=\"${docBlockAnchor(symbol, "parameters")}\">" +
-        "${label(locale, "Parameters", "参数")}</${sectionHeading}><dl class=\"parameter-list\">\n")
+    w.open(sectionHeading, attrs: [htmlAttr("id", docBlockAnchor(symbol, "parameters")),
+        htmlClass("cj-params__title")])
+    w.text(label(locale, "Parameters", "参数"))
+    w.close(sectionHeading)
+    w.open("dl", attrs: [htmlClass("cj-params")])
+    w.newline()
     for (parameter in symbol.parameters) {
-        out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">" +
-            "${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
-        appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
-            className: "parameter-type-code")
+        w.open("div", attrs: [htmlClass("cj-params__row")])
+        w.open("dt", attrs: [htmlClass("cj-params__term")])
+        w.open("code", attrs: [htmlClass("cj-params__declaration")])
+        w.textElement("span", parameter.name, attrs: [htmlClass("cj-params__name")])
+        w.textElement("span", ":", attrs: [htmlClass("cj-params__colon")])
+        w.text(" ")
+        w.open("span", attrs: [htmlClass("cj-params__type")])
+        appendTypeRefCodeHtml(w, parameter.typeRef, typeLinkIndex, rootPrefix, locale)
         match (parameter.defaultExpression) {
-            case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" +
-                escapeHtml(defaultExpression) + "</code></span>")
+            case Some(defaultExpression) =>
+                w.open("span", attrs: [htmlClass("cj-params__default")])
+                w.text("= ")
+                w.textElement("code", defaultExpression)
+                w.close("span")
             case None => ()
         }
-        out.append("</span></dt>")
-        appendParameterDescriptionHtml(out, parameter, comment, locale, assets, rootPrefix,
+        w.close("span")
+        w.close("code")
+        w.close("dt")
+        appendParameterDescriptionHtml(w, parameter, comment, locale, assets, rootPrefix,
             markdownContext)
-        out.append("</div>\n")
+        w.close("div")
+        w.newline()
     }
-    out.append("</dl>\n")
+    w.close("dl")
+    w.newline()
 }
 
-private func appendReturnDocumentationHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+private func appendReturnDocumentationHtml(w: HtmlWriter, symbol: SymbolDoc,
     comment: ?DocComment, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String,
     locale: String, sectionHeading: String, assets: HashMap<String, String>,
     markdownContext: ?HtmlMarkdownContext): Unit {
@@ -261,38 +280,133 @@ private func appendReturnDocumentationHtml(out: RenderTextBuffer, symbol: Symbol
     }
     if (!showReturnType && !hasReturnDocumentation) { return }
 
-    out.append("<${sectionHeading} id=\"${docBlockAnchor(symbol, "return")}\">" +
-        "${label(locale, "Returns", "返回值")}</${sectionHeading}><div class=\"return-value\"")
-    if (!hasReturnDocumentation) { out.append(" data-documentation-state=\"missing\"") }
-    out.append(">")
+    w.open(sectionHeading, attrs: [htmlAttr("id", docBlockAnchor(symbol, "return")),
+        htmlClass("cj-returns__title")])
+    w.text(label(locale, "Returns", "返回值"))
+    w.close(sectionHeading)
+    let attrs = ArrayList<HtmlAttr>([htmlClass("cj-returns")])
+    if (!hasReturnDocumentation) { attrs.add(htmlAttr("data-documentation-state", "missing")) }
+    w.open("div", attrs: attrs.toArray())
     if (showReturnType) {
-        appendTypeRefCodeHtml(out, symbol.returnType.getOrThrow(), typeLinkIndex, rootPrefix, locale,
-            className: "return-type")
+        w.open("span", attrs: [htmlClass("cj-returns__type")])
+        appendTypeRefCodeHtml(w, symbol.returnType.getOrThrow(), typeLinkIndex, rootPrefix, locale)
+        w.close("span")
     }
     if (!hasReturnDocumentation) {
-        out.append(" " + escapeHtml(label(locale,
-            "No description has been provided.", "尚未提供说明。")))
+        w.text(" " + label(locale, "No description has been provided.", "尚未提供说明。"))
     } else {
         match (comment) {
             case Some(value) =>
                 for (tag in value.tags) {
                     if (tag.name != "return" && tag.name != "returns") { continue }
-                    out.append("<div class=\"return-description\">")
+                    w.open("div", attrs: [htmlClass("cj-returns__description")])
                     if (tag.translationState.isEmpty() && !tagHasDescriptionContent(tag, assets)) {
-                        appendEmptyDescriptionNoticeHtml(out, locale)
+                        appendEmptyDescriptionNoticeHtml(w, locale)
                     } else {
-                        appendDocumentationTagHtml(out, tag, locale, assets,
+                        appendDocumentationTagHtml(w, tag, locale, assets,
                             rootPrefix, markdownContext.getOrThrow())
                     }
-                    out.append("</div>")
+                    w.close("div")
                 }
             case None => ()
         }
     }
-    out.append("</div>\n")
+    w.close("div")
+    w.newline()
 }
 
-internal func appendDocumentationHtml(out: RenderTextBuffer,
+private func appendThrowsDocumentationHtml(w: HtmlWriter, symbol: SymbolDoc,
+    comment: DocComment, index: HashMap<String, SymbolDoc>, rootPrefix: String,
+    locale: String, sectionHeading: String, assets: HashMap<String, String>,
+    markdownContext: HtmlMarkdownContext): Unit {
+    var hasThrows = false
+    for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
+    if (!hasThrows) { return }
+    w.open(sectionHeading, attrs: [htmlAttr("id", docBlockAnchor(symbol, "throws")),
+        htmlClass("cj-throws__title")])
+    w.text(label(locale, "Throws", "异常"))
+    w.close(sectionHeading)
+    w.open("dl", attrs: [htmlClass("cj-throws")])
+    w.newline()
+    for (tag in comment.tags) {
+        if (tag.name != "throws") { continue }
+        w.open("div", attrs: [htmlClass("cj-throws__row")])
+        w.open("dt", attrs: [htmlClass("cj-throws__type")])
+        appendTagSubjectHtml(w, tag, index, rootPrefix)
+        // Missing documentation links are not API behavior. Preserve true
+        // ambiguity locally, but keep the reason readable.
+        if (tag.referenceState == "ambiguous") {
+            w.text(" ")
+            w.textElement("span", htmlReferenceStateLabel(tag.referenceState, locale),
+                attrs: [htmlClass("cj-state-note"), htmlAttr("data-state", "ambiguous")])
+        }
+        w.close("dt")
+        w.open("dd", attrs: [htmlClass("cj-throws__description")])
+        appendDocumentationTagHtml(w, tag, locale, assets, rootPrefix, markdownContext)
+        w.close("dd")
+        w.close("div")
+        w.newline()
+    }
+    w.close("dl")
+    w.newline()
+}
+
+private func appendSeeAlsoHtml(w: HtmlWriter, comment: DocComment,
+    index: HashMap<String, SymbolDoc>, rootPrefix: String, locale: String,
+    sectionHeading: String, assets: HashMap<String, String>,
+    markdownContext: HtmlMarkdownContext): Unit {
+    var hasSee = false
+    for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
+    if (!hasSee) { return }
+    w.open(sectionHeading, attrs: [htmlClass("cj-see-also__title")])
+    w.text(label(locale, "See also", "另请参阅"))
+    w.close(sectionHeading)
+    w.open("ul", attrs: [htmlClass("cj-see-also__list")])
+    w.newline()
+    for (tag in comment.tags) {
+        if (tag.name != "see") { continue }
+        w.open("li", attrs: [htmlClass("cj-see-also__item")])
+        appendTagSubjectHtml(w, tag, index, rootPrefix)
+        if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
+            w.text(" ")
+            appendDocumentationTagHtml(w, tag, locale, assets, rootPrefix, markdownContext)
+        }
+        w.close("li")
+        w.newline()
+    }
+    w.close("ul")
+    w.newline()
+}
+
+private func appendTagMetadataHtml(w: HtmlWriter, comment: DocComment, locale: String,
+    sectionHeading: String, assets: HashMap<String, String>, rootPrefix: String,
+    markdownContext: HtmlMarkdownContext): Unit {
+    for (name in ["since", "author", "version"]) {
+        var opened = false
+        for (tag in comment.tags) {
+            if (tag.name != name) { continue }
+            if (!opened) {
+                w.open(sectionHeading, attrs: [htmlClass("cj-tag-meta__title")])
+                w.text(label(locale, tagHeading(name),
+                    match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" }))
+                w.close(sectionHeading)
+                w.open("ul", attrs: [htmlClass("cj-tag-meta__list")])
+                w.newline()
+                opened = true
+            }
+            w.open("li", attrs: [htmlClass("cj-tag-meta__item")])
+            appendDocumentationTagHtml(w, tag, locale, assets, rootPrefix, markdownContext)
+            w.close("li")
+            w.newline()
+        }
+        if (opened) {
+            w.close("ul")
+            w.newline()
+        }
+    }
+}
+
+internal func appendDocumentationHtml(w: HtmlWriter,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     headingBase!: Int64 = 3, includeContracts!: Bool = true,
@@ -303,76 +417,41 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
         case Some(comment) =>
             let markdownContext = markdownHtmlContext(comment, symbol, headingBase, locale: locale)
             if (includeIntroduction) {
-                appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale,
+                appendDocumentationIntroductionHtml(w, symbol, rootPrefix, assetLookup, headingBase, locale,
                     context: Some(markdownContext))
             }
-            appendParameterDocumentationHtml(out, symbol, Some(comment), typeLinkIndex,
+            appendParameterDocumentationHtml(w, symbol, Some(comment), typeLinkIndex,
                 rootPrefix, locale, blockHeading, assetLookup, Some(markdownContext))
-            appendReturnDocumentationHtml(out, symbol, Some(comment), typeLinkIndex,
+            appendReturnDocumentationHtml(w, symbol, Some(comment), typeLinkIndex,
                 rootPrefix, locale, blockHeading, assetLookup, Some(markdownContext))
-            var hasThrows = false
-            for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
-            if (hasThrows) {
-                out.append("<${blockHeading} id=\"${docBlockAnchor(symbol, "throws")}\">${label(locale, "Throws", "异常")}</${blockHeading}><dl class=\"throws-list\">\n")
-                for (tag in comment.tags) {
-                    if (tag.name == "throws") {
-                        out.append("<div class=\"throws-row\"><dt>")
-                        appendTagSubjectHtml(out, tag, index, rootPrefix)
-                        // Missing documentation links are not API behavior.
-                        // Preserve true ambiguity locally, but keep the reason readable.
-                        if (tag.referenceState == "ambiguous") {
-                            out.append(" <span class=\"reference-state-note\" data-state=\"ambiguous\">" +
-                                escapeHtml(htmlReferenceStateLabel(tag.referenceState, locale)) + "</span>")
-                        }
-                        out.append("</dt><dd>")
-                        appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
-                        out.append("</dd></div>\n")
-                    }
-                }
-                out.append("</dl>\n")
-            }
+            appendThrowsDocumentationHtml(w, symbol, comment, index, rootPrefix, locale,
+                blockHeading, assetLookup, markdownContext)
             if (includeContracts) {
-                appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol),
+                appendDocumentationContractsHtml(w, comment, locale, symbolAnchor(symbol),
                     assetLookup: assetLookup, rootPrefix: rootPrefix,
                     markdownContext: markdownContext, headingLevel: sectionHeadingLevel)
             }
-            appendDocumentationExamplesHtml(out, comment, locale,
+            appendDocumentationExamplesHtml(w, comment, locale,
                 headingLevel: sectionHeadingLevel, symbol: Some(symbol),
                 assetLookup: assetLookup,
                 rootPrefix: rootPrefix, markdownContext: markdownContext)
-            var hasSee = false
-            for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
-            if (hasSee) {
-                out.append("<${blockHeading}>${label(locale, "See also", "另请参阅")}</${blockHeading}><ul>\n")
-                for (tag in comment.tags) {
-                    if (tag.name != "see") { continue }
-                    out.append("<li>")
-                    appendTagSubjectHtml(out, tag, index, rootPrefix)
-                    if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
-                        out.append(" "); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
-                    }
-                    out.append("</li>\n")
-                }
-                out.append("</ul>\n")
-            }
-            for (name in ["since", "author", "version"]) {
-                var opened = false
-                for (tag in comment.tags) {
-                    if (tag.name != name) { continue }
-                    if (!opened) { out.append("<${blockHeading}>${escapeHtml(label(locale, tagHeading(name), match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" }))}</${blockHeading}><ul>\n"); opened = true }
-                    out.append("<li>"); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext); out.append("</li>\n")
-                }
-                if (opened) { out.append("</ul>\n") }
-            }
+            appendSeeAlsoHtml(w, comment, index, rootPrefix, locale, blockHeading,
+                assetLookup, markdownContext)
+            appendTagMetadataHtml(w, comment, locale, blockHeading, assetLookup, rootPrefix,
+                markdownContext)
         case None =>
-            out.append("<p class=\"empty-state\">${label(locale, "No documentation is available for this declaration.", "此声明暂无文档。")}</p>\n")
-            appendParameterDocumentationHtml(out, symbol, None, typeLinkIndex,
+            w.textElement("p", label(locale,
+                "No documentation is available for this declaration.", "此声明暂无文档。"),
+                attrs: [htmlClass("cj-empty")])
+            w.newline()
+            appendParameterDocumentationHtml(w, symbol, None, typeLinkIndex,
                 rootPrefix, locale, blockHeading, assetLookup, None)
-            appendReturnDocumentationHtml(out, symbol, None, typeLinkIndex,
+            appendReturnDocumentationHtml(w, symbol, None, typeLinkIndex,
                 rootPrefix, locale, blockHeading, assetLookup, None)
     }
 }
-private func appendTagSubjectHtml(out: RenderTextBuffer, tag: DocTag,
+
+private func appendTagSubjectHtml(w: HtmlWriter, tag: DocTag,
     index: HashMap<String, SymbolDoc>, rootPrefix: String): Unit {
     var destination: ?String = None
     var title = ""
@@ -386,35 +465,43 @@ private func appendTagSubjectHtml(out: RenderTextBuffer, tag: DocTag,
         if (let Some(target) <- index.get(targetId)) { destination = navigationHref(rootPrefix, symbolUrl(index, target)) }
     }
     if (let Some(url) <- destination) {
-        out.append("<a href=\"" + escapeHtml(url) + "\"")
-        appendNavigationAttributes(out, tag.navigation)
-        out.append(">")
+        w.open("a", attrs: documentationHrefAttrs(url, navigation: tag.navigation,
+            cssClass: "cj-tag-subject"))
     }
-    out.append("<code")
-    if (!title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
-    out.append(">" + escapeHtml(tag.subject) + "</code>")
-    if (destination.isSome()) { out.append("</a>") }
+    let subjectAttrs = ArrayList<HtmlAttr>()
+    if (!title.isEmpty()) { subjectAttrs.add(htmlAttr("title", title)) }
+    w.open("code", attrs: subjectAttrs.toArray())
+    w.text(tag.subject)
+    w.close("code")
+    if (destination.isSome()) { w.close("a") }
 }
 
-internal func appendSymbolArticle(out: RenderTextBuffer,
+internal func appendSymbolArticle(w: HtmlWriter,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     linkTitle!: Bool = false,
     locale!: String = "en"): Unit {
     let isMember = symbol.ownerId.isSome()
-    let titleTag = "h3"
     let tocRole = if (isMember) { "member" } else { "api" }
-    out.append("<article class=\"symbol-entry\" id=\"${symbolAnchor(symbol)}\"><${titleTag} class=\"symbol-title\" data-cjdoc-toc-role=\"${tocRole}\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\">")
+    w.open("article", attrs: [htmlClass("cj-symbol-entry"), htmlAttr("id", symbolAnchor(symbol))])
+    w.open("h3", attrs: [htmlClass("cj-symbol-entry__title"),
+        htmlAttr("data-cjdoc-toc-role", tocRole),
+        htmlAttr("data-cjdoc-toc-label", htmlTocLabel(symbol))])
     if (linkTitle) {
-        out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, symbol))}\"><code>${escapeHtml(readerQualifiedName(symbol))}</code></a>")
-    } else { out.append("<code>${escapeHtml(readerQualifiedName(symbol))}</code>") }
-    out.append("</${titleTag}>\n")
-    appendSymbolMetadata(out, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
-        locale: locale)
-    appendDocumentationHtml(out, index, symbol, rootPrefix, assetLookup,
+        w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(rootPrefix + symbolUrl(index, symbol)))])
+        w.textElement("code", readerQualifiedName(symbol))
+        w.close("a")
+    } else {
+        w.textElement("code", readerQualifiedName(symbol))
+    }
+    w.close("h3")
+    w.newline()
+    appendSymbolMetadata(w, index, symbol, rootPrefix, assetLookup, typeLinkIndex, locale: locale)
+    appendDocumentationHtml(w, index, symbol, rootPrefix, assetLookup,
         typeLinkIndex, headingBase: 2, locale: locale)
-    appendReaderRelationships(out, index, symbol, rootPrefix, typeLinkIndex, locale,
+    appendReaderRelationships(w, index, symbol, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
-    appendReverseTypeUsages(out, index, typeLinkIndex, symbol, rootPrefix, locale)
-    out.append("</article>\n")
+    appendReverseTypeUsages(w, index, typeLinkIndex, symbol, rootPrefix, locale)
+    w.close("article")
+    w.newline()
 }

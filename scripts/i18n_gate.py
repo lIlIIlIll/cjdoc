@@ -250,7 +250,8 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
         assert "CJDOC3032" in page.read_text()
         members = list((page.parent / "symbols").glob("*.html"))
         assert any("Explanation without executable code." in member.read_text() for member in members)
-        assert all('class="example-evidence"' not in member.read_text() for member in members)
+        # The HTML surface carries no per-example execution claim at all.
+        assert all("data-example-state" not in member.read_text() for member in members)
 
     author = json.loads((multi / "docs.json").read_text())
     routes = json.loads((multi / "site-manifest.json").read_text())["routes"]

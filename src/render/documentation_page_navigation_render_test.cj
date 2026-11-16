@@ -157,7 +157,7 @@ class DocumentationPageNavigationRenderTest {
             state: "resolved", id: Some(FROZEN_PAGE_RUN))])
         let unresolvedArtifacts = renderDocumentationFormatsWithOptions(unresolved, ["html", "markdown"], locale: "en")
         let unresolvedHtml = frozenPageContent(unresolvedArtifacts, "html/" + FROZEN_PAGE_ROUTE)
-        let chip = unresolvedHtml.split("class=\"conceptual-bindings\"", 2)[1].split("</section>", 2)[0]
+        let chip = unresolvedHtml.split("class=\"cj-bindings cj-disclosure\"", 2)[1].split("</details>", 2)[0]
         @Expect(!chip.contains("href="))
         @Expect(chip.contains("Wrong dependency version"))
         let unresolvedMarkdown = frozenPageContent(unresolvedArtifacts, "markdown/" + FROZEN_PAGE_ROUTE.removeSuffix(".html") + ".md")

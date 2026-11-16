@@ -1516,8 +1516,15 @@ private func resolveSchemaFragment(resource: JsonNode, fragment: String,
     if (fragment == "#" || fragment.isEmpty()) { return Some(JsonSchemaResolvedRef(resource, displayPath)) }
     if (fragment.startsWith("#/")) {
         try {
-            return Some(JsonSchemaResolvedRef(
-                JsonPointer.parseUriFragment(fragment).evaluate(resource).materialize(), displayPath))
+            // Resources are detached once at compilation and stay private.
+            // Pointer children are already frozen nodes; copying each $ref
+            // target again only allocates an identical validation subtree.
+            let target = match (JsonPointer.parseUriFragment(fragment).evaluate(resource)) {
+                case node: JsonNode => node
+                case _ => throw IllegalStateException(
+                    "compiled JSON Schema resource returned a non-node view")
+            }
+            return Some(JsonSchemaResolvedRef(target, displayPath))
         } catch (_: JsonException) {
             return None<JsonSchemaResolvedRef>
         }

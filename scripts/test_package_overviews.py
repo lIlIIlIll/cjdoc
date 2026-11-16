@@ -3,6 +3,7 @@
 import argparse
 from html.parser import HTMLParser
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -128,7 +129,7 @@ def main():
         api_marker = f'{role}_API_{version}'
         other_api = f'{"DEPENDENCY" if role == "ROOT" else "ROOT"}_API_{version}'
         assert api_marker in text and other_api not in text, name
-        assert ('class="package-overview"' in text) == (expectation is not None), name
+        assert ('class="cj-package-overview"' in text) == (expectation is not None), name
         assert 'This page describes the conceptual role' not in text, name
         assert 'catalogue-workflow-full-text' not in text, name
         data = json.loads((site / 'docs.json').read_text()) if (site / 'docs.json').exists() else None
@@ -143,7 +144,7 @@ def main():
         if expectation:
             assert expectation['moduleId'] == module
             guide = site / 'html' / expectation['route']
-            links = [href for cls, href in Page(text).links if cls == 'package-overview-link']
+            links = [href for cls, href in Page(text).links if 'cj-package-overview__link' in cls.split()]
             assert len(links) == 1 and reachable(package, links[0]) == guide.resolve(), name
             assert expectation['summary'] in text, name
             guide_text = guide.read_text()
@@ -156,7 +157,7 @@ def main():
                 assert any(p['id'] == expectation['pageId'] and p['route'] == expectation['route'] and
                            p['packageName'] == 'pocketkit' and p['source'] == expectation['source'] for p in data['pages']), name
             receipt.update({'guide': str(guide.relative_to(output)), **expectation})
-            section = text.split('<section class="package-overview"', 1)[1].split('</section>', 1)[0]
+            section = re.split(r'<section class="cj-package-overview"', text, maxsplit=1)[1].split('</section>', 1)[0]
             for alias in aliases:
                 assert alias not in section, name
                 alias_page = site / 'html' / alias
@@ -232,7 +233,7 @@ def main():
         guide = version_site / expectation['route']
         assert expectation['summary'] in text and expectation['bodyMarker'] in guide.read_text()
         assert all(marker not in guide.read_text() for marker in expectation['forbiddenBodyMarkers'])
-        link = [h for cls, h in Page(text).links if cls == 'package-overview-link'][0]
+        link = [h for cls, h in Page(text).links if 'cj-package-overview__link' in cls.split()][0]
         assert reachable(package, link) == guide.resolve()
         back = [h for _, h in Page(guide.read_text()).links if h.endswith('#declarations')][0]
         assert reachable(guide, back) == package.resolve()

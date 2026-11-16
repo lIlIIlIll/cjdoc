@@ -180,7 +180,7 @@ class SourceReferenceProjectionTest {
             "https://github.com/example/library/blob/${SOURCE_REFERENCE_TEST_REVISION}/src/api.cj#L4"
         var htmlHasExposureSource = false
         for (artifact in HtmlDocumentationRenderer().render(documentation)) {
-            if (artifact.content.contains("reexport-source")) {
+            if (artifact.content.contains("Exposure source")) {
                 htmlHasExposureSource = artifact.content.contains("Exposure source") &&
                     artifact.content.contains(expectedUrl)
             }
@@ -219,10 +219,10 @@ class SourceReferenceProjectionTest {
         var hasExposureSource = false
         var hasTargetSource = false
         for (artifact in HtmlDocumentationRenderer().render(documentation)) {
-            if (artifact.content.contains("reexport-source")) {
+            if (artifact.content.contains("Exposure source")) {
                 hasExposureSource = artifact.content.contains(exposureUrl)
             }
-            if (artifact.content.contains("source-action")) {
+            if (artifact.content.contains("cj-page-header__source")) {
                 hasTargetSource = artifact.content.contains(targetUrl)
             }
         }

@@ -77,9 +77,16 @@ public class DocumentationReadSnapshot {
         dependencyStates.get(moduleId).getOrDefault({ => (Option<DependencyInstance>.None, "unrecorded") })
     }
 
-    /** Versioned inventory whose links use the containing publication's document root. */
+    /**
+     * Versioned inventory whose links use the containing publication's document root.
+     *
+     * The snapshot already holds one projection of this model and proved its
+     * typed validity by encoding it at construction, so the inventory is
+     * serialized without building a second index or re-decoding a temporary
+     * copy of the whole document.
+     */
     public func renderSymbolInventory(): String {
-        renderSymbolIndex(documentation, hrefPrefix: "",
+        renderSymbolIndexProjected(documentation, projection, hrefPrefix: "",
             version: if (publicationRevision.isEmpty()) { None } else { Some(publicationRevision) })
     }
 

@@ -25,7 +25,7 @@ class AdmonitionHtml(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = {key: value or "" for key, value in attrs}
-        if tag == "aside" and "admonition" in attributes.get("class", "").split():
+        if tag == "aside" and "cj-admonition" in attributes.get("class", "").split():
             self.asides.append(attributes)
         if tag == "img":
             self.image_count += 1
@@ -103,9 +103,9 @@ def validate_products(output: Path, locale: str) -> tuple[Path, dict, dict, Path
     owner = next(entry for entry in index["entries"]
                  if entry.get("canonicalId") == member.get("ownerId"))
     owner_html = artifact_from_index(html_root, owner["href"]).read_text(encoding="utf-8")
-    assert owner_html.count("admonition-risk-danger") == 1
-    assert owner_html.count("admonition-risk-warning") == 1
-    assert owner_html.index("admonition-risk-danger") < owner_html.index("admonition-risk-warning")
+    assert owner_html.count("cj-risk--danger") == 1
+    assert owner_html.count("cj-risk--warning") == 1
+    assert owner_html.index("cj-risk--danger") < owner_html.index("cj-risk--warning")
     member_html = artifact_from_index(html_root, member["href"]).read_text(encoding="utf-8")
     member_asides = AdmonitionHtml(member_html).asides
     # Owner context can contribute additional admonitions without replacing the member's tags.

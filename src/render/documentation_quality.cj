@@ -3,7 +3,7 @@ package cjdoc.render
 import cjdoc.model.*
 import cjdoc.quality.*
 
-internal func appendDocumentationQualityArtifact(artifacts: RenderArtifactCollector,
+internal func appendDocumentationQualityArtifact(artifacts: RenderArtifactStore,
     documentation: DocumentationSet): Unit {
     let projection = RenderProjection(documentation)
     var meaningfulSymbols: Int64 = 0
@@ -38,5 +38,5 @@ internal func appendDocumentationQualityArtifact(artifacts: RenderArtifactCollec
     out.append("  \"symbols\": {\"total\": ${projection.visibleSymbols.size}, \"meaningful\": ${meaningfulSymbols}, \"percent\": ${coveragePercent(meaningfulSymbols, projection.visibleSymbols.size)}},\n")
     out.append("  \"parameters\": {\"total\": ${parameters}, \"meaningful\": ${meaningfulParameters}, \"percent\": ${coveragePercent(meaningfulParameters, parameters)}},\n")
     out.append("  \"findings\": [${findings.toString()}]\n}\n")
-    artifacts.addText("coverage/quality.json", "application/json", out.toString())
+    let _ = artifacts.addText("coverage/quality.json", "application/json", out.toString())
 }

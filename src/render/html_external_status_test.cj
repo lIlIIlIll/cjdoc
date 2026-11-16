@@ -31,7 +31,9 @@ class HtmlExternalStatusTest {
                 ExternalDocumentationReference(firstId, "support", "unavailable", "", reason: "Shared dependency index failure", index: "docs/support.json"),
                 ExternalDocumentationReference(secondId, "support", "unavailable", "", reason: "Shared dependency index failure", index: "docs/support.json"),
                 ExternalDocumentationReference(secondId, "other", "ambiguous", "", reason: "Distinct ambiguity"),
-                ExternalDocumentationReference(firstId, "available", "available", "https://docs.example.test/first.html")])
+                ExternalDocumentationReference(firstId, "available", "available", "https://docs.example.test/first.html"),
+                // Doc IR also admits validated relative destinations next to the site.
+                ExternalDocumentationReference(secondId, "local", "available", "./dependencies/ref.html")])
         let original = encodeDocIr(documentation)
         var checked = false
         for (artifact in rendererFor("html").render(decodeDocIr(original))) {
@@ -40,8 +42,10 @@ class HtmlExternalStatusTest {
             @Expect(html.split("Shared dependency index failure").size, 2)
             @Expect(html.split("Distinct ambiguity").size, 2)
             @Expect(html.split("id=\"external-reference-status\"").size, 2)
+            @Expect(html.contains("cj-external__status"), true)
             @Expect(html.split("href=\"#external-reference-status\"").size, 4)
             @Expect(html.contains("href=\"https://docs.example.test/first.html\""))
+            @Expect(html.contains("href=\"../dependencies/ref.html\""))
             @Expect(html.contains("public func first()"))
             @Expect(html.contains("public func second()"))
             checked = true

@@ -85,7 +85,7 @@ class UtilityRegion(HTMLParser):
         attrs = dict(attributes)
         if self.depth:
             self.depth += 1
-        elif "validation-page" in (attrs.get("class") or "").split():
+        elif "cj-validation" in (attrs.get("class") or "").split():
             self.start = self.position() + len(self.get_starttag_text())
             self.depth = 1
 
@@ -347,7 +347,7 @@ class SourceAction(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list) -> None:
         values = dict(attrs)
         if tag == "p":
-            self.active = "source-action" in values.get("class", "").split()
+            self.active = "cj-page-header__source" in values.get("class", "").split()
         elif tag == "a" and self.active:
             candidate = values.get("href", "")
             parsed = urlsplit(candidate)
@@ -499,7 +499,7 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     updated = updated.replace('</head>', '<link rel="stylesheet" href="report.css"><script defer src="report.js"></script></head>', 1)
     page.write_text(updated, encoding="utf-8")
     (root / "report.js").write_text(FILTER_SCRIPT, encoding="utf-8")
-    (root / "report.css").write_text('.validation-page{min-width:0}.validation-page section{scroll-margin-top:5rem;margin-block:2rem}.validation-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.validation-page code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.report-diagnostic[hidden]{display:none}.report-diagnostic h3,.report-diagnostic p{margin-block:.35rem}.report-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.report-filter input{flex:1;min-width:12rem;padding:.5rem}.validation-page table{width:100%;border-collapse:collapse}.validation-page td,.validation-page th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}.report-change td{white-space:pre-line}.report-change td{white-space:pre-line}', encoding="utf-8")
+    (root / "report.css").write_text('.cj-validation{min-width:0}.cj-validation section{scroll-margin-top:5rem;margin-block:2rem}.cj-validation pre{white-space:pre-wrap;overflow-wrap:anywhere}.cj-validation code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.report-diagnostic[hidden]{display:none}.report-diagnostic h3,.report-diagnostic p{margin-block:.35rem}.report-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.report-filter input{flex:1;min-width:12rem;padding:.5rem}.cj-validation table{width:100%;border-collapse:collapse}.cj-validation td,.cj-validation th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}.report-change td{white-space:pre-line}.report-change td{white-space:pre-line}', encoding="utf-8")
 
 
 def verify(root: Path, revision: str) -> None:

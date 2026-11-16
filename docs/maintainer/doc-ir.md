@@ -134,6 +134,10 @@ Doc IR `/18` 继续把三项类型语义事实命名平铺为必需的 `semantic
 
 公开 API 的 `GenerationRequest(..., maxDocIrMiB: 32)` 使用同一配置规则。`encodeDocIr`、`decodeDocIr` 和 `validateDocumentationSet` 接受可选的 `maxDocumentBytes` 字节预算，范围为 `1..67108864`。配置属于运行策略，不写入 Doc IR，schema/wire 格式不变。
 
+严格对象的字段白名单直接查询 codec 提供的固定小数组，避免为每个对象构造临时集合。vendored JSON Schema 在每个 schema 实例构造时已捕获私有、detached 的编译资源；内部 pointer `$ref` 只读复用其中的节点，不再为每次引用深拷贝相同子树。公开 schema 副本仍 detached，动态资源上下文和逐次引用工作预算不变。
+
+JSON 解析、raw shape/资源检查、完整 schema 验证、严格模型解码和引用验证仍全部执行。这些分配优化不改变 current-only、错误拒绝、wire 或预算契约，也不省略 `encodeDocIr` 的严格 round-trip。
+
 ## 验证
 
 边界测试若用通用 `JsonNode.parse` 构造大文档反例，应显式沿用 Doc IR 的字符串、输入和缓冲字节预算；其默认 **8 MiB** 缓冲可能先于被测 decoder 拒绝合法输入。辅助序列化也使用既有 Doc IR 输出预算，不提高产品上限；反例除目标资源边界外应保持 schema 合法。

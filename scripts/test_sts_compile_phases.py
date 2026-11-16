@@ -23,7 +23,12 @@ if sys.argv[1:] == ['-v']:
     raise SystemExit(0)
 argv = sys.argv[1:]
 command = argv[0]
-option = tomllib.loads(pathlib.Path('cjpm.toml').read_text())['package']['override-compile-option']
+manifest = pathlib.Path('cjpm.toml')
+option = tomllib.loads(manifest.read_text())['package']['override-compile-option']
+root_manifest = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'cjpm.toml'
+root_option = None
+if root_manifest.resolve() != manifest.resolve():
+    root_option = tomllib.loads(root_manifest.read_text())['package'].get('override-compile-option')
 target = None
 if command == 'test':
     target = pathlib.Path(argv[argv.index('--target-dir') + 1])
@@ -37,7 +42,8 @@ if command == 'build' and not os.environ.get('PROBE_EXIT_CODE'):
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_bytes(b'product-O2')
 with open(os.environ['PROBE_OBSERVATIONS'], 'a') as stream:
-    stream.write(json.dumps({'argv': argv, 'option': option, 'target': str(target) if target else None}) + '\n')
+    stream.write(json.dumps({'argv': argv, 'option': option, 'target': str(target) if target else None,
+                             'rootOption': root_option}) + '\n')
 raise SystemExit(int(os.environ.get('PROBE_EXIT_CODE', '0')))
 """
 
@@ -73,11 +79,21 @@ class CompilePhaseTests(unittest.TestCase):
         self.environment['PATH'] = str(probe) + os.pathsep + os.environ.get('PATH', '')
         self.environment.pop('CJDOC_STS_WRAPPER_CJPM', None)
         self.environment.pop('CJDOC_REAL_CJPM', None)
+        self.environment.pop('CJDOC_STS_COMPILER_DIAGNOSTICS', None)
 
-    def invoke(self, commands, **extra):
+    def invoke(self, commands, *, cwd=None, **extra):
         source = '. ' + shlex.quote(str(self.repo / 'scripts/with_sts_cjpm.sh'))
-        return subprocess.run([self.shell, '-c', source + ' && ' + commands], cwd=self.repo,
+        return subprocess.run([self.shell, '-c', source + ' && ' + commands], cwd=cwd or self.repo,
                               env=dict(self.environment, **extra), capture_output=True, text=True, timeout=60)
+
+    def provider_fixture(self):
+        """Create the provider fixture the wrapper treats as a diagnostics target."""
+        fixture = self.repo / 'tests/fixtures/projects/provider_plugin'
+        fixture.mkdir(parents=True)
+        manifest = fixture / 'cjpm.toml'
+        original = b'[package]\n  name = "provider_plugin_fixture"\n  override-compile-option = ""\n'
+        manifest.write_bytes(original)
+        return fixture, manifest, original
 
     def records(self, path):
         return [json.loads(line) for line in path.read_text().splitlines()]
@@ -138,6 +154,84 @@ class CompilePhaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([r['option'] for r in self.records(self.observed)], ['-O2 --fno-chir-function-inlining', '-O1'])
         self.assertEqual(self.manifest.read_bytes(), self.original)
+
+    def test_provider_run_retains_compiler_ir_without_changing_the_product_option(self):
+        fixture, manifest, original = self.provider_fixture()
+        diagnostics = 'D:\\a\\_temp\\cjdoc native ir'
+        for status in (0, 37):
+            with self.subTest(status=status):
+                self.observed.unlink(missing_ok=True)
+                self.log.unlink(missing_ok=True)
+                result = self.invoke('cjpm run --build-args "--jobs 1"', cwd=fixture,
+                                     CJDOC_STS_COMPILER_DIAGNOSTICS=diagnostics,
+                                     PROBE_EXIT_CODE=str(status))
+                self.assertEqual(result.returncode, status, result.stderr)
+                expected = (f'-O2 --fno-chir-function-inlining -V --save-temps "{diagnostics}"')
+                # What the compiler would read came back from TOML as exactly the
+                # requested argument: the Windows backslashes survived escaping and
+                # `cjpm`'s quote-grouping sees one --save-temps argument.
+                self.assertEqual([r['option'] for r in self.records(self.observed)], [expected])
+                self.assertEqual(self.records(self.observed)[0]['rootOption'], expected)
+                entry = self.records(self.log)[0]
+                self.assertEqual(entry['phase'], 'product-run')
+                self.assertEqual(entry['option'], expected)
+                self.assertEqual(entry['exitCode'], status)
+                # Both manifests are restored, including after a failed invocation.
+                self.assertEqual(manifest.read_bytes(), original)
+                self.assertEqual(self.manifest.read_bytes(), self.original)
+
+    def test_retention_leaves_the_optimisation_level_and_manifest_text_otherwise_intact(self):
+        fixture, manifest, original = self.provider_fixture()
+        result = self.invoke('cjpm run --build-args "--jobs 1"', cwd=fixture,
+                             CJDOC_STS_COMPILER_DIAGNOSTICS='/runner temp/ir')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        raw = self.records(self.observed)[0]['option']
+        self.assertTrue(raw.startswith('-O2 --fno-chir-function-inlining '), raw)
+        self.assertNotIn('-O1', raw)
+        # The next invocation without the request is the plain pinned option again.
+        result = self.invoke('cjpm run --build-args "--jobs 1"', cwd=fixture)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.records(self.observed)[-1]['option'], '-O2 --fno-chir-function-inlining')
+        self.assertEqual(manifest.read_bytes(), original)
+
+    def test_retention_is_refused_outside_the_provider_run(self):
+        """An inherited request must never add IR retention to another invocation."""
+        fixture, manifest, original = self.provider_fixture()
+        diagnostics = '/runner temp/ir'
+        cases = (
+            ('cjpm run --build-args "--jobs 1"', self.repo, '-O2 --fno-chir-function-inlining'),
+            ('cjpm build --jobs 1', fixture, '-O2 --fno-chir-function-inlining'),
+            ('cjpm test --jobs 1', fixture, '-O1'),
+        )
+        for command, cwd, expected in cases:
+            with self.subTest(command=command, cwd=cwd.name):
+                self.observed.unlink(missing_ok=True)
+                self.log.unlink(missing_ok=True)
+                result = self.invoke(command, cwd=cwd,
+                                     CJDOC_STS_COMPILER_DIAGNOSTICS=diagnostics)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual([r['option'] for r in self.records(self.observed)], [expected])
+                self.assertIn('CJDOC_STS_COMPILER_DIAGNOSTICS', result.stderr)
+                self.assertEqual(self.records(self.log)[-1]['option'], expected)
+        self.assertEqual(manifest.read_bytes(), original)
+        self.assertEqual(self.manifest.read_bytes(), self.original)
+
+    def test_an_unrepresentable_diagnostics_directory_stops_before_compiling(self):
+        """A path `cjpm` would split or truncate must fail, not silently compile."""
+        fixture, manifest, original = self.provider_fixture()
+        # Native paths survive Git Bash's POSIX-path conversion unchanged.
+        for diagnostics in ('relative/ir', 'D:\\a\\_temp\\ir\\', 'D:\\a\\_temp\\"quoted ir"',
+                            'D:\\a\\_temp\\ir;touch x', 'D:\\a\\_temp\\${HOME}'):
+            with self.subTest(diagnostics=diagnostics):
+                self.observed.unlink(missing_ok=True)
+                self.log.unlink(missing_ok=True)
+                result = self.invoke('cjpm run --build-args "--jobs 1"', cwd=fixture,
+                                     CJDOC_STS_COMPILER_DIAGNOSTICS=diagnostics)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('compiler diagnostics directory', result.stderr)
+                self.assertFalse(self.observed.exists())
+                self.assertEqual(manifest.read_bytes(), original)
+                self.assertEqual(self.manifest.read_bytes(), self.original)
 
     def test_worker_reads_its_pinned_manifest_and_records_its_own_binary(self):
         worker = self.repo / 'tools/chir-worker'

@@ -63,19 +63,22 @@ export async function pageMetrics(page, attachedClient = null) {
   const performanceMetrics = await client.send('Performance.getMetrics');
   const values = Object.fromEntries(performanceMetrics.metrics.map(item => [item.name, item.value]));
   let fonts = null;
+  // Font-node subscriptions must not instrument later interaction timings.
+  const fontClient = await page.context().newCDPSession(page);
   try {
-    await client.send('DOM.enable');
-    await client.send('CSS.enable');
-    const dom = await client.send('DOM.getDocument', { depth: 0 });
+    await fontClient.send('DOM.enable');
+    await fontClient.send('CSS.enable');
+    const dom = await fontClient.send('DOM.getDocument', { depth: 0 });
     fonts = [];
-    for (const selector of ['body', 'main h1', 'main p', '.declaration-signature',
-      '[data-cjdoc-member][open] .declaration-signature', 'pre code']) {
-      const node = await client.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector });
+    for (const selector of ['body', 'main h1', 'main p', '.cj-signature-inline',
+      '[data-cjdoc-member][open] .cj-signature-inline', 'pre code']) {
+      const node = await fontClient.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector });
       if (!node.nodeId) continue;
-      const sampled = (await client.send('CSS.getPlatformFontsForNode', { nodeId: node.nodeId })).fonts;
+      const sampled = (await fontClient.send('CSS.getPlatformFontsForNode', { nodeId: node.nodeId })).fonts;
       fonts.push(...sampled.map(font => ({ ...font, sampleSelector: selector })));
     }
   } catch (_) { fonts = null; /* Unsupported font identity is not an empty measurement. */ }
+  finally { await fontClient.detach(); }
   if (!attachedClient) await client.detach();
   const layout = await page.evaluate(() => {
     const rect = element => {
@@ -84,8 +87,8 @@ export async function pageMetrics(page, attachedClient = null) {
       return { width: box.width, height: box.height, scrollWidth: element.scrollWidth,
         scrollHeight: element.scrollHeight, clientWidth: element.clientWidth, clientHeight: element.clientHeight };
     };
-    const tocLinks = [...document.querySelectorAll('.on-this-page a, .toc a, [data-cjdoc-toc] a')];
-    const contextLinks = [...document.querySelectorAll('[data-cjdoc-context-item]')];
+    const tocLinks = [...document.querySelectorAll('.on-this-page a, .cj-toc a, [data-cjdoc-toc] a')];
+    const contextLinks = [...document.querySelectorAll('[data-cjdoc-tree-item]')];
     const wrapped = tocLinks.filter(link => link.getBoundingClientRect().height > parseFloat(getComputedStyle(link).lineHeight) * 1.6);
     const measurements = globalThis.__READER_BENCHMARK__;
     return { domNodes: document.getElementsByTagName('*').length,
