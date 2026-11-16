@@ -1,18 +1,20 @@
 # 按症状排查生成、检查与预览问题
 
-按页面上看到的现象找到对应小节，先做里面的第一项检查，再执行恢复操作。命令以[首次生成教程](../tutorials/first-site.md)创建的 `docdemo` 为输入，并从项目根目录运行；如果你排查的是其它项目，把 `--project .` 换成那个项目根。
+按你在终端或页面上看到的现象找到对应条目，先做「先检查」，再按「处理」恢复。命令以[生成第一个站点](../tutorials/first-site.md)创建的 `docdemo` 为输入并从项目根运行；排查其它项目时把 `--project .` 换成那个项目根。
 
-先记住退出码的含义，后面的小节会分别引用：
+## 先记住退出码
 
-- `0`：本次命令启用的规则都通过了。
-- `1`：文档诊断、质量门槛、示例检查或 API 门槛失败，生成本身可能仍然写出了产物。
-- `2`：命令用法、配置或输入路径错误，通常没有可用的新产物。
+| 退出码 | 含义 |
+|---|---|
+| `0` | 本次命令启用的规则都通过了 |
+| `1` | 文档诊断、质量门槛、示例检查或 API 门槛失败；生成本身可能仍写出了产物 |
+| `2` | 命令用法、配置或输入路径错误，通常没有可用的新产物 |
 
-## 命令找不到或启动报运行库错误
+## 命令找不到或启动失败
 
-**现象**：`cjdoc: command not found`，或启动时提示缺少仓颉运行库。
+**现象**：`cjdoc: command not found`；或启动时提示缺少仓颉运行库，例如 `error while loading shared libraries: libcangjie-std-ast.so: cannot open shared object file: No such file or directory`；或 `cjdoc: symbol lookup error: cjdoc: undefined symbol: …`。
 
-**先检查**：命令来自哪个位置、版本是多少。
+**先检查**：命令来自哪里、版本是多少。
 
 ```bash
 command -v cjdoc
@@ -21,45 +23,64 @@ cjc -v
 cjpm -v
 ```
 
-**操作**：命令找不到时，按[安装说明](../getting-started/install.md)把安装前缀加入 PATH；运行库报错时，在同一终端重新加载仓颉 SDK 的 `envsetup.sh`。新开的终端不会继承之前的 `export`，需要重新执行。
+**原因**：`cjdoc` 不在 `PATH` 中；或当前终端没有加载与 cjdoc 同一套仓颉 SDK 环境（新终端不会继承之前的 `export`）。
 
-**恢复后**：`command -v cjdoc` 输出安装目录中的绝对路径，`cjdoc --version` 输出当前版本，`cjc -v` 和 `cjpm -v` 报告同一套 SDK 的 1.2.0。
+**处理**：命令找不到时按[安装说明](../getting-started/install.md)把安装前缀加入 `PATH`。运行库或符号报错时，在同一终端重新加载仓颉 SDK 的 `envsetup.sh`，并用 `hash -r` 清掉 shell 的命令缓存。
+
+**恢复后**：`command -v cjdoc` 输出安装目录中的绝对路径，`cjdoc --version` 输出 `cjdoc 0.7.8`，`cjc -v` 与 `cjpm -v` 报告同一套 SDK 的 `1.2.0`。
+
+## 生成报项目根错误
+
+**现象**：生成时打印 `error[CJDOC1010]: project must contain cjpm.toml`，随后仍打印 `generated <目录>`，但退出码为 `1`。
+
+**先检查**：当前目录，以及 `--project` 指向的位置。
+
+```bash
+pwd
+test -f cjpm.toml && echo ok
+```
+
+**原因**：`--project` 指到了 `src/` 之类的子目录，或当前目录不是项目根。此时 cjdoc 仍会写出页面文件，但其中没有你项目的声明，所以「目录里有 HTML」不能说明收集成功。
+
+**处理**：先 `cd` 到含 `cjpm.toml` 的目录，或显式传入项目根：
+
+```bash
+cjdoc generate --project /你的/项目根 --format html --output target/doc
+```
+
+**恢复后**：诊断里不再出现 `CJDOC1010`，站点导航和搜索里能找到你的声明。
 
 ## 页面里看不到某个声明
 
-**现象**：生成成功，但站点导航和搜索里找不到你写的类型或函数。这通常不是注释写法的问题。
+**现象**：生成成功，但站点导航和搜索里找不到你写的类型或函数。
 
-**先检查**：`--project` 是否指向真正的项目根，声明是否在默认可见范围内。
+**先检查**：声明的可见修饰符，以及是否在条件编译分支里。
+
+**原因与处理**
+
+| 原因 | 处理 |
+|---|---|
+| 声明是 `internal` 或 `private` | 默认 `--audience external` 只展示 `public` 和 `protected`。`package` 包含非私有声明；要查看私有声明用 `all` |
+| 声明在条件编译分支里 | 按源码实际读取的条件传值，例如 `--cfg feature=enabled`。不要为了消除提示猜值 |
+| 项目是 workspace | 确认成员目录里有自己的 `cjpm.toml`，且没有越过 workspace 根；成员被跳过时诊断会说明原因 |
+| 诊断里仍有 `error` | 先修正诊断指向的源码位置，再重新生成 |
+
+查看更宽的可见范围：
 
 ```bash
-test -f cjpm.toml
-cjdoc generate --project . --format html --output target/troubleshoot-visible
+cjdoc generate --project . --format html --audience all \
+  --output target/troubleshoot-all
 ```
 
-`--project` 必须是含 `cjpm.toml` 的目录。把它指到 `src/` 之类的子目录时，会报告 `CJDOC1010`（如 `project must contain cjpm.toml`）并以 `1` 退出；此时仍会写出一个 `partial` 的空站点，所以“目录里有 HTML”不能说明收集成功。
+**恢复后**：新输出目录的 `html/index.html` 中，包页和搜索结果能找到所选受众范围内的声明，签名与源码一致。
 
-**操作**：按现象选择一种：
+`docs.json` 会保留收集到的声明内容。`--audience` 只决定页面展示和比较范围，不是 JSON 隐私过滤器；发布前不要把含内部声明事实的快照交给不受信任的读者。
 
-- 声明是 `internal` 或 `private`：默认 `--audience external` 只展示 `public` 和 `protected`。`package` 包含非私有声明；要查看私有声明，使用 `all`：
+## 声明出现了但没有说明文字
 
-  ```bash
-  cjdoc generate --project . --format html --audience all \
-    --output target/troubleshoot-all
-  ```
+**现象**：声明能搜索到、有独立页面，但摘要、参数或返回值是空的。
 
-- 声明在条件编译分支里：按源码实际读取的条件传入值，例如 `--cfg feature=enabled`。不要为了消除提示猜值。
-- 项目是 workspace：确认成员目录里有自己的 `cjpm.toml`，且没有越过 workspace 根。成员被跳过时诊断会说明原因。
-- 上面都正常，但诊断里仍有 `error`：先修正诊断指向的源码位置，再重新生成。
-
-**恢复后**：在本次输出目录的 `html/index.html` 中，包页和搜索结果能找到所选受众范围内的声明，签名与源码一致。
-
-需要留意：`docs.json` 会保留收集到的声明内容。`--audience` 只决定页面展示和比较范围，不是 JSON 隐私过滤器；发布前不要把含内部声明事实的快照交给不受信任的读者。
-
-## 声明出现了，但没有说明文字
-
-**现象**：声明在站点里能搜索到，也有独立页面，但摘要、参数或返回值是空的。
-
-公开声明即使完全没有注释，仍然会出现在站点里，页面上只有签名。要让它有说明，注释必须是紧贴在声明前的 `/** ... */` 文档注释；普通 `//` 或 `/* ... */` 不会绑定。
+**原因**：公开声明即使完全没有注释也会出现在站点里，页面上只有签名。要让它有说明，注释必须是紧贴在声明前的 `/** … */` 文档注释；普通 `//` 或 `/* … */` 不会绑定。
 
 **先检查**：当前 lint 报告了什么。
 
@@ -67,9 +88,15 @@ cjdoc generate --project . --format html --output target/troubleshoot-visible
 cjdoc check --project .
 ```
 
-标注为 `missing-symbol-doc`（`CJDOC3034`）表示可见声明完全没有注释；`missing-summary`、`missing-param`、`missing-return` 表示注释存在但对应字段为空。
+| 诊断码 | 含义 |
+|---|---|
+| `CJDOC3034` | 可见声明完全没有注释 |
+| `CJDOC3004` | 参数没有 `@param` |
+| `CJDOC3036` | 有摘要但没有详细说明 |
+| `CJDOC3037` | 有返回值但缺少 `@return` |
+| `CJDOC3038` | 缺少 `@example` |
 
-**操作**：按报告逐项补齐注释，例如：
+**处理**：按报告逐项补齐注释，例如：
 
 ```cangjie
 /**
@@ -83,9 +110,9 @@ public func greet(name: String): String {
 }
 ```
 
-**恢复后**：重新生成并刷新页面，摘要、参数和返回值都显示你写的内容；再次运行 `cjdoc check --project .` 时这些条目不再出现在报告里。
+**恢复后**：重新生成并刷新页面，摘要、参数和返回值都显示你写的内容；再次运行 `cjdoc check --project .` 时这些条目不再出现。
 
-`[lint]` 表可以调整各规则的严重级别（`off`、`warning`、`error`），例如把 `missing-example = "off"`。`--lint-profile off` 会关闭 lint，参数覆盖率也可能下降，即使页面仍显示 `@param` 说明。需要参数覆盖率时使用 `standard` 或 `strict`，详见[检查文档质量](check-quality.md)。
+`[lint]` 表可以调整各规则的严重级别（`off`、`warning`、`error`），例如把 `missing-example = "off"`。`--lint-profile off` 会关闭 lint，参数覆盖率也可能下降，即使页面仍显示 `@param` 说明；需要参数覆盖率时使用 `standard` 或 `strict`，见[检查文档质量](check-quality.md)。
 
 ## 修改源码后页面没更新
 
@@ -93,7 +120,7 @@ public func greet(name: String): String {
 
 **先检查**：浏览器打开的是不是本次输出目录中的文件，生成命令有没有实际重跑。
 
-**操作**：生成到明确的新目录，再打开那里的页面：
+**处理**：生成到明确的新目录，再打开那里的页面：
 
 ```bash
 cjdoc generate --project . --format html --no-cache \
@@ -101,83 +128,105 @@ cjdoc generate --project . --format html --no-cache \
 xdg-open target/troubleshoot-fresh/html/index.html
 ```
 
-如果正在使用 `serve`，保存文件后等服务终端再次显示生成成功，再刷新浏览器；预览不会自动刷新页面。若终端显示重建失败，服务会继续提供上一次成功的站点，因此“页面能打开”不代表新修改已经生效。
+正在使用 `serve` 时，保存文件后等服务终端再次打印生成结果，再手动刷新浏览器；预览不会自动刷新页面。终端显示重建失败时，服务继续提供上一次成功的站点，因此「页面能打开」不代表新修改已生效。
 
 **恢复后**：新页面显示修改后的摘要和签名。`--no-cache` 只跳过这次源码扫描的缓存读写，用来排除旧缓存的影响。
 
 ## 输出写不进去或提示目录被锁定
 
-**现象**：退出码 `2`，提示 `output directory ... is locked by process ...`、`unable to verify output lock owner process ...`，或指出某个已登记文件被手工修改、输出目录与缓存重叠。
+**现象**：退出码 `2`，终端出现下列之一。
 
-**先检查**：是否有仍在前台运行的生成或预览；`--output` 与 `--cache-dir` 是否落在彼此的目录里。
+| 提示 | 原因 | 处理 |
+|---|---|---|
+| `output directory '<路径>' is locked by process <pid>` | 同一父目录下还有生成或预览在写 | 等它结束；预览在其终端按 `Ctrl+C`，然后重试 |
+| `unable to verify output lock owner process <pid>; refusing unsafe recovery` | 旧锁的属主进程状态无法验证 | 不要删锁目录或改写 `owner.json`；换一个与旧输出、旧事务和缓存都不重叠的新父目录生成独立产物，见[输出仍被锁定时怎么办](manage-outputs.md#输出仍被锁定时怎么办) |
+| `owned output artifact '<相对路径>' was modified; use --force-owned to replace it` | 登记过的产物被手工改动 | 换新输出目录，或确认可丢弃修改后加 `--force-owned` |
+| `bounded read could not access file: '<目录>/.cjdoc-output.json'` | `--output` 指向已存在但不是 cjdoc 生成的目录 | 换一个尚不存在的目录；`--force-owned` 也不会接管它 |
+| `output directory '…' and source cache directory '…' overlap` | 缓存落在输出根内或反之 | 把 `--cache-dir` 移到输出根之外 |
 
-**操作**：
-
-- 有生成或预览在运行：等它结束；预览在其终端按 `Ctrl+C`，然后重试。
-- 已登记文件被手工修改：换一个新输出目录，或在确认不需要那些修改后加 `--force-owned`。
-- 输出与缓存重叠：把 `--cache-dir` 移到输出根之外。
-- 锁的所有者无法确认：不要删除锁目录或改写 `owner.json`，改用与旧输出、旧事务和缓存都不重叠的新父目录生成一份独立产物，步骤见[输出仍被锁定时怎么办](manage-outputs.md#输出仍被锁定时怎么办)。
-
-**恢复后**：命令以 `0` 结束并打印 `generated ...`，新输出目录中的页面可打开。旧输出和旧锁保持原样，不会被这次操作修复或接管。
+**恢复后**：命令以 `0` 结束并打印 `generated …`，新输出目录中的页面可打开。旧输出和旧锁保持原样，不会被这次操作修复或接管。
 
 ## 生成结果是 `partial`
 
 **现象**：命令结束但提示生成结果不完整，或 `docs.json` 里 `status` 为 `partial`。
 
-**先检查**：诊断指向哪些输入，以及 `apiCollectionState` 的值。
+先确保本次输出里包含 JSON 快照，再读取状态字段：
 
-`partial` 表示有一部分输入无法确定，不是所有结果都失效。先确认不完整部分是否影响你要执行的覆盖率检查、基线比较或外部链接，不要直接把它当作完整快照。
+```bash
+cjdoc generate --project . --format json --output target/doc-ir-capture
+python3 -c "import json;d=json.load(open('target/doc-ir-capture/docs.json'));print(d['status'], d['apiCollectionState'])"
+```
 
-**操作**：按诊断来源处理：
+`status` 取 `complete` 或 `partial`；`apiCollectionState` 独立取 `resolved`、`partial` 或 `unavailable`。`partial` 表示有一部分输入无法确定，不是所有结果都失效；先确认不完整部分是否影响你要做的覆盖率检查、基线比较或外部链接。
 
-- 指向 `@When` 条件：确认应用需要的条件值后显式传入，例如 `--cfg feature=enabled`：
+**处理**：按诊断来源处理。
 
-  ```bash
-  cjdoc generate --project . --format html --cfg feature=enabled \
-    --output target/troubleshoot-cfg
-  ```
+| 诊断来源 | 处理 |
+|---|---|
+| `@When` 条件 | 确认应用需要的条件值后显式传入，例如 `--cfg feature=enabled` |
+| workspace 成员（如 `CJDOC1010`） | 确认成员目录存在且含 `cjpm.toml`，再从 workspace 根重新生成 |
+| 依赖源码 | cjdoc 不代你下载依赖；先准备好依赖，再按[选择输入与依赖](select-inputs.md)引入 |
+| 仍无法消除 | 保留 `partial` 结果，按[状态与限制参考](../reference/states-and-limits.md)判断它适合哪类用途 |
 
-- 指向 workspace 成员（如 `CJDOC1010`）：确认成员目录存在且含有 `cjpm.toml`，再从 workspace 根重新生成。
-- 指向依赖源码：cjdoc 不会替你下载依赖。先准备好依赖，再按[选择输入与依赖](select-inputs.md)引入。依赖 warning 不一定将结果标为 `partial`；例如缺失 path 依赖的 `CJDOC2302` 可以与 `complete` 并存，仍应单独处理。
-- 仍无法消除：保留 `partial` 结果，按[状态与限制参考](../reference/states-and-limits.md)判断它适合哪类用途。
+依赖 warning 不一定把结果标为 `partial`；例如缺失 path 依赖的 `CJDOC2302` 可以与 `complete` 并存，仍应单独处理。
 
-**恢复后**：重新生成，确认诊断中不再有刚才处理的来源问题，再查看 `status` 与 `apiCollectionState`。仍有其它不完整项时，继续按其诊断处理，不要只凭网页可打开就忽略它们。
+**恢复后**：重新生成后诊断里不再有刚才处理的来源问题，`status` 与 `apiCollectionState` 符合你的输入条件。
 
 ## 示例检查失败
 
 **现象**：加了 `--check-examples` 后退出码 `1`，诊断指向示例代码。
 
-**先检查**：`cjc` 在当前 SDK 环境中可用，示例写在所属源码文件里。
+**先检查**：`cjc` 在当前 SDK 环境中可用，示例写在所属源码文件里，且片段只包含函数体内语句。
 
 ```bash
 cjc -v
 cjdoc check --project . --check-examples
 ```
 
-**操作**：按诊断码处理：
+**处理**：按诊断码处理。
 
 | 诊断码 | 含义与处理 |
 |---|---|
-| `CJDOC3030` | 示例代码自身编译失败；检查 `@example` 中的代码和指令。 |
-| `CJDOC3031` | 失败来自示例所属源码上下文；先让那个文件能在当前输入中解析、编译。 |
-| `CJDOC3033` | 指令语法、互斥关系或 `flags` 白名单错误。 |
-| `CJDOC3072` | 实际 stdout 与示例的 `output` 围栏不一致。 |
-| `CJDOC3074` | 当前环境无法建立运行所需的静态链接或内存限制能力。 |
+| `CJDOC3030` | 示例代码自身编译失败；检查 `@example` 中的代码和指令 |
+| `CJDOC3031` | 失败来自所属源码上下文；也用于超过 256 个示例的上限；先让该文件能在当前输入中编译 |
+| `CJDOC3032` | `@example` 中没有 `cangjie` 代码围栏（warning） |
+| `CJDOC3033` | 指令语法、互斥关系或 `flags` 白名单错误 |
+| `CJDOC3070` | 写了指令但没得到预期检查结果 |
+| `CJDOC3071` | 示例程序以非零状态退出，消息中带 stderr |
+| `CJDOC3072` | 实际 stdout 与 `output` 围栏不一致 |
+| `CJDOC3073` | 单次运行超过 10 秒被终止 |
+| `CJDOC3074` | 无法构建可执行文件或建立运行所需的内存限制 |
+| `CJDOC3075` | stdout 或 stderr 超过 64 KiB |
 
-示例代码只能是函数体内的片段，需要的 `import` 写在所属源码文件中。每个示例最多运行 10 秒，stdout 和 stderr 各 64 KiB，内存上限 2048 MiB，单次检查最多 256 个示例；超出限制时检查会失败。完整步骤见[检查示例](check-examples.md)。
+示例代码只能是函数体内的片段，需要的 `import` 写在所属源码文件中。每个示例最多运行 10 秒，stdout 和 stderr 各 64 KiB，内存上限 2048 MiB，单次检查最多 256 个示例。完整步骤见[检查示例](check-examples.md)。
 
-**恢复后**：`cjdoc check --project . --check-examples` 退出 `0`，所选示例的编译约定通过。带 `run` 的示例还实际运行完成；有 `output` 围栏时，其内容与实际输出一致。
+**恢复后**：`cjdoc check --project . --check-examples` 退出 `0`，所选示例的编译约定通过；带 `run` 的示例实际运行完成，有 `output` 围栏时其内容与实际输出一致。
+
+## 质量门槛失败
+
+**现象**：`cjdoc check` 打印 `error: global <指标> coverage <实际>% is below <门槛>%` 或 `error: package <包名> …`，退出码 `1`。
+
+**原因**：`cjdoc.toml` 的 `[coverage]` 门槛高于当前报告值，或 CLI 临时门槛高于实际覆盖。
+
+**处理**：先看失败指标的分母规则（`examples` 把没有注释的可见声明计入分母；`semanticLinks` 只算解析成功的链接；`parameters` 忽略 `_` 开头的参数），再补齐注释或调整阈值。键名拼错或阈值越界会以退出码 `2` 结束，提示 `unknown [coverage] setting '…'` 或 `coverage thresholds must be in 0..100`。
+
+**恢复后**：`cjdoc check --project .` 退出 `0`。门禁设置与计数口径见[检查文档质量](check-quality.md)。
 
 ## `render` 或 API 比较拒绝输入
 
-**现象**：`render` 报旧或未知的 Doc IR 版本；`diff` 报两份快照的 project、audience 或 cfgProfile 不一致。
+**现象**：`render` 报旧或未知的 Doc IR 版本；`diff` 报两份快照不一致。
 
-**先检查**：输入快照是不是当前格式、是不是用相同选项从对应版本源码生成的。
+**先检查**：快照是不是当前格式、是不是用相同选项从对应版本源码生成的。
 
-**操作**：
+```text
+error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/18'
+error: API diff inputs must match project, audience, and cfgProfile
+```
 
-- `render` 只接受当前 `cjdoc.doc-ir/18`。原始源码还在时，用当前 cjdoc 重新执行 `generate --format json`；没有源码时，没有受支持的旧快照迁移路径。
-- `diff` 要求两份快照的项目、audience 和 cfgProfile 一致。用相同的 `--audience`、`--cfg` 从对应版本的源码重新生成两份快照再比较。
+**处理**
+
+- `render` 只接受当前 `cjdoc.doc-ir/18`。源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的旧快照迁移路径。
+- `diff` 要求两份快照的项目、受众和 cfgProfile 一致。用相同的 `--audience`、`--cfg` 从对应版本源码重新生成两份快照再比较。
 
 **恢复后**：`render` 从保存的快照生成 HTML/Markdown；`diff` 输出只反映两份同源快照之间的真实差异。流程见[重渲染快照](render-snapshots.md)和[比较 API 并组合版本站点](compare-and-version.md)。
 
@@ -187,33 +236,62 @@ cjdoc check --project . --check-examples
 
 **先检查**：端口是否被占用，最近一次构建的状态是什么。
 
-**操作**：端口冲突时换一个空闲端口，并让浏览器地址使用同一端口：
+**处理**
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `error: Failed to bind 98: Address already in use.` | 端口已被占用 | 换一个空闲端口，浏览器地址同步修改 |
+| 终端已返回提示符且连接被拒绝 | 服务已退出（如 `--project` 不可用） | 修正 `--project` 后重启 |
+| `serve: rebuild failed; keeping the last successful site` | 重建抛错，服务继续用上次成功站点 | 读终端 `error:` 行修正输入，保存触发重建或重启 |
+| `serve: generated html with diagnostics` 且页面未变 | 本次构建有 error 级诊断 | 按终端诊断修正后再次保存 |
+| `status` 为 `error` | 最近一次构建失败 | 查看 `lastError` 与终端诊断，修正后等重建 |
+
+换端口：
 
 ```bash
 cjdoc serve --project . --port 8081
 ```
 
-访问 `http://127.0.0.1:8081/__cjdoc/status.json`。`status` 为 `ok` 表示最近一次构建成功；为 `error` 时查看 `lastError`，修正对应的源码、指南或配置后等待重建。之前已有成功站点时，服务会继续提供它。停止服务在运行它的终端按 `Ctrl+C`。
+再读取状态：
 
-**恢复后**：`status` 回到 `ok`，刷新浏览器能看到最新内容。`builds`、`successfulBuilds` 等字段的含义见 [CLI 的 serve 参考](../reference/cli.md#serve)。若是输出目录或锁冲突，先停止服务，按[管理输出](manage-outputs.md)处理。
+```bash
+curl -fsS http://127.0.0.1:8081/__cjdoc/status.json
+```
+
+`status` 为 `ok` 表示最近一次构建成功；为 `error` 时查看 `lastError`（通常是 `documentation build failed`）。之前已有成功站点时，服务会继续提供它。停止服务在运行它的终端按 `Ctrl+C`。
+
+**恢复后**：`status` 回到 `ok`，刷新浏览器能看到最新内容。`builds`、`successfulBuilds` 等字段含义见 [CLI 的 serve 参考](../reference/cli.md#serve)。若是输出目录或锁冲突，先停止服务，按[管理输出](manage-outputs.md)处理。
 
 ## 命令报配置或选项错误
 
 **现象**：退出码 `2`，提示未知选项、冲突选项或配置无法解析。
 
-**先检查**：完整命令与 `cjdoc.toml` 中的拼写。
+**先检查**：完整命令的拼写，以及 `cjdoc.toml` 中的键名。
 
 ```bash
 cjdoc --help
 ```
 
-`cjdoc --help` 只提供顶层帮助，子命令没有独立帮助。常见冲突包括：`--stdout` 不能与 `--output` 同用、`render` 必须给 `--input`、`--doc-version` 必须同时生成 HTML、`--cjpm-cache` 必须与 `--include-cached-dependencies` 一起使用、`check` 不接受输出和 `--force-owned` 选项。
+`cjdoc --help` 只提供顶层帮助；子命令没有独立帮助，给子命令加 `--help` 会得到 `error: unknown option '--help'`。
 
-若管道收到的内容不是完整 JSON，检查是否只选了一个 `json`、`api-surface`、`coverage` 或 `symbol-index` 格式；`--stdout` 不接受 HTML、Markdown 或多个格式。诊断始终写到标准错误，重定向时只保留标准输出才能得到单个 JSON 文档。
+常见冲突与提示：
 
-**操作**：按提示修正命令或配置。不要用关闭质量检查来绕过真实的输入错误。
+| 提示 | 原因 |
+|---|---|
+| `error: --stdout and --output are mutually exclusive` | 同时要标准输出和目录输出 |
+| `error: --stdout requires exactly one JSON-producing format` | 选了 HTML、Markdown 或多个格式 |
+| `error: render requires --input` | `render` 缺输入快照 |
+| `error: --doc-version requires --format html` | 加了版本标签但没有生成 HTML |
+| `error: --cjpm-cache requires --include-cached-dependencies` | 只给了缓存目录 |
+| `error: check does not accept render output options` | 给 `check` 加了 `--format`、`--output` 或 `--stdout` |
+| `error: check does not accept --force-owned` | `check` 不接受所有权选项 |
+| `error: --jobs must be in 1..64` | 并行度越界 |
 
-**恢复后**：修改后的命令不再报用法错误，并按预期执行。完整选项、默认值和退出码见[CLI 参考](../reference/cli.md)，配置键见[配置参考](../reference/configuration.md)。
+若管道收到的内容不是完整 JSON，检查是否只选了一个 `json`、`api-surface`、`coverage` 或 `symbol-index` 格式。诊断始终写到标准错误，重定向时只保留标准输出才能得到单个 JSON 文档。
+
+**处理**：按提示修正命令或配置。不要用关闭质量检查来绕过真实的输入错误。
+
+**恢复后**：修改后的命令不再报用法错误，并按预期执行。完整选项、默认值和退出码见 [CLI 参考](../reference/cli.md)，配置键见[配置参考](../reference/configuration.md)。
 
 ## 下一步
 

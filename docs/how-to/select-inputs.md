@@ -1,33 +1,32 @@
-# 选择要生成文档的源码与依赖
+# 选择要生成文档的源码、依赖与条件编译
 
-本页用一个本地 workspace 依次演示：cjdoc 默认发现哪些源码、怎样加入路径依赖、怎样声明条件编译值、怎样显式指定依赖源码，以及怎样读取 cjpm 已经准备好的依赖缓存。每步生成到独立输出目录，你可以在页面和 `docs.json` 里看到声明范围的差别。
+用 `--include-path-dependencies`、`--cfg`、`--audience`、`--dependency-source`、`--cjpm-cache` 和 `--build-context` 决定一次生成读取哪些源码、按什么条件读取，并确认结果里真的出现了这些声明。
 
-## 前提
+## 什么时候用本页
 
-- 已按[安装 cjdoc](../getting-started/install.md)安装 `cjdoc`，并在当前终端加载仓颉 SDK 1.2.0 环境，`cjc` 和 `cjpm` 都可用。
-- 使用 Bash 和 Python 3；Python 用于显示生成文件中的字段。
-- 最后一节会运行 `cjpm build`，需要网络取回其中固定的 Git 依赖；前面几节只读本地源码，不需要网络。
+- 项目是 workspace，或通过路径依赖、Git 依赖使用别的库，而你想让依赖 API 也出现在站点里。
+- 声明带 `@When` 等条件编译注解，需要给出条件值才会出现。
+- 需要把私有声明一起写进文档（内部设计说明），或者已经用 cjpm 取好了依赖源码，只想让 cjdoc 读取缓存。
 
-本页只在 `$HOME/.cache/cjdoc/examples` 下创建自己的练习目录，不读取 cjdoc 源码，也不修改你已有的项目。先建好练习根目录：
+只想给一个普通库生成站点、没有依赖和条件编译时，不需要这里的任何选项，直接按[生成与发布](generate-and-publish.md)操作。
+
+## 前提条件
+
+- 已按[安装 cjdoc](../getting-started/install.md)安装 `cjdoc`，当前终端已加载仓颉 SDK 1.2.0 环境，`cjc` 与 `cjpm` 可用。
+- Bash 与 Python 3；下面用 Python 读取生成出来的 JSON。
+- 练习目录放在磁盘文件系统上，`$HOME/.cache` 用 `df -T "$HOME/.cache"` 确认不是 tmpfs。
+
+生成不要求先编译项目：cjdoc 直接读 `cjpm.toml` 和源码。整个练习只读你自己的练习目录：
 
 ```bash
 mkdir -p "$HOME/.cache/cjdoc/examples"
-```
-
-`$HOME/.cache` 要位于磁盘文件系统。下面每节各自创建需要的目录和变量，每个变量在本页只定义一次，之后一直沿用同一个值。
-
-## 准备 workspace 与路径依赖
-
-这个 workspace 有两个成员 `app`、`peer`；`shared` 是 `app` 的路径依赖，但不是 workspace 成员。两类输入因此可以分别观察。先创建目录和变量：
-
-```bash
 TASK_ROOT="$(mktemp -d "$HOME/.cache/cjdoc/examples/inputs.XXXXXX")"
 mkdir -p "$TASK_ROOT/workspace/packages/app/src" \
   "$TASK_ROOT/workspace/packages/peer/src" \
   "$TASK_ROOT/workspace/shared/src"
 ```
 
-`TASK_ROOT` 是本次练习的私用根目录，下面所有 workspace 相关命令都用这个值。
+`$TASK_ROOT` 是本次练习的根目录，后面所有命令都沿用它。写入 workspace 成员和一份路径依赖：
 
 ```bash
 cat > "$TASK_ROOT/workspace/cjpm.toml" <<'EOF'
@@ -88,18 +87,18 @@ public func sharedApi(): String { "shared" }
 EOF
 ```
 
-这些文件组成一个完整的本地 workspace。生成文档不需要先编译它：cjdoc 直接读 `cjpm.toml` 和源码。
+## 第一步：确认默认收集范围
 
-## 先看默认发现范围
-
-不带任何依赖选项生成一次，看 cjdoc 自己会走多远：
+先不加任何输入选项生成一次，得到基线：
 
 ```bash
 cjdoc generate --project "$TASK_ROOT/workspace" \
   --format html --format json --output "$TASK_ROOT/site-default"
 ```
 
-读出这次实际采集到的模块、页面上的声明和快照里的全部声明：
+输出末尾是 `generated <输出目录>`。终端还会出现 `CJDOC3036`、`CJDOC3037`、`CJDOC3038`、`CJDOC3041` 一类文档质量 warning，以及一条 `CJDOC1019`；它们不影响退出码，本次退出码为 `0`。
+
+读出实际收集到的模块和声明：
 
 ```bash
 python3 - "$TASK_ROOT/site-default/docs.json" \
@@ -118,11 +117,26 @@ print("unsupported:", [(u["name"], u["reason"]) for u in doc["unsupportedDeclara
 PY
 ```
 
-应看到两个 `workspace` 成员模块 `app` 和 `peer`。页面上只有 `peerApi`；`hiddenApi` 不在页面和搜索里，因为默认受众 `external` 只显示 `public` 和 `protected` 声明。`sharedApi` 缺席，因为路径依赖默认不包含。`featureApi` 也不在：这次没有提供 `feature` 值，cjdoc 不猜编译器设置，未定义的条件会让该声明被省略、记进 `unsupportedDeclarations`，并记录 `CJDOC1019`。因此这次结果的 `status` 是 `partial`，不是生成失败——已发现的声明照常输出，只是范围不完整。`docs.json` 仍会保留 `hiddenApi`，它是完整快照而不是受众过滤后的清单；诊断里还会出现空摘要、缺示例之类的文档警告，它们同样不影响本次选择范围。
+预期结果：
 
-## 加入路径依赖并声明条件编译
+```text
+status: partial
+modules: [('workspace', 'app'), ('workspace', 'peer')]
+on pages: ['peerApi']
+in docs.json: ['hiddenApi', 'peerApi']
+unsupported: [('featureApi', 'conditional compilation expression is unsupported or unresolved')]
+```
 
-`app` 在 `cjpm.toml` 的 `[dependencies]` 中声明了 `shared`。用 `--include-path-dependencies` 把这些本地路径依赖一起扫描，并用 `--cfg` 显式给出条件编译值：
+四个默认行为在这个结果里都能看到：
+
+- 两个 workspace 成员都收集，`shared` 不收集——路径依赖需要显式开启。
+- `hiddenApi` 在 `docs.json` 里但不在页面和搜索里——默认受众 `external` 只展示 `public` 与 `protected`。
+- `featureApi` 缺席，因为它依赖没有给出的 `feature` 值，并被记进 `unsupportedDeclarations` 与 `CJDOC1019`。`status` 因此是 `partial`，生成本身没有失败。
+- `docs.json` 是完整快照，不是按受众过滤后的清单；不要把整个目录当作已脱敏的导出发布。
+
+## 第二步：加入路径依赖并给出条件编译值
+
+`--include-path-dependencies` 把清单里的本地路径依赖一起扫描，`--cfg NAME=VALUE` 提供条件值：
 
 ```bash
 cjdoc generate --project "$TASK_ROOT/workspace" \
@@ -141,13 +155,37 @@ doc = json.load(open(sys.argv[2], encoding="utf-8"))
 print("search:", sorted({e["name"] for e in search["entries"]
                          if e["kind"] != "concept"}))
 print("modules:", [(m["role"], m["name"]) for m in doc["modules"]])
-print("all declarations:", sorted({d["name"] for d in doc["declarations"]}))
+print("status:", doc["status"])
 PY
 ```
 
-搜索索引里应是 `featureApi`、`peerApi`、`sharedApi`，没有 `hiddenApi`；模块列表多出一个角色为 `pathDependency` 的 `shared`。`docs.json` 则列出全部已采集声明，包括 `hiddenApi`——它是完整快照，不是按受众过滤后的 API 清单，不要把它当作已经脱敏的导出发布。
+预期结果：
 
-把受众放宽到 `all`，私有声明也会进入页面和搜索：
+```text
+search: ['featureApi', 'peerApi', 'sharedApi']
+modules: [('workspace', 'app'), ('workspace', 'peer'), ('pathDependency', 'shared')]
+status: complete
+```
+
+条件值换成别的，同一个条件 API 会被排除，workspace 成员和路径依赖都不受影响：
+
+```bash
+cjdoc generate --project "$TASK_ROOT/workspace" \
+  --format json --output "$TASK_ROOT/site-basic" \
+  --include-path-dependencies --cfg feature=basic
+```
+
+`$TASK_ROOT/site-basic/docs.json` 里没有 `featureApi`，`status` 回到 `complete`。比较不同选择时始终换一个新的 `--output`，不要复用上一次的目录。
+
+## 第三步：选择受众
+
+`--audience` 只改变文档视图，不改变收集范围：
+
+| 取值 | 展示的声明 | 用途 |
+|---|---|---|
+| `external` | `public`、`protected`（默认） | 对外发布的 API 站点 |
+| `package` | 除 `private` 外 | 给同包维护者看的说明 |
+| `all` | 全部声明 | 内部设计文档 |
 
 ```bash
 cjdoc generate --project "$TASK_ROOT/workspace" \
@@ -163,29 +201,17 @@ print("search:", sorted({e["name"] for e in entries}))
 PY
 ```
 
-这次搜索索引里应出现 `hiddenApi`。`--audience package` 显示除 `private` 之外的声明，`--audience all` 显示全部；三者只改变文档视图。
+搜索索引此时包含 `hiddenApi`。改成 `--audience package` 时它仍不出现，因为它是 `private`。受众不是访问控制：三种取值下 `docs.json` 都保留全部已捕获声明，发布前自己确认输出目录里放了什么。
 
-条件值换成别的，同一个条件 API 会被排除，workspace 成员和路径依赖都不受影响：
+## 第四步：显式指定依赖源码
 
-```bash
-cjdoc generate --project "$TASK_ROOT/workspace" \
-  --format json --output "$TASK_ROOT/site-basic" \
-  --include-path-dependencies --cfg feature=basic
-```
-
-`$TASK_ROOT/site-basic/docs.json` 中没有 `featureApi`。比较不同选择时使用不同输出目录，不要复用上一次的目录。
-
-## 显式加入依赖源码
-
-依赖源码不在自动发现的位置时，用 `--dependency-source NAME=PATH` 直接指定一个本地 Cangjie 包。左侧名字会成为该模块的逻辑前缀 `dependencies/<名字>`，目录里必须有它自己的 `cjpm.toml`。项目有多个候选依赖目录、而这次只想选其中一个时，也可以用它。
+依赖源码不在自动发现的位置，或项目里有多个候选目录而这次只想选一个时，用 `--dependency-source NAME=PATH` 直接指向一个含 `cjpm.toml` 的 Cangjie 包：
 
 ```bash
 cjdoc generate --project "$TASK_ROOT/workspace" \
   --format html --format json --output "$TASK_ROOT/site-external-source" \
   --dependency-source shared="$TASK_ROOT/workspace/shared"
-```
 
-```bash
 python3 - "$TASK_ROOT/site-external-source/docs.json" <<'PY'
 import json
 import sys
@@ -196,11 +222,13 @@ print("declarations:", sorted({d["name"] for d in doc["declarations"]}))
 PY
 ```
 
-`shared` 的角色应为 `externalDependency`，声明里包含 `sharedApi`。`--dependency-source` 可以重复；路径按 cjdoc 进程的当前工作目录解析，本例使用绝对路径以免受运行目录影响。不要指向压缩包、二进制目录或没有 `cjpm.toml` 的目录：名称不安全时报告 `CJDOC1018`，路径不可访问、缺清单或与已有模块身份冲突时同样跳过并说明原因。
+预期 `shared` 的角色是 `externalDependency`，声明集合为 `hiddenApi`、`peerApi`、`sharedApi`（没有 `--cfg`，所以没有 `featureApi`）。
 
-## 读取 cjpm 已准备好的缓存依赖
+选项可以重复。`NAME` 只能由 ASCII 字母、数字、`_`、`-` 组成并用点分段，会成为该模块的逻辑前缀 `dependencies/<NAME>`；`PATH` 按 cjdoc 进程的当前工作目录解析，跨目录运行时用绝对路径。不要指向压缩包、二进制目录或不含 `cjpm.toml` 的目录。
 
-依赖来自 Git 或中心仓时，源码不在你的项目里，需要 cjpm 先把它取到本地缓存，再由 cjdoc 读取。这一节新建一个独立消费项目，它固定依赖 `yjson`，并把依赖缓存放在练习目录内，练习结束后可以整目录删除。
+## 第五步：读取 cjpm 已准备好的缓存依赖
+
+Git 依赖和中心仓依赖的源码不在你的项目里，需要 cjpm 先取到本地缓存，再由 cjdoc 读取。缓存位置由 cjpm 的 `cangjie-repo.toml` 决定，不是 cjdoc 的选项：
 
 ```bash
 CACHE_TASK_ROOT="$(mktemp -d "$HOME/.cache/cjdoc/examples/inputs.XXXXXX")"
@@ -219,6 +247,17 @@ output-type = "static"
 yjson = { git = "https://github.com/lIlIIlIll/yjson.git", commitId = "54b4965dee0f0b96710cbc678ec5ec9a126b055c", output-type = "static" }
 EOF
 
+cat > "$CACHE_PROJECT/cangjie-repo.toml" <<EOF
+[repository.cache]
+  path = "$CACHE_ROOT"
+EOF
+```
+
+这里第二个 heredoc 不加引号，`$CACHE_ROOT` 会展开为绝对路径。cjpm 读取 `cangjie-repo.toml` 的顺序是项目根、`$HOME/.cjpm`、SDK 的 `tools/config/`，取第一个有效文件；不配置时缓存根是 `$HOME/.cjpm`。
+
+写一个调用该依赖的源文件，再让 cjpm 取回依赖并生成锁文件：
+
+```bash
 cat > "$CACHE_PROJECT/src/api.cj" <<'EOF'
 package cacheconsumer
 
@@ -234,41 +273,22 @@ public func parseValue(text: String): JsonNode {
     JsonNode.parse(text)
 }
 EOF
-```
 
-`commitId` 写的是完整提交，`cjpm` 会把它记进 `cjpm.lock`，`cjdoc` 再按锁文件去缓存里找同一个提交，因此两边看到的依赖版本一致。
-
-缓存位置由 cjpm 自己的配置文件决定，不是 cjdoc 的选项。在项目根放一个与 `cjpm.toml` 同级的 `cangjie-repo.toml`：
-
-```bash
-cat > "$CACHE_PROJECT/cangjie-repo.toml" <<EOF
-[repository.cache]
-  path = "$CACHE_ROOT"
-EOF
-```
-
-这里的 heredoc 不加引号，`$CACHE_ROOT` 会展开成上面的绝对路径。cjpm 读取 `cangjie-repo.toml` 的顺序是：项目根、`$HOME/.cjpm`、SDK 的 `tools/config/`，找到第一个有效文件后忽略其余；不配置时缓存根是 `$HOME/.cjpm`。旧的 `CJPM_CONFIG` 环境变量会被废弃，不要再用来指定练习缓存。
-
-取回依赖并生成锁文件：
-
-```bash
 (cd "$CACHE_PROJECT" && cjpm build --jobs 1)
 grep yjson "$CACHE_PROJECT/cjpm.lock"
 ```
 
-`cjpm build success` 之后，锁文件里记录了 `yjson` 的 Git 地址与完整提交，源码位于 `$CACHE_ROOT/git/yjson/<提交>`，其中带有 yjson 自己的 `cjpm.toml`。这一步只是准备输入；cjdoc 不会替你下载依赖。
+看到 `cjpm build success` 后，锁文件里记录 `yjson` 的 Git 地址与完整提交，源码位于 `$CACHE_ROOT/git/yjson/<提交>`。这一步只是准备输入：cjdoc 不会替你下载依赖。
 
-现在生成消费方文档，并让 cjdoc 读同一个缓存：
+现在让 cjdoc 读同一个缓存：
 
 ```bash
-cjHeapSize=512MB cjdoc generate --project "$CACHE_PROJECT" \
+cjdoc generate --project "$CACHE_PROJECT" \
   --format json --output "$CACHE_TASK_ROOT/cached-dependency-output" \
   --include-cached-dependencies --cjpm-cache "$CACHE_ROOT"
 ```
 
-`--include-cached-dependencies` 打开缓存依赖读取，`--cjpm-cache` 显式指定 cjpm 实际使用的缓存根。只给后者会以用法错误退出，并提示它需要 `--include-cached-dependencies`。`cjHeapSize=512MB` 是本例的仓颉运行时堆设置，不会改变 cjdoc 的资源预算。
-
-查看采集结果：
+`--include-cached-dependencies` 打开缓存依赖读取，`--cjpm-cache` 指定 cjpm 实际使用的缓存根；只写后者会以 `2` 退出并提示 `--cjpm-cache requires --include-cached-dependencies`。
 
 ```bash
 python3 - "$CACHE_TASK_ROOT/cached-dependency-output/docs.json" <<'PY'
@@ -278,37 +298,67 @@ import sys
 doc = json.load(open(sys.argv[1], encoding="utf-8"))
 print("status:", doc["status"])
 print("modules:", [(m["role"], m["name"]) for m in doc["modules"]])
-print("consumer:", [d["name"] for d in doc["declarations"]
-                    if d["packageName"] == "cacheconsumer"])
-yjson = sorted({d["name"] for d in doc["declarations"] if d["packageName"] == "yjson"})
-print("yjson declarations:", len(yjson))
-print("sample:", yjson[:5])
+print("consumer:", sorted({d["name"] for d in doc["declarations"]
+                           if d["packageName"] == "cacheconsumer"}))
 print("skipped:", [d["message"] for d in doc["diagnostics"] if d["code"] == "CJDOC1021"])
 PY
 ```
 
-应看到消费项目模块和一个角色为 `externalDependency` 的 `yjson` 模块，并能在声明中找到自己的 `parseValue` 和 yjson 的类型。yjson 自己的锁文件还声明了仅用于测试的 `yjson_macros`；缓存里缺少它时会出现 `CJDOC1021`，结果可为 `partial`。这不影响已读取的 yjson 库源码，但仍应阅读其它诊断，确认没有漏掉你实际需要的依赖。
+预期有一个消费项目模块、一个角色为 `externalDependency` 的 `yjson` 模块，声明里有 `parseValue` 和 yjson 的类型。yjson 自己的锁文件还引用仅用于测试的 `yjson_macros`，缓存里没有它时会出现 `CJDOC1021`，并把 `status` 置为 `partial`；已读取的 yjson 源码仍然完整。
 
-`skipped` 里出现的 `CJDOC1021` 按消息区分两种情况：
+`--cjpm-cache` 与 `--cache-dir` 是两件事：前者是 cjpm 存放依赖源码的目录，后者是 cjdoc 解析源码时用的缓存（默认 `<项目>/target/cjdoc/cache/source-v11`，用 `--no-cache` 关闭）。不要让两者指向同一个目录。
 
-- 消息提到 `yjson_macros`：就是上面的测试依赖，可以忽略。
-- 消息提到 `yjson` 或所选缓存根不可访问：缓存里没有该提交，或者 `--cjpm-cache` 指向了别的目录。回到消费项目重跑 `cjpm build --jobs 1`，再确认 `cangjie-repo.toml` 的 `path` 与 `--cjpm-cache` 是同一个目录。
+## 第六步：用构建记录固定实际依赖选择
 
-cjdoc 只读缓存，不会替你补下载；缺失时它跳过该依赖并给出 `CJDOC1021`，生成仍然产出一份不含该依赖的结果。
+默认情况下 cjdoc 记录的是它自己观察到的依赖，状态为 `observed`。如果你有构建系统实际选中的依赖清单，可以用 `cjdoc.build-context/1` 记录把它标成 `verified`。仓库脚本根据目录里现成的源码与清单生成这份记录，不编译、不联网：
 
-`--cjpm-cache` 与 `--cache-dir` 是两件事：前者是 cjpm 存放依赖源码的目录，后者是 cjdoc 自己解析源码时用的缓存，默认位于项目的 `target/cjdoc/cache/source-v11`，用 `--no-cache` 可以关闭。两者不要指向同一个目录。cjpm 侧的配置格式与优先级见 [STS 1.2.0 cjpm 手册的项目管理配置文件说明](https://cj-docs.gitcode.com/zh/1.2.0/tools/source_zh_cn/cmd-tools/cjpm_manual.html#项目管理配置文件说明)。
+```bash
+CJDOC_SOURCE=/path/to/cjdoc-source
+python3 "$CJDOC_SOURCE/scripts/capture_build_context.py" \
+  --project "$TASK_ROOT/workspace" \
+  --output "$TASK_ROOT/build-context.json" \
+  --target linux_x86_64_cjnative \
+  --cfg feature=extra
+```
 
-## 遇到问题怎么办
+把记录交给生成命令，并给出与记录一致的 `--cfg`：
 
-- 生成成功但页面少声明：先看 `docs.json` 的 `modules` 和 `diagnostics`。路径依赖需要 `--include-path-dependencies`，缓存依赖需要 `--include-cached-dependencies`，显式源码需要 `--dependency-source`。
-- 声明带了 `@When` 却消失：核对 `--cfg` 的名字和值是否与注解完全一致。未提供的条件名会让声明被省略并记录 `CJDOC1019`，生成本身不失败。
-- `docs.json` 里出现私有声明：这是完整快照的行为，受众只筛选 HTML、搜索和覆盖率等展示产物。发布前请确认放进输出的文件。
-- 缓存依赖被跳过：按上节区分 `yjson_macros` 与 `yjson` 两类 `CJDOC1021`；缺缓存时先运行 `cjpm build`，不要手工创建空缓存目录。
-- 输出目录报冲突：换一个新的 `--output`，或按[管理生成产物](manage-outputs.md)处理已存在的目录。
-- 报告项目根错误：用 `pwd` 确认当前目录含 `cjpm.toml`，或从任意目录传入 `--project <项目根>`。
+```bash
+cjdoc generate --project "$TASK_ROOT/workspace" \
+  --format json --output "$TASK_ROOT/site-verified" \
+  --cfg feature=extra --build-context "$TASK_ROOT/build-context.json"
+
+python3 - "$TASK_ROOT/site-verified/docs.json" <<'PY'
+import json
+import sys
+
+doc = json.load(open(sys.argv[1], encoding="utf-8"))
+print("status:", doc["status"])
+print("deps:", [(d["name"], d["state"], d["target"], d["cfg"])
+                for d in doc["dependencies"] if d["kind"] == "source"])
+PY
+```
+
+预期 `status: complete`，每个源码依赖的状态是 `verified`，并带上记录中的 `target` 与 `cfg`。记录里的 target 只有在它非空时才替换本次目标；给出的 `--cfg` 与记录不一致时，记录被忽略并报告 `CJDOC2300` 与 `CJDOC2301`，生成继续按观察到的依赖进行。
+
+## 失败时怎么办
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| 生成成功，但页面比预期少声明 | 依赖类型没有对应的开关 | 路径依赖加 `--include-path-dependencies`，缓存依赖加 `--include-cached-dependencies`，指定目录用 `--dependency-source` |
+| 带 `@When` 的声明消失，出现 `CJDOC1019` | 没有给出该条件名，或值与注解不一致 | 用 `--cfg NAME=VALUE` 给出完全一致的名字和值；`--cfg` 缺 `=` 会以 `2` 退出并提示 `--cfg requires NAME=VALUE` |
+| `docs.json` 里出现私有声明 | 完整快照的既有行为 | 受众只筛选展示产物；发布前确认放进输出的文件 |
+| warning `CJDOC1018: configured dependency source '...' is not accessible; skipped` | `--dependency-source` 的路径不存在或不可读 | 改为绝对路径后重试；相对路径以当前工作目录为基准 |
+| warning `CJDOC1018: configured dependency source '...' must contain cjpm.toml; skipped` | 指定目录不是 Cangjie 包 | 指向含 `cjpm.toml` 的包根 |
+| `error: dependency name must use non-empty ASCII alphanumeric, '_' or '-' dot-separated segments`，退出码 `2` | `NAME=PATH` 左侧含空格、`/` 等字符 | 用 ASCII 字母、数字、`_`、`-`，必要时用点分段 |
+| 缓存依赖被跳过，出现 `CJDOC1021` | 缓存里没有该提交、`--cjpm-cache` 指向别的目录，或锁文件缺失 | 消息提到 `yjson_macros` 一类测试依赖可以忽略；否则回到消费项目重跑 `cjpm build --jobs 1`，确认 `cangjie-repo.toml` 的 `path` 与 `--cjpm-cache` 是同一目录 |
+| `error: --cjpm-cache requires --include-cached-dependencies`，退出码 `2` | 只给了缓存根 | 两个选项一起给 |
+| `error: --cjc, --chir-worker, and --chir-import-path require --semantic chir` | 语义选项没有配套开关 | 见[为声明补充类型和签名信息](chir.md) |
+| 输出目录报冲突 | 目录已存在且不是本次生成的结果 | 换一个新的 `--output`，或按[管理生成产物](manage-outputs.md)处理 |
+| 报告找不到项目根 | 当前目录没有 `cjpm.toml` | 用 `--project <项目根>` 指定，或先切换到项目根 |
 
 ## 下一步
 
-- [配置输入与输出](../reference/configuration.md)：把项目首页、包概述和多仓来源写进配置。
+- [配置输入与输出](../reference/configuration.md)：项目首页、包概述与多仓来源写进配置。
 - [管理生成产物与缓存](manage-outputs.md)：重复生成、输出冲突与源码缓存位置。
-- [生成与发布文档](generate-and-publish.md)：一次生成多种格式并发布完整站点。
+- [比较两个版本的 API](compare-and-version.md)：为两份源码分别生成快照。

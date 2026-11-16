@@ -1,137 +1,265 @@
 # 产物与格式参考
 
-`generate` 和 `render` 的六种 `--format` 是 `json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index`。一次命令可重复指定 `--format`；未指定时只输出 `json`。常见位置相对 `--output` 输出根，默认输出根为 `target/doc`。
-
-```bash
-cjdoc generate --project . \
-  --format html \
-  --format markdown \
-  --format json \
-  --format api-surface \
-  --format coverage \
-  --format symbol-index
-```
-
-六种格式共享一次源码捕获；实际产物以 schema 和输出根为准，不要根据展示 slug 推算文件路径。生成与静态发布任务见[生成与发布](../how-to/generate-and-publish.md)，版本站点见[比较 API 与管理版本](../how-to/compare-and-version.md)。
+`generate` 与 `render` 的六种 `--format`、每种格式写出的文件、这些文件的 schema 名字与 wire 版本。写文件的操作步骤见[生成与发布](../how-to/generate-and-publish.md)，版本站点见[比较与多版本](../how-to/compare-and-version.md)。
 
 ## 六种输出格式
 
-| `--format` | 主要路径 | 用途与边界 |
+| `--format` | 主要路径 | 内容 |
 |---|---|---|
-| `json` | `docs.json` | 当前 Doc IR 全量捕获，默认格式。可作为当前版本离线 `render` 输入；不是仅含 public API 的安全发布摘录。 |
-| `markdown` | `markdown/index.md`，以及包、容器声明、概念页和资源文件 | 可提交仓库或接入其他文档站。索引引用同一格式目录内的包/声明/页面文件。 |
-| `html` | `html/index.html`、包页/声明页、概念页和伴随资源 | 可直接由浏览器打开的静态站点，包含本地搜索、导航、主题和机器读取产物。部署时复制整个 `html/`，不可只复制首页或 `agent/` 子目录。 |
-| `api-surface` | `api-surface/api-surface.json` | 当前 `cjdoc.api-surface/3` API 快照，供 diff 或严格基线检查；不是 Doc IR。 |
-| `coverage` | `coverage/coverage.json`、`coverage/quality.json`；配置了多语言时还有 `coverage/translations.json` | 指标报告、lint/质量报告和翻译覆盖报告。详见[检查文档质量](../how-to/check-quality.md)。 |
-| `symbol-index` | `symbol-index/symbol-index.json` | `cjdoc.symbol-index/2` 符号库存；请求 HTML 时也会生成相应机器库存。 |
+| `json` | `docs.json` | 当前 Doc IR 全量捕获，默认格式；可作为当前版本的 `render` 输入 |
+| `markdown` | `markdown/index.md` 及包、声明、概念页文件 | 可提交仓库或接入其他文档站的 Markdown |
+| `html` | `html/index.html` 及包页、声明页、概念页、脚本与样式 | 可直接从 `file://` 打开的静态站点，带本地搜索与机器读取产物 |
+| `api-surface` | `api-surface/api-surface.json` | `cjdoc.api-surface/3` 快照，供 `diff` 与严格基线检查；不是 Doc IR |
+| `coverage` | `coverage/coverage.json`、`coverage/quality.json`；配置多语言时还有 `coverage/translations.json` | 指标报告、质量报告、翻译覆盖报告 |
+| `symbol-index` | `symbol-index/symbol-index.json` | `cjdoc.symbol-index/2` 符号库存 |
 
-`--stdout` 只适用于恰好一种 JSON 类格式：`json`、`api-surface`、`coverage`、`symbol-index`；不能与 `--output` 同用。诊断写入 stderr，stdout 保持单个 JSON 文档。Markdown 与 HTML 不是 JSON stdout 格式。
+```bash
+cjdoc generate --project . \
+  --format json --format markdown --format html \
+  --format api-surface --format coverage --format symbol-index
+```
 
-`--stdout --format coverage` 是实现接受的 JSON 单格式例外：stdout 只写 `coverage/coverage.json` 的第一个产物，不会同时写目录格式下的 `coverage/quality.json` 或多语言 `coverage/translations.json`；需要完整报告集合时使用目录输出。
+六种格式共享一次源码捕获；未指定 `--format` 时只写 `json`。实际路径以输出根下的文件和 schema 为准，不要用标题或签名推算文件名。
 
-`--doc-version ID` 需要同时输出 HTML，并把文档发布标签放入站点信息。该标签是文档发布元数据，不等同于 SDK/compiler 认证或依赖包版本。语言选择与输出目录结构见下节。
+`--stdout` 只接受恰好一种 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`）：内容写到 stdout，诊断写到 stderr。`--stdout --format coverage` 只输出 `coverage/coverage.json` 这一个文档，不含 `quality.json` 或 `translations.json`；需要整套报告时用目录输出。
 
-## 多语言产物布局
+`--doc-version TEXT` 要求同时生成 HTML，并额外写出 `html/version.json`（`cjdoc.version/1`），把发布标签写进站点信息：
 
-`--locale zh-CN|en` 选择单个语言的用户界面和可用作者译文，默认 `zh-CN`；它不自动翻译。`--all-languages` 让 `generate` 或 `render` 按 `[i18n].languages` 输出各语言目录：
+```json
+{
+  "schemaVersion": "cjdoc.version/1",
+  "id": "0.7.8",
+  "label": "0.7.8",
+  "project": "demo"
+}
+```
+
+该标签是文档发布元数据，不等同于 SDK/编译器认证或依赖包版本。
+
+## 输出根与所有权清单
+
+默认输出根是 `<project>/target/doc`（`render` 为工作目录下的 `target/doc`）。无论选了几种格式，输出根下都有一份 `.cjdoc-output.json`（`cjdoc.output/3`），记录本次写入的文件与目录及其 SHA-256：
+
+```json
+{
+  "schemaVersion": "cjdoc.output/3",
+  "digestAlgorithm": "sha256",
+  "directories": [],
+  "files": [
+    {"path": "docs.json", "sha256": "4c649055a45ace15bd9ca1745dd4dcfb4d1b28dbeb35dc7c9ad9e643ba013880"}
+  ]
+}
+```
+
+它决定后续写入可以替换哪些文件。目录已存在但不属于 cjdoc 管理时，写入被拒绝；`--force-owned` 只在所有权契约允许时替换，不是任意覆盖。处理方法见[管理输出](../how-to/manage-outputs.md)。
+
+## 各格式的文件树
+
+以下树来自一个单包项目（包 `demo`、一个公开函数）实际生成的输出，`<id>` 是稳定对象标识，随输入变化。
+
+`--format json`：
 
 ```text
 target/doc/
-├── html/zh-CN/index.html
-├── html/en/index.html
-├── markdown/zh-CN/index.md
-├── markdown/en/index.md
+├── .cjdoc-output.json
 └── docs.json
 ```
 
-每种语言各有独立 `html/<language>/`、`markdown/<language>/` 文档根；其他共享产物只写一份。示例中的 `docs.json` 仅当请求 `json` 格式时存在，其中保留全部作者语言变体。`--all-languages` 要求配置 `[i18n]`，只支持目录输出，不能与 `--locale` 或 `--stdout` 同用；如果 `languages` 省略，只输出 default-language。`serve --locale` 用来预览单个语言，不能借此跳过其他已发布语言的质量/翻译检查。
-
-发布时部署对应输出目录的完整内容，不要只复制 `index.html`。页头语言切换使用相对链接；目标语言缺少页面时转到该语言首页，章节尽量映射到配对页对应标题，否则回到页首。译文选择和页面配对见[多语言注释](doc-comments.md#多语言注释)及[发布多语言页面](../tutorials/publish-languages.md)。
-
-## HTML 静态站与附带机器产物
-
-HTML renderer 会生成首页、包页、声明页、概念页、搜索/侧栏/主题脚本、样式表和页面资源。典型位置包括：
+`--format markdown`：
 
 ```text
-html/
-├── index.html
-├── search-index.json
-├── search-index.js
-├── sidebar-index.js
-├── theme-bootstrap.js
-├── search.js
-├── symbol-alias.js
-├── style.css
-├── navigation-index.json
-├── symbol-index.json
-├── llms.txt
-├── validation.html
-├── agent/
-│   ├── manifest.json
-│   ├── docs.json
-│   ├── symbols/...
-│   ├── pages/...
-│   └── reports/...
-└── agent-full-index.json       # 仅 --agent-full
+target/doc/
+├── .cjdoc-output.json
+└── markdown/
+    ├── index.md
+    └── packages/
+        └── package-<id>.md
 ```
 
-此树为入口示意；声明页面、package 页面、concept 页面、语言子目录、资源和 manifest 映射会随输入增减。以 manifest 中各表示的实际相对路径为准，不拼接 slug 或臆造扩展名。所有 `html/` 下相对路径都以当前文档根为基准，可从静态 HTTP 子路径和 `file://` 使用。
+`index.md` 是包清单，每项链接同目录内的包文件。包文件按声明列出签名、参数、返回值、说明与源码位置，块内的相对链接按该文件自身位置生成。
 
-HTML 默认包含可见声明/页面的机器读取入口和逐页、逐声明 Markdown/JSON 表示；不要求 `--agent-full`。`--agent-full` 只增加聚合全文与分片索引，适用于 `generate`、`render`、`serve`，且 `generate`/`render` 时必须同时请求 `html`。要使用每声明独立表示，应部署完整 HTML 根，不能只搬运 `agent/`，因为 manifest 指向的 HTML 和全文入口在根目录。
+`--format api-surface`、`--format coverage`、`--format symbol-index`：
 
-机器读取重点：
+```text
+target/doc/
+├── .cjdoc-output.json
+├── api-surface/api-surface.json
+├── coverage/coverage.json
+├── coverage/quality.json
+├── coverage/translations.json   # 仅配置了 [i18n] 语言列表时
+└── symbol-index/symbol-index.json
+```
 
-| 路径 | 当前 schema / 含义 |
-|---|---|
-| `navigation-index.json` | `cjdoc.navigation-index/2` 导航索引的首片，含实际续取路径；必须沿 `pagination.next` 读取到结束，首片不等于完整枚举。 |
-| `search-index.json`、`search-index.js` | `cjdoc.search-index/11`，内嵌 `cjdoc.search-contract/2`；静态站搜索使用 `discovery` + `bounded-static`。 |
-| `symbol-index.json` | `cjdoc.symbol-index/2` 符号库存。 |
-| `agent/manifest.json` | `cjdoc.machine-manifest/1`；绑定快照、发布修订、作用域、资源哈希与实际 HTML/Markdown/JSON 表示路径。 |
-| `agent/docs.json` | 与 manifest 对应的自包含 `cjdoc.doc-ir/18`。 |
-| `agent/symbols/*.json` | `cjdoc.declaration/3` 独立声明，含 classification/source 投影。 |
-| `agent/pages/*.json` | `cjdoc.page/2` 概念、包或项目页。 |
-| `agent-full-index.json` | 仅 `--agent-full`：`cjdoc.agent-full-index/1` 全文分片描述，提供顺序、范围、摘要和完整性信息。 |
-| `llms.txt` | 精简发现入口，链接目录、表示 manifest 和已启用全文入口；不是完整正文或全站枚举。 |
+`--format coverage` 在未配置多语言时只有 `coverage.json` 与 `quality.json`；配置 `[i18n].languages` 后多出 `translations.json`。
 
-不同表示文件中 Markdown 的相对链接按文件位置生成；manifest、索引和根级摘要的路径按文档根解析。manifest 是路径映射的事实来源，不应根据 title、签名或旧版聚合 Markdown 推算路径。Full-index 读取者要对照 manifest 的 `snapshotId` 和 `publicationRevision`，并校验分片 SHA-256、范围和续取。仅有 HTML/JSON 产物或成功构建不构成作者契约或运行示例的验证回执。固定输入查询见[查询协议](query-protocol.md)，状态含义见[状态与限制](states-and-limits.md)。
+`--format html`（含 `--agent-full` 时另加两项）：
 
-## Schema 与 wire 版本清单
+```text
+target/doc/
+├── .cjdoc-output.json
+└── html/
+    ├── index.html
+    ├── navigation-index.json
+    ├── search-index.json
+    ├── search-index.js
+    ├── search.js
+    ├── sidebar-index.js
+    ├── theme-bootstrap.js
+    ├── symbol-alias.js
+    ├── style.css
+    ├── symbol-index.json
+    ├── llms.txt
+    ├── llms-full.txt            # 仅 --agent-full
+    ├── agent-full-index.json    # 仅 --agent-full
+    ├── validation.html
+    ├── packages/package-<id>.html
+    ├── symbols/<slug>-<id>.html
+    ├── symbols/symbol-<id>.html
+    ├── concepts/…               # 启用 [docs] 后
+    └── agent/
+        ├── manifest.json
+        ├── docs.json
+        ├── pages/…
+        ├── packages/…
+        └── symbols/…
+```
 
-以下是当前 `cjdoc schema list` 暴露的**所有**协议名称和对应 wire 版本。除明确标作别名的名称外，括号内是 schema 中的 `cjdoc.<name>/<version>`。
+声明页可能出现两个入口：`symbols/<限定名 slug>-<id>.html` 是给人阅读的地址，`symbols/symbol-<id>.html` 是该符号的规范地址；两者都由 manifest 的表示映射给出。存在概念文档时 `concepts/` 下还有首页、模块页、包页与配置的指南路由。
 
-| schema 命令名称 | wire 版本 | 说明 |
-|---|---:|---|
-| `doc-ir`、`doc-ir-v18` | `doc-ir/18` | 两个名称都导出当前 Doc IR；decoder 仅接受 v18。 |
-| `diagnostics` | `diagnostics/2` | 诊断数组 envelope。 |
-| `cfg-matrix` | `cfg-matrix/2` | 多配置 profile 的 Doc IR 集合。 |
-| `search-index`、`search-index-v11` | `search-index/11` | 两个名称相同。 |
-| `symbol-index` | `symbol-index/2` | 符号索引。 |
-| `navigation-index`、`navigation-index-v2` | `navigation-index/2` | 无后缀名称指向当前 v2。 |
-| `navigation-index-v1` | `navigation-index/1` | 冻结的旧 wire 结构，保留供明确选择；缺少 v2 的整体完整性/续取语义。 |
-| `api-surface`、`api-surface-v3` | `api-surface/3` | 两个名称相同。 |
-| `api-diff`、`api-diff-v2` | `api-diff/2` | 两个名称相同。 |
-| `documentation-coverage` | `documentation-coverage/2` | 覆盖报告。 |
-| `documentation-quality` | `documentation-quality/1` | 质量报告。 |
-| `versions`、`versions-v2` | `versions/2` | 多版本站点 manifest。 |
-| `translation-coverage` | `translation-coverage/1` | 翻译覆盖报告。 |
-| `site-manifest` | `site-manifest/1` | 站点路由 manifest。 |
-| `agent-full-index` | `agent-full-index/1` | 聚合全文分片索引。 |
-| `declaration` | `declaration/3` | 独立声明表示。 |
-| `page` | `page/2` | 独立页面表示。 |
-| `machine-manifest` | `machine-manifest/1` | HTML machine bundle manifest。 |
-| `query-request` | `query-request/3` | 固定快照查询请求。 |
-| `query-result` | `query-result/4` | 查询结果 envelope。 |
-| `search-contract` | `search-contract/2` | **不是 JSON Schema**；共享搜索行为契约数据。 |
-| `source-provenance` | `source-provenance/1` | 调用方 source receipt；是来源输入契约，不是默认文档根产物。 |
+`html/` 下的相对路径都以该文档根为基准，因此整棵目录既能用静态 HTTP 子路径托管，也能用 `file://` 打开。部署要复制整个 `html/`：只复制 `index.html`、或只搬运 `agent/` 都会让 manifest 指向的页面与全文入口失效。
 
-使用 `cjdoc schema list` 列出名称，`cjdoc schema <name>` 输出对应内容。注意别名不是不同 wire 版本：例如 `navigation-index` 与 `navigation-index-v2` 都是 v2；只有显式 `navigation-index-v1` 是 v1。完整静态 schema 文件以 `docs/schema/` 为生成源，不代表每个文件都由 `schema list` 另列一个命令名称。
+`--agent-full` 适用于 generate、render、serve；非 serve 命令要求同时请求 `html`。它只增加聚合全文 `llms-full.txt` 与分片描述 `agent-full-index.json`，不加它也有逐页、逐声明的 Markdown/JSON 表示。
+
+## HTML 机器读取产物
+
+| 路径 | schema | 说明 |
+|---|---|---|
+| `navigation-index.json` | `cjdoc.navigation-index/2` | 导航索引首片，含 `pagination`（`offset`、`returned`、`total`、`part`、`parts`、`next`、`pathBase`）；必须沿 `next` 读到结束，首片不是完整枚举 |
+| `search-index.json`、`search-index.js` | `cjdoc.search-index/11`，内嵌 `cjdoc.search-contract/2` | 静态站搜索用 `discovery` + `bounded-static`，只支持 `search` |
+| `symbol-index.json` | `cjdoc.symbol-index/2` | 符号库存，与 `--format symbol-index` 内容同类 |
+| `agent/manifest.json` | `cjdoc.machine-manifest/1` | 绑定快照、发布修订、作用域、资源哈希，以及每个 HTML/Markdown/JSON 表示的相对路径 |
+| `agent/docs.json` | `cjdoc.doc-ir/18` | 与 manifest 对应的自包含 Doc IR |
+| `agent/symbols/*.json` | `cjdoc.declaration/3` | 单条声明的独立表示，含分类与源码投影 |
+| `agent/pages/*.json` | `cjdoc.page/2` | 概念页、包页或项目页的独立表示 |
+| `agent/packages/*` | `cjdoc.page/2`、`cjdoc.declaration/3` | 包页与包内声明的 Markdown/JSON 表示 |
+| `agent-full-index.json` | `cjdoc.agent-full-index/1` | 全文分片描述：顺序、`unitCount`、`partByteLimit`、各分片范围与摘要 |
+| `llms.txt` | 无 schema | 精简发现入口，链接目录、表示 manifest 与全文入口；不是全站枚举 |
+| `validation.html` | — | 附加了验证报告时的人类可读视图 |
+
+`agent/manifest.json` 是路径映射的事实来源；不要由标题、签名或 slug 推算路径。读取 `agent-full-index.json` 时要对照 manifest 的 `snapshotId` 与 `publicationRevision`，并校验分片 SHA-256、范围与续取信息。
+
+Doc IR 只装在内存或只有 `docs.json` 时，结果的 `packagedRepresentations` 为 `false`：规范路由存在不代表资源真的随包复制。装载 `agent/manifest.json` 才会校验资源哈希与完整表示映射。
+
+## 多语言产物布局
+
+`--locale zh-CN|en` 选择单个语言的界面与已有作者译文，默认 `zh-CN`，不翻译正文。`--all-languages` 让 generate 或 render 按 `[i18n].languages` 输出每个语言的目录；没有显式语言列表时报 `--all-languages requires explicit [i18n] languages`。
+
+```text
+target/doc/
+├── .cjdoc-output.json
+├── site-manifest.json
+├── docs.json
+├── html/
+│   ├── zh-CN/…（完整站点根）
+│   └── en/…
+└── markdown/
+    ├── zh-CN/…
+    └── en/…
+```
+
+每种语言各有独立的 `html/<language>/` 与 `markdown/<language>/` 文档根；`docs.json` 只写一份并保留全部作者语言变体。`site-manifest.json`（`cjdoc.site-manifest/1`）列出每个语言下各页面、符号与章节的实际 `href`，是跨语言路由的事实来源：
+
+```json
+{
+  "schemaVersion": "cjdoc.site-manifest/1",
+  "project": "demo",
+  "version": null,
+  "defaultLanguage": "zh-CN",
+  "routes": [
+    {"language": "en", "pageId": "api-home", "symbolId": null, "sectionId": null,
+     "ownerSymbolId": null, "href": "html/en/index.html"}
+  ]
+}
+```
+
+`--all-languages` 只支持目录输出，不能与 `--locale` 或 `--stdout` 同用。页面语言切换使用相对链接；目标语言缺页时转到该语言首页，章节尽量映射到配对页的对应标题，否则回到页首。
+
+## 版本站点
+
+`cjdoc versions compose` 把已生成的站点复制成带版本选择器的组合站：
+
+```text
+versions/
+├── .cjdoc-output.json
+├── index.html               # 跳到 --latest 指定的版本
+├── versions.json            # cjdoc.versions/2
+├── version-navigation.js
+├── latest/index.html
+└── <base-path>/…            # 每个版本一份完整站点
+```
+
+`versions.json` 记录 `schemaVersion`、`project`、`latest`、`latestPolicy`（`first-listed` 或 `explicit`）与每个版本的 `id`、`label`、`basePath`、`channel`、`status`、`index`、`symbolIndex`、`apiDiff`：
+
+```json
+{
+  "schemaVersion": "cjdoc.versions/2",
+  "project": "composed",
+  "latest": "v1",
+  "latestPolicy": "first-listed",
+  "versions": [
+    {"id": "v1", "label": "v1", "basePath": "v1", "channel": "unspecified",
+     "status": "published", "index": "v1/index.html",
+     "symbolIndex": "v1/symbol-index.json", "apiDiff": null}
+  ]
+}
+```
+
+组合只复制既有站点并注入选择器，不重新生成正文，也不校验各版本内容是否一致。最多 64 个站点、合计 256 MiB、65532 个文件；单份 diff 输入最多 32 MiB。
+
+## Schema 与 wire 版本
+
+`cjdoc schema list` 当前输出以下 28 个名字。除标为别名的名字外，括号里是对应 JSON 的 `schemaVersion`。
+
+| `cjdoc schema` 名字 | wire 版本 | 说明 |
+|---|---|---|
+| `doc-ir`、`doc-ir-v18` | `cjdoc.doc-ir/18` | 两个名字都输出当前 Doc IR；解码器只接受 v18 |
+| `diagnostics` | `cjdoc.diagnostics/2` | 诊断数组 envelope |
+| `cfg-matrix` | `cjdoc.cfg-matrix/2` | 多 cfg profile 的 Doc IR 集合 |
+| `search-index`、`search-index-v11` | `cjdoc.search-index/11` | 两个名字相同 |
+| `symbol-index` | `cjdoc.symbol-index/2` | 符号库存 |
+| `navigation-index`、`navigation-index-v2` | `cjdoc.navigation-index/2` | 无后缀名字指向 v2 |
+| `navigation-index-v1` | `cjdoc.navigation-index/1` | 冻结的旧结构，缺 v2 的完整性与续取语义 |
+| `api-surface`、`api-surface-v3` | `cjdoc.api-surface/3` | 两个名字相同 |
+| `api-diff`、`api-diff-v2` | `cjdoc.api-diff/2` | 两个名字相同 |
+| `documentation-coverage` | `cjdoc.documentation-coverage/2` | 覆盖率报告 |
+| `documentation-quality` | `cjdoc.documentation-quality/1` | 质量报告 |
+| `versions`、`versions-v2` | `cjdoc.versions/2` | 版本站点 manifest |
+| `translation-coverage` | `cjdoc.translation-coverage/1` | 翻译覆盖报告 |
+| `site-manifest` | `cjdoc.site-manifest/1` | 跨语言路由 manifest |
+| `agent-full-index` | `cjdoc.agent-full-index/1` | 聚合全文分片索引 |
+| `declaration` | `cjdoc.declaration/3` | 单条声明的独立表示 |
+| `page` | `cjdoc.page/2` | 单个概念页的独立表示 |
+| `machine-manifest` | `cjdoc.machine-manifest/1` | HTML 机器读取 bundle 的 manifest |
+| `query-request` | `cjdoc.query-request/3` | 固定快照查询请求 |
+| `query-result` | `cjdoc.query-result/4` | 查询结果 envelope |
+| `search-contract` | `cjdoc.search-contract/2` | 不是 JSON Schema，是搜索行为契约数据 |
+| `source-provenance` | `cjdoc.source-provenance/1` | 调用方 source receipt 的输入契约，不是默认输出文件 |
+
+别名不是不同 wire 版本：`navigation-index` 与 `navigation-index-v2` 都是 v2，只有显式写 `navigation-index-v1` 才拿到 v1。仓库里的 `docs/schema/` 保留同名静态 JSON Schema 文件，运行时以 `cjdoc schema <name>` 的输出为准。
 
 ### current-only 的适用范围
 
-`cjdoc.doc-ir/18` 是**当前 Doc IR wire**：`render`、query loader 和当前 decoder 不迁移 `/17` 或更早版本；旧 JSON 应从原始源码重新生成。这个规则不等于“所有 schema 都只有一个历史版本”或“所有其他协议也 current-only”。有独立版本号的 navigation-index v1 是明确保留的冻结 schema；各机器协议各自按上表版本验证。不要把 Doc IR current-only 扩大解释为所有 index schema 的迁移策略。
+`cjdoc.doc-ir/18` 是当前 Doc IR wire：`render`、query 加载器与解码器都不迁移 `/17` 或更早版本，旧 JSON 必须从原始源码重新生成。这条规则只针对 Doc IR；其他协议各自有版本号，`navigation-index-v1` 就是明确保留的冻结 schema。
 
-## 其他命令生成的相关文件
+## 其他命令写出的文件
 
-`cjdoc diff --format json` 输出 API diff 报告 `cjdoc.api-diff/2`，不属于六种文档 renderer `--format`。`versions compose` 生成 `cjdoc.versions/2` manifest，并复制、组织各版本已经生成的站点；它不重新生成版本正文。Doc IR 中捕获的来源投影可能写入文件 provenance 和 source-reference；其 receipt 输入另用 `cjdoc.source-provenance/1`，不是默认 `html/` 输出。
+| 命令 | 输出 |
+|---|---|
+| `cjdoc diff --format json` | `cjdoc.api-diff/2` 报告写到 stdout，不是文档 `--format` 之一 |
+| `cjdoc diff --format text` | 人类可读摘要与条目，写到 stdout |
+| `cjdoc versions compose` | `cjdoc.versions/2` manifest 与各版本站点副本 |
+| `cjdoc query` | 单个 `cjdoc.query-result/4` envelope，写到 stdout |
+| `cjdoc mcp` | 每行一个 JSON-RPC 2.0 对象，写到 stdout |
+| `cjdoc check` | 只写诊断到 stderr，不写输出目录 |
 
-版本、API diff 和它们的输入身份见[比较 API 与管理版本](../how-to/compare-and-version.md)。完整 schema 以运行时 `cjdoc schema <name>` 为准；本页版本表描述当前源码支持的 wire，不承诺旧格式自动升级。
+Doc IR 里捕获的来源投影会随 `docs.json` 一并写出；它引用的 receipt 使用 `cjdoc.source-provenance/1`，是输入契约而不是站点产物。查询与 MCP 的协议见[查询协议](query-protocol.md)，状态词含义见[状态与限制](states-and-limits.md)。

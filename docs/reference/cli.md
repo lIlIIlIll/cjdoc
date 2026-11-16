@@ -1,125 +1,146 @@
 # CLI 参考
 
-当前源码的命令行契约。先按[安装页](../getting-started/install.md)构建并安装同提交工具；命令在目标项目根运行，除非显式给出输入路径。只有 `cjdoc --help` / `cjdoc -h` 提供帮助，子命令不支持独立 `--help`。`cjdoc --version` 显示产品版本，不代替完整 source commit 身份。
+`cjdoc` 的命令、选项、取值范围与退出码。命令在项目根执行，除非显式给出输入路径。只有 `cjdoc --help`（或 `-h`）提供帮助，子命令不接受 `--help`：`cjdoc generate --help` 报 `unknown option '--help'` 并以 `2` 退出。`cjdoc --version` 输出 `cjdoc 0.7.8`，只表示产品版本。
+
+需要按步骤完成的任务，见[生成与发布](../how-to/generate-and-publish.md)、[预览](../how-to/preview.md)、[比较与多版本](../how-to/compare-and-version.md)、[离线重放](../how-to/render-snapshots.md)、[查询与 MCP](../how-to/query-and-mcp.md)。
 
 ## 命令
 
-| 命令 | 输入与行为 | 最小调用 |
-|---|---|---|
-| `generate` | 读取项目，生成选定格式 | `cjdoc generate --project . --format html` |
-| `check` | 读取项目，检查诊断和门槛，不发布站点 | `cjdoc check --project .` |
-| `serve` | 生成预览并监听输入变化 | `cjdoc serve --project . --port 8080` |
-| `render` | 只读当前 Doc IR v18，离线重新渲染 | `cjdoc render --input docs.json --format html --output replay` |
-| `diff` | 比较两个 API snapshot 或 Doc IR | `cjdoc diff old.json new.json --format json` |
-| `versions compose` | 组合已生成版本站点 | `cjdoc versions compose --version v1=old/html --version v2=new/html --latest v2 --output versions` |
-| `query` | 对显式冻结快照执行单个 JSON 请求 | `cjdoc query --snapshot docs.json --request request.json` |
-| `mcp` | 对显式冻结快照提供 stdio MCP | `cjdoc mcp --snapshot site/agent/manifest.json` |
-| `schema` | 输出指定 schema，或列出名字 | `cjdoc schema list` |
+| 命令 | 输入 | 行为 | 最小调用 |
+|---|---|---|---|
+| `generate` | 项目 | 读取项目并生成选定格式 | `cjdoc generate --project . --format html` |
+| `check` | 项目 | 读取项目、检查诊断与门槛，不写出站点 | `cjdoc check --project .` |
+| `serve` | 项目 | 生成预览站点并监听输入变化 | `cjdoc serve --project . --port 8080` |
+| `render` | Doc IR 文件 | 只读 `cjdoc.doc-ir/18`，离线重新渲染 | `cjdoc render --input docs.json --format html --output replay` |
+| `diff` | 两个 API 快照 | 比较两个 `cjdoc.api-surface/3` 快照 | `cjdoc diff old.json new.json --format json` |
+| `versions compose` | 已生成的版本站点 | 组合版本站点并注入选择器 | `cjdoc versions compose --version v1=old/html --version v2=new/html --latest v2 --output versions` |
+| `query` | 冻结快照 | 执行一个 JSON 查询请求 | `cjdoc query --snapshot docs.json --request request.json` |
+| `mcp` | 冻结快照 | 提供 stdio MCP 服务 | `cjdoc mcp --snapshot site/agent/manifest.json` |
+| `schema` | schema 名 | 输出 schema 文本，或列出名字 | `cjdoc schema list` |
 
-表中的 `old.json`、`new.json`、`docs.json`、`request.json`、版本目录均是需要先准备的输入，不是安装后自带的文件。[版本操作](../how-to/compare-and-version.md)、[离线重放](../how-to/render-snapshots.md)、[query/MCP](../how-to/query-and-mcp.md)提供完整流程。
+输入参数里的 `docs.json`、`request.json`、版本目录都要先由前面的命令生成。产物路径与 wire 版本见[产物参考](artifacts.md)。
+
+## 选项总表
+
+「适用命令」按解析器实际校验结果列出；命令不在此列时给出该选项会以 `2` 退出。带 `…` 的选项可重复。
+
+| 选项 | 取值 | 默认 | 适用命令 |
+|---|---|---|---|
+| `--project DIR` | 目录 | `.`；未写时视为 project 根 | generate、check、serve |
+| `--format NAME` | `json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index` | `json`；可重复、去重 | generate、render、serve；`diff` 只接受 `text`、`json` |
+| `--output DIR` | 目录 | generate/serve 为 `<project>/target/doc`，render 为 `target/doc` | generate、render、serve；compose 必填 |
+| `--stdout` | 标志 | 关闭 | generate、render |
+| `--input FILE` | Doc IR JSON | 无 | render（必填） |
+| `--force-owned` | 标志 | 关闭 | generate、render、compose |
+| `--jobs N` | 整数 `1..64` | `1` | generate、check、serve |
+| `--audience LEVEL` | `external`、`package`、`all` | `external` | generate、check、serve |
+| `--lint-profile LEVEL` | `off`、`standard`、`strict` | `standard` | generate、check、serve |
+| `--check-examples` | 标志 | 关闭 | generate、check、serve |
+| `--deny-warnings` | 标志 | 关闭 | generate、check、serve |
+| `--min-symbol-coverage N` | 整数 `0..100` | 无门槛 | generate、check、serve |
+| `--min-parameter-coverage N` | 整数 `0..100` | 无门槛 | generate、check、serve |
+| `--api-surface-baseline FILE` | 文件 | 无 | generate、check、serve |
+| `--max-doc-ir-mib N` | 整数 `1..64` | `64`，可被 `[limits]` 覆盖 | generate、check、serve、render |
+| `--semantic MODE` | `source`、`chir` | `source` | generate、check |
+| `--cjc PATH` | 可执行文件 | `cjc` | generate、check（要求 `--semantic chir`） |
+| `--chir-worker PATH` | 可执行文件 | 无 | generate、check（要求 `--semantic chir`） |
+| `--chir-import-path DIR`… | 目录 | 无 | generate、check（要求 `--semantic chir`） |
+| `--highlight-adapter PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-node` 成对） |
+| `--highlight-node PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-adapter` 成对） |
+| `--cfg NAME=VALUE`… | 条件编译键值 | 无 | generate、check、serve |
+| `--include-path-dependencies` | 标志 | 关闭 | generate、check、serve |
+| `--include-cached-dependencies` | 标志 | 关闭 | generate、check、serve |
+| `--cjpm-cache DIR` | 目录 | `$HOME/.cjpm` | generate、check、serve（要求 `--include-cached-dependencies`） |
+| `--dependency-source NAME=PATH`… | 依赖源码 | 无 | generate、check、serve |
+| `--cache-dir DIR` | 目录 | `<project>/target/cjdoc/cache/source-v11` | generate、check、serve |
+| `--no-cache` | 标志 | 关闭 | generate、check、serve |
+| `--repository-url URL` | `https://github.com/<owner>/<repo>` | 无 | generate、serve（与 revision 成对） |
+| `--repository-revision REV` | 文本 | 无 | generate、serve（与 URL 成对） |
+| `--repository-root DIR` | 目录 | 项目根 | generate、serve（要求 URL 与 revision） |
+| `--build-context FILE` | JSON | 无 | generate、check |
+| `--doc-source PATH`… | catalog 文件或目录 | 无 | generate、check |
+| `--doc-inventory-pin PATH=SHA256`… | 库存字节摘要 | 无 | generate、check |
+| `--link-language LANG` | `zh-CN`、`en` | 未指定 | generate、check |
+| `--link-language-fallback` | 标志 | 关闭 | generate、check |
+| `--link-compatible` | 标志 | 关闭 | generate、check |
+| `--stdlib-doc-version VERSION` | 内置目录版本或安全路径段 | 内置目录选择 | generate |
+| `--stdlib-doc-base-url URL` | HTTPS 且以 `/libs/std` 结尾 | 无 | generate |
+| `--locale LANG` | `zh-CN`、`en` | `zh-CN` | generate、render、serve |
+| `--all-languages` | 标志 | 关闭 | generate、render |
+| `--require-language LANG`… | `zh-CN`、`en` | 无 | generate、check、serve |
+| `--doc-version TEXT` | 文本 | 无 | generate、render（要求 `--format html`） |
+| `--agent-full` | 标志 | 关闭 | generate、render、serve |
+| `--html-font-sans LIST` | 字体族列表 | 无 | generate、render、serve |
+| `--html-font-mono LIST` | 字体族列表 | 无 | generate、render、serve |
+| `--validation-report FILE` | JSON 报告 | 无 | generate、render |
+| `--api-diff-report FILE` | JSON 报告 | 无 | generate、render |
+| `--deny-breaking-api` | 标志 | 关闭 | diff |
+| `--deny-potentially-breaking-api` | 标志 | 关闭 | diff |
+| `--baseline FILE` / `--current FILE` | API 快照 | 无 | diff |
+| `--port N` | 端口整数 | `8080` | serve |
+| `--open` | 标志 | 关闭 | serve |
+| `--snapshot PATH`… | `docs.json`、`agent/manifest.json`、`versions.json` | 无 | query、mcp（1–64 个） |
+| `--request FILE\|-` | 请求 JSON，`-` 为 stdin | 无 | query（恰好一个） |
+| `--version ID=PATH`… | 版本 ID 与站点目录 | 无 | versions compose（必填） |
+| `--label ID=TEXT`、`--channel ID=TEXT`、`--status ID=TEXT`、`--base-path ID=PATH`、`--release ID=TEXT`、`--diff ID=PATH` | 版本元数据 | 见 `versions compose` 一节 | versions compose |
+| `--latest ID` | 版本 ID | 首个 `--version` 的 ID | versions compose |
+
+`--locale` 选择界面语言与已有作者译文，不翻译正文；它不改写 `zh-Hans`、`en-US` 之类的区域别名，非法值报 `--locale must be zh-CN or en`。
+
+`--port` 与 `--open` 只影响 serve；其他命令接受这两个选项但不使用它们，退出码与不带时相同。
 
 ## 生成和离线渲染的输出选项
 
-| 选项 | 默认值与约束 | 适用命令 |
-|---|---|---|
-| `--format NAME` | 默认 `json`；可重复，去重；`json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index` | generate、render；diff 单独只支持 text/json |
-| `--output DIR` | generate/serve 默认 `<project>/target/doc`，render 默认当前目录下 `target/doc`；指定发布根，而非 HTML 内层目录 | generate、render、serve；compose 必填 |
-| `--stdout` | 默认关闭；恰好一个 JSON 类格式：json/api-surface/coverage/symbol-index；与 output、force-owned、all-languages 互斥 | generate、render |
-| `--force-owned` | 默认关闭；只在所有权契约允许时替换输出，不等于任意覆盖 | generate、render、compose |
-| `--max-doc-ir-mib N` | 1–64，默认 64；generate/check/serve 可受配置影响；render 不重新读项目配置 | generate、check、serve、render |
-| `--locale zh-CN\|en` | 默认 zh-CN；选择界面和已有作者译文，不自动翻译 | generate、render；不是 check 选项 |
-| `--all-languages` | 关闭；按配置语言生成目录，与显式 locale/stdout 互斥 | generate、render |
-| `--doc-version TEXT` | 无；必须生成 HTML，写入站点版本元数据，不改变源码 | generate、render |
-| `--agent-full` | 关闭；HTML 聚合全文/分片；非 serve 时要求 format html | generate、render、serve |
-| `--html-font-sans LIST` | 无；站点正文与界面字体，逗号分隔的字体族列表（见下）；非 serve 时要求 format html | generate、render、serve |
-| `--html-font-mono LIST` | 无；签名与代码字体，规则同上 | generate、render、serve |
-| `--validation-report FILE` | 无；附加已存在的报告，不执行验证；要求 HTML 目录输出 | generate、render |
-| `--api-diff-report FILE` | 无；附加已有 diff，不重新比较；要求 HTML 目录输出 | generate、render |
+`--format` 可重复，重复值去重；默认只输出 `json`。`--output` 指定发布根，而不是 HTML 内层目录。多种格式共享一次源码捕获；只给 `--output` 而不给 `html` 时不会生成网页。
 
-实际目录与 wire 版本见[产物参考](artifacts.md)。stdout 的结构化数据写 stdout，生成诊断写 stderr。多种输出一次扫描生成；没有 format html 时，不会因为给了 output 就自动生成网页。
+`--stdout` 要求恰好一种 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`），且与 `--output`、`--force-owned`、`--all-languages` 互斥；`--format markdown --stdout` 或两种格式同用都报 `--stdout requires exactly one JSON-producing format`。结构化数据写 stdout，诊断写 stderr。目录输出属于 `--force-owned` 描述的所有权契约，不只是「覆盖已有文件」。
 
-字体族列表中的每一项是字母、数字、空格、`_`、`-` 组成的名字，可以用双引号包住，例如 `'"Source Han Sans SC", system-ui, sans-serif'`；整个值不超过 256 字节。站点只引用字体名，不下载或打包字体文件，阅读者设备上没有的字体会按列表顺序回退。值不合法时命令以 `invalid --html-font-sans value`（或 mono）失败，不写出站点。阅读者在站点“显示设置”里选择的字体优先于这两个选项。
+`--max-doc-ir-mib` 的 CLI 值覆盖 `[limits].max-doc-ir-mib`；`render` 不读项目配置，用默认值或自己的选项。
 
-## 项目、依赖、可见性与缓存
+`--html-font-sans`、`--html-font-mono` 接受逗号分隔的字体族列表：
 
-以下用于项目生成/检查；`serve` 复用项目输入并强制加入 HTML 格式，不能用 render/query 代替项目发现。`render` 拒绝项目、依赖、受众、lint、cfg、缓存和 jobs 选项。serve 的生成/输出细节见下方专节。
+- 每个字体族由字母、数字、空格、`_`、`-` 组成，可整体加双引号，如 `'"Source Han Sans SC", system-ui, sans-serif'`。
+- 只允许以空格分隔列表项；制表符、换行、`;`、`{}`、`url(`、空项、长度超过 256 字节都报 `invalid --html-font-sans value`（mono 同理），不写出站点。
+- 站点只引用字体名，不下载或打包字体文件；阅读者设备缺失时按列表顺序回退。站点「显示设置」里的字体选择优先于这两个选项。
+- 非 serve 命令要求同时请求 `html` 格式。
 
-| 选项 | 默认值、约束与用途 |
-|---|---|
-| `--project DIR` | `.`；指向含 cjpm.toml 的根，workspace 自动发现成员 |
-| `--audience external\|package\|all` | external：public/protected；package：除 private；all：全部。不是隐私删源保证 |
-| `--lint-profile off\|standard\|strict` | standard；控制文档诊断，不检查行为真实性 |
-| `--jobs N` | 1，范围 1–64 |
-| `--cfg NAME=VALUE` | 无；可重复，显式条件编译值，不猜 compiler profile |
-| `--include-path-dependencies` | 关闭；加入本地 path 依赖 |
-| `--include-cached-dependencies` | 关闭；只读已经准备的 cjpm 缓存，不下载 |
-| `--cjpm-cache DIR` | 无显式覆盖；必须同时 include-cached-dependencies |
-| `--dependency-source NAME=PATH` | 可重复；显式依赖源码，身份与清单绑定规则见输入专题 |
-| `--cache-dir DIR` | 默认 `<project>/target/cjdoc/cache/source-v11`；出现时启用缓存 |
-| `--no-cache` | 关闭缓存；与 cache-dir 按最后出现的选项选择 |
-
-完整流程：[选择输入](../how-to/select-inputs.md)、[输出与缓存](../how-to/manage-outputs.md)。
-
-## 质量与示例
-
-| 选项 | 用途与约束 | 适用命令 |
-|---|---|---|
-| `--check-examples` | 默认关闭；实际编译，带 run 才执行；使用注释中的指令与固定资源限制 | generate、check |
-| `--deny-warnings` | 默认关闭；warning 也导致失败 | check；项目生成解析器也接受，但不是覆盖率配置替代 |
-| `--min-symbol-coverage N` | 无，0–100；使用 CLI 计数口径，与配置门槛并行检查 | check |
-| `--min-parameter-coverage N` | 无，0–100；不是覆盖 `[coverage].parameters` | check |
-| `--api-surface-baseline FILE` | 无；所有差异均失败，包含新增，不是仅阻断 breaking | check |
-| `--require-language zh-CN\|en` | 无；可重复；要求配置内语言及有效翻译覆盖 | generate、check |
-
-目前通用项目解析器也会接受部分门槛用于 generate；推荐按表中检查任务使用 `check`，不要把某个选项被解析视为其他子命令提供相同承诺。精确计数与两个门槛体系见[质量专题](../how-to/check-quality.md)，示例指令见[检查示例](../how-to/check-examples.md)。
-
-## 源码与外部文档链接
-
-| 选项 | 默认值与约束 | 命令 |
-|---|---|---|
-| `--repository-url URL` | 无；GitHub 仓库根，与 revision 成对 | generate；serve 的项目解析也接受 |
-| `--repository-revision REV` | 无；与 URL 成对，固定源码身份 | 同上 |
-| `--repository-root DIR` | 无；需要 URL/revision | 同上 |
-| `--stdlib-doc-version VERSION` | 内置目录选择；非内置版本需提供 base URL | generate |
-| `--stdlib-doc-base-url HTTPS_URL` | 必须是 HTTPS 且以 `/libs/std` 结尾 | generate |
-| `--build-context FILE` | 无；捕获实际依赖选择的记录 | generate、check |
-| `--doc-source PATH` | 可重复；文档 catalog 文件或含 `cjdoc-documents.json` 的目录，不是随便的 HTML 根；相对路径以项目根为基准 | generate、check |
-| `--doc-inventory-pin PATH=SHA256` | 可重复；对实际库存字节固定 SHA-256；相对路径以项目根为基准 | generate、check |
-| `--link-language LANG` | 默认未指定；规范化文档语言 | generate、check |
-| `--link-language-fallback` | 默认关闭；允许显式语言回退 | generate、check |
-| `--link-compatible` | 默认关闭；允许契约所定义的兼容匹配，不把它标成 exact | generate、check |
-
-多仓源码也可配置登记，唯一完整配置见[configuration](configuration.md)。完整外部库、消费方与 pin 流程见[链接文档](../how-to/link-documentation.md)。
+`--validation-report`、`--api-diff-report` 附加已存在的报告文件，不执行验证或重新比较；两者都要求 generate/render 的 HTML 目录输出，`--stdout` 下不可用。
 
 ## 可选语义和高亮后端
 
-| 选项 | 默认值与约束 |
-|---|---|
-| `--semantic source\|chir` | source；仅 generate/check |
-| `--cjc EXECUTABLE` | cjc；显式指定要求 semantic chir |
-| `--chir-worker EXECUTABLE` | 无；要求 semantic chir；缺失时诊断并保留源码 fallback |
-| `--chir-import-path DIR` | 可重复；要求 semantic chir |
-| `--highlight-adapter ABSOLUTE_PATH` | 与 highlight-node 成对；仅 generate/check；绝对文件路径，不是 shell 命令 |
-| `--highlight-node ABSOLUTE_PATH` | 与 adapter 成对；拒绝 shell 元字符 |
+以下选项只对 `generate`、`check` 有效，用于 serve 时报 `semantic options are only valid for generate and check` 或 `highlight host options are only valid for generate and check`。
 
-CHIR 失败不升级语义权威性，也不替代注释真值。真实 worker 的构建见[CHIR](../how-to/chir.md)；锁定适配器和错误策略见[高亮](../how-to/highlighting.md)。
+| 选项 | 取值与约束 | 默认 |
+|---|---|---|
+| `--semantic source\|chir` | 其他值报 `--semantic must be source or chir` | `source` |
+| `--cjc EXECUTABLE` | 显式给出时要求 `--semantic chir`，否则报 `--cjc, --chir-worker, and --chir-import-path require --semantic chir` | `cjc` |
+| `--chir-worker EXECUTABLE` | 要求 `--semantic chir`；缺失或失败时保留源码信息并报诊断 | 无 |
+| `--chir-import-path DIR` | 可重复；要求 `--semantic chir` | 无 |
+| `--highlight-adapter PATH` | 必须与 `--highlight-node` 同时给出，否则报 `--highlight-adapter and --highlight-node must be supplied together` | 无 |
+| `--highlight-node PATH` | 同上；与 adapter 一样必须是绝对路径（`--highlight-adapter requires an absolute path`），且不得含 shell 元字符 | 无 |
+
+两个高亮路径是 argv 值，不是 shell 命令；`;`、`|`、`&`、`$`、`` ` ``、引号、括号、通配符、`~`、控制字符都报 `requires a path without shell metacharacters`。CHIR 是显式的可选语义补充，失败不会升级为权威类型检查，也不替代注释真值：worker 缺失时报 `CJDOC2101` 并回退到源码信息。构建真实 worker 见[CHIR 语义补充](../how-to/chir.md)；适配器准备与失败策略见[代码高亮](../how-to/highlighting.md)。
 
 ## serve
 
-`cjdoc serve --project . --port 8080`。`--port` 默认 8080，`--open` 默认关闭；后者请求浏览器打开。`--agent-full` 可选。当前 serve 复用项目输入、缓存、受众、lint、jobs、cfg 与源码链接选项，也接受 `--output`、`--format`、`--locale`、`--force-owned`；重建时强制加入 HTML，服务根为输出下的 `html/`，额外格式不是 HTTP 根。不要使用 `--stdout`：serve 始终是站点预览进程，解析接受该标志不代表它变成管道输出命令。semantic/外部库存/高亮 host 等受 generate/check 限定的参数不能用于 serve。状态、重建与退出行为见[预览](../how-to/preview.md)。
+`cjdoc serve --project . --port 8080` 先做一次完整生成，然后在本机监听并监视输入。`--port` 默认 `8080`；`--open` 请求浏览器打开 `http://127.0.0.1:<port>/`，命令本身不等待页面。
 
-状态接口为 `http://127.0.0.1:<port>/__cjdoc/status.json`，返回 `cjdoc.serve-status/1`：
+- 服务根固定为输出目录下的 `html/`，即使还请求了其他格式。`--format`、`--output`、`--locale`、`--force-owned`、`--jobs`、`--audience`、`--lint-profile`、`--cfg`、依赖与缓存选项、`--repository-*`、`--require-language`、`--deny-warnings`、`--check-examples`、两个覆盖率门槛、`--api-surface-baseline`、`--max-doc-ir-mib`、`--agent-full`、字体选项可用。
+- `--semantic`、`--cjc`、`--chir-*`、`--highlight-*`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible` 只对 generate/check 有效，用于 serve 报 `semantic options are only valid for generate and check` 或 `dependency documentation options are only valid for generate and check`。
+- `--doc-version`、`--all-languages`、`--validation-report`、`--api-diff-report` 不适用于 serve。`--stdout` 会被接受但不改变行为：serve 始终是站点预览，`--stdout` 与 `--format html` 同用仍报错。
+- 监视范围是项目内的 `.cj`、`.md`、`cjpm.toml`、`cjpm.lock`、`cjdoc.toml`；跳过隐藏项、`target/`、`.git/`、输出目录与缓存目录。保存后重建，浏览器需手动刷新。
+- 重建失败时服务继续提供上一份成功站点；进程因输入错误退出后，修正输入再重启。`Ctrl+C` 停止。
+
+状态接口 `http://127.0.0.1:<port>/__cjdoc/status.json` 返回 `cjdoc.serve-status/1`：
 
 | 字段 | 含义 |
 |---|---|
-| `schemaVersion` | 固定为 `cjdoc.serve-status/1` |
-| `status` | 最近一次构建成功为 `ok`，失败为 `error` |
+| `schemaVersion` | 固定 `cjdoc.serve-status/1` |
+| `status` | 最近一次构建成功为 `ok`，否则 `error` |
 | `port` | 当前监听端口 |
-| `builds` | 初次生成与后续重建的累计尝试次数，失败也计入 |
-| `successfulBuilds` | 其中成功构建的累计次数 |
-| `lastError` | 最近一次构建失败的提示；下一次成功后清空为 `""`。具体诊断看服务终端 |
-
-监视范围包括源码、Markdown、`cjpm.toml`、`cjpm.lock` 与 `cjdoc.toml`；保存后重建，浏览器需要手动刷新。重建失败后仍运行的服务保留最近成功站点；若进程因输入错误退出，修正输入后重新启动。在服务终端按 `Ctrl+C` 停止。
+| `builds` | 初次生成与重建的累计尝试次数，含失败 |
+| `successfulBuilds` | 其中成功的累计次数 |
+| `lastError` | 最近一次失败的提示，下一次成功后重置为 `""`；具体诊断看服务终端 |
 
 ## diff
 
@@ -128,43 +149,65 @@ cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-
 cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]
 ```
 
-格式默认 text。两个输入都必需，不能多给第三个位置参数；仅接受输入、格式及 API deny 选项。`--deny-breaking-api` 阻断 `breaking`，`--deny-potentially-breaking-api` 阻断 `potentially-breaking`；要拒绝两类变化，同时提供两个选项。严格 API baseline 是另一个检查接口，连新增也会拒绝。[完整两份源码流程](../how-to/compare-and-version.md)。
+两个输入都必需，两种写法只能选一种；多余的位置参数报 `unknown option '...'`。`--format` 只接受 `text`（默认）与 `json`。`--deny-breaking-api` 使 `breaking` 条目失败，`--deny-potentially-breaking-api` 使 `potentially-breaking` 条目失败；两类都要拒绝时同时给出。输入必须是 `cjdoc.api-surface/3` 快照，传入 Doc IR 报 `unsupported API surface schema 'cjdoc.doc-ir/18'`。严格基线是另一个接口：`check --api-surface-baseline` 连新增也拒绝。流程见[比较与多版本](../how-to/compare-and-version.md)。
 
 ## versions compose
 
 | 选项 | 约束 |
 |---|---|
-| `--version ID=PATH` | 必需、可重复；实际生成的版本站点输入 |
-| `--output DIR` | 必需；组合站点输出 |
+| `--version ID=PATH` | 必填、可重复；ID 不可重复；PATH 是已生成的站点根（含 `index.html`） |
+| `--output DIR` | 必填；组合站点输出，不能与任一输入目录重叠 |
 | `--latest ID` | 默认首个 `--version` 的 ID，不按版本号排序；显式值必须属于版本集合 |
-| `--label ID=TEXT` | 默认 ID；显示标签，不是源码版本 |
-| `--channel ID=TEXT` | 默认 `unspecified`；发布渠道文本 |
-| `--status ID=TEXT` | 默认 `published`；发布状态文本 |
-| `--base-path ID=PATH` | 默认 ID；版本基路径，受安全相对路由规则约束 |
-| `--release ID=TEXT` | 发布说明文本，不要求是 URL |
-| `--diff ID=PATH` | 关联已存在 diff 文件 |
-| `--force-owned` | 默认关闭；输出所有权规则不变 |
+| `--label ID=TEXT` | 默认 ID；显示标签 |
+| `--channel ID=TEXT` | 默认 `unspecified` |
+| `--status ID=TEXT` | 默认 `published` |
+| `--base-path ID=PATH` | 默认 ID；受安全相对路由约束，不能与其他版本重叠或占用 `index.html`、`versions.json`、`version-navigation.js`、`latest` |
+| `--release ID=TEXT` | 发布说明文本，不要求 URL |
+| `--diff ID=PATH` | 关联已存在的 diff 文件 |
+| `--force-owned` | 输出所有权规则与 generate 相同 |
 
-每个元数据选项对相同 ID 不可重复赋值，引用的 ID 必须存在。[版本专题](../how-to/compare-and-version.md)包含完整输入和安全回退。
+每个元数据选项对同一 ID 只能赋值一次，引用的 ID 必须出现在 `--version` 中。最多 64 个站点。产物结构见[产物参考](artifacts.md#版本站点)。
 
-## query、mcp 和 schema
+## query、mcp 与 schema
 
-query/mcp 要求 1–64 个显式 `--snapshot PATH`，支持当前 docs.json、agent/manifest.json、versions.json；不发现项目、不写输出、不隐式加载网络。query 另要求恰好一个 `--request FILE`，`-` 表示 stdin；mcp 不接受 request。所有请求、分页、身份和域结果见[查询协议](query-protocol.md)。
+`query` 和 `mcp` 接受 1–64 个 `--snapshot`，值可以是当前 `docs.json`、`agent/manifest.json` 或版本目录的 `versions.json`；它们不发现项目、不写输出、不联网。`query` 另需恰好一个 `--request`，`-` 表示从 stdin 读一个 UTF-8 JSON 对象；`mcp` 不接受 `--request`。请求、分页与域状态见[查询协议](query-protocol.md)。
 
-`cjdoc schema list` 列出当前可导出的 schema 名字，`cjdoc schema NAME` 输出该 schema。不同索引有各自 schema 版本；不能把 Doc IR 的 current-only 规则误用于全部协议。
+`cjdoc schema list` 列出全部可导出名字，`cjdoc schema <name>` 输出该名字对应的内容；未知名字报 `unknown schema '...'`（`2`）。各名字对应的 wire 版本见[产物参考](artifacts.md#schema-与-wire-版本)。
 
-## 默认值、优先级与退出码
+## 环境变量
 
-显式 CLI 值控制相应生成选项；未指定时按项目配置及默认值。`max-doc-ir-mib` 的 CLI 覆盖配置；`--min-*-coverage` 不覆盖配置，而是增加另一套检查。重复 format 去重，cache-dir/no-cache 取最后一个；不要依赖其他重复参数来表达组合语义。离线 render 不回读当前项目配置。
+| 变量 | 用途 | 未设置时 |
+|---|---|---|
+| `CJDOC_TOOLCHAIN_VERSION` | 记录到源码缓存指纹的编译器版本 | 运行 `<cjc> --version` 并从 `Cangjie Compiler:` 行提取 |
+| `CJDOC_TOOLCHAIN_TARGET` | 缓存指纹中的目标平台 | `unknown-target` |
+| `CJDOC_TOOLCHAIN_FINGERPRINT` | 缓存指纹中的工具链指纹 | `unknown-toolchain` |
+| `CJDOC_STDX_DIGEST` | 缓存指纹中的 stdx 摘要 | `unknown-stdx` |
+| `CJDOC_STDX_DEPENDENCY_DIGEST` | stdx 依赖摘要 | 沿用 `CJDOC_STDX_DIGEST` |
+| `CJDOC_STDX_VARIANT` | stdx 变体 | `unknown-variant` |
+| `CANGJIE_HOME` | 缓存指纹里的 SDK 路径 | 回退到 `CANGJIE_SDK_ROOT`，再回退到 `unknown-sdk` |
+| `HOME` | 未给 `--cjpm-cache` 时的 cjpm 缓存根 `$HOME/.cjpm` | 缓存依赖发现报 `CJDOC1021` 并跳过 |
+
+`CJDOC_TOOLCHAIN_*` 与 `CJDOC_STDX_*` 只作为缓存键提示，不认证实际编译器、标准库或 stdx 构建。外部高亮进程只继承 `PATH`、`SystemRoot`、`WINDIR`、`TEMP`、`TMP`、`TMPDIR`、`LANG`，不继承 `NODE_OPTIONS`、`NODE_PATH` 或其他项目环境。
+
+## 默认值与优先级
+
+- 显式 CLI 值优先于项目配置；未指定时按项目配置与内置默认值。
+- `--max-doc-ir-mib` 覆盖配置；`--min-symbol-coverage`、`--min-parameter-coverage` 不覆盖 `[coverage]`，而是在配置门槛之外再加一套检查，两者都执行。
+- `--format` 重复去重；`--cache-dir` 与 `--no-cache` 按最后出现的那个生效。
+- `--validation-report`、`--api-diff-report`、`--doc-source`、`--doc-inventory-pin`、`--require-language`、`--cfg`、`--dependency-source`、`--chir-import-path` 可重复，其含义是并列而不是覆盖。
+- 不要靠重复其他参数表达组合语义；除上述选项外重复给出不会产生新行为。
+
+## 退出码
 
 | 范围 | 退出码 | 含义 |
 |---|---|---|
-| 生成/检查/差异等普通命令 | 0 | 完成且所选策略未失败 |
-| 同上 | 1 | 文档 error、要求的 warning/覆盖率/API gate、受控生成失败等 |
-| 同上 | 2 | 用法、配置或输入错误；具体诊断区分原因 |
-| query | 0 | 成功或协议规定的正常域结果，不等于有唯一匹配 |
-| query | 2 | invalid_request、scope_mismatch、stale_cursor |
-| query | 3 | unavailable / 资源或快照加载失败 |
-| mcp 启动 | 2 / 3 | 分别为无效参数/输入与不可用；启动后按 JSON-RPC/tool 结果解释 |
+| generate、check、diff、versions compose、schema | 0 | 完成且所选策略未失败 |
+| 同上 | 1 | 文档 error、`--deny-warnings` 遇到的 warning、覆盖率或 API 门槛失败、示例检查失败 |
+| 同上 | 2 | 用法、配置或输入错误（含选项互斥、取值范围、配置文件语法） |
+| render | 同上三条 | 输入不是 `cjdoc.doc-ir/18`、无法读取或超出 `--max-doc-ir-mib` 时为 `2` |
+| query | 0 | `ok`、`ambiguous`、`not_found`、`source_incomplete` |
+| query | 2 | `invalid_request`、`scope_mismatch`、`stale_cursor` |
+| query | 3 | `budget_exceeded`、`resource_limit`、`unavailable` |
+| mcp 启动 | 2 / 3 | 无效参数或输入 / 输入不可用；启动后按 JSON-RPC 与 tool 结果判断 |
 
-query 的 stale、ambiguous、not-found 等必须读取结构化 status，不只检查进程是否为 0。具体域状态和返回形式以[协议参考](query-protocol.md)为准。
+`query` 的 `0` 不代表唯一匹配：必须读结果里的 `status`。`generate` 在诊断失败时仍可能写出输出（有界回退产物），是否可用要看诊断与 `apiCollectionState`。

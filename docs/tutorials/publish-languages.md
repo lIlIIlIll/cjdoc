@@ -1,11 +1,15 @@
 # 为 API 和指南发布中英文
 
-给同一份 API 注释和同一篇指南分别提供中文、英文正文，读者就能在页头的语言标签里切换语言，并在等价的指南章节之间跳转。`--locale` 只选择界面标签和已存在的作者译文，**不会自动翻译**：要看到英文，必须由你写出英文。
+给同一份 API 注释和同一篇指南分别提供中文、英文正文，读者就能在页头的语言标签里切换语言，并在等价的指南章节之间跳转。
 
-## 前提
+**完成后你会得到**：`target/doc/html/zh-CN/` 和 `target/doc/html/en/` 两棵站点，语言标签可以在两者之间切换且保持在同一篇指南的同一小节，另有一份翻译覆盖报告 `target/doc/coverage/translations.json`。
+
+`--locale` 只选择界面标签和已存在的作者译文，**不会自动翻译**：要看到英文，必须由你写出英文。
+
+## 前提条件
 
 - 已完成[加入指南](add-guides.md)，在同一个 `docdemo/` 根目录继续。
-- 保留现有的 `cjpm.toml`、`docs/index.md`、`docs/packages/docdemo.md` 和 `docs/images/hello.png`。
+- 保留现有的 `cjpm.toml`、`docs/index.md`、`docs/packages/docdemo.md`、`docs/images/hello.png`、`docs/start.md` 和 `cjdoc.toml`。
 - 当前终端里的 `cjdoc` 和仓颉 SDK 环境仍可用。
 
 本页会完整替换 `src/api.cj` 和 `cjdoc.toml`，新增两份分语言指南，并删除已被替换的 `docs/start.md`。
@@ -52,6 +56,8 @@ private func internalGreeting(): String {
 ~~~
 
 语言属性紧贴标签名，中间不加空格、不加引号；不带语言属性的部分就是默认语言正文。摘要、详细说明、参数、返回和示例各自独立维护，代码围栏里的语言标记和 `{must-pass run}` 之类指令不翻译。
+
+`@description[lang=en]` 补的是英文详细说明，`@summary[lang=en]` 补英文摘要；两者都写，英文页面才不会回退到中文段落。
 
 需要为真实的异常行为提供两种语言说明时，见[注释参考的 `clamp` 示例](../reference/doc-comments.md#完整的-clamp-throws-示例)。
 
@@ -109,7 +115,7 @@ An empty name produces `Hello, !`. Whitespace is preserved.
 
 两份指南通过下一步的稳定章节键关联对应小节，不靠标题文字或排列顺序判断。两种语言都保留 `cjdoc-bind`，这样读者能在指南和 `greet` 之间来回跳转。
 
-共享的首页和包概述只有一份，两种语言的读者都会看到它。把其中指向指南的相对链接改成显式的中文目标：`docs/index.md` 里的 `start.md` 改为 `zh-CN/start.md`，`docs/packages/docdemo.md` 里的 `../start.md` 改为 `../zh-CN/start.md`。只改链接，其余正文保持不变；首页不做翻译，也不自动跟随语言。
+共享的首页和包概述只有一份，两种语言的读者都会看到它。把其中指向指南的相对链接改成显式的中文目标：`docs/index.md` 里的 `start.md` 改为 `zh-CN/start.md`，`docs/packages/docdemo.md` 里的 `../start.md` 改为 `../zh-CN/start.md`。只改链接，其余正文保持不变；首页不做翻译，也不自动跟随语言，因此英文页面会把它标为内容语言未知或原文回退。
 
 ## 3. 登记语言和等价章节
 
@@ -150,7 +156,7 @@ boundaries = "name-boundaries"
 
 两条 `[[docs.pages]]` 使用同一个 `id`，表示它们是同一篇逻辑页的不同语言版本，因此共用同一个路由。`[docs.pages.sections]` 两侧语言用同一个章节键，右边填各自标题的实际锚点：英文 `First greeting` 的锚点是 `first-greeting`，`Name boundaries` 的锚点是 `name-boundaries`。章节键是作者维护的稳定名，锚点跟着标题变化；目录名相同本身不建立任何配对。
 
-`missing-translation = "warn"` 会在缺译时给出警告；改成 `"deny"` 会把缺译升级为错误，作为发布门槛。`[i18n]` 的语言列表约束、`[docs.pages.sections]` 的锚点规则和重复标题的后缀见[配置参考](../reference/configuration.md)。
+`missing-translation = "warn"` 会在缺译时给出 `CJDOC3108` warning；改成 `"deny"` 会把缺译升级为 `error[CJDOC3108]` 并让命令以 `1` 结束，作为发布门槛。`[i18n]` 的语言列表约束、`[docs.pages.sections]` 的锚点规则和重复标题的后缀见[配置参考](../reference/configuration.md)。
 
 新配置已经指向两份分语言指南，现在可以删除被替换的旧文件：
 
@@ -169,13 +175,22 @@ cjdoc generate --project . --format html --format coverage --all-languages
 xdg-open target/doc/html/zh-CN/index.html
 ```
 
-`--all-languages` 按配置里的语言各生成一棵 HTML 文档树，入口分别是 `target/doc/html/zh-CN/index.html` 和 `target/doc/html/en/index.html`。
+预期结果：
 
-进入 `greet` 页面，在页头的语言标签上点击展开，再选择另一种语言。切换语言就在这个标签里完成，不会另外出现一个独立的语言导航项。切换后参数、返回和示例说明应随之变成另一种语言；再打开指南的“名字的边界”小节并切换语言，应落到英文的 `Name boundaries`，而不是猜一个英文片段。
+- `cjpm build` 最后一行是 `cjpm build success`。
+- `cjdoc check` 以退出码 `0` 结束，表示两个 `@example` 都编译并运行通过。
+- `cjdoc generate` 打印 `generated ./target/doc`，按配置里的语言各生成一棵 HTML 文档树，入口分别是 `target/doc/html/zh-CN/index.html` 和 `target/doc/html/en/index.html`。
+- 报告写在 `target/doc/coverage/`，其中 `translations.json` 是这次生成的翻译覆盖报告。
 
-`target/doc/coverage/translations.json` 是这次生成的翻译覆盖报告。共享首页和包概述没有英文译文，会在报告里体现出来，这是预期结果。
+这三条命令都会打印 warning，它们不改变退出码：
 
-两个 `@example` 的跨语言关系无法从正文唯一证明，会各自按独立条目保留，可能出现 `unpaired` 或 `CJDOC3107` 一类的提示；标题相似、顺序相同都不构成配对依据。
+- `CJDOC3107: @example entries have no unique cross-language association`：两个示例的跨语言关系无法从正文唯一证明，会各自按独立条目保留。标题相似、顺序相同都不构成配对依据。
+- `CJDOC3108: language en: ... has fallback documentation`：共享首页和包概述没有英文译文，英文页面回退显示中文原文，报告里这部分记为 `fallback`。这是预期结果。
+- `CJDOC3041`：类型链接没有解析出语义身份，见[第一个站点](first-site.md)。
+
+进入 `greet` 页面，在页头的语言标签上点击展开，再选择另一种语言。切换语言就在这个标签里完成，不会另外出现一个独立的语言导航项。切换后参数、返回和示例说明应随之变成另一种语言；再打开指南的“名字的边界”小节并切换语言，应落到英文的 `Name boundaries`，而不是猜一个英文片段。切换后的地址形如 `target/doc/html/en/index.html` 或 `.../en/concepts/guides/start.html#standalone--doc-name-boundaries`。
+
+阅读 `target/doc/coverage/translations.json` 时逐项看 `state` 字段：`complete` 表示该字段有当前语言的译文，`fallback` 表示回退到另一种语言的原文，`unpaired` 表示跨语言条目无法配对。文件顶部的 `translated`、`fallback`、`unpaired` 等计数是该语言的汇总。
 
 只发布英文站点时省略 `--all-languages`：
 
@@ -183,7 +198,7 @@ xdg-open target/doc/html/zh-CN/index.html
 cjdoc generate --project . --format html --locale en --output target/doc-en
 ```
 
-入口是 `target/doc-en/html/index.html`，页面里没有语言切换需要的另一份站点，因此只适合单独发布某一种语言。
+入口是 `target/doc-en/html/index.html`。这种站点里没有另一种语言可供切换，页头不出现语言标签，因此只适合单独发布某一种语言。不带 `[i18n]` 的项目使用 `--all-languages` 会报 `error: --all-languages requires explicit [i18n] languages` 并以 `2` 退出。
 
 ## 5. 在副本里观察缺译
 
@@ -203,7 +218,10 @@ cjdoc generate --project . --format html --format coverage --locale en --output 
 xdg-open target/doc-en-missing/html/index.html
 ```
 
-打开 `target/doc-en-missing/html/index.html` 里的 `greet`，返回说明会回退为中文原文，并标注英文界面提示“Translation missing. Original text: zh-CN”。再看本次生成的 `target/doc-en-missing/coverage/translations.json`：该返回字段的 `state` 不再是 `complete`，对应的回退计数增加。
+预期结果：
+
+- 打开 `target/doc-en-missing/html/index.html` 里的 `greet`，返回说明回退为中文原文，上方标注英文界面提示 `Translation missing. Original text: zh-CN`。
+- 本次生成的 `target/doc-en-missing/coverage/translations.json` 中，`return` 字段的 `state` 从 `complete` 变为 `fallback`，英文的 `translated` 计数减一、`fallback` 计数加一。
 
 看报告时注意：
 
@@ -211,12 +229,13 @@ xdg-open target/doc-en-missing/html/index.html
 - 空译文不算有效译文；同一字段在同一语言重复提供了不同内容会报告冲突，不能因为“有语言标签”就当成完整翻译。
 - 主项目没有受到影响，确认完可以删除整个副本目录。
 
-## 遇到问题怎么办
+## 失败时怎么办
 
 - **切换语言后仍是中文**：确认该字段写了 `[lang=en]` 译文，且 `[i18n]` 中 `languages` 包含 `en`。
-- **生成后没有英文目录**：检查是否使用了 `--all-languages`；只给 `--locale en` 时不会产生分语言目录。
-- **章节切换落到了页首**：目标语言页里没有对应的章节锚点，检查两边 `[docs.pages.sections]` 是否登记了该章节键，以及右侧锚点是否与标题实际生成的一致。
-- **生成因缺译失败**：当前配置可能是 `missing-translation = "deny"`，或使用了 `--require-language`。补齐译文，或按发布策略调整门槛，语义见[状态参考](../reference/states-and-limits.md)。
+- **生成后没有英文目录**：检查是否使用了 `--all-languages`；只给 `--locale en` 时不会产生分语言目录，而 `--all-languages` 要求配置文件里有显式的 `[i18n] languages`。
+- **章节切换落到了页首**：目标语言页里没有对应的章节锚点，检查两边 `[docs.pages.sections]` 是否登记了该章节键，以及右侧锚点是否与标题实际生成的一致；不满足时会有 `CJDOC3110` warning 说明映射被省略。
+- **生成因缺译失败**：当前配置可能是 `missing-translation = "deny"`，或使用了 `--require-language`（此时报 `error[CJDOC3111]: language en translation coverage 40% is below 100%`）。补齐译文，或按发布策略调整门槛，语义见[状态参考](../reference/states-and-limits.md)。注意这两种门槛失败时输出目录仍会被写出，只有退出码是 `1`。
+- **`@summary[lang=en]` 写了却没生效**：语言属性必须紧贴标签名、写成 `[lang=en]`，中间有空格或引号会被拒绝并报告语言标签结构错误。
 
 ## 下一步
 
