@@ -1,12 +1,20 @@
-# 将依赖 API 链接到独立文档
+# 把依赖 API 链接到独立发布的文档站
 
-为库生成文档和符号索引，再让消费方的参数类型和相关链接跳到这份库文档。本页创建两个完整静态库，完成后可以从消费方的 `render` 页面点击 `Label`，进入依赖库的 API 页面。
+为依赖库单独生成文档和符号索引，再用文档目录（catalog）和索引摘要把它们接入消费方站点，让消费方页面上的类型与相关链接跳到这份库文档。
 
-## 前提
+## 什么时候用本页
+
+- 依赖库有自己的文档站，你希望消费方只链接过去，而不把库源码纳入本次文档。
+- 需要确认消费方链接到的确实是同一份库文档（用索引摘要固定内容），或者排查“链接没出现”“点开是 404”。
+- 只想链接标准库，或给源码加上指向 GitHub 提交的入口：看本页最后一节。
+
+只想把依赖源码一起生成进同一个站点时，用[选择输入](select-inputs.md)里的 `--include-path-dependencies`，不需要文档目录。
+
+## 前提条件
 
 - 已安装 `cjdoc`，当前终端已加载仓颉 SDK 1.2.0 环境，`cjpm` 可用。
-- Bash 和 Python 3；Python 只用标准库计算文件摘要。
-- 从任意目录开始，创建独立练习目录：
+- Bash 与 Python 3；Python 只用来计算索引文件摘要。
+- 两份源码版本一致：库站点的索引必须来自消费方实际使用的库版本，否则匹配不上不是配置错误。
 
 ```bash
 mkdir -p "$HOME/.cache/cjdoc/examples"
@@ -14,11 +22,11 @@ TASK_ROOT="$(mktemp -d "$HOME/.cache/cjdoc/examples/links.XXXXXX")"
 mkdir -p "$TASK_ROOT/library/src" "$TASK_ROOT/consumer/src"
 ```
 
-`TASK_ROOT` 是本页文件的存放位置，后续一直沿用这个绝对路径；也可以选择自己的空目录。
+`$TASK_ROOT` 是本页所有文件的存放位置，后面一直沿用。
 
-## 创建库与消费方
+## 第一步：准备库与消费方源码
 
-库提供 `Label` 类型。写入完整清单和源码：
+库提供一个 `Label` 类型：
 
 ```bash
 cat > "$TASK_ROOT/library/cjpm.toml" <<'EOF'
@@ -42,7 +50,7 @@ public class Label {
 EOF
 ```
 
-消费方通过相对路径依赖使用这个类型，并在注释中引用它：
+消费方通过路径依赖使用这个类型，并在注释里引用它：
 
 ```bash
 cat > "$TASK_ROOT/consumer/cjpm.toml" <<'EOF'
@@ -67,26 +75,19 @@ import linklib
  */
 public func render(label: linklib.Label): String { label.text() }
 EOF
-
-(cd "$TASK_ROOT/library" && cjpm build --jobs 1)
-(cd "$TASK_ROOT/consumer" && cjpm build --jobs 1)
 ```
 
-两次构建都应成功。若消费方找不到 `linklib`，确认库与消费方是同级目录，清单中的 `path` 为 `../library`。
+`linklib` 的页面由独立库站点提供，所以生成消费方时不要加 `--include-path-dependencies`：加了之后依赖源码会进入本地文档，类型链接可能改指本地页面。
 
-## 生成库文档并计算摘要
+## 第二步：生成库文档并固定索引摘要
 
-先为库生成 HTML 和符号索引。索引也称 inventory，记录这份文档有哪些 API 及其页面地址：
+生成库的 HTML 和符号索引，再对整个索引文件计算 SHA-256：
 
 ```bash
 cjdoc generate --project "$TASK_ROOT/library" \
   --format html --format symbol-index --output "$TASK_ROOT/library-site"
 INDEX="$TASK_ROOT/library-site/html/symbol-index.json"
-```
 
-为整个索引文件计算 SHA-256，后续用这个摘要固定要读取的索引：
-
-```bash
 PIN="$(python3 - "$INDEX" <<'PY'
 import hashlib
 import sys
@@ -102,11 +103,11 @@ PY
 printf '%s\n' "$PIN"
 ```
 
-输出是 64 位十六进制摘要。索引内容变化后需要重新计算；不要复用旧摘要。
+预期 `$TASK_ROOT/library-site/html/symbol-index.json` 存在，`$PIN` 是 64 位十六进制摘要。库重新生成后索引内容会变，需要重新计算摘要；不要复用旧值。
 
-## 登记库文档并生成消费方
+## 第三步：登记库文档并生成消费方
 
-用 catalog 告诉 cjdoc 在哪里读取索引，以及发布后依赖页面放在哪里：
+写一份 catalog，说明索引在哪、发布后依赖页面放在哪个相对地址：
 
 ```bash
 cat > "$TASK_ROOT/cjdoc-documents.json" <<'EOF'
@@ -128,13 +129,35 @@ cjdoc generate --project "$TASK_ROOT/consumer" \
   --format html --format json --output "$TASK_ROOT/consumer-site"
 ```
 
-catalog 的 `index` 相对 **catalog 文件所在目录**解释；`--doc-source` 和 `--doc-inventory-pin` 中的相对路径以 **`--project` 指定的项目根**为基准。本例让这些路径与 `INDEX` 都使用绝对路径，避免两个基准混淆。pin 校对索引的实际字节；它不认证远端网站。
+两个路径基准不同：catalog 里的 `index` 相对 **catalog 文件所在目录**解释，`--doc-source` 与 `--doc-inventory-pin` 的相对路径相对 **`--project` 指定的项目根**。本页都使用绝对路径以避免混淆。`--doc-source` 可以重复，也可以直接给一个含 `cjdoc-documents.json` 的目录。
 
-这里不加 `--include-path-dependencies`：消费方仍通过清单记录实际依赖，但 `linklib` 的页面由独立库站点提供。加入该选项会将依赖源码也纳入本地文档，类型链接可能转到本地页面，详见[选择输入](select-inputs.md)。
+预期退出码为 `0`，终端仍可能出现 `CJDOC3008`（`unresolved semantic reference`）和 `CJDOC3041`（未解析类型链接）——这些 warning 表示语义引用没有绑定到本地声明，不表示外部链接没有生成。用 `docs.json` 确认：
 
-源码模式下仍可能出现 `CJDOC3008` 或 `CJDOC3041` 语义链接 warning；它们不等同于页面没有导航链接。沿下面的类型和相关链接检查实际目的地，不能只凭是否有 warning 判断链接是否生成。
+```bash
+python3 - "$TASK_ROOT/consumer-site/docs.json" <<'PY'
+import json
+import sys
 
-## 放入依赖页面并沿链接阅读
+doc = json.load(open(sys.argv[1], encoding="utf-8"))
+print("documentSets:", [(d["library"], d["state"], d["baseUrl"]) for d in doc["documentSets"]])
+render = next(d for d in doc["declarations"] if d.get("name") == "render")
+nav = render["parameters"][0]["type"]["navigation"]
+print("state:", nav["state"], "matchLevel:", nav["matchLevel"])
+print("url:", nav["url"])
+PY
+```
+
+预期：
+
+```text
+documentSets: [('linklib', 'declared', './dependencies/linklib')]
+state: resolved matchLevel: exact
+url: ./dependencies/linklib/symbols/symbol-....html
+```
+
+`matchLevel` 为 `exact` 说明索引摘要与登记一致。pin 只校对索引文件的字节，不认证远端网站。
+
+## 第四步：放入依赖页面并沿链接检查
 
 catalog 不会替你复制或下载文档。把库的完整 HTML 树放到 `baseUrl` 对应位置：
 
@@ -144,22 +167,13 @@ cp -R "$TASK_ROOT/library-site/html" "$TASK_ROOT/consumer-site/html/dependencies
 xdg-open "$TASK_ROOT/consumer-site/html/index.html"
 ```
 
-在消费方的 `render` 页面点击参数类型 `linklib.Label`，再点击相关链接中的 `linklib.Label`。两处都应打开刚生成的库文档，库页中可以阅读 `Label.text()`。发布时上传完整 `consumer-site/html/`，包含 `dependencies/linklib/`；不要只上传消费方页面。
-
 macOS 用 `open`，Windows PowerShell 用 `Start-Process` 打开同一个入口。
 
-## 链接没有出现时
+在消费方的 `render` 页面点击参数类型 `linklib.Label`，再点击“另请参阅”里的 `linklib.Label`，两处都应打开库站点中的 `Label` 页面。发布时上传完整的 `consumer-site/html/`，包含 `dependencies/linklib/`；只传消费方页面会让链接 404。
 
-- **pin 不匹配**：该索引不可用，不会据此生成确定匹配的链接。消费方自身的文档仍可能生成成功，因此要阅读索引相关诊断。确认选中了正确索引，重新生成库文档、计算摘要，再更新 pin 并生成消费方。
-- **库源码或版本已变**：旧索引可能不再对应消费方实际使用的库。用消费方所用版本重新生成库文档，同时更新索引、摘要和发布的 HTML。
-- **已有链接但打开是 404**：确认复制了整个库 HTML 树，位置与 `baseUrl` 一致，发布平台保留文件名大小写。
-- **目标仍不确定**：文档集、版本、语言或依赖范围可能不匹配，也可能有多个候选。查看 `docs.json` 的导航状态，不要按同名类型任选一份文档。
+## 可选：链接到自己仓库的源码
 
-完整选择规则、歧义和摘要约束见[维护者的跨文档链接说明](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/document-links.md)。可读状态定义见[状态与限制](../reference/states-and-limits.md)。
-
-## 可选：链接到自己的源码
-
-在你已经公开发布的 GitHub 项目根目录操作。先确认当前 HEAD 已推送，读者能访问它；下面从该项目的 origin 和 HEAD 取得仓库地址与 revision：
+在已公开发布、HEAD 已推送的 GitHub 项目根目录操作，从 origin 和 HEAD 取得仓库地址与 revision：
 
 ```bash
 SOURCE_ROOT="$(git rev-parse --show-toplevel)"
@@ -177,11 +191,11 @@ cjdoc generate --project . --format html \
   --output target/doc-source-links
 ```
 
-origin 需要是 GitHub HTTPS 或上面转换的 `git@github.com:` 形式；其它形式先手动将 `SOURCE_REPOSITORY` 设为实际的 `https://github.com/<owner>/<repo>` 根地址。生成后从声明页面的源码入口打开对应提交中的文件。仓库 URL 与 revision 必须成对提供，源码必须位于仓库根内；这些参数标出源码位置，不负责推送源码。
+预期声明页面的源码入口指向 `https://github.com/<owner>/<repo>/blob/<revision>/<文件>#L<起>-L<止>`。三个选项只标出源码位置，不推送源码：`--repository-url` 与 `--repository-revision` 必须成对给出，`--repository-root` 必须是存在的目录，被引用的源码必须位于该目录内。
 
 ## 可选：链接标准库文档
 
-选择与读者使用的 SDK 对应的标准库文档版本。下面创建一个独立静态库，展示 `ArrayList<String>` 和 `String` 链接：
+内置可选版本为 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3`、`1.2.0`：
 
 ```bash
 mkdir -p "$TASK_ROOT/stdlib/src"
@@ -195,7 +209,6 @@ EOF
 cat > "$TASK_ROOT/stdlib/src/api.cj" <<'EOF'
 package stdliblinkdemo
 import std.collection.ArrayList
-import std.collection as collections
 import std.core as core
 
 /** 接收标准库列表并返回文本。
@@ -205,21 +218,37 @@ import std.core as core
 public func accept(values: ArrayList<String>): String { "ok" }
 
 /** 使用限定类型名声明同一组标准库类型。 */
-public func acceptQualified(values: collections.ArrayList<core.String>): core.String {
-    "ok"
-}
+public func acceptQualified(values: core.String): core.String { "ok" }
 EOF
 
 cjdoc generate --project "$TASK_ROOT/stdlib" \
   --format html --stdlib-doc-version 1.2.0 --output "$TASK_ROOT/stdlib-site"
 ```
 
-打开 `$TASK_ROOT/stdlib-site/html/index.html`，进入 `stdliblinkdemo` 包页或 `accept` 的 API 页面，再在函数签名里点击 `ArrayList` 和 `String`，应进入 1.2.0 标准库文档。版本参数只选择链接目录，不检查项目是否使用了完全相同的 SDK API。
+预期 `ArrayList` 与 `String` 链接到 `https://cj-docs.gitcode.com/zh/1.2.0/libs/std/...`。版本参数只选择链接目录，不检查项目是否使用了完全相同的 SDK API。
 
-内置文档版本为 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3`、`1.2.0`。也可以用 `--stdlib-doc-base-url` 指定已发布的文档树，例如选择 `--stdlib-doc-version 1.1.3` 时指定 `https://cj-docs.gitcode.com/zh/1.1.3/libs/std`。未列出的版本必须同时给出该选项；地址必须是以 `/libs/std` 结尾的 HTTPS 根地址。两个选项只适用于 `generate`，与站点发布标签 `--doc-version` 不同；`render` 保留快照中的既有链接。
+不在列表里的版本必须同时给出 `--stdlib-doc-base-url`，例如 `--stdlib-doc-version 1.1.3 --stdlib-doc-base-url https://cj-docs.gitcode.com/zh/1.1.3/libs/std`；地址必须是 HTTPS 且以 `/libs/std` 结尾。两个选项只适用于 `generate`，也不要与站点发布标签 `--doc-version` 混淆；`render` 保留快照中的既有链接。
+
+## 失败时怎么办
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| warning `CJDOC2312: documentation source: inventory SHA-256 does not match the independently supplied host pin` | 索引字节与 pin 不一致（库已重生成，或 pin 抄错） | 重新生成库文档、重算摘要、更新 pin 后重新生成消费方 |
+| warning `CJDOC2312: documentation source: documentation source catalog is invalid, unavailable or over budget` | catalog 文件不存在、`schemaVersion` 不是 `cjdoc.doc-sources/1`，或 `index` 指向的文件缺失、不安全 | 核对 catalog 路径、字段与索引路径；`index` 相对 catalog 目录解释 |
+| warning `CJDOC2310` / `CJDOC2311: ... no documentation symbol in the selected module dependency context` | 没有可用的库文档匹配，或库版本与消费方使用的不一致 | 用消费方所用版本重新生成库文档，同步索引、摘要与已发布的 HTML |
+| 链接已生成但打开是 404 | 库 HTML 树没复制，或位置与 `baseUrl` 不一致 | 把整个 `library-site/html` 复制到 `consumer-site/html/dependencies/linklib`，并确认发布平台保留文件名大小写 |
+| 目标仍不确定 | 存在多个候选文档集、版本或语言 | 读 `docs.json` 里的导航状态收窄条件，不要按同名类型任选一份 |
+| `error: repository URL must be a canonical GitHub HTTPS repository root`，退出码 `2` | 传了非 GitHub 地址或 `git@github.com:` 形式 | 先转成 `https://github.com/<owner>/<repo>` |
+| `error: --repository-url and --repository-revision must be provided together` | 只给了其中一个 | 三个源码链接选项一起给 |
+| `error: repository root must be an accessible directory` | `--repository-root` 不存在 | 指向仓库根的真实路径 |
+| `error: repository revision must be non-empty without whitespace or controls` | revision 含空白或控制字符 | 用 `git rev-parse HEAD` 的完整提交号 |
+| `error: --stdlib-doc-base-url is required for this standard-library documentation version` | 版本不在内置列表 | 补 `--stdlib-doc-base-url` |
+| `error: --stdlib-doc-base-url must be HTTPS and end in /libs/std` | 地址不是 HTTPS 或后缀不对 | 使用形如 `https://cj-docs.gitcode.com/zh/<版本>/libs/std` 的地址 |
+
+规则细节见[状态与限制](../reference/states-and-limits.md)与[CLI 参考](../reference/cli.md)，维护者视角的契约说明见[跨文档链接设计](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/document-links.md)。
 
 ## 下一步
 
 - [选择依赖源码与可见范围](select-inputs.md)。
+- [生成并发布完整站点](generate-and-publish.md)。
 - [查完整配置规则](../reference/configuration.md)。
-- [发布整个站点](generate-and-publish.md)。

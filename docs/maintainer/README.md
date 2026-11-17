@@ -1,6 +1,6 @@
 # 维护者文档
 
-这里是 cjdoc 的维护者/开发者文档：面向修改仓库、同步 Doc IR 与 golden、运行发布与 CI 验收的人。安装和日常使用请看[使用者文档索引](../README.md)，按安装、连续教程、操作指南与参考选择。
+这里是 cjdoc 的维护者文档，面向修改仓库、同步 Doc IR 与 golden、运行发布与 CI 验收的人。安装和日常使用请看[用户手册](../README.md)。
 
 改代码前先读仓库根目录的 [AGENTS.md](../../AGENTS.md)：它定义项目目标、架构边界、修改规则、代码风格和 Review 要求。本目录的文档补充具体操作；两者冲突时以 AGENTS.md 为准。
 
@@ -39,8 +39,6 @@
 | 调查记录 | [../research/](../research/) | CHIR、`std.ast`、高亮边界等时间点调查记录 |
 | 发布 schema | [../schema/](../schema/) | 当前发布的 25 个 schema 文件，由 `scripts/update_schemas.sh` 从构建产物同步 |
 
-阅读基准把原生超时记为失败，不当作已观察到的资源拒绝；父进程正常/异常退出后也清理尚存的子进程组。打印证据检查签名、契约及祖先的实际可见性，并用三种真实 CSS 隐藏反例校验观察器。修正观测协议时要重采同协议的 before/after，不能混用旧 harness 数据或调整事前预算。
-
 
 ## 验收记录
 
@@ -51,6 +49,7 @@
 - [issue-100-acceptance.md](acceptance/issue-100-acceptance.md)：#100 静态代码高亮的 CLI、冻结 IR 与浏览器复现。
 - [issue-113-acceptance.md](acceptance/issue-113-acceptance.md)：#113 验收包索引中的作者概述。
 - [issue-153-acceptance.md](acceptance/issue-153-acceptance.md)：#153 大规模检索、作者契约、重载任务与最终原生视觉证据及资源边界。
+- [issue-163-acceptance.md](acceptance/issue-163-acceptance.md)：#163 技术书页的实现与本地验收。
 
 这些记录是各自时间点的证据映射，文中有实测环境、复现命令和边界声明；不要把它们当作当前门禁结果。当前证据要在目标提交上重新运行对应脚本。
 
@@ -58,4 +57,5 @@
 
 - 本目录描述维护者流程，包含内部 schema、验收脚本、CI 与发布约束；不要把这些内容搬回使用者文档。
 - 历史文档（`implementation-report-v0.6.md`、`paired-samples-main.md`、`ci-wallclock.md`、`showcase-phases.md` 等）是时间点快照，各自标注了日期或运行 ID；引用前先确认它是否仍适用于当前 revision。
+- 阅读基准把原生超时记为失败，不当作已观察到的资源拒绝；父进程正常或异常退出后都会清理尚存的子进程组。修正观测协议时要重采同协议的 before/after，不能混用旧 harness 数据或调整事前预算。细节见 [reader-scale.md](reader-scale.md)。
 - 文档中的命令要在你的改动范围上重新运行；本目录的说明不代替实际结果。
