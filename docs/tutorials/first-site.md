@@ -91,20 +91,11 @@ cjdoc generate --project . --format html
 
 1. `cjpm build` 编译这个库，最后一行是 `cjpm build success`。因为 `internalGreeting` 没有被调用，它还会打印一条 `warning: unused function:'internalGreeting'`，这是编译器提示，不影响构建。
 2. `cjdoc check --project . --check-examples` 编译注释里的 `@example` 代码，运行标了 `run` 的示例，把实际输出与 `output` 围栏比较。这里应匹配 `Hello, Cangjie!`，命令以退出码 `0` 结束。
-3. `cjdoc generate --project . --format html` 读取同一份源码生成静态 HTML，打印 `generated ./target/doc`，并以退出码 `0` 结束。
+3. `cjdoc generate --project . --format html` 读取同一份源码，默认用配套 CHIR worker 补充类型信息，生成 `target/doc/html/index.html`，并以退出码 `0` 结束。
 
-两条 `cjdoc` 命令都会打印 `CJDOC3041` warning：
+默认 CHIR 分析成功时，`String` 的类型信息来自编译器。如果选择 `--semantic source`，或 worker 无法补充语义，可能看到 `CJDOC3041` 类型链接 warning；它不表示注释中的示例运行失败。加 `--deny-warnings` 才会让这类 warning 导致退出码 `1`。
 
-```text
-warning[CJDOC3041]: parameter 'name' has an unresolved type link
- --> src/api.cj:18:1
-warning[CJDOC3041]: return type has an unresolved type link
- --> src/api.cj:18:1
-```
-
-它表示参数或返回值的类型只有源码拼写、没有解析出语义身份，因此注释里的类型引用不算“已解析”。页面照常生成：签名里有类型链接，示例也照常检查，退出码仍是 `0`。任何只以源码拼写记录的类型都会触发它，本项目自己声明的类型也一样。需要它不出现在输出里时，在 `cjdoc.toml` 写 `[lint]` 表的 `unresolved-type-link = "off"`，或临时加 `--lint-profile off`；加 `--deny-warnings` 会把这类 warning 升级为失败（退出码 `1`）。
-
-`generate` 默认不编译项目，也不运行示例，所以示例是否真的成立只取决于第二条命令的结果。示例检查需要能建立进程资源限制的环境，限制和诊断码见[检查示例](../how-to/check-examples.md)。省略 `--format` 时默认生成 JSON（`target/doc/docs.json`），不会产生 HTML。
+`generate` 的项目编译用于语义补充，不会编译或运行注释中的示例；示例是否成立仍以第二条命令的结果为准。示例检查需要能建立进程资源限制的环境，限制和诊断码见[检查示例](../how-to/check-examples.md)。未配置输出格式且省略 `--format` 时默认生成 JSON（`target/doc/docs.json`），不会产生 HTML。
 
 ## 4. 在浏览器里阅读 `greet`
 

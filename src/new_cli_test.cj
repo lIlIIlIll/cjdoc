@@ -111,8 +111,14 @@ class NewCliRegressionTest {
         @Expect(options.cjcExecutable, "custom-cjc")
         @Expect(options.chirWorkerExecutable, Some("custom-worker"))
         @Expect(options.chirImportPaths.toArray(), ["dep-a", "dep-b"])
-        @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--cjc", "custom-cjc"]))
-        @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--chir-worker", "worker"]))
+        // CHIR is the command-line default, so compiler/worker options need no
+        // explicit --semantic, while source mode still rejects them.
+        @Expect(parseNewCli(["generate", "--cjc", "custom-cjc"]).semanticMode, "chir")
+        @Expect(parseNewCli(["generate", "--chir-worker", "worker"]).semanticMode, "chir")
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "generate", "--semantic", "source", "--chir-worker", "worker"]))
+        // serve shares the semantic switch; offline and analysis commands do not.
+        @Expect(parseNewCli(["serve", "--semantic", "source"]).semanticMode, "source")
         @ExpectThrows[IllegalArgumentException](parseNewCli(["render", "--semantic", "chir"]))
     }
 

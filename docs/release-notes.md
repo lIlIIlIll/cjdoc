@@ -2,6 +2,18 @@
 
 每个版本对使用者的变化和升级步骤。可下载的资产与校验值见 [Releases](https://github.com/lIlIIlIll/cjdoc/releases)。
 
+## 未发布
+
+### 项目配置与默认 CHIR
+
+- 常用输出与分析设置可以保存在项目根的 `cjdoc.toml`，普通命令行选项覆盖对应配置默认值；未知配置键会报错，避免拼写错误被忽略。已有覆盖率配置与 CLI 门槛仍各自检查。
+- `generate`、`check`、`serve` 默认尝试 CHIR 语义补充。匹配版本的 worker 随主程序安装，按 `cjdoc` 的真实可执行文件位置自动定位，不需要配置 worker 路径。
+- `--semantic source` 可关闭本次 CHIR 分析；`--chir-worker` 保留为开发或特殊部署的显式覆盖。worker 缺失、版本或协议不匹配时产生诊断，并保留源码/AST 信息。
+- CHIR 整模块不可用时保留模块级失败诊断，不再把每条源码声明都误报为独立绑定缺失，避免大项目的源码回退被重复诊断耗尽。
+- 子命令支持独立帮助，例如 `cjdoc generate --help`。离线 `render` 不读取项目配置，不启动 worker。
+
+这些变化只属于当前源码版，不改变已经发布的 0.7.8 资产或其默认行为。
+
 ## 0.7.8（2026-11-16 发布）
 
 tag `v0.7.8` 指向提交 [`5c065af`](https://github.com/lIlIIlIll/cjdoc/commit/5c065affd2c45f61549c06808537731ce46b436b)。这个版本换了新的 HTML 站点界面，并采用 Doc IR v18 和新的查询、静态搜索协议。升级前请注意：

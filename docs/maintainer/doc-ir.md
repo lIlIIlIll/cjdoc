@@ -65,7 +65,7 @@ CJDOC_SOURCE_EDGES_TREE=<40-hex-subtree> \
 bash scripts/update_goldens.sh
 ```
 
-当前 golden 覆盖 `basic`、`functions`、`types`、`extend_visibility`、`source_edges`、`unsupported`、`workspace`、`conditional-linux`、`path-dependencies` 等 fixture，由 `scripts/check.sh cli` 逐个两次生成、比较并与 golden 字节对齐。
+当前 golden 覆盖 `basic`、`functions`、`types`、`extend_visibility`、`source_edges`、`unsupported`、`workspace`、`conditional-linux`、`path-dependencies` 等 fixture，由 `scripts/check.sh cli` 逐个两次生成、比较并与 golden 字节对齐。生成器和校验器都显式选择 `--semantic source`，固定源码/AST 契约，避免本机编译目标改变跨平台 golden；默认 CHIR 的自动定位、真实语义、失败回退与确定性由安装布局回归和普通 CLI 集成另行覆盖，性能 profile 仍测量默认 CHIR 路径。
 
 ## Doc IR/18 的分类 metadata
 

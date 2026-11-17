@@ -73,7 +73,7 @@ public func clamp(value: Int64, lower: Int64, upper: Int64): Int64 {
 }
 ```
 
-`cjdoc check` 对这个文件退出 `0`，并给出 `CJDOC3109`（`IllegalArgumentException` 在本包内没有唯一绑定，标准库异常）与 `CJDOC3041`（`Int64` 类型链接未解析）等 warning。把区间外的 `value` 截到最近边界、`lower == upper` 时返回该边界、`lower > upper` 时抛出，是这段代码的实际行为。要自己验证这些边界，见[验证一个边界条件](../how-to/review-contracts.md#验证一个边界条件)。
+`cjdoc check` 会报告实际发现的问题：异常名没有唯一绑定时可能出现 `CJDOC3109`，类型只有源码拼写、没有语义身份时可能出现 `CJDOC3041`；默认 CHIR 能补充 `Int64` 等类型信息。把区间外的 `value` 截到最近边界、`lower == upper` 时返回该边界、`lower > upper` 时抛出，是这段代码的实际行为。要自己验证这些边界，见[验证一个边界条件](../how-to/review-contracts.md#验证一个边界条件)。
 
 ## 分组与标签
 

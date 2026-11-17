@@ -2,6 +2,7 @@ package cjdoc
 
 import cjdoc.model as public_model
 import cjdoc.render as public_render
+import cjdoc_chir_protocol.CJDOC_PRODUCT_VERSION
 import std.collection.*
 
 internal func remapDiagnosticCode(code: String): String {
@@ -190,7 +191,7 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
     // unexpectedly large source/provider field would exceed codec or output
     // transaction limits. Fixed source fields keep this fallback independent of
     // the oversized input that caused it.
-    let fallback = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.8"), "partial",
+    let fallback = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", CJDOC_PRODUCT_VERSION), "partial",
         public_model.ProjectInfo("resource-limited"),
         public_model.ConfigurationSnapshot(audience: request.audience, lintProfile: request.lintProfile,
             cfgProfile: if (request.cfgValues.isEmpty()) {

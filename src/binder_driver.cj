@@ -83,6 +83,10 @@ class DocumentationBinder {
                 moduleResult.capabilities)
             statsByModule[module.id] = stats
             documentation.semanticBindings.add(stats)
+            if (!moduleResult.capabilities.sourceBinding && moduleResult.diagnostics.isEmpty()) {
+                documentation.diagnostics.add(Diagnostic("warning", "CJDOC2001",
+                    "semantic binding is unavailable for module '${module.name}'; AST fallback retained"))
+            }
             for (diagnostic in moduleResult.diagnostics) {
                 pendingProviderDiagnostics.add(PendingProviderDiagnostic(diagnostic, stats, module.id))
             }
@@ -157,11 +161,12 @@ class DocumentationBinder {
                     }
                     case None =>
                         stats.missing++
-                        documentation
-                            .diagnostics
-                            .add(
-                                Diagnostic("warning", "CJDOC1007", "semantic declaration is unavailable",
-                                    source: declaration.source))
+                        // A nonbinding module is unavailable as a whole, not a
+                        // separate binding omission for every source declaration.
+                        if (moduleResult.capabilities.sourceBinding) {
+                            documentation.diagnostics.add(Diagnostic("warning", "CJDOC1007",
+                                "semantic declaration is unavailable", source: declaration.source))
+                        }
                         semanticFallback(declaration, moduleResult.provider, "unavailable")
                 }
             }

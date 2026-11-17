@@ -171,7 +171,7 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
         # Publish never rebuilds or repackages: it verifies what the candidates produced.
         self.assertNotIn("cjpm build", publish)
         self.assertNotIn("package_release.py", publish)
-        self.assertIn("cjdoc.release-candidate/1", publish)
+        self.assertIn("cjdoc.release-candidate/2", publish)
         self.assertLess(
             publish.index("Verify exact tag, every receipt and all package artifacts"),
             publish.index("Upload to draft and publish"),

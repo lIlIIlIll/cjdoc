@@ -1,25 +1,110 @@
 # 配置参考
 
-项目根目录的 `cjdoc.toml` 用到的每个表与键。`generate`、`check`、`serve` 在读取项目的阶段解析它；`render` 不读配置文件，使用 Doc IR 中已捕获的设置。文件缺失时各表采用本页列出的默认值。
+项目根目录的 `cjdoc.toml` 用到的每个表与键。`generate`、`check`、`serve` 在读取项目的阶段解析它；`render`、`diff`、`query`、`mcp`、`schema`、`versions compose` 不读配置文件——`render` 使用 Doc IR 中已捕获的设置，离线重放因此不受项目配置影响。文件缺失时各表采用本页列出的默认值。
 
-配置解析按消费者分散：`[i18n]`、`[lint]`、`[coverage]`、`[highlight]`、`[limits]`、`[metadata]`、`[[source.repositories]]` 会拒绝负责表里的未知键、重复键和非法值；`[docs]`、`[[docs.pages]]`、`[docs.packages]`、`[external-docs.<名称>]` 对未识别键不报错，拼写错误可能被静默忽略。页面或阈值没有生效时先核对键名与表归属。
+`cjdoc.toml` 按整个文件校验，不只是被用到的表：未知表、未知键、重复键和非法取值都报错，即使同一条命令用 CLI 覆盖了该设置也一样。只有一层配置——项目根的 `cjdoc.toml`，没有第二个配置文件、没有继承、没有全局配置。**相对路径按项目根解析**，与在哪个目录调用 `cjdoc` 无关；`--project` 改变项目根，因此也改变这些路径的基准。
 
 配置错误是输入错误，退出码 `2`，不产出该次文档；质量诊断与未达标门槛是检查失败，退出码 `1`。操作的下一步见[添加指南](../tutorials/add-guides.md)、[发布多语言页面](../tutorials/publish-languages.md)、[检查文档质量](../how-to/check-quality.md)、[代码高亮](../how-to/highlighting.md)、[链接外部文档](../how-to/link-documentation.md)。
 
 ## 表索引
 
-| 表 | 作用 | 严格解析 |
+| 表 | 作用 |
+|---|---|
+| `[output]` | 输出目录、格式、agent 树与 HTML 字体，作用于 generate、serve |
+| `[analysis]` | 受众、并发、规则档、依赖选择与缓存 |
+| `[semantic]` | 语义模式（`source` 或 `chir`） |
+| `[docs]`、`[[docs.pages]]`、`[docs.pages.sections]`、`[docs.packages]` | 概念文档：首页、指南、包概述 |
+| `[metadata]`、`[[metadata.groups]]`、`[[metadata.tags]]` 及其 `titles` 子表 | 分组与分类标签的集中标题 |
+| `[i18n]` | 发布语言与缺译策略 |
+| `[lint]` | 质量规则严重级别 |
+| `[coverage]`、`[coverage.package.<包名>]`、`[coverage.translation]` | 覆盖率门槛 |
+| `[highlight]` | 代码高亮策略 |
+| `[limits]` | Doc IR JSON 大小上限 |
+| `[[source.repositories]]` | 多仓源码来源登记与 receipt 校对 |
+| `[external-docs.<名称>]` | 旧式显式外部文档链接 |
+| `[doctest]` | 已移除，出现即报错 |
+
+`[output]`、`[analysis]`、`[semantic]` 是命令行默认值的项目侧写法，下一节说明它们和 CLI 的优先级；其余各表是既有策略，语义不变。
+
+## 常用命令行默认值：`[output]`、`[analysis]` 与 `[semantic]`
+
+这三张表把日常使用的命令行选项写进项目，让 `cjdoc generate`、`cjdoc check`、`cjdoc serve` 不带参数也能按项目约定运行。它们只提供默认值：同一条命令里显式给出的 CLI 值总是覆盖配置，而配置本身仍按上文的规则完整校验。
+
+### `[output]`：产物目录与格式
+
+只作用于 `generate` 与 `serve`；`check` 运行诊断却从不写站点，因此忽略整张表，不会因为配置了 `[output]` 就在检查时要求 HTML 或创建目录。
+
+| 键 | 取值 | 默认 | 说明 |
+|---|---|---|---|
+| `formats` | `json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index` 的数组 | `["json"]` | 至少一项，不能重复；顺序不影响结果 |
+| `directory` | 目录 | generate/serve 为 `<项目>/target/doc` | 相对路径按项目根解析；不能与源码缓存目录重叠或嵌套 |
+| `agent-full` | `true`、`false` | `false` | 需要 HTML 输出 |
+| `html-font-sans` | 字体族列表字符串 | 无 | 与 `--html-font-sans` 同规则，需要 HTML 输出 |
+| `html-font-mono` | 字体族列表字符串 | 无 | 与 `--html-font-mono` 同规则，需要 HTML 输出 |
+
+```toml
+[output]
+formats = ["html", "json"]
+directory = "target/site"
+agent-full = true
+```
+
+- 命令行给出 `--format` 时，这份列表**替换**配置，而不是合并：`--format json` 只产出 `json`。
+- `agent-full` 与两个字体键只对 HTML 产物生效：解析后的格式不含 `html`（或命令是 check/`--stdout`）时它们不会被继承，也不会因此报错；配置写错仍在读取时立即报错。命令行显式给出这几项却只要 `json` 时依旧报错。
+- `--output` 覆盖 `directory`；`--stdout` 是一次性的单向输出，此时 `[output]` 整张表都不参与。
+- 关闭型开关可以用 `--no-agent-full` 在单次命令中反转配置。
+
+### `[analysis]`：受众、并发、依赖与缓存
+
+| 键 | 取值 | 对应选项 |
 |---|---|---|
-| `[docs]`、`[[docs.pages]]`、`[docs.pages.sections]`、`[docs.packages]` | 概念文档：首页、指南、包概述 | 否 |
-| `[metadata]`、`[[metadata.groups]]`、`[[metadata.tags]]` 及其 `titles` 子表 | 分组与分类标签的集中标题 | 是 |
-| `[i18n]` | 发布语言与缺译策略 | 是 |
-| `[lint]` | 质量规则严重级别 | 是 |
-| `[coverage]`、`[coverage.package.<包名>]`、`[coverage.translation]` | 覆盖率门槛 | 是 |
-| `[highlight]` | 代码高亮策略 | 是 |
-| `[limits]` | Doc IR JSON 大小上限 | 是 |
-| `[[source.repositories]]` | 多仓源码来源登记与 receipt 校对 | 是 |
-| `[external-docs.<名称>]` | 旧式显式外部文档链接 | 否 |
-| `[doctest]` | 已移除，出现即报错 | 是 |
+| `audience` | `external`、`package`、`all` | `--audience` |
+| `jobs` | `1..64` | `--jobs` |
+| `lint-profile` | `off`、`standard`、`strict` | `--lint-profile` |
+| `include-path-dependencies` | `true`、`false` | `--include-path-dependencies`、`--no-include-path-dependencies` |
+| `include-cached-dependencies` | `true`、`false` | `--include-cached-dependencies`、`--no-include-cached-dependencies` |
+| `cjpm-cache` | 目录 | `--cjpm-cache`，要求 `include-cached-dependencies = true` |
+| `cache-dir` | 目录 | `--cache-dir` |
+| `no-cache` | `true`、`false` | `--no-cache` |
+| `cfg` | `NAME=VALUE` 数组 | `--cfg` |
+| `dependency-sources` | `NAME=PATH` 数组 | `--dependency-source` |
+
+```toml
+[analysis]
+audience = "package"
+jobs = 4
+lint-profile = "standard"
+cfg = ["feature=extra"]
+dependency-sources = ["support=vendor/support"]
+cache-dir = "target/cjdoc-cache"
+```
+
+- `cache-dir` 与 `no-cache = true` 互斥，同时出现是配置错误；命令行里 `--cache-dir`、`--no-cache`、`--cache` 按最后出现的那个生效，所以配置关闭缓存后仍可用 `--cache` 在单次命令中重新打开。
+- `cfg` 与 `dependency-sources` 按名称合并：CLI 给出同名项时使用 CLI 的值，其余配置项继续生效。`dependency-sources` 的路径同样按项目根解析。
+- `dependency-sources` 是对依赖源码的显式选取；`include-path-dependencies` 只控制其余 manifest 路径依赖的自动收集。`--no-include-path-dependencies` 不移除已显式选取的依赖，需要替换路径时用同名 `--dependency-source`。
+- 缓存相关的运行时约束不变：`cjpm-cache` 只在 `include-cached-dependencies` 打开时才有意义，`cache-dir` 不能落在输出目录内。`--no-include-cached-dependencies` 会同时丢弃配置的 `cjpm-cache`，因为该缓存根离开缓存依赖读取没有用途；`--cjpm-cache` 仍要求显式打开缓存依赖。
+
+### `[semantic]`：语义模式
+
+| 键 | 取值 | 默认 |
+|---|---|---|
+| `mode` | `source`、`chir` | `chir` |
+
+```toml
+[semantic]
+mode = "source"
+```
+
+CLI 的 `--semantic` 默认就是 `chir`，与表中省略 `mode` 时一致；需要跳过 CHIR 编译时显式写 `--semantic source` 或设置本表。worker 路径只能通过 `--chir-worker` 给出，配置文件里没有对应键——项目配置不能指定要执行的外部程序。默认 worker 与 `cjdoc` 可执行文件同目录（`chir-worker-main`，Windows 为 `chir-worker-main.exe`）；缺失或不可执行时报 `CJDOC2101`，版本或协议不匹配时报 `CJDOC2104`，均保留源码声明并回退。
+
+### 优先级与边界
+
+- 优先级固定为：显式 CLI 值 → `cjdoc.toml` → 内置默认值。违反取值范围的配置即使被 CLI 覆盖也会报错，便于尽早发现拼写或取值错误。
+- `[output]` 只决定产物，不影响诊断；`check` 的结果与是否配置 `[output]` 无关。
+- `--force-owned`、`--stdout`、`--check-examples`、`--highlight-adapter`、`--highlight-node`、`--chir-worker` 只能出现在命令行：替换他人输出、一次性写 stdout、执行示例、运行外部程序都需要每次显式授权，配置文件不能预先授予。
+- `--min-symbol-coverage`、`--min-parameter-coverage` 与 `[coverage]` 是两套独立门槛，同时检查，CLI 值不会覆盖配置值。
+- 语言相关设置只在 `[i18n]`，本页三张表不重复定义；省略 `--locale` 时 generate/serve 使用 `[i18n].default-language`。
+- `cjdoc serve` 每次重建都按原命令行重新读取配置，所以修改或删除本页的设置无需重启；输出目录、缓存目录和端口只在启动时确定，重建时若解析出不同位置会提示重启并保留旧站点。
 
 ## `[docs]`：项目首页与概念文档
 

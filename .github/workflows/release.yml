@@ -189,13 +189,26 @@ jobs:
           # packaging time, so what is checked is what really ran.
           export CJDOC_STS_INVOCATION_LOG="${RUNNER_TEMP}/cjdoc-sts-invocations.jsonl"
           : > "${CJDOC_STS_INVOCATION_LOG}"
-          if [[ "${{ matrix.platform }}" == "linux-x64" ]]; then
+          # The release ships the CLI and the CHIR worker it discovers beside
+          # itself, so the accepting gate must seal both in the same job. The
+          # staged worker carries the installed file name, which is what makes an
+          # extracted archive usable without any worker path configuration.
+          worker_out="target/release/bin/chir-worker-main"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            worker_out="${worker_out}.exe"
+          fi
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
             # The Linux candidate adds the real-repository smoke and the frozen
-            # performance ceiling, then promotes a cjdoc.release-gate/3 receipt.
+            # performance ceiling, then promotes a cjdoc.release-gate/4 receipt.
             bash scripts/release_check.sh
           else
-            bash scripts/check.sh
+            bash scripts/check.sh \
+              --main-binary-out target/release/bin/main \
+              --worker-binary-out "${worker_out}" \
+              --manifest target/ci-build/build-manifest.json
           fi
+          test -f target/ci-build/build-manifest.json
+          test -f "${worker_out}"
 
       - name: Restore pristine source-edge fixture
         id: restore-source-edge
@@ -217,8 +230,10 @@ jobs:
           set -euo pipefail
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           binary="target/release/bin/main"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
+          worker="target/release/bin/chir-worker-main"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
             binary="${binary}.exe"
+            worker="${worker}.exe"
           fi
           python scripts/verify_repository_inputs.py --require-tracked \
             --binary "${binary}" >/dev/null
@@ -237,6 +252,8 @@ jobs:
             --tag "${CJDOC_RELEASE_TAG}" \
             --platform "${{ matrix.platform }}" \
             --binary "${binary}" \
+            --worker-binary "${worker}" \
+            --build-manifest target/ci-build/build-manifest.json \
             --sdk-version "1.2.0" \
             --sdk-archive-sha256 "${{ matrix.sdk_sha256 }}" \
             --stdx-version "1.2.0" \
@@ -426,7 +443,7 @@ jobs:
                   raise SystemExit(
                       f"expected exactly one {platform} candidate receipt, found {len(matches)}")
               receipt = json.loads(matches[0].read_text(encoding="utf-8"))
-              if receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+              if receipt.get("schemaVersion") != "cjdoc.release-candidate/2":
                   raise SystemExit(f"{platform}: unexpected release candidate receipt schema")
               source = receipt.get("source") or {}
               if (source.get("commit"), source.get("tag")) != (commit, tag):
@@ -442,10 +459,24 @@ jobs:
                       f"{execution.get('runAttempt')}, not this run {run_id} attempt {run_attempt}")
               if (receipt.get("platform") or {}).get("id") != platform:
                   raise SystemExit(f"{platform}: receipt declares a different platform")
+              # Every platform must have accepted the CHIR worker it ships, and
+              # that acceptance must come from the build this run sealed.
+              worker = receipt.get("worker") or {}
+              if not worker.get("sha256") or not worker.get("versionOutput") \
+                      or not worker.get("protocolVersion"):
+                  raise SystemExit(f"{platform}: receipt does not describe an accepted CHIR worker")
+              if (receipt.get("buildManifest") or {}).get("workerBinary", {}).get("sha256") \
+                      != worker.get("sha256"):
+                  raise SystemExit(
+                      f"{platform}: receipt worker is not the artefact its build sealed")
               receipts[platform] = receipt
           hashes = {platform: receipt["binary"]["sha256"] for platform, receipt in receipts.items()}
           if len(set(hashes.values())) != len(hashes):
               raise SystemExit("candidate receipts reuse one binary digest across platforms")
+          worker_hashes = {platform: receipt["worker"]["sha256"]
+                           for platform, receipt in receipts.items()}
+          if len(set(worker_hashes.values())) != len(worker_hashes):
+              raise SystemExit("candidate receipts reuse one worker digest across platforms")
           PY
           python scripts/verify_release_package.py \
             --archive "${asset_dir}/cjdoc-${version}-linux-x64.tar.gz" \

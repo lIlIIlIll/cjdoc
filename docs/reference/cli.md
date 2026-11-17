@@ -1,6 +1,10 @@
 # CLI 参考
 
-`cjdoc` 的命令、选项、取值范围与退出码。命令在项目根执行，除非显式给出输入路径。只有 `cjdoc --help`（或 `-h`）提供帮助，子命令不接受 `--help`：`cjdoc generate --help` 报 `unknown option '--help'` 并以 `2` 退出。`cjdoc --version` 输出 `cjdoc 0.7.8`，只表示产品版本。
+`cjdoc` 的命令、选项、取值范围与退出码。命令在项目根执行，除非显式给出输入路径。
+
+`cjdoc --help`（或 `-h`）列出全部命令；`cjdoc <命令> --help` 只列该命令的选项，例如 `cjdoc generate --help`；带子命令的形式同样可用，如 `cjdoc versions compose --help`。子命令帮助是静态文本，不读取 `cjdoc.toml`、不需要项目，也不会启动工作进程，所以项目配置写错时仍可查阅。未知命令加 `--help` 仍按未知命令处理，退出码 `2`。`cjdoc --version` 输出 `cjdoc 0.7.8`，只表示产品版本。
+
+项目配置的 `[output]`、`[analysis]`、`[semantic]` 提供本文各表的默认值；显式 CLI 值总是覆盖它们，取值规则见[配置参考](configuration.md) 的「常用命令行默认值」一节。
 
 需要按步骤完成的任务，见[生成与发布](../how-to/generate-and-publish.md)、[预览](../how-to/preview.md)、[比较与多版本](../how-to/compare-and-version.md)、[离线重放](../how-to/render-snapshots.md)、[查询与 MCP](../how-to/query-and-mcp.md)。
 
@@ -41,19 +45,20 @@
 | `--min-parameter-coverage N` | 整数 `0..100` | 无门槛 | generate、check、serve |
 | `--api-surface-baseline FILE` | 文件 | 无 | generate、check、serve |
 | `--max-doc-ir-mib N` | 整数 `1..64` | `64`，可被 `[limits]` 覆盖 | generate、check、serve、render |
-| `--semantic MODE` | `source`、`chir` | `source` | generate、check |
-| `--cjc PATH` | 可执行文件 | `cjc` | generate、check（要求 `--semantic chir`） |
-| `--chir-worker PATH` | 可执行文件 | 无 | generate、check（要求 `--semantic chir`） |
-| `--chir-import-path DIR`… | 目录 | 无 | generate、check（要求 `--semantic chir`） |
+| `--semantic MODE` | `source`、`chir` | `chir` | generate、check、serve |
+| `--cjc PATH` | 可执行文件 | `cjc` | generate、check、serve（要求 `--semantic chir`） |
+| `--chir-worker PATH` | 可执行文件 | 与 cjdoc 同目录的 `chir-worker-main` | generate、check、serve（要求 `--semantic chir`） |
+| `--chir-import-path DIR`… | 目录 | 无 | generate、check、serve（要求 `--semantic chir`） |
 | `--highlight-adapter PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-node` 成对） |
 | `--highlight-node PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-adapter` 成对） |
 | `--cfg NAME=VALUE`… | 条件编译键值 | 无 | generate、check、serve |
-| `--include-path-dependencies` | 标志 | 关闭 | generate、check、serve |
-| `--include-cached-dependencies` | 标志 | 关闭 | generate、check、serve |
+| `--include-path-dependencies`、`--no-include-path-dependencies` | 标志 | 关闭 | generate、check、serve |
+| `--include-cached-dependencies`、`--no-include-cached-dependencies` | 标志 | 关闭 | generate、check、serve |
 | `--cjpm-cache DIR` | 目录 | `$HOME/.cjpm` | generate、check、serve（要求 `--include-cached-dependencies`） |
 | `--dependency-source NAME=PATH`… | 依赖源码 | 无 | generate、check、serve |
 | `--cache-dir DIR` | 目录 | `<project>/target/cjdoc/cache/source-v11` | generate、check、serve |
 | `--no-cache` | 标志 | 关闭 | generate、check、serve |
+| `--cache` | 标志 | 关闭 | generate、check、serve（关闭项目配置的 `[analysis].no-cache`，重新使用默认缓存目录） |
 | `--repository-url URL` | `https://github.com/<owner>/<repo>` | 无 | generate、serve（与 revision 成对） |
 | `--repository-revision REV` | 文本 | 无 | generate、serve（与 URL 成对） |
 | `--repository-root DIR` | 目录 | 项目根 | generate、serve（要求 URL 与 revision） |
@@ -69,7 +74,7 @@
 | `--all-languages` | 标志 | 关闭 | generate、render |
 | `--require-language LANG`… | `zh-CN`、`en` | 无 | generate、check、serve |
 | `--doc-version TEXT` | 文本 | 无 | generate、render（要求 `--format html`） |
-| `--agent-full` | 标志 | 关闭 | generate、render、serve |
+| `--agent-full`、`--no-agent-full` | 标志 | 关闭 | generate、render、serve |
 | `--html-font-sans LIST` | 字体族列表 | 无 | generate、render、serve |
 | `--html-font-mono LIST` | 字体族列表 | 无 | generate、render、serve |
 | `--validation-report FILE` | JSON 报告 | 无 | generate、render |
@@ -85,13 +90,13 @@
 | `--label ID=TEXT`、`--channel ID=TEXT`、`--status ID=TEXT`、`--base-path ID=PATH`、`--release ID=TEXT`、`--diff ID=PATH` | 版本元数据 | 见 `versions compose` 一节 | versions compose |
 | `--latest ID` | 版本 ID | 首个 `--version` 的 ID | versions compose |
 
-`--locale` 选择界面语言与已有作者译文，不翻译正文；它不改写 `zh-Hans`、`en-US` 之类的区域别名，非法值报 `--locale must be zh-CN or en`。
+`--locale` 选择界面语言与已有作者译文，不翻译正文；它不改写 `zh-Hans`、`en-US` 之类的区域别名，非法值报 `--locale must be zh-CN or en`。省略时 generate 与 serve 使用 `[i18n]` 的 `default-language`（没有该表时为 `zh-CN`）；render 不读配置，始终从 `zh-CN` 开始，除非显式给出该选项。
 
 `--port` 与 `--open` 只影响 serve；其他命令接受这两个选项但不使用它们，退出码与不带时相同。
 
 ## 生成和离线渲染的输出选项
 
-`--format` 可重复，重复值去重；默认只输出 `json`。`--output` 指定发布根，而不是 HTML 内层目录。多种格式共享一次源码捕获；只给 `--output` 而不给 `html` 时不会生成网页。
+`--format` 可重复，重复值去重；没有 CLI 值也没有 `[output].formats` 时只输出 `json`。命令行给出一份格式列表时，它替换配置中的列表，不会与配置合并。`--output` 指定发布根，而不是 HTML 内层目录。多种格式共享一次源码捕获；只给 `--output` 而不给 `html` 时不会生成网页。
 
 `--stdout` 要求恰好一种 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`），且与 `--output`、`--force-owned`、`--all-languages` 互斥；`--format markdown --stdout` 或两种格式同用都报 `--stdout requires exactly one JSON-producing format`。结构化数据写 stdout，诊断写 stderr。目录输出属于 `--force-owned` 描述的所有权契约，不只是「覆盖已有文件」。
 
@@ -108,27 +113,32 @@
 
 ## 可选语义和高亮后端
 
-以下选项只对 `generate`、`check` 有效，用于 serve 时报 `semantic options are only valid for generate and check` 或 `highlight host options are only valid for generate and check`。
+语义选项对 `generate`、`check`、`serve` 有效，用于 render、diff 等命令时报 `semantic options are only valid for generate, check, and serve`；高亮宿主选项仍只对 `generate`、`check` 有效，否则报 `highlight host options are only valid for generate and check`。
 
 | 选项 | 取值与约束 | 默认 |
 |---|---|---|
-| `--semantic source\|chir` | 其他值报 `--semantic must be source or chir` | `source` |
+| `--semantic source\|chir` | 其他值报 `--semantic must be source or chir`；项目可用 `[semantic].mode` 设置同样的默认值 | `chir` |
 | `--cjc EXECUTABLE` | 显式给出时要求 `--semantic chir`，否则报 `--cjc, --chir-worker, and --chir-import-path require --semantic chir` | `cjc` |
-| `--chir-worker EXECUTABLE` | 要求 `--semantic chir`；缺失或失败时保留源码信息并报诊断 | 无 |
+| `--chir-worker EXECUTABLE` | 要求 `--semantic chir`；不写时使用与 cjdoc 可执行文件同目录的 `chir-worker-main`（Windows 为 `chir-worker-main.exe`）；缺失或失败时保留源码信息并报诊断 | 同目录 `chir-worker-main` |
 | `--chir-import-path DIR` | 可重复；要求 `--semantic chir` | 无 |
 | `--highlight-adapter PATH` | 必须与 `--highlight-node` 同时给出，否则报 `--highlight-adapter and --highlight-node must be supplied together` | 无 |
 | `--highlight-node PATH` | 同上；与 adapter 一样必须是绝对路径（`--highlight-adapter requires an absolute path`），且不得含 shell 元字符 | 无 |
 
-两个高亮路径是 argv 值，不是 shell 命令；`;`、`|`、`&`、`$`、`` ` ``、引号、括号、通配符、`~`、控制字符都报 `requires a path without shell metacharacters`。CHIR 是显式的可选语义补充，失败不会升级为权威类型检查，也不替代注释真值：worker 缺失时报 `CJDOC2101` 并回退到源码信息。构建真实 worker 见[CHIR 语义补充](../how-to/chir.md)；适配器准备与失败策略见[代码高亮](../how-to/highlighting.md)。
+两个高亮路径是 argv 值，不是 shell 命令；`;`、`|`、`&`、`$`、`` ` ``、引号、括号、通配符、`~`、控制字符都报 `requires a path without shell metacharacters`。
+
+默认的 `chir` 只是补齐类型与签名信息：worker 不可执行或不存在时报 `CJDOC2101`，与 cjdoc 的版本或协议不匹配时报 `CJDOC2104`，均回退到源码声明；注释内容与源码事实不变，也不会升级为权威类型检查。需要跳过 CHIR 编译时显式写 `--semantic source`（或在项目中设置 `[semantic].mode = "source"`），此时不需要、也不会启动 worker。worker 按可执行文件所在目录定位，不搜索当前目录或 `PATH`，因此在 `PATH` 中通过软链接调用 cjdoc 时仍使用真实安装目录旁的 worker。构建真实 worker 见[CHIR 语义补充](../how-to/chir.md)；适配器准备与失败策略见[代码高亮](../how-to/highlighting.md)。
 
 ## serve
 
 `cjdoc serve --project . --port 8080` 先做一次完整生成，然后在本机监听并监视输入。`--port` 默认 `8080`；`--open` 请求浏览器打开 `http://127.0.0.1:<port>/`，命令本身不等待页面。
 
 - 服务根固定为输出目录下的 `html/`，即使还请求了其他格式。`--format`、`--output`、`--locale`、`--force-owned`、`--jobs`、`--audience`、`--lint-profile`、`--cfg`、依赖与缓存选项、`--repository-*`、`--require-language`、`--deny-warnings`、`--check-examples`、两个覆盖率门槛、`--api-surface-baseline`、`--max-doc-ir-mib`、`--agent-full`、字体选项可用。
-- `--semantic`、`--cjc`、`--chir-*`、`--highlight-*`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible` 只对 generate/check 有效，用于 serve 报 `semantic options are only valid for generate and check` 或 `dependency documentation options are only valid for generate and check`。
+- `--semantic`、`--cjc`、`--chir-*` 与 generate/check 的同名选项一致，便于预览与正式站点使用相同语义设置；`--highlight-*`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible` 仍只对 generate/check 有效。
+- serve 同样读取 `[output]`、`[analysis]`、`[semantic]`：`[output].directory` 决定站点根，`[output].formats` 决定额外产物，`html` 始终生成。
 - `--doc-version`、`--all-languages`、`--validation-report`、`--api-diff-report` 不适用于 serve。`--stdout` 会被接受但不改变行为：serve 始终是站点预览，`--stdout` 与 `--format html` 同用仍报错。
 - 监视范围是项目内的 `.cj`、`.md`、`cjpm.toml`、`cjpm.lock`、`cjdoc.toml`；跳过隐藏项、`target/`、`.git/`、输出目录与缓存目录。保存后重建，浏览器需手动刷新。
+- 每次重建都按启动时的命令行重新读取 `cjdoc.toml`：改动的 `[analysis]`、`[semantic]` 等设置会生效，删除的键回到真实默认值，CLI 覆盖仍然优先。
+- 输出目录、缓存目录与监听端口在启动时确定，整个会话不变。重建时若解析出不同的输出或缓存位置，服务提示 `output or cache location changed; restart serve`，保留上一份成功站点；要换位置请重启。配置文件语法错误同样只提示并保留旧站点。
 - 重建失败时服务继续提供上一份成功站点；进程因输入错误退出后，修正输入再重启。`Ctrl+C` 停止。
 
 状态接口 `http://127.0.0.1:<port>/__cjdoc/status.json` 返回 `cjdoc.serve-status/1`：
@@ -191,7 +201,9 @@ cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-ap
 
 ## 默认值与优先级
 
-- 显式 CLI 值优先于项目配置；未指定时按项目配置与内置默认值。
+- 显式 CLI 值优先于项目配置；未指定时按项目配置与内置默认值。`cjdoc.toml` 中的 `[output]`、`[analysis]`、`[semantic]` 只填未给出的选项，`check` 不使用 `[output]`。
+- 关闭型开关有对应的 `--no-agent-full`、`--no-include-path-dependencies`、`--no-include-cached-dependencies`，用于在项目中打开后用一次命令关闭；缓存方向由 `--cache-dir`、`--no-cache`、`--cache` 三者中最后出现的那个决定。
+- 配置中的相对路径按项目根解析，与调用目录无关；`--project` 指向的项目根不会因调用目录而改变。
 - `--max-doc-ir-mib` 覆盖配置；`--min-symbol-coverage`、`--min-parameter-coverage` 不覆盖 `[coverage]`，而是在配置门槛之外再加一套检查，两者都执行。
 - `--format` 重复去重；`--cache-dir` 与 `--no-cache` 按最后出现的那个生效。
 - `--validation-report`、`--api-diff-report`、`--doc-source`、`--doc-inventory-pin`、`--require-language`、`--cfg`、`--dependency-source`、`--chir-import-path` 可重复，其含义是并列而不是覆盖。

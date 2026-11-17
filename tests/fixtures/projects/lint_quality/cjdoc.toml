@@ -1,7 +1,2 @@
-format = "markdown"
-jobs = 3
-no-cache = true
-lint-missing-symbols = true
-coverage = true
-deny-warnings = true
-
+# This project is documented with the CLI defaults; it declares no project
+# configuration of its own.

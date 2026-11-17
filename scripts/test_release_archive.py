@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import py_compile
 import shutil
 import subprocess
@@ -45,8 +45,6 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             repo, commit = self.make_release_repo(root / "repo")
-            binary = root / "main"
-            binary.write_bytes(b"binary")
             aliases = [path for path in (repo / "docs/schema").glob("*.schema.json")
                        if not re.search(r"-v[0-9]+\.schema\.json$", path.name)]
             expected_schemas = {path.relative_to(repo).as_posix() for path in aliases}
@@ -60,6 +58,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertEqual(expected_schemas, release_package_contracts.SCHEMA_PAYLOAD)
             for platform in ("linux-x64", "windows-x64"):
                 with self.subTest(platform=platform):
+                    binary = root / ("main.exe" if platform.startswith("windows-") else "main")
+                    binary.write_bytes(b"binary")
                     asset = package_release.build_archive(
                         repo, binary, platform, repo / "target/release-package",
                         source_commit=commit, sdk_version="1.1.3",
@@ -67,10 +67,18 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                         stdx_version="1.2.0", stdx_sha256="2" * 64,
                         candidate_receipt=self.make_candidate_receipt(repo, binary, commit, platform),
                     )
-                    manifest, members, _ = verify_release_package.inspect_archive(
+                    manifest, members, executables = verify_release_package.inspect_archive(
                         asset, platform, "0.7.0", "1.1.3", SDK_SHA256, commit,
                         "1.2.0", "2" * 64,
                     )
+                    # The archive must carry both executables under the installed
+                    # names, in the same directory, or the CLI cannot find its
+                    # worker after installation.
+                    self.assertTrue(set(executables.values()) <= set(members))
+                    self.assertEqual(
+                        {PurePosixPath(name).parent.as_posix() for name in executables.values()},
+                        {"."})
+                    self.assertEqual(manifest["executables"], executables)
                     self.assertEqual(expected_schemas - members.keys(), set(),
                                      "archive omits current schemas")
                     self.assertEqual(expected_schemas - manifest["files"].keys(), set(),
@@ -136,6 +144,13 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertIn("licenses/yjson-Apache-2.0.txt", files)
             if os.name != "nt":
                 self.assertEqual(evidence["smoke"]["version"], "cjdoc 0.7.0")
+                # The extracted worker must run and report the accepted identity;
+                # a correct file name alone would pass a weaker check.
+                self.assertEqual(
+                    evidence["workerSmoke"],
+                    {"version": "cjdoc-chir-worker 0.7.0",
+                     "protocol": "cjdoc-chir-worker/3"},
+                )
                 self.assertEqual(
                     evidence["sdkEnvironment"],
                     {"cjc": "tools/bin/cjc", "cjpm": "tools/bin/cjpm"},
@@ -199,7 +214,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 asset, "linux-x64", "0.7.0", "1.3.0", SDK_SHA256, commit,
                 stdx_version="1.3.0", stdx_sha256="b" * 64,
             )
-            self.assertEqual(manifest["schemaVersion"], "cjdoc.release-package/4")
+            self.assertEqual(manifest["schemaVersion"], "cjdoc.release-package/5")
             self.assertEqual(manifest["runtime"]["stdxArchiveSha256"], "b" * 64)
             with self.assertRaisesRegex(ValueError, "stdx requirements"):
                 verify_release_package.inspect_archive(
@@ -242,6 +257,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "1.1.3", SDK_SHA256,
                 "1.2.0", "2" * 64, self.make_candidate_receipt(repo, binary, commit),
             )
+            self.assertIn("chir-worker-main", payload)
             output = repo / "target/release-package"
             output.mkdir(parents=True)
             asset = output / "cjdoc-0.7.0-linux-x64.tar.gz"
@@ -265,12 +281,15 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                             commit, "1.2.0", "2" * 64,
                         )
 
+            windows_binary = root / "main.exe"
+            windows_binary.write_bytes(b"binary")
             windows_payload = package_release.collect_payload(
-                repo, binary, True, "0.7.0", "windows-x64", commit,
+                repo, windows_binary, True, "0.7.0", "windows-x64", commit,
                 "1.1.3", SDK_SHA256,
                 "1.2.0", "2" * 64,
-                self.make_candidate_receipt(repo, binary, commit, "windows-x64"),
+                self.make_candidate_receipt(repo, windows_binary, commit, "windows-x64"),
             )
+            self.assertIn("chir-worker-main.exe", windows_payload)
             windows_asset = output / "cjdoc-0.7.0-windows-x64.zip"
             package_release.write_zip(windows_asset, "cjdoc-0.7.0", windows_payload)
             verify_release_package.inspect_archive(

@@ -93,7 +93,7 @@ update_golden() {
     local name="$1"
     local project="$2"
     shift 2
-    "${binary}" generate --project "${project}" --format json \
+    "${binary}" generate --project "${project}" --semantic source --format json \
         --output "${update_dir}/${name}" --no-cache "$@" >/dev/null
     cp -f "${update_dir}/${name}/docs.json" "${stage_dir}/${name}.docs.json"
 }

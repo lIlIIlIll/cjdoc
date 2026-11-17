@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -49,6 +51,19 @@ class ReleaseTransactionTest(unittest.TestCase):
         binary.parent.mkdir(parents=True)
         binary.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
         binary.chmod(0o755)
+        worker = binary.with_name("chir-worker-main" + (".exe" if os.name == "nt" else ""))
+        worker.write_bytes(b"sealed transaction worker fixture\n")
+        manifest = {"schemaVersion": "cjdoc.ci-build-manifest/1",
+                    "checkoutCommit": "c" * 40, "checkoutTree": "t" * 40}
+        for key, artifact in (("mainBinary", binary), ("workerBinary", worker)):
+            content = artifact.read_bytes()
+            manifest[key] = {"path": artifact.relative_to(root).as_posix(),
+                             "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)}
+        manifest_path = root / "target/ci-build/build-manifest.json"
+        manifest_path.parent.mkdir()
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        (scripts / "release_package_contracts.py").write_bytes(
+            (RELEASE_CHECK.parent / "release_package_contracts.py").read_bytes())
         (scripts / "release_check.sh").write_bytes(RELEASE_CHECK.read_bytes())
         (scripts / "release_check.sh").chmod(0o755)
         (scripts / "safe_output_root.py").write_bytes(

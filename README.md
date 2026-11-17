@@ -44,7 +44,7 @@ cjdoc 读取 cjpm 项目的源码和 `/** ... */` 文档注释，输出 API 文�
 
 cjdoc 运行在已加载 **Cangjie STS 1.2.0 SDK** 环境的终端里，支持 Linux x64、macOS ARM64 和 Windows x64。
 
-- **预编译发行包**：从 [Releases](https://github.com/lIlIIlIll/cjdoc/releases) 下载对应平台的压缩包，核对校验值后把 `cjdoc` 放进 PATH。步骤见[安装预编译发行包](docs/getting-started/install.md#安装预编译发行包)。
+- **预编译发行包**：从 [Releases](https://github.com/lIlIIlIll/cjdoc/releases) 下载对应平台的压缩包，核对校验值后按[安装指南](docs/getting-started/install.md#安装预编译发行包)安装。包含配套 worker 的版本须将两个可执行文件安装到同一目录。
 - **从源码构建**：另需匹配的静态 stdx 1.2.0，步骤见[安装指南](docs/getting-started/install.md)。
 
 安装后在任意目录确认：
@@ -54,6 +54,8 @@ cjdoc --version
 ```
 
 输出 `cjdoc 0.7.8` 这样的版本行即可继续。
+
+当前源码版默认使用与主程序一起安装的 CHIR worker 补充类型信息，不需要手填 worker 路径。已发布的 0.7.8 默认仍是源码模式；其用法以[对应版本手册](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/README.md)为准。
 
 ## 快速开始
 
@@ -115,12 +117,24 @@ cjdoc generate --project . --format html
 **预期结果**
 
 - `cjdoc check` 编译并运行注释里的示例，把实际输出与 `output` 围栏比较，全部一致时以退出码 `0` 结束。
-- `cjdoc generate` 打印 `generated ./target/doc`，站点入口是 `target/doc/html/index.html`。
-- 两条命令都会打印 `CJDOC3041` warning。它表示参数和返回值的类型 `String` 没有解析出可跳转的链接，不代表示例或生成失败，页面内容完整。
+- 站点入口是 `target/doc/html/index.html`。
+- 终端报告的文档质量 warning 不代表示例或生成失败；按诊断检查对应注释。CHIR 无法补齐信息时仍保留源码声明。
 
 用浏览器打开 `target/doc/html/index.html`，进入 `docdemo` 包的 `greet`，可以看到签名、参数、返回值和示例。整个 `target/doc/html/` 目录可以直接上传发布。
 
-`generate` 本身不编译也不运行示例，示例是否成立以 `check --check-examples` 的结果为准。每一步的解释和各平台的打开方式见[生成第一个站点](docs/tutorials/first-site.md)。
+`generate` 默认会为 CHIR 语义补充编译项目，但不编译或运行注释里的示例；示例是否成立以 `check --check-examples` 的结果为准。每一步的解释和各平台的打开方式见[生成第一个站点](docs/tutorials/first-site.md)。
+
+## 保存常用设置
+
+在项目根的 `cjdoc.toml` 中保存重复使用的设置。例如，为上面的 `docdemo` 添加：
+
+```toml
+[output]
+formats = ["html"]
+directory = "target/doc"
+```
+
+以后在项目根执行 `cjdoc generate` 即可生成同样的站点。临时换目录时用 `cjdoc generate --output target/preview`；命令行值覆盖对应配置默认值。更多设置见[配置参考](docs/reference/configuration.md)。
 
 ## 接下来
 

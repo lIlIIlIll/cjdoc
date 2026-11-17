@@ -40,6 +40,11 @@ internal class ServeState {
         buildCount++
         lastError = "documentation build failed"
     }
+
+    func markFailure(message: String): Unit {
+        buildCount++
+        lastError = message
+    }
 }
 
 private func serveWatchedFile(info: FileInfo): Bool {
@@ -258,6 +263,50 @@ internal func runServeRebuild(options: NewCliOptions, output: String, cache: ?St
     })
 }
 
+// One rebuild re-resolves the project configuration from the original command
+// line, so [analysis] and [semantic] edits and removals take effect while CLI
+// overrides keep winning. The output, cache, and listener stay fixed for the
+// session: a change there would write somewhere the running server does not
+// serve, so it is rejected with a restart hint and the old site is retained.
+private func serveRebuildFromArguments(originalArgs: Array<String>, baselineOutput: String,
+    baselineCache: ?String, state: ServeState): Unit {
+    let fresh = try {
+        let parsed = reparseServeCommand(originalArgs)
+        parsed.command = "generate"
+        if (!parsed.formats.contains("html")) { parsed.formats.add("html") }
+        parsed
+    } catch (_: Exception) {
+        state.markFailure("configuration is invalid; fix cjdoc.toml")
+        eprintln("serve: configuration is invalid; keeping the last successful site")
+        return
+    }
+    var moved = true
+    try {
+        let (output, cache) = prepareOutputAndCacheDirectories(
+            selectedOutputDirectory(fresh), selectedSourceCacheDirectory(fresh))
+        // The session serves one fixed location; a repositioned build would
+        // silently publish outside the site this server is expecting.
+        moved = !sameServeLocation(output, cache, baselineOutput, baselineCache)
+    } catch (_: Exception) { moved = true }
+    if (moved) {
+        state.markFailure("output or cache location changed; restart serve")
+        eprintln("serve: output or cache location changed; restart serve to use it; " +
+            "keeping the last successful site")
+        return
+    }
+    serveBuild(fresh, baselineOutput, baselineCache, state)
+}
+
+private func sameServeLocation(output: String, cache: ?String,
+    baselineOutput: String, baselineCache: ?String): Bool {
+    if (output != baselineOutput) { return false }
+    match ((cache, baselineCache)) {
+        case (None, None) => return true
+        case (Some(current), Some(previous)) => return current == previous
+        case _ => return false
+    }
+}
+
 private func serveBuild(options: NewCliOptions, output: String, cache: ?String,
     state: ServeState): Unit {
     try {
@@ -329,7 +378,7 @@ internal func runServeCommand(options: NewCliOptions): Int64 {
         while (true) {
             let current = collectServeSnapshot(canonicalize(Path(options.project)), excludedDirectories)
             if (!serveSnapshotsEqual(snapshot, current)) {
-                serveBuild(options, preparedOutput, selectedCache, state)
+                serveRebuildFromArguments(options.serveArgs, preparedOutput, selectedCache, state)
                 snapshot = current
             }
             try {

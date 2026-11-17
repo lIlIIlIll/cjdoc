@@ -6,6 +6,7 @@ import cjdoc.schema_data.*
 import std.collection.*
 import std.env.*
 import std.fs.*
+import cjdoc_chir_protocol.CJDOC_PRODUCT_VERSION
 
 internal func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     if (options.noCache) { return None }
@@ -303,16 +304,13 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
 
  internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
     selectedCache: ?String, outputLock: ?OutputLockHandle, writeOnFailure!: Bool = true): Int64 {
-    let commandLine = getCommandLine()
-    let astPreflightExecutable: ?String = if (commandLine.size > 0) {
-        Some(commandLine[0])
-    } else {
-        None
-    }
+    // The source parser worker and the installed CHIR companion are both
+    // located from the real executable, never from argv[0], PATH, or the cwd.
+    let astPreflightExecutable = currentCjdocExecutablePath()
     let chirOptions: ?ChirOptions = if (options.semanticMode == "chir") {
         Some(ChirOptions(compilerExecutable: options.cjcExecutable,
             importPaths: options.chirImportPaths.toArray(),
-            workerExecutable: options.chirWorkerExecutable))
+            workerExecutable: selectedCliChirWorker(options, astPreflightExecutable)))
     } else {
         None
     }
@@ -342,6 +340,7 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
             standardLibraryDocsBaseUrl: options.standardLibraryDocsBaseUrl,
             maxDocIrMiB: options.maxDocIrMiB))
     }
+    let renderLocale = selectedCliRenderLocale(options)
     var documentation = match (generationRequest) {
         case Some(request) =>
             let semanticProvider: SemanticProvider = match (request.chir) {
@@ -362,7 +361,7 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
         let created = OutputArtifactSpool(outputLock.getOrThrow())
         spool = Some(created)
         documentation = renderArtifactsIntoWithCommandFallback(created, documentation,
-            orderedFormats(options), generationRequest, locale: options.locale,
+            orderedFormats(options), generationRequest, locale: renderLocale,
             docVersion: options.docVersion, allLanguages: options.allLanguages,
             agentFull: options.agentFull, reports: capturedCliReports(options),
             htmlFonts: public_render.HtmlFontOptions(sans: options.htmlFontSans,
@@ -375,7 +374,7 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
     }
     let artifacts = if (options.command != "check" && options.stdout) {
         let (renderedDocumentation, rendered) = renderArtifactsWithCommandFallback(documentation,
-            orderedFormats(options), generationRequest, locale: options.locale,
+            orderedFormats(options), generationRequest, locale: renderLocale,
             docVersion: options.docVersion, allLanguages: options.allLanguages,
             agentFull: options.agentFull, reports: capturedCliReports(options),
             htmlFonts: public_render.HtmlFontOptions(sans: options.htmlFontSans, mono: options.htmlFontMono))
@@ -432,9 +431,31 @@ internal func completeLockedOutputCommand(output: String,
     result
 }
 
+// Help is answered before configuration is read: it needs no project, starts no
+// worker, and works even when the project's cjdoc.toml is invalid.
+private func runCommandHelp(args: Array<String>): ?Int64 {
+    if (args.size < 2) { return None }
+    let last = args[args.size - 1]
+    if (last != "--help" && last != "-h") { return None }
+    // Accept `cjdoc serve --help` and the nested `cjdoc versions compose --help`.
+    var name = ""
+    var index: Int64 = 0
+    while (index < args.size - 1) {
+        let token = args[index]
+        if (token.startsWith("-")) { return None }
+        name = if (name.isEmpty()) { token } else { name + " " + token }
+        index++
+    }
+    match (commandUsage(name)) {
+        case Some(text) => print(text); Some(0)
+        case None => None<Int64>
+    }
+}
+
 func runCli(args: Array<String>): Int64 {
     if (args.size == 1 && (args[0] == "--help" || args[0] == "-h")) { print(newUsage()); return 0 }
-    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.7.8"); return 0 }
+    if (args.size == 1 && args[0] == "--version") { println("cjdoc " + CJDOC_PRODUCT_VERSION); return 0 }
+    if (let Some(exitCode) <- runCommandHelp(args)) { return exitCode }
     if (!args.isEmpty() && (args[0] == "query" || args[0] == "mcp")) {
         return runDocumentationReadCli(args)
     }

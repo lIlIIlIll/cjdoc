@@ -115,9 +115,18 @@ cjdoc  README.md  LICENSE  THIRD_PARTY_NOTICES.md
 docs/schema/*.json  licenses/  release-candidate.json  release-manifest.json
 ```
 
+v0.7.8 的发行包只有 `cjdoc` 一个可执行文件，后面第 4、5 步都按这份清单以及这一个文件进行。发布了配套 worker 的版本把 `cjdoc` 与 `chir-worker-main`（Windows 为 `chir-worker-main.exe`）放在同一目录一起发布，两个文件都位于包根目录下：
+
+```text
+cjdoc  chir-worker-main  README.md  LICENSE  THIRD_PARTY_NOTICES.md
+docs/schema/*.json  licenses/  release-candidate.json  release-manifest.json
+```
+
+这些版本的 `cjdoc` 只在自己所在的目录里查找配套的 CHIR worker，不会搜索 `PATH` 或当前目录；两个文件装进同一个 `bin` 目录后即可使用，无需配置路径。只装 `cjdoc` 时语义补充退回源码信息并给出诊断。v0.7.8 的 `cjdoc` 没有这项自动发现，旁边多放一个文件不会改变它的行为；它对应的说明以 [v0.7.8 标签下的文档](https://github.com/lIlIIlIll/cjdoc/tree/v0.7.8/docs)为准。
+
 无论在哪个平台，路径以 `/` 开头或包含 `..` 都不应解压；出现 `l`（符号链接）或其它条目类型时也不要解压。
 
-`ls unpacked/cjdoc-0.7.8` 应列出上面这些名称。`mkdir unpacked` 在目录已存在时会报错：看到这个错误就换一个新的目录名，例如 `unpacked-2`，并把 `tar` 命令里的 `-C` 一起改成新名字；不要继续往旧目录里解压。
+`ls unpacked/cjdoc-0.7.8` 应列出你解压的那一份对应的名称。`mkdir unpacked` 在目录已存在时会报错：看到这个错误就换一个新的目录名，例如 `unpacked-2`，并把 `tar` 命令里的 `-C` 一起改成新名字；不要继续往旧目录里解压。
 
 ### 4. 核对清单
 
@@ -140,6 +149,8 @@ cat unpacked/cjdoc-0.7.8/release-manifest.json
 
 `files` 逐项给出包内每个文件的大小和 SHA-256，可以和实际文件核对。`runtime` 记录构建这个包所用的 SDK 与 stdx：运行它只需要 SDK 1.2.0 的运行库，不需要设置 `CANGJIE_STDX_PATH`。同目录的 `release-candidate.json` 记录构建参数，日常安装不必读它。
 
+发布配套 worker 的版本使用清单 schema `cjdoc.release-package/5`，比 v0.7.8 多出两个字段：`executables` 给出两个可执行文件的安装名（例如 `{"main": "cjdoc", "worker": "chir-worker-main"}`），`chirWorker` 记录该 worker 自己报告的产品版本与协议版本（例如 `cjdoc-chir-worker 0.7.8` 与 `cjdoc-chir-worker/3`）。两者与 `cjdoc` 不匹配时，`cjdoc` 会报告诊断并保留源码结论。
+
 平台与版本不符时不要安装：换成对应平台的资产。按清单声明准备环境，不要用另一套 SDK 的版本字符串代替匹配。
 
 ### 5. 安装到前缀并加入 PATH
@@ -154,7 +165,7 @@ command -v cjdoc
 "$RELEASE_PREFIX/bin/cjdoc" --version
 ```
 
-`command -v cjdoc` 应输出 `$RELEASE_PREFIX/bin/cjdoc`，最后一行输出 `cjdoc 0.7.8`。
+`command -v cjdoc` 应输出 `$RELEASE_PREFIX/bin/cjdoc`，最后一行输出 `cjdoc 0.7.8`。这就是 v0.7.8 的全部安装步骤。
 
 `install -m 755` 会覆盖该前缀下已有的 `cjdoc`。要保留旧版本，先把前缀换成新的私人目录，例如 `$HOME/.local/cjdoc-0.7.8`，再把它的 `bin` 加入 PATH。
 
@@ -170,6 +181,35 @@ Get-Command cjdoc
 ```
 
 macOS 的步骤与 Linux 相同，只换资产名，并用 `shasum -a 256 -c` 校验。所有平台都要按各自清单保留 SDK runtime 环境。
+
+### 6. 让 cjdoc 使用配套 worker（只有带该文件的版本需要）
+
+v0.7.8 的包里没有这个文件，跳过本步即可。对发布了配套 worker 的版本，先确认解压目录里确有它：
+
+```bash
+UNPACKED="unpacked/cjdoc-0.7.8"
+ls "$UNPACKED" | grep -x chir-worker-main
+```
+
+`grep` 有输出才继续。两个文件必须装进同一个目录，因为 `cjdoc` 只在自己所在的目录里查找配套 worker：
+
+```bash
+install -m 755 "$UNPACKED/chir-worker-main" "$RELEASE_PREFIX/bin/chir-worker-main"
+ls "$RELEASE_PREFIX/bin"
+```
+
+`ls` 应同时列出 `cjdoc` 与 `chir-worker-main`。对发布了配套 worker 的版本，之后 `cjdoc generate`、`cjdoc check` 和 `cjdoc serve` 默认使用这个 worker 做语义补充，不需要传 `--chir-worker`。v0.7.8 的 `cjdoc` 不会按目录查找 worker，所以这一步只对带有该文件的新版本有意义；v0.7.8 需要显式语义结果时，按 [v0.7.8 标签下的文档](https://github.com/lIlIIlIll/cjdoc/tree/v0.7.8/docs)操作。
+
+Windows 上同样先检查文件是否存在，再复制到 `cjdoc.exe` 所在目录：
+
+```powershell
+$Unpacked = Join-Path $PWD 'unpacked\cjdoc-0.7.8'
+$Worker = Join-Path $Unpacked 'chir-worker-main.exe'
+if (Test-Path $Worker) {
+  Copy-Item $Worker (Join-Path $CjdocPrefix 'bin\chir-worker-main.exe')
+}
+Get-ChildItem (Join-Path $CjdocPrefix 'bin')
+```
 
 长期使用时，把 `$RELEASE_PREFIX/bin` 写进你的 shell 配置；SDK 环境需按后文“以后在新终端使用 cjdoc”在每个新终端加载。
 
@@ -219,10 +259,19 @@ printf '%s\n' "$CJDOC_REVISION"
   cd "$CJDOC_SOURCE"
   . scripts/with_sts_cjpm.sh
   python3 scripts/with_stdx.py --variant static -- cjpm build --jobs 1
+  python3 scripts/with_stdx.py --variant static -- bash -c 'cd tools/chir-worker && cjpm build --jobs 1'
+  worker="tools/chir-worker/target/release/bin/main"
+  if [ -f "$worker.exe" ]; then
+    cp -p "$worker.exe" target/release/bin/chir-worker-main.exe
+  else
+    cp -p "$worker" target/release/bin/chir-worker-main
+  fi
 )
 ```
 
-构建使用仓库固定的 `-O2 --fno-chir-function-inlining`，你不需要另加编译选项。成功后产物在 `$CJDOC_SOURCE/target/release/bin/main`，Windows 为 `main.exe`。
+构建使用仓库固定的 `-O2 --fno-chir-function-inlining`，你不需要另加编译选项。成功后产物在 `$CJDOC_SOURCE/target/release/bin/main`，Windows 为 `main.exe`；配套的 CHIR worker 被放到同一目录，名字固定为 `chir-worker-main`（Windows 为 `chir-worker-main.exe`）。`cjdoc` 只在自己所在的目录里查找这个文件，所以安装时两个文件必须一起复制。
+
+这一步构建出的 `cjdoc` 默认启用 CHIR 语义补充。只想看源码与注释得出的结论时，不必跳过 worker 构建，在命令上加 `--semantic source` 即可；这样安装出来的仍是完整的产品。
 
 Git Bash 中 `cygpath -m` 把路径转成 `C:/...` 形式交给原生 Python，包装脚本内部再转回 Bash 使用的形式；Linux 和 macOS 跳过这个分支。
 
@@ -230,18 +279,20 @@ Git Bash 中 `cygpath -m` 把路径转成 `C:/...` 形式交给原生 Python，�
 
 ### 3. 安装到前缀并加入 PATH
 
-在任意目录执行，把构建产物安装为一个名为 `cjdoc` 的命令：
+在任意目录执行，把构建产物安装为一个名为 `cjdoc` 的命令，并把配套 worker 放进同一个目录：
 
 ```bash
 export CJDOC_PREFIX="$HOME/.local"
 install -d "$CJDOC_PREFIX/bin"
 install -m 755 "$CJDOC_SOURCE/target/release/bin/main" "$CJDOC_PREFIX/bin/cjdoc"
+install -m 755 "$CJDOC_SOURCE/target/release/bin/chir-worker-main" "$CJDOC_PREFIX/bin/chir-worker-main"
 export PATH="$CJDOC_PREFIX/bin:$PATH"
 hash -r
 command -v cjdoc
+ls "$CJDOC_PREFIX/bin"
 ```
 
-`command -v cjdoc` 应输出 `$CJDOC_PREFIX/bin/cjdoc`。
+`command -v cjdoc` 应输出 `$CJDOC_PREFIX/bin/cjdoc`，`ls` 应同时列出 `cjdoc` 与 `chir-worker-main`。两者缺一说明第 2 步没跑完，回到第 2 步重新构建并在同一子 shell 中复制 worker。
 
 `install` 会覆盖该前缀下已有的 `cjdoc`。要保留旧版本，先把 `CJDOC_PREFIX` 设为新的私人目录，例如 `$HOME/.local/cjdoc-0.7.8`，再把它的 `bin` 加入 PATH。
 
@@ -253,6 +304,7 @@ Windows 在 PowerShell 中进入你的 cjdoc 克隆目录后执行：
 $CjdocPrefix = Join-Path $HOME '.local'
 New-Item -ItemType Directory -Force (Join-Path $CjdocPrefix 'bin') | Out-Null
 Copy-Item .\target\release\bin\main.exe (Join-Path $CjdocPrefix 'bin\cjdoc.exe')
+Copy-Item .\target\release\bin\chir-worker-main.exe (Join-Path $CjdocPrefix 'bin\chir-worker-main.exe')
 $env:Path = (Join-Path $CjdocPrefix 'bin') + ';' + $env:Path
 Get-Command cjdoc
 ```
@@ -267,6 +319,7 @@ cd "$HOME/cjdoc-example"
 command -v cjdoc
 cjdoc --version
 cjdoc --help
+ls "$(dirname "$(command -v cjdoc)")"
 ```
 
 预期结果：
@@ -274,8 +327,11 @@ cjdoc --help
 - `command -v cjdoc` 指向你选择的前缀（发行包路线是 `$RELEASE_PREFIX/bin/cjdoc`，源码路线是 `$CJDOC_PREFIX/bin/cjdoc`）。
 - `cjdoc --version` 输出 `cjdoc 0.7.8`。
 - `cjdoc --help` 列出 `generate`、`check`、`serve`、`render`、`diff`、`query`、`mcp`、`schema` 等顶层命令，并以 `0` 退出。
+- `ls` 列出 `cjdoc` 所在的 `bin` 目录。源码路线的安装里还应有 `chir-worker-main`（Windows 为 `chir-worker-main.exe`）；v0.7.8 发行包没有这个文件。worker 不必出现在 PATH 里，当前源码的 `cjdoc` 只在自身目录查找它。
 
-只有顶层提供帮助：`cjdoc generate --help` 报 `error: unknown option '--help'`，以 `2` 退出。子命令的用法看顶层 `--help` 里的命令行摘要。
+源码路线安装的 `cjdoc` 默认使用同目录的 worker。确认它生效不需要额外参数：在包含 `.cj` 源码的项目里运行 `cjdoc check --project .`，有 worker 时语义结论更完整；worker 缺失或版本不匹配时，`cjdoc` 仍会给出源码结论并输出 `CJDOC2101`/`CJDOC2104` 诊断。v0.7.8 的 `cjdoc` 不使用这项自动发现。
+
+当前源码版支持按命令查看帮助，例如 `cjdoc generate --help`、`cjdoc check --help`；帮助不会读取项目配置或启动 worker。已发布的 v0.7.8 仍只提供顶层 `cjdoc --help`，请使用对应版本手册。各选项默认值见[命令行参考](../reference/cli.md)。
 
 这些命令不需要 `CJDOC_SOURCE`，也不需要源码构建那一节准备的构建临时目录，但当前终端仍需已加载的 SDK 环境。忘记加载时 `cjdoc` 会报 `error while loading shared libraries: libcangjie-std-ast.so`：在同一终端执行 `. "$CANGJIE_SDK_ROOT/envsetup.sh"` 后重试。
 

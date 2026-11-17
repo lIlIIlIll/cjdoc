@@ -73,7 +73,7 @@ class MacroDocumentationIntegrationTest(unittest.TestCase):
         for fixture in ("macro_sources", "macro_wrapped"):
             for run in ("first", "second"):
                 command = [str(cls.binary), "generate", "--project",
-                           str(REPO / "tests/fixtures/projects" / fixture),
+                           str(REPO / "tests/fixtures/projects" / fixture), "--semantic", "source",
                            "--format", "json", "--format", "html", "--format", "markdown",
                            "--format", "api-surface", "--agent-full", "--audience", "external",
                            "--output", str(cls.root / fixture / run),
