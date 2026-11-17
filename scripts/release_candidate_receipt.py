@@ -125,7 +125,8 @@ def verify_sealed_build(repo: Path, manifest_path: Path, commit: str, tree: str,
     same-version one — cannot match them.
     """
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
     except OSError as error:
         raise SystemExit(f"release receipt: sealed build manifest is missing: {error}")
     except json.JSONDecodeError as error:
@@ -152,7 +153,7 @@ def verify_sealed_build(repo: Path, manifest_path: Path, commit: str, tree: str,
         sealed[key] = {"path": str(recorded.get("path") or ""),
                        "sha256": str(recorded.get("sha256")), "size": int(recorded.get("size"))}
     return {"path": relative_to_repo(repo, manifest_path, "sealed build manifest"),
-            "sha256": sha256_file(manifest_path),
+            "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
             "mainBinary": sealed["mainBinary"], "workerBinary": sealed["workerBinary"]}
 
 

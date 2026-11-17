@@ -2,7 +2,7 @@
 
 `cjdoc` 的命令、选项、取值范围与退出码。命令在项目根执行，除非显式给出输入路径。
 
-`cjdoc --help`（或 `-h`）列出全部命令；`cjdoc <命令> --help` 只列该命令的选项，例如 `cjdoc generate --help`；带子命令的形式同样可用，如 `cjdoc versions compose --help`。子命令帮助是静态文本，不读取 `cjdoc.toml`、不需要项目，也不会启动工作进程，所以项目配置写错时仍可查阅。未知命令加 `--help` 仍按未知命令处理，退出码 `2`。`cjdoc --version` 输出 `cjdoc 0.7.8`，只表示产品版本。
+`cjdoc --help`（或 `-h`）列出全部命令；`cjdoc <命令> --help` 只列该命令的选项，例如 `cjdoc generate --help`；带子命令的形式同样可用，如 `cjdoc versions compose --help`。子命令帮助是静态文本，不读取 `cjdoc.toml`、不需要项目，也不会启动工作进程，所以项目配置写错时仍可查阅。未知命令加 `--help` 仍按未知命令处理，退出码 `2`。`cjdoc --version` 输出 `cjdoc 0.7.9`，只表示产品版本。
 
 项目配置的 `[output]`、`[analysis]`、`[semantic]` 提供本文各表的默认值；显式 CLI 值总是覆盖它们，取值规则见[配置参考](configuration.md) 的「常用命令行默认值」一节。
 

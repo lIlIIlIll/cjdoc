@@ -149,22 +149,24 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     }
     func analyzeModule(moduleId: String,
         declarations: ReadOnlyList<public_provider.SourceDeclarationView>): public_provider.SemanticBatch {
-        // CHIR resolves qualified type identities for signatures, so canonical
-        // type data is supplied when the worker returns it.
-        let capabilities = public_model.SemanticCapabilities(true, true, true, true, false)
+        // Canonical types come only from structured CHIR. The host binder keeps
+        // its conservative source-local navigation fallback, including when
+        // CHIR is unavailable; this does not claim compiler-proven relationships.
+        let capabilities = public_model.SemanticCapabilities(true, true, true, true, false,
+            relationships: true)
         let diagnostics = ArrayList<public_model.Diagnostic>()
         if (identityVersion.contains("unknown-cjc")) {
             diagnostics.add(public_model.Diagnostic("warning", "CJDOC2101",
                 "CHIR compiler version is unavailable"))
             return public_provider.SemanticBatch(
-                public_model.SemanticCapabilities(false, false, false, false, false),
+                public_model.SemanticCapabilities(false, false, false, false, false, relationships: true),
                 diagnostics: diagnostics.toArray())
         }
         match (unsupportedManifestReasonForModule(moduleId)) {
             case Some(reason) =>
                 diagnostics.add(public_model.Diagnostic("warning", "CJDOC2102", reason))
                 return public_provider.SemanticBatch(
-                    public_model.SemanticCapabilities(false, false, false, false, false),
+                    public_model.SemanticCapabilities(false, false, false, false, false, relationships: true),
                     diagnostics: diagnostics.toArray())
             case None => ()
         }
@@ -196,7 +198,7 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         }
         if (!usable) {
             return public_provider.SemanticBatch(
-                public_model.SemanticCapabilities(false, false, false, false, false),
+                public_model.SemanticCapabilities(false, false, false, false, false, relationships: true),
                 diagnostics: diagnostics.toArray())
         }
         let result = ArrayList<public_provider.SemanticDeclaration>()

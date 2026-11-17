@@ -495,7 +495,12 @@ private class ProjectConfigScanner {
             }
             let code = match (parser.code(rawLine)) {
                 case Some(value) => value
-                case None => continue
+                case None =>
+                    if (kind == "root" || projectConfigOwnsKeys(kind)) {
+                        throw projectConfigFailure(
+                            "settings in [" + kind + "] must use single-line strings")
+                    }
+                    continue
             }
             if (code.isEmpty()) { continue }
             if (code.startsWith("[")) {

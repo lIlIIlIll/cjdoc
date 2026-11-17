@@ -131,6 +131,18 @@ class ProjectConfigurationCliTest(unittest.TestCase):
             '[semantic]\nworker = "project-chosen-executable"\n',
             '[docs]\nindex = "docs/index.md"\nindx = "docs/index.md"\n',
         ]
+        for quote in ('"""', "'''"):
+            for table, assignment in (
+                    ("semantic", 'mode = {quote}source{quote}'),
+                    ("semantic", 'mode = {quote}invalid{quote}'),
+                    ("semantic", 'unknown = {quote}ignored{quote}'),
+                    ("output", 'directory = {quote}site{quote}'),
+                    ("analysis", 'audience = {quote}all{quote}'),
+                    ("analysis", 'jobs = {quote}invalid{quote}')):
+                invalid.append(f"[{table}]\n{assignment.format(quote=quote)}\n")
+            invalid.append(f"[semantic]\nmode = {quote}\nsource\n{quote}\n")
+            invalid.append(f"[semantic]\nmode = {quote}source\n")
+            invalid.append(f"unknown = {quote}ignored{quote}\n")
         for settings in invalid:
             with self.subTest(configuration=settings):
                 self.configure(settings, source_mode=False)
@@ -147,6 +159,11 @@ class ProjectConfigurationCliTest(unittest.TestCase):
         document = json.loads(result.stdout)
         self.assertFalse(any(item["name"] == "chir" for item in document["providers"]))
         self.assertNotIn("CJDOC21", result.stderr)
+        for quote in ('"""', "'''"):
+            self.configure(f"[semantic]\nmode = 'source' # {quote} comment only\n",
+                           source_mode=False)
+            commented = json.loads(self.generate("--stdout").stdout)
+            self.assertFalse(any(item["name"] == "chir" for item in commented["providers"]))
         overridden = self.generate("--stdout", "--semantic", "chir", "--chir-worker",
                                    self.root / ("missing-worker" + SUFFIX))
         overridden_document = json.loads(overridden.stdout)

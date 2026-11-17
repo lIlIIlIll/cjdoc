@@ -53,9 +53,9 @@ cjdoc 运行在已加载 **Cangjie STS 1.2.0 SDK** 环境的终端里，支持 L
 cjdoc --version
 ```
 
-输出 `cjdoc 0.7.8` 这样的版本行即可继续。
+输出 `cjdoc 0.7.9` 这样的版本行即可继续。
 
-当前源码版默认使用与主程序一起安装的 CHIR worker 补充类型信息，不需要手填 worker 路径。已发布的 0.7.8 默认仍是源码模式；其用法以[对应版本手册](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/README.md)为准。
+0.7.9 默认使用与主程序一起安装的 CHIR worker 补充类型信息，不需要手填 worker 路径。使用旧版 0.7.8 时，请阅读[对应版本手册](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/README.md)。
 
 ## 快速开始
 

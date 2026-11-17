@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import platform
 import subprocess
@@ -11,6 +12,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 from scripts import package_release
 from scripts import release_candidate_receipt
@@ -59,7 +61,8 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
                              "sha256": worker_digest or
                              verify_release_package.sha256_file(self.worker),
                              "size": self.worker.stat().st_size},
-            "runId": "", "runAttempt": 0,
+            "runId": os.environ.get("GITHUB_RUN_ID", ""),
+            "runAttempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "0") or 0),
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return self.manifest_path
 
@@ -355,6 +358,59 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("different source tree", result.stderr)
         self.assertFalse(output.exists())
+
+    def test_manifest_receipt_identifies_the_validated_observation(self):
+        self.write_manifest()
+        accepted = self.manifest_path.read_bytes()
+        tree = self.git(self.repo, "rev-parse", "HEAD^{tree}")
+        parse = json.loads
+
+        def replace_after_parse(value):
+            document = parse(value)
+            self.manifest_path.write_bytes(b"{}")
+            return document
+
+        with mock.patch.object(release_candidate_receipt.json, "loads",
+                               side_effect=replace_after_parse):
+            sealed = release_candidate_receipt.verify_sealed_build(
+                self.repo, self.manifest_path, self.commit, tree, self.binary, self.worker)
+        self.assertEqual(sealed["sha256"], hashlib.sha256(accepted).hexdigest())
+        self.assertEqual(sealed["workerBinary"]["sha256"],
+                         hashlib.sha256(self.worker.read_bytes()).hexdigest())
+        self.assertEqual(self.manifest_path.read_bytes(), b"{}")
+
+    def test_replacement_cannot_repair_an_invalid_manifest_observation(self):
+        self.write_manifest()
+        accepted = self.manifest_path.read_bytes()
+        self.manifest_path.write_bytes(b"{}")
+        tree = self.git(self.repo, "rev-parse", "HEAD^{tree}")
+        parse = json.loads
+
+        def replace_after_parse(value):
+            document = parse(value)
+            self.manifest_path.write_bytes(accepted)
+            return document
+
+        with mock.patch.object(release_candidate_receipt.json, "loads",
+                               side_effect=replace_after_parse):
+            with self.assertRaises(SystemExit):
+                release_candidate_receipt.verify_sealed_build(
+                    self.repo, self.manifest_path, self.commit, tree, self.binary, self.worker)
+        self.assertEqual(self.manifest_path.read_bytes(), accepted)
+
+    def test_sealed_manifest_rejects_a_foreign_run_or_attempt(self):
+        self.write_manifest()
+        accepted = json.loads(self.manifest_path.read_bytes())
+        tree = self.git(self.repo, "rev-parse", "HEAD^{tree}")
+        attempt = accepted["runAttempt"]
+        for key, value in (("runId", "another-run"),
+                           ("runAttempt", 0 if attempt else 1)):
+            with self.subTest(field=key):
+                replaced = {**accepted, key: value}
+                self.manifest_path.write_text(json.dumps(replaced), encoding="utf-8")
+                with self.assertRaises(SystemExit):
+                    release_candidate_receipt.verify_sealed_build(
+                        self.repo, self.manifest_path, self.commit, tree, self.binary, self.worker)
 
     def test_receipt_rejects_plain_o2_without_the_required_extra_flag(self):
         output = self.repo / "target/release-candidate/refused.json"

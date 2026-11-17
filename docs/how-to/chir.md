@@ -1,8 +1,8 @@
 # 查看和调整 CHIR 语义补充
 
-当前源码版的 `generate`、`check`、`serve` 默认使用配套 CHIR worker，补充编译器确认的类型信息。worker 与 `cjdoc` 一起安装，命令会按主程序的真实位置寻找同目录的 `chir-worker-main`（Windows 为 `chir-worker-main.exe`），不需要在每个项目中配置路径。
+0.7.9 的 `generate`、`check`、`serve` 默认使用配套 CHIR worker，补充编译器确认的类型信息。worker 与 `cjdoc` 一起安装，命令会按主程序的真实位置寻找同目录的 `chir-worker-main`（Windows 为 `chir-worker-main.exe`），不需要在每个项目中配置路径。
 
-本页描述当前源码版。已发布的 0.7.8 仍默认使用源码模式，也不包含 worker；使用该发行包时请阅读[对应版本的 CHIR 指南](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/how-to/chir.md)。
+本页面向 0.7.9。旧版 0.7.8 默认使用源码模式，也不包含 worker；使用该发行包时请阅读[对应版本的 CHIR 指南](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/how-to/chir.md)。
 
 ## 前提条件
 

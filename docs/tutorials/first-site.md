@@ -16,7 +16,7 @@ command -v cjdoc
 cjdoc --version
 ```
 
-第一条命令输出 `cjdoc` 的绝对路径，第二条输出 `cjdoc 0.7.8`。如果第二条报 `error while loading shared libraries`，回到安装页重新加载 SDK 环境。
+第一条命令输出 `cjdoc` 的绝对路径，第二条输出 `cjdoc 0.7.9`。如果第二条报 `error while loading shared libraries`，回到安装页重新加载 SDK 环境。
 
 ## 1. 创建静态库
 

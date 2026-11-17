@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import unittest
 
+from scripts import publication_ir
+
 
 REPO = Path(__file__).resolve().parent.parent
 SUFFIX = ".exe" if os.name == "nt" else ""
@@ -63,6 +65,34 @@ class InstalledChirWorkerTest(unittest.TestCase):
     def test_default_chir_uses_relocated_adjacent_worker(self):
         shutil.copy2(self.worker, self.companion)
         self.assert_chir_resolved(*self.generate())
+
+    def test_default_and_unavailable_chir_preserve_public_extension_navigation(self):
+        fixture = REPO / "tests/fixtures/projects/extend_visibility"
+        shutil.copy2(fixture / "cjpm.toml", self.project / "cjpm.toml")
+        (self.project / "src/api.cj").write_text(
+            (fixture / "src/fixture.cj").read_text(encoding="utf-8") +
+            "\npublic func identity(value: Int64): Int64 { value }\n", encoding="utf-8")
+        shutil.copy2(self.worker, self.companion)
+        for options in ((), ("--chir-worker", str(self.root / ("missing-worker" + SUFFIX)))):
+            with self.subTest(options=options):
+                result, document, identity = self.generate(options=options)
+                published = publication_ir.project(document)
+                names = {item["name"] for item in published["declarations"]}
+                self.assertTrue({"length", "pretty", "identity"} <= names)
+                self.assertTrue({"hiddenMember", "hiddenExtensionMember", "packageOnly", "fileOnly"}.isdisjoint(names))
+                box = next(item for item in published["declarations"] if item["name"] == "Box")
+                extensions = [item for item in published["declarations"] if item["kind"] == "extend"]
+                self.assertEqual(len(extensions), 2)
+                for extension in extensions:
+                    self.assertTrue(any(
+                        relation["kind"] == "extensionTarget" and relation["state"] == "resolved" and
+                        relation.get("targetSymbolId") == box["id"]
+                        for relation in extension["symbolRelationships"]))
+                if options:
+                    self.assertIn("CJDOC2101", result.stderr)
+                else:
+                    self.assertEqual(identity["returnType"]["semanticState"], "resolved")
+                    self.assertEqual(identity["returnType"]["semanticProvider"], "chir")
 
     def test_missing_worker_preserves_source_with_diagnostic(self):
         result, _, declaration = self.generate()
