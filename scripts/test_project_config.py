@@ -106,6 +106,58 @@ class ProjectConfigurationCliTest(unittest.TestCase):
         self.assertEqual(checked.returncode, 0, checked.stderr)
         self.assertFalse((self.project / "published").exists())
 
+    def test_metadata_header_variants_preserve_groups_tags_and_translations(self):
+        (self.project / "src/api.cj").write_text(
+            "package configuration_demo\n/** Answer.\n * @group answers\n * @tag stable\n */\n"
+            "public func answer(): Int64 { 42 }\n", encoding="utf-8")
+        for separator, quote in ((".", ""), (".", '"'), (".", "'"),
+                                 (" . ", ""), ("\t.\t", '"')):
+            with self.subTest(separator=separator, quote=quote):
+                def header(*parts):
+                    return separator.join(quote + part + quote for part in parts)
+
+                self.configure(
+                    f'[{header("metadata")}]\n'
+                    f'[[{header("metadata", "groups")}]]\n'
+                    'package = "configuration_demo"\nid = "answers"\ntitle = "Answers"\n'
+                    f'[{header("metadata", "groups", "titles")}]\nen = "Translated Answers"\n'
+                    f'[[{header("metadata", "tags")}]]\nid = "stable"\ntitle = "Stable"\n'
+                    f'[{header("metadata", "tags", "titles")}]\nen = "Translated Stable"\n')
+                document = json.loads(self.generate("--format", "json", "--stdout").stdout)
+                metadata = document["metadata"]
+                self.assertEqual(
+                    [(item["id"], item["title"], item["titles"]) for item in metadata["groups"]],
+                    [("answers", "Answers", [{"language": "en", "title": "Translated Answers"}])])
+                self.assertEqual(
+                    [(item["id"], item["title"], item["titles"]) for item in metadata["tags"]],
+                    [("stable", "Stable", [{"language": "en", "title": "Translated Stable"}])])
+                checked = self.invoke("check", "--project", self.project,
+                                      "--lint-profile", "off", "--no-cache")
+                self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_invalid_metadata_header_forms_cannot_replace_previous_output(self):
+        self.configure()
+        output = self.root / "metadata-stable-output"
+        self.generate("--format", "json", "--output", output)
+        accepted = (output / "docs.json").read_bytes()
+        for settings in (
+                '[["metadata"]]\n',
+                '["metadata" . "groups"]\n',
+                '["metadata" . "groups" . "titles"]\nen = "Orphan"\n',
+                '[["metadata" . "tags" . "titles"]]\nen = "Wrong shape"\n',
+                '["metadata" . "groups.titles"]\nen = "Not a dotted path"\n',
+                '[["metadata"."tags"]]\nid = "stable"\ntitle = "First"\ntitle = "Second"\n',
+                '[["metadata"."tags"]]\nid = "stable"\ntitle = "Stable"\n'
+                '["metadata"."tags"."titles"]\nen = "First"\n'
+                '["metadata" . "tags" . "titles"]\nen = "Second"\n'):
+            with self.subTest(configuration=settings):
+                self.configure(settings)
+                result = self.invoke("generate", "--project", self.project,
+                                     "--format", "json", "--output", output,
+                                     "--lint-profile", "off", "--no-cache")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual((output / "docs.json").read_bytes(), accepted)
+
     def test_invalid_overridden_configuration_cannot_replace_previous_output(self):
         self.configure()
         output = self.root / "stable-output"
@@ -253,7 +305,7 @@ class ProjectConfigurationCliTest(unittest.TestCase):
 
     def test_serve_reloads_config_removals_and_keeps_old_site_on_invalid_or_moved_output(self):
         output_settings = '[output]\nformats = ["json"]\ndirectory = "published"\n'
-        self.configure(output_settings + '[analysis]\naudience = "all"\n')
+        self.configure(output_settings + '["metadata"]\n[analysis]\naudience = "all"\n')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
             reservation.bind(("localhost", 0))
             port = reservation.getsockname()[1]

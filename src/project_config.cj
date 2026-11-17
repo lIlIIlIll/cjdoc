@@ -180,12 +180,8 @@ private class ProjectConfigScanner {
     var kind = "root"
     var identity = ""
     var pageCount: Int64 = 0
-    var groupCount: Int64 = 0
-    var tagCount: Int64 = 0
     var repositoryCount: Int64 = 0
     var currentPage: ?String = None
-    var currentGroup: ?String = None
-    var currentTag: ?String = None
     var pending: ?ProjectPendingArray = None
     // Consumer-owned tables may spell an array across lines; those values are
     // their reader's business, so the scanner only skips to the closing line.
@@ -229,39 +225,10 @@ private class ProjectConfigScanner {
         if (inner.startsWith("docs.") || inner.startsWith("docs[")) {
             throw projectConfigFailure("unknown table '[" + inner + "]'")
         }
-        if (inner == "metadata") {
-            if (array) { throw projectConfigFailure("[[metadata]] must be a single table") }
+        if (metadataHeaderCandidate(inner)) {
+            // Its owning reader validates quoted/dotted paths, table shape,
+            // record scope and duplicate definitions without a second grammar.
             return ("metadata", "")
-        }
-        if (inner == "metadata.groups") {
-            if (!array) { throw projectConfigFailure("[[metadata.groups]] must be an array of tables") }
-            groupCount++
-            currentGroup = Some(instance("metadata.groups", groupCount))
-            return ("metadata.groups", currentGroup.getOrThrow())
-        }
-        if (inner == "metadata.groups.titles") {
-            let group = match (currentGroup) {
-                case Some(value) => value
-                case None => throw projectConfigFailure(
-                    "orphan [metadata.groups.titles] table")
-            }
-            return ("metadata.groups.titles", group)
-        }
-        if (inner == "metadata.tags") {
-            if (!array) { throw projectConfigFailure("[[metadata.tags]] must be an array of tables") }
-            tagCount++
-            currentTag = Some(instance("metadata.tags", tagCount))
-            return ("metadata.tags", currentTag.getOrThrow())
-        }
-        if (inner == "metadata.tags.titles") {
-            let tag = match (currentTag) {
-                case Some(value) => value
-                case None => throw projectConfigFailure("orphan [metadata.tags.titles] table")
-            }
-            return ("metadata.tags.titles", tag)
-        }
-        if (inner.startsWith("metadata")) {
-            throw projectConfigFailure("unknown table '[" + inner + "]'")
         }
         if (inner == "i18n" || inner == "lint" || inner == "highlight" ||
             inner == "coverage" || inner == "coverage.translation") {

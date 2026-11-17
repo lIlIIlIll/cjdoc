@@ -201,6 +201,8 @@ pin 必须来自独立可信渠道并覆盖 receipt 的精确字节；只重排 
 
 元数据按发现的 module 读取：每个模块在自己的项目根读 `cjdoc.toml`；workspace 根配置不会自动传给成员项目或依赖。每个配置最多 64 KiB，group 和 tag 各最多 2048 条。
 
+表头的路径分量支持单引号、双引号，以及点号两侧的空白。例如 `[["metadata"."groups"]]`、`[['metadata'.'groups']]` 与 `[[metadata . groups]]` 都表示同一种 group 表；tag 和 `titles` 子表也支持这些写法，记录作用域和重复定义规则不变。
+
 ```toml
 [[metadata.groups]]
 package = "pocketkit"
