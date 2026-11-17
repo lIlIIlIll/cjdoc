@@ -127,8 +127,43 @@ class ReleaseToolsTestSupport:
                                sdk_version: str = "1.1.3", stdx_version: str = "1.2.0",
                                stdx_sha256: str = "2" * 64) -> dict:
         """Synthetic current-format receipt for package contract tests only."""
+        worker = self.make_worker(binary)
+        return self.make_candidate_receipt_for(
+            repo, binary, worker, commit, platform_name, sdk_version=sdk_version,
+            stdx_version=stdx_version, stdx_sha256=stdx_sha256)
+
+    @staticmethod
+    def make_worker(binary: Path, content: bytes | None = None) -> Path:
+        """Stage a CHIR worker beside a fixture CLI, as the real gate does."""
+        name = "chir-worker-main.exe" if binary.name.endswith(".exe") else "chir-worker-main"
+        worker = binary.parent / name
+        if content is None:
+            worker.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "if sys.argv[1:] == ['--version']:\n"
+                "    print('cjdoc-chir-worker 0.7.0')\n"
+                "elif sys.argv[1:] == ['--protocol-version']:\n"
+                "    print('cjdoc-chir-worker/3')\n"
+                "else:\n"
+                "    raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+        else:
+            worker.write_bytes(content)
+        worker.chmod(0o755)
+        return worker
+
+    def make_candidate_receipt_for(self, repo: Path, binary: Path, worker: Path,
+                                   commit: str,
+                                   platform_name: str = "linux-x64", *,
+                                   sdk_version: str = "1.1.3", stdx_version: str = "1.2.0",
+                                   stdx_sha256: str = "2" * 64) -> dict:
+        """A `/2` receipt carrying both accepted executables and their sealed build."""
+        main_digest = verify_release_package.sha256_file(binary)
+        worker_digest = verify_release_package.sha256_file(worker)
         return {
-            "schemaVersion": "cjdoc.release-candidate/1",
+            "schemaVersion": "cjdoc.release-candidate/2",
             "source": {"tag": "v0.7.0", "releaseVersion": "0.7.0", "commit": commit,
                        "tree": self.git(repo, "rev-parse", "HEAD^{tree}"),
                        "dirty": False, "worktreeSha256": "a" * 64},
@@ -145,8 +180,20 @@ class ReleaseToolsTestSupport:
                       "effectiveCompileOptions": ["-O2", "--fno-chir-function-inlining"],
                       "buildConfigurationSha256": "d" * 64},
             "binary": {"path": "target/release/bin/main",
-                       "sha256": verify_release_package.sha256_file(binary),
+                       "sha256": main_digest,
                        "size": binary.stat().st_size, "versionOutput": "cjdoc 0.7.0"},
+            "worker": {"path": f"target/release/bin/{worker.name}",
+                       "sha256": worker_digest, "size": worker.stat().st_size,
+                       "versionOutput": "cjdoc-chir-worker 0.7.0",
+                       "protocolVersion": "cjdoc-chir-worker/3"},
+            "buildManifest": {
+                "path": "target/ci-build/build-manifest.json",
+                "sha256": "f" * 64,
+                "mainBinary": {"path": "target/release/bin/main",
+                               "sha256": main_digest, "size": binary.stat().st_size},
+                "workerBinary": {"path": f"target/release/bin/{worker.name}",
+                                 "sha256": worker_digest, "size": worker.stat().st_size},
+            },
             "execution": {"runId": "1", "runAttempt": 1,
                           "job": f"release-candidate ({platform_name})"},
             "gates": {"release-gate": "e" * 64},

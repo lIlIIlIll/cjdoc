@@ -3,6 +3,7 @@ package cjdoc
 import std.collection.*
 import std.env.*
 import yjson.*
+import cjdoc_chir_protocol.CJDOC_PRODUCT_VERSION
 
 @When[os != "Windows"]
 import std.posix.{read}
@@ -28,9 +29,7 @@ foreign func _read(descriptor: Int32, buffer: CPointer<UInt8>, count: UInt32): I
 
 private let MCP_PROTOCOL_VERSION: String = "2025-11-25"
 private let MCP_SERVER_NAME: String = "cjdoc"
-// Kept in step with cjpm.toml/package version; a future shared version constant
-// should replace this literal rather than being duplicated again.
-private let MCP_SERVER_VERSION: String = "0.7.8"
+private let MCP_SERVER_VERSION: String = CJDOC_PRODUCT_VERSION
 private let MCP_SERVER_INSTRUCTIONS: String =
     "Read-only documentation queries over captured cjdoc snapshots. " +
     "Call resolve_docs, search or get_symbol; every tool result is one JSON object " +

@@ -3,6 +3,32 @@ from __future__ import annotations
 import re
 
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
+# A release ships two adjacent executables in one directory: the CLI and the
+# version-matched CHIR worker it discovers next to itself. The install name is
+# fixed here so the archive, the receipt, the verifier and the documented
+# layout cannot drift apart.
+MAIN_EXECUTABLE = "cjdoc"
+WORKER_EXECUTABLE = "chir-worker-main"
+WORKER_VERSION_PREFIX = "cjdoc-chir-worker "
+WORKER_PROTOCOL = re.compile(r"^cjdoc-chir-worker/[0-9]+$")
+WORKER_RECEIPT_KEYS = {"path", "sha256", "size", "versionOutput", "protocolVersion"}
+
+
+def main_executable(windows: bool) -> str:
+    """The packaged CLI file name for a platform."""
+    return f"{MAIN_EXECUTABLE}.exe" if windows else MAIN_EXECUTABLE
+
+
+def worker_executable(windows: bool) -> str:
+    """The packaged CHIR worker file name for a platform.
+
+    It is deliberately a sibling of `main_executable`, because the installed CLI
+    resolves the worker from its own directory and never from `PATH` or the
+    current directory.
+    """
+    return f"{WORKER_EXECUTABLE}.exe" if windows else WORKER_EXECUTABLE
+
+
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 # The cjpm.toml package version: the Cangjie toolchain rejects a pre-release
 # suffix here, so `package.version` stays a stable three-part SemVer.

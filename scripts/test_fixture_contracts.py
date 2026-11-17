@@ -271,7 +271,7 @@ class FixtureContractTest(unittest.TestCase):
         self.assertTrue({"CJDOC3022", "CJDOC3023"}.issubset(self.codes(document)))
 
     def test_override_relationship_resolves_with_syntax_backend(self) -> None:
-        document, _ = self.generate("override", expected_exit=0)
+        document, _ = self.generate("override", "--semantic", "source", expected_exit=0)
         derived = [
             declaration for declaration in document["declarations"]
             if declaration["name"] == "read" and "DerivedReader" in (declaration.get("ownerId") or "")

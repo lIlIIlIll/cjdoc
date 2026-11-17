@@ -257,10 +257,12 @@ class Acceptance:
                         request=json.dumps(request, ensure_ascii=True) + "\n")
         return json.loads(text, object_pairs_hook=unique_keys)
 
-    def generate(self, destination: str, *, html_site: bool):
+    def generate(self, destination: str, *, html_site: bool, semantic_mode: str | None = None):
         formats = ["json", "api-surface"] + (["html", "markdown"] if html_site else [])
         command = [self.binary, "generate", "--project", self.project, "--output", self.root / destination,
                    "--no-cache", "--jobs", "1"]
+        if semantic_mode is not None:
+            command.extend(["--semantic", semantic_mode])
         for value in formats:
             command.extend(["--format", value])
         if html_site:
@@ -343,7 +345,7 @@ class Acceptance:
         # Syntax capture proves the base type, not inherited-member visibility.
         # Exercise the public SPI/Doc IR relationship input separately; never
         # relabel this model fixture as compiler-produced semantic evidence.
-        document = load_json(self.root / "capture/docs.json")
+        document = load_json(self.root / "syntax-model/docs.json")
         symbols = {item["qualifiedName"]: item for item in document["declarations"]}
         parent = symbols["declaration_tags.scopes.MetadataParent"]
         child = symbols["declaration_tags.scopes.MetadataChild"]
@@ -457,6 +459,7 @@ class Acceptance:
 
     def execute(self):
         self.generate("capture", html_site=True)
+        self.generate("syntax-model", html_site=False, semantic_mode="source")
         before = {language: self.inspect_site(self.root / "capture/html" / language, language,
                                              "capture-" + language) for language in ("zh-CN", "en")}
         self.check_documentation_only()

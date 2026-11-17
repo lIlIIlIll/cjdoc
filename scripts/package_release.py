@@ -9,7 +9,7 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
@@ -24,13 +24,29 @@ sys.dont_write_bytecode = True
 try:
     from .verify_release_package import verify_archive
     from .install_cangjie_sdk import validate_combined_sdk_root
-    from .release_package_contracts import RELEASE_SEMVER, release_version_from_tag
+    from .release_package_contracts import (
+        RELEASE_SEMVER,
+        WORKER_PROTOCOL,
+        WORKER_RECEIPT_KEYS,
+        WORKER_VERSION_PREFIX,
+        main_executable,
+        release_version_from_tag,
+        worker_executable,
+    )
     from .safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
     from verify_release_package import verify_archive
     from install_cangjie_sdk import validate_combined_sdk_root
-    from release_package_contracts import RELEASE_SEMVER, release_version_from_tag
+    from release_package_contracts import (
+        RELEASE_SEMVER,
+        WORKER_PROTOCOL,
+        WORKER_RECEIPT_KEYS,
+        WORKER_VERSION_PREFIX,
+        main_executable,
+        release_version_from_tag,
+        worker_executable,
+    )
     from safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from worktree_identity import exact_worktree_identity
 
@@ -151,16 +167,19 @@ def committed_package_version(repo: Path, source_commit: str) -> str:
     return version
 
 
-def verify_candidate_receipt(receipt: dict, binary_content: bytes, platform_name: str,
+def verify_candidate_receipt(receipt: dict, binary_content: bytes, worker_content: bytes,
+                             platform_name: str,
                              source_commit: str, sdk_sha256: str,
                              stdx_sha256: str) -> tuple[str, str, str]:
     """Return (tag, tree, receipt digest) after binding the receipt to this package.
 
-    The receipt is the only accepted proof that this exact binary passed this
+    The receipt is the only accepted proof that these exact bytes passed this
     platform's acceptance gates, so every identity it claims is re-checked here
-    rather than trusted.
+    rather than trusted. Both executables are compared: a receipt that accepted
+    one worker and a package that carries another is rejected, which is what
+    stops a same-version worker from being shipped beside an accepted CLI.
     """
-    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/2":
         raise ValueError("unexpected release candidate receipt schema")
     source = receipt.get("source")
     if not isinstance(source, dict) or not COMMIT.fullmatch(str(source.get("commit") or "")) or \
@@ -186,8 +205,44 @@ def verify_candidate_receipt(receipt: dict, binary_content: bytes, platform_name
         raise ValueError("release candidate receipt does not describe the packaged binary")
     if binary.get("size") != len(binary_content):
         raise ValueError("release candidate receipt binary size does not match the package")
+    worker = receipt.get("worker")
+    if not isinstance(worker, dict) or set(worker) != WORKER_RECEIPT_KEYS:
+        raise ValueError("release candidate receipt omits its CHIR worker identity")
+    expected_worker = worker_executable(platform_name.startswith("windows-"))
+    if not isinstance(worker.get("path"), str) or \
+            PurePosixPath(worker["path"]).name != expected_worker:
+        raise ValueError(
+            f"release candidate worker must be {expected_worker} beside the packaged CLI")
+    if not isinstance(worker.get("versionOutput"), str) or \
+            not worker["versionOutput"].startswith(WORKER_VERSION_PREFIX):
+        raise ValueError("release candidate worker version output is not a CHIR worker version")
+    if not isinstance(worker.get("protocolVersion"), str) or \
+            not WORKER_PROTOCOL.fullmatch(worker["protocolVersion"]):
+        raise ValueError("release candidate worker protocol version is invalid")
+    if worker.get("sha256") != sha256_bytes(worker_content):
+        raise ValueError("release candidate receipt does not describe the packaged CHIR worker")
+    if worker.get("size") != len(worker_content):
+        raise ValueError("release candidate receipt worker size does not match the package")
+    sealed = receipt.get("buildManifest")
+    if not isinstance(sealed, dict):
+        raise ValueError("release candidate receipt omits its sealed build manifest")
+    for key in ("mainBinary", "workerBinary"):
+        entry = sealed.get(key)
+        if not isinstance(entry, dict) or entry.get("sha256") != (
+                binary.get("sha256") if key == "mainBinary" else worker.get("sha256")):
+            raise ValueError(
+                "release candidate receipt is not bound to the build that produced its binaries")
     canonical = (json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
     return source["tag"], source["tree"], sha256_bytes(canonical)
+
+
+def resolve_worker_path(binary: Path, worker: Path | None, windows: bool) -> Path:
+    """Return the packaged worker, defaulting to the CLI's sibling.
+
+    The installed CLI looks for the companion in its own directory, so the
+    default is also the only layout that works after installation.
+    """
+    return worker if worker is not None else binary.parent / worker_executable(windows)
 
 
 def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
@@ -195,15 +250,20 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
                     sdk_version: str, sdk_sha256: str,
                     stdx_version: str,
                     stdx_sha256: str,
-                    candidate_receipt: dict) -> dict[str, tuple[bytes, int]]:
+                    candidate_receipt: dict,
+                    *, worker: Path | None = None) -> dict[str, tuple[bytes, int]]:
     if not isinstance(stdx_version, str) or not SEMVER.fullmatch(stdx_version):
         raise ValueError("stdx version must be a stable three-part SemVer")
     if not isinstance(stdx_sha256, str) or not SHA256.fullmatch(stdx_sha256):
         raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
-    executable_name = "cjdoc.exe" if windows else "cjdoc"
+    worker = resolve_worker_path(binary, worker, windows)
+    executable_name = main_executable(windows)
+    worker_name = worker_executable(windows)
     executable_content = binary.read_bytes()
+    worker_content = worker.read_bytes()
     payload: dict[str, tuple[bytes, int]] = {
         executable_name: (executable_content, 0o755),
+        worker_name: (worker_content, 0o755),
         "README.md": (committed_file(repo, source_commit, "README.md"), 0o644),
         "LICENSE": (committed_file(repo, source_commit, "LICENSE"), 0o644),
         "THIRD_PARTY_NOTICES.md": (
@@ -224,25 +284,29 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
         "stdxVersion": stdx_version,
         "stdxArchiveSha256": stdx_sha256,
     }
+    tag, tree, receipt_digest = verify_candidate_receipt(
+        candidate_receipt, executable_content, worker_content, platform_name,
+        source_commit, sdk_sha256, stdx_sha256)
+    accepted_worker = candidate_receipt["worker"]
     manifest = {
-        "schemaVersion": "cjdoc.release-package/4",
+        "schemaVersion": "cjdoc.release-package/5",
         "version": version,
         "platform": platform_name,
         "sourceCommit": source_commit,
         "runtime": runtime,
+        "executables": {"main": executable_name, "worker": worker_name},
+        # The identity the acceptance gates observed, so the packaged worker can
+        # be re-executed and compared instead of trusted by file name alone.
+        "chirWorker": {"versionOutput": accepted_worker["versionOutput"],
+                       "protocolVersion": accepted_worker["protocolVersion"]},
         "files": {
             name: {"sha256": sha256_bytes(content), "size": len(content)}
             for name, (content, _) in sorted(payload.items())
         },
-    }
-    tag, tree, receipt_digest = verify_candidate_receipt(
-        candidate_receipt, executable_content, platform_name, source_commit,
-        sdk_sha256, stdx_sha256)
-    manifest.update({
         "releaseTag": tag,
         "sourceTree": tree,
         "candidateReceiptSha256": receipt_digest,
-    })
+    }
     receipt_content = (json.dumps(candidate_receipt, ensure_ascii=False,
                                   sort_keys=True, indent=2) + "\n").encode()
     payload["release-candidate.json"] = (receipt_content, 0o644)
@@ -282,7 +346,7 @@ def write_tar_gz(path: Path, root_name: str, payload: dict[str, tuple[bytes, int
 def _verify_receipt_against_worktree(receipt: dict, identity: dict[str, object],
                                      version: str) -> None:
     """Bind the receipt to the live source worktree before packing anything."""
-    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/2":
         raise ValueError("unexpected release candidate receipt schema")
     source = receipt.get("source")
     if not isinstance(source, dict):
@@ -296,12 +360,27 @@ def _verify_receipt_against_worktree(receipt: dict, identity: dict[str, object],
         raise ValueError("release candidate receipt version does not match cjpm.toml")
 
 
+def _require_adjacent_pair(binary: Path, worker: Path, windows: bool) -> None:
+    """Require the two packaged executables to be a sibling pair of real files.
+
+    The installed CLI locates its worker from its own directory, so a package
+    that carried the pair in different places would install a broken default.
+    """
+    expected_worker = worker_executable(windows)
+    if not worker.is_file() or worker.is_symlink():
+        raise ValueError(f"release CHIR worker is missing or not a regular file: {worker}")
+    if worker.name != expected_worker or worker.parent != binary.parent:
+        raise ValueError(
+            f"release CHIR worker must be {expected_worker} in the CLI's directory")
+
+
 def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
                   *, source_commit: str, sdk_version: str, sdk_sha256: str,
                   release_version: str,
                   stdx_version: str,
                   stdx_sha256: str,
-                  candidate_receipt: dict) -> Path:
+                  candidate_receipt: dict,
+                  worker: Path | None = None) -> Path:
     if not COMMIT.fullmatch(source_commit):
         raise ValueError("source commit must be a lowercase 40-hex commit")
     identity = verify_source_commit(repo, source_commit)
@@ -317,11 +396,13 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
     if not sdk_version:
         raise ValueError("SDK version is missing")
     _verify_receipt_against_worktree(candidate_receipt, identity, version)
-    payload = collect_payload(repo, binary, platform_name.startswith("windows-"),
+    windows = platform_name.startswith("windows-")
+    worker = resolve_worker_path(binary, worker, windows)
+    _require_adjacent_pair(binary, worker, windows)
+    payload = collect_payload(repo, binary, windows,
                               release_version, platform_name, source_commit,
                               sdk_version, sdk_sha256, stdx_version, stdx_sha256,
-                              candidate_receipt)
-    windows = platform_name.startswith("windows-")
+                              candidate_receipt, worker=worker)
     extension = ".zip" if windows else ".tar.gz"
     output = safe_output_directory(repo, output, create=True)
     asset = output / f"cjdoc-{release_version}-{platform_name}{extension}"
@@ -373,6 +454,8 @@ def main() -> int:
     configured_sdk_root = os.environ.get("CANGJIE_SDK_ROOT")
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", type=Path, default=repo / "target/release/bin/main")
+    parser.add_argument("--worker-binary", type=Path,
+                        help="CHIR worker staged beside --binary; defaults to its sibling")
     parser.add_argument("--platform", required=True,
                         choices=("linux-x64", "windows-x64", "macos-arm64"))
     parser.add_argument("--output", type=Path, default=repo / "target/release-package")
@@ -385,10 +468,16 @@ def main() -> int:
     parser.add_argument("--sdk-root", type=Path,
                         default=Path(configured_sdk_root) if configured_sdk_root else None)
     parser.add_argument("--candidate-receipt", type=Path, required=True,
-                        help="cjdoc.release-candidate/1 receipt that accepted this binary")
+                        help="cjdoc.release-candidate/2 receipt that accepted these binaries")
     args = parser.parse_args()
     try:
         binary = resolve_binary(args.binary)
+        windows = args.platform.startswith("windows-")
+        # The worker is expected beside the CLI exactly as it will be installed;
+        # an explicit path is only needed for a differently staged build.
+        worker = resolve_binary(
+            args.worker_binary if args.worker_binary is not None
+            else binary.parent / worker_executable(windows))
         if args.source_commit is None:
             raise ValueError("--source-commit or CJDOC_RELEASE_COMMIT is required")
         if not COMMIT.fullmatch(args.source_commit):
@@ -420,6 +509,7 @@ def main() -> int:
             stdx_version=args.stdx_version,
             stdx_sha256=args.stdx_sha256,
             candidate_receipt=candidate_receipt,
+            worker=worker,
         )
         package_evidence = verify_archive(
             asset, args.platform, release_version, args.sdk_version, args.sdk_sha256,

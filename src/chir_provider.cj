@@ -90,6 +90,9 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     private let compiling = HashSet<String>()
     private let artifactRoots = HashMap<String, String>()
     private let retainedDirectories = ArrayList<Path>()
+    private var workerValidationAttempted = false
+    private var workerValidationFailure: ?String = None
+    private var validatedWorkerPath: ?String = None
     init(source: SourceSnapshot, options: ChirOptions, identityVersion: String) {
         this.source = source
         this.options = options
@@ -122,24 +125,48 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     private func unsupportedManifestReasonForModule(moduleId: String): ?String {
         chirManifestUnsupportedReason(manifestForModule(moduleId))
     }
+
+    private func prepareWorker(): ?String {
+        if (workerValidationAttempted) { return workerValidationFailure }
+        workerValidationAttempted = true
+        workerValidationFailure = match (options.workerExecutable) {
+            case Some(executable) =>
+                try {
+                    let path = canonicalize(Path(executable))
+                    if (!FileInfo(path).isRegular()) {
+                        Some("CJDOC2101: CHIR worker executable is not a regular file")
+                    } else {
+                        let failure = chirWorkerCompatibilityFailure(path.toString())
+                        if (failure.isNone()) { validatedWorkerPath = Some(path.toString()) }
+                        failure
+                    }
+                } catch (error: Exception) {
+                    Some("CJDOC2101: CHIR worker executable is unavailable: " + error.message)
+                }
+            case None => Some("CJDOC2101: CHIR worker executable is not configured")
+        }
+        workerValidationFailure
+    }
     func analyzeModule(moduleId: String,
         declarations: ReadOnlyList<public_provider.SourceDeclarationView>): public_provider.SemanticBatch {
-        // CHIR resolves qualified type identities for signatures, so canonical
-        // type data is supplied when the worker returns it.
-        let capabilities = public_model.SemanticCapabilities(true, true, true, true, false)
+        // Canonical types come only from structured CHIR. The host binder keeps
+        // its conservative source-local navigation fallback, including when
+        // CHIR is unavailable; this does not claim compiler-proven relationships.
+        let capabilities = public_model.SemanticCapabilities(true, true, true, true, false,
+            relationships: true)
         let diagnostics = ArrayList<public_model.Diagnostic>()
         if (identityVersion.contains("unknown-cjc")) {
             diagnostics.add(public_model.Diagnostic("warning", "CJDOC2101",
                 "CHIR compiler version is unavailable"))
             return public_provider.SemanticBatch(
-                public_model.SemanticCapabilities(false, false, false, false, false),
+                public_model.SemanticCapabilities(false, false, false, false, false, relationships: true),
                 diagnostics: diagnostics.toArray())
         }
         match (unsupportedManifestReasonForModule(moduleId)) {
             case Some(reason) =>
                 diagnostics.add(public_model.Diagnostic("warning", "CJDOC2102", reason))
                 return public_provider.SemanticBatch(
-                    public_model.SemanticCapabilities(false, false, false, false, false),
+                    public_model.SemanticCapabilities(false, false, false, false, false, relationships: true),
                     diagnostics: diagnostics.toArray())
             case None => ()
         }
@@ -171,7 +198,7 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         }
         if (!usable) {
             return public_provider.SemanticBatch(
-                public_model.SemanticCapabilities(false, false, false, false, false),
+                public_model.SemanticCapabilities(false, false, false, false, false, relationships: true),
                 diagnostics: diagnostics.toArray())
         }
         let result = ArrayList<public_provider.SemanticDeclaration>()
@@ -584,6 +611,7 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             case Some(reason) => return Some("CJDOC2102: " + reason)
             case None => ()
         }
+        if (let Some(reason) <- prepareWorker()) { return Some(reason) }
         if (!compiling.add(key)) { return Some("CHIR package dependency cycle") }
         try {
             var moduleName: ?String = None
@@ -619,19 +647,10 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             let response = temporary.join("response.txt")
             let importPaths = dependencyImportPaths(moduleId, packageName)
             let cfgValues = chirCfgValues()
-            let executable = match (options.workerExecutable) {
-                case Some(value) => value
-                case None => return Some("CJDOC2101: CHIR worker executable is not configured")
-            }
             writeChirWorkerRequest(request, normalizedChirCompiler(), moduleName.getOrThrow(),
                 packageName, importPaths, cfgValues, sourcePaths,
                 compilerOptions: chirManifestCompilerOptions(manifestForModule(moduleId)).toArray())
-            let workerPath = try {
-                canonicalize(Path(executable)).toString()
-            } catch (_: Exception) {
-                executable
-            }
-            let (workerCode, stdout, stderr) = executeWithBoundedOutput(workerPath,
+            let (workerCode, stdout, stderr) = executeWithBoundedOutput(validatedWorkerPath.getOrThrow(),
                 ["--internal-chir-analyze", request.toString(), response.toString()],
                 workingDirectory: Some(temporary))
             if (workerCode != 0) {

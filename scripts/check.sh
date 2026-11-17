@@ -304,7 +304,7 @@ stage_build() {
     "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo}" \
         --require-tracked --binary "${binary}"
     local worker
-    worker="$(resolve_worker_binary)"
+    worker="$(resolve_worker_binary "${worker_project}/target/release/bin/main")"
     (cd "${worker_project}" && cjpm build --jobs 1)
     if [[ ! -x "${worker}" && ! ( -f "${worker}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
         echo "CHIR worker executable was not produced at ${worker}" >&2
@@ -326,7 +326,6 @@ from ci_stage import BUILD_MANIFEST_SCHEMA, runtime_platform, sha256_file, stage
 repo = Path(sys.argv[1]).resolve()
 binary, worker = Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve()
 manifest, main_out, worker_out = sys.argv[4], sys.argv[5], sys.argv[6]
-canonical_worker = repo / "tools/chir-worker/target/release/bin/main"
 
 def record(path: Path, *, with_version: bool) -> dict[str, object]:
     entry: dict[str, object] = {"path": path.relative_to(repo).as_posix(),
@@ -361,20 +360,19 @@ document = {
 }
 if main_out and Path(main_out).resolve() != repo / "target/release/bin/main":
     raise SystemExit("--main-binary-out must be target/release/bin/main")
-if worker_out:
-    # The worker output path names the canonical location `--worker-binary`
-    # expects, plus the copy the candidate artifact carries. Any other spelling
-    # would make the two sides disagree, so only these are accepted.
-    resolved_worker_out = Path(worker_out).resolve()
-    if resolved_worker_out not in {canonical_worker, binary.parent / "chir-worker-main"}:
-        raise SystemExit(
-            "--worker-binary-out must be tools/chir-worker/target/release/bin/main "
-            "or the sibling target/release/bin/chir-worker-main")
-    if resolved_worker_out != worker:
-        resolved_worker_out.parent.mkdir(parents=True, exist_ok=True)
-        resolved_worker_out.write_bytes(worker.read_bytes())
-        resolved_worker_out.chmod(worker.stat().st_mode & 0o777)
-        document["workerBinary"] = record(resolved_worker_out, with_version=False)
+# A normal build must already have the installed companion layout, even when
+# the caller did not request an artifact staging path.
+sibling_worker = binary.parent / ("chir-worker-main" + binary.suffix)
+resolved_worker_out = Path(worker_out).resolve() if worker_out else sibling_worker
+if binary.suffix == ".exe" and resolved_worker_out == binary.parent / "chir-worker-main":
+    resolved_worker_out = sibling_worker
+if resolved_worker_out != sibling_worker:
+    raise SystemExit("--worker-binary-out must be the sibling target/release/bin/chir-worker-main[.exe]")
+if resolved_worker_out != worker:
+    resolved_worker_out.parent.mkdir(parents=True, exist_ok=True)
+    resolved_worker_out.write_bytes(worker.read_bytes())
+    resolved_worker_out.chmod(worker.stat().st_mode & 0o777)
+    document["workerBinary"] = record(resolved_worker_out, with_version=False)
 if manifest:
     manifest_path = Path(manifest)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -382,9 +380,9 @@ if manifest:
                              encoding="utf-8", newline="\n")
     print(f"build manifest written: {manifest_path}")
 PY
-    # Success: the stage deliberately keeps the worker tree so the packaging step
-    # can copy the binary out of it, so the failure-only trap is disarmed here.
-    build_worker_cleaned=1
+    # The sealed sibling is the only worker consumers need. The stage owns this
+    # temporary tree; retaining it would invalidate subsequent exact-input gates.
+    cleanup_build_worker
     trap - EXIT
 }
 
@@ -402,10 +400,13 @@ worker_target_path() {
     printf '%s' "${worker_project}/target"
 }
 
-# Resolve the worker executable the same way in every stage. On Windows the build
-# produces `main.exe`, so the unsuffixed spelling must never be exported.
+# Build callers pass their temporary worker basename; consumers use the paired
+# sibling next to their selected main executable.
 resolve_worker_binary() {
-    local candidate="${worker_project}/target/release/bin/main"
+    local candidate="${1:-}"
+    if [[ -z "${candidate}" ]]; then
+        candidate="$(dirname "${main_binary:-${repo}/target/release/bin/main}")/chir-worker-main"
+    fi
     if [[ -f "${candidate}.exe" ]]; then
         candidate="${candidate}.exe"
     elif [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
@@ -590,9 +591,9 @@ stage_cli() {
         local project="$2"
         local expected="$3"
         shift 3
-        "${binary}" generate --project "${project}" --format json \
+        "${binary}" generate --project "${project}" --semantic source --format json \
             --output "${check_dir}/${name}/first" --cache-dir "${check_dir}/cache/${name}" "$@" >/dev/null
-        "${binary}" generate --project "${project}" --format json \
+        "${binary}" generate --project "${project}" --semantic source --format json \
             --output "${check_dir}/${name}/second" --cache-dir "${check_dir}/cache/${name}" "$@" >/dev/null
         if ! cmp -s "${expected}" "${check_dir}/${name}/first/docs.json"; then
             diff -u --label "expected ${name}" --label "generated ${name}" \
@@ -613,11 +614,11 @@ stage_cli() {
     "${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); names={item["name"] for item in document["declarations"]}; assert document["providers"][0]["name"]=="chir" and {"State","extra"} <= names and not any(item["code"]=="CJDOC2101" for item in document["diagnostics"])' \
         "${check_dir}/chir-worker-cli.json"
 
-    "${binary}" generate --project tests/fixtures/projects/basic --semantic chir \
-        --format json --stdout >"${check_dir}/chir-unconfigured-cli.json" \
-        2>"${check_dir}/chir-unconfigured-cli.stderr"
-    "${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and any(item["code"]=="CJDOC2101" and "worker executable is not configured" in item["message"] for item in document["diagnostics"])' \
-        "${check_dir}/chir-unconfigured-cli.json"
+    "${binary}" generate --project tests/fixtures/projects/basic \
+        --format json --stdout >"${check_dir}/chir-default-cli.json" \
+        2>"${check_dir}/chir-default-cli.stderr"
+    "${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and document["providers"][0]["name"]=="chir" and not any(item["code"]=="CJDOC2101" for item in document["diagnostics"])' \
+        "${check_dir}/chir-default-cli.json"
 
     # Published file stem to CLI schema name: the v1 navigation contract stays
     # frozen while the `navigation-index` alias now answers v2.
@@ -673,8 +674,11 @@ stage_cli() {
     rm -rf "${check_dir}/agent" "${check_dir}/agent-second" \
         "${check_dir}/versions" "${check_dir}/versions-second" \
         "${check_dir}/versions-v1" "${check_dir}/api-diff-v1.json"
-    "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent" --cache-dir "${check_dir}/cache/agent" >/dev/null
-    "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent-second" --cache-dir "${check_dir}/cache/agent" >/dev/null
+    # Fixed query expectations require a complete source inventory, independent
+    # of optional CHIR capability. The all/first and all/second gates above
+    # exercise default CHIR with every ordinary output format.
+    "${binary}" generate --project tests/fixtures/projects/basic --semantic source --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent" --cache-dir "${check_dir}/cache/agent" >/dev/null
+    "${binary}" generate --project tests/fixtures/projects/basic --semantic source --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent-second" --cache-dir "${check_dir}/cache/agent" >/dev/null
     diff -qr "${check_dir}/agent/html" "${check_dir}/agent-second/html"
     test -f "${check_dir}/agent/html/navigation-index.json"
     test -f "${check_dir}/agent/html/llms.txt"
@@ -691,7 +695,7 @@ stage_cli() {
         --snapshot "${check_dir}/agent/html/agent/manifest.json" \
         --search-cases tests/fixtures/query-semantics/cases.json \
         --static-site "${check_dir}/agent/html"
-    "${binary}" generate --project tests/fixtures/projects/declaration-tags \
+    "${binary}" generate --project tests/fixtures/projects/declaration-tags --semantic source \
         --format json --format html --format markdown --all-languages --agent-full \
         --output "${check_dir}/declaration-tags" \
         --cache-dir "${check_dir}/cache/declaration-tags" >/dev/null

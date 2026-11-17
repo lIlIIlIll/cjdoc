@@ -53,6 +53,8 @@ def write_probe_scripts(repo: Path) -> None:
         "  mkdir -p target/release/bin\n"
         "  printf accepted > target/release/bin/main\n"
         "  cp target/release/bin/main target/release/bin/main.exe\n"
+        "  printf accepted > target/release/bin/chir-worker-main\n"
+        "  cp target/release/bin/chir-worker-main target/release/bin/chir-worker-main.exe\n"
         "}\nexport -f cjpm\n", encoding="utf-8")
     (scripts / "check.sh").write_text(
         "set -euo pipefail\n"
@@ -64,6 +66,9 @@ def write_probe_scripts(repo: Path) -> None:
         "  remove-snapshot) rm \"$RUNNER_TEMP/source-edge-fixture.cj\" ;;\n"
         "esac\n"
         "if [[ \"$PROBE_GATE_EXIT\" != 0 ]]; then exit \"$PROBE_GATE_EXIT\"; fi\n"
+        # The real gate seals both shipped executables and writes their identity.
+        "mkdir -p target/ci-build\n"
+        "printf '{}\\n' > target/ci-build/build-manifest.json\n"
         "printf '%s\\n' accepted >> \"$PROBE_TRACE\"\n", encoding="utf-8")
     (scripts / "release_check.sh").write_text("exec bash scripts/check.sh\n", encoding="utf-8")
     observer = (

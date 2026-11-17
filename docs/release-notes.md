@@ -2,6 +2,20 @@
 
 每个版本对使用者的变化和升级步骤。可下载的资产与校验值见 [Releases](https://github.com/lIlIIlIll/cjdoc/releases)。
 
+## 0.7.9
+
+### 项目配置与默认 CHIR
+
+- 常用输出与分析设置可以保存在项目根的 `cjdoc.toml`，普通命令行选项覆盖对应配置默认值；未知配置键和不支持的多行字符串会报错，避免设置被静默忽略。已有覆盖率配置与 CLI 门槛仍各自检查。
+- 既有分组与标签表继续支持带引号的路径分量和点号两侧的空白，例如 `[["metadata"."groups"]]` 与 `[[metadata . groups]]`；标题、翻译和重复定义检查规则不变。
+- `generate`、`check`、`serve` 默认尝试 CHIR 语义补充。匹配版本的 worker 随主程序安装，按 `cjdoc` 的真实可执行文件位置自动定位，不需要配置 worker 路径。
+- `--semantic source` 可关闭本次 CHIR 分析；`--chir-worker` 保留为开发或特殊部署的显式覆盖。worker 缺失、版本或协议不匹配时产生诊断，并保留源码/AST 信息。
+- CHIR 整模块不可用时保留模块级失败诊断，不再把每条源码声明都误报为独立绑定缺失，避免大项目的源码回退被重复诊断耗尽。
+- 默认 CHIR 与失败回退都保留源码可唯一确定的本地继承和扩展导航，公开扩展成员不会因语义补充不支持关系查询而从发布文档中消失；不确定目标仍保持不可用或歧义。
+- 子命令支持独立帮助，例如 `cjdoc generate --help`。离线 `render` 不读取项目配置，不启动 worker。
+
+从 0.7.8 升级时，把 `cjdoc` 与配套 `chir-worker-main`（Windows 为 `.exe`）安装到同一目录。推荐下载归档包，它同时包含两个文件；单独下载主程序不包含 worker。现有 Doc IR v18 快照仍可离线重放，无需迁移。大型项目在 STS 1.2.0 上仍可能遇到 [Linux GC 崩溃](https://github.com/lIlIIlIll/cjdoc/issues/184)，此版本未修复该崩溃。
+
 ## 0.7.8（2026-11-16 发布）
 
 tag `v0.7.8` 指向提交 [`5c065af`](https://github.com/lIlIIlIll/cjdoc/commit/5c065affd2c45f61549c06808537731ce46b436b)。这个版本换了新的 HTML 站点界面，并采用 Doc IR v18 和新的查询、静态搜索协议。升级前请注意：

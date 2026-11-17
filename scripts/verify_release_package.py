@@ -36,6 +36,8 @@ try:
         SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
+        WORKER_PROTOCOL,
+        WORKER_VERSION_PREFIX,
         release_core,
     )
     from .release_package_payload import (
@@ -69,6 +71,8 @@ except ImportError:  # Direct script execution.
         SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
+        WORKER_PROTOCOL,
+        WORKER_VERSION_PREFIX,
         release_core,
     )
     from release_package_payload import (
@@ -96,7 +100,8 @@ def inspect_archive(path: Path, platform_name: str, version: str,
                     sdk_version: str, sdk_sha256: str,
                     source_commit: str,
                     stdx_version: str,
-                    stdx_sha256: str) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
+                    stdx_sha256: str) -> tuple[dict[str, object], dict[str, ArchiveMember],
+                                               dict[str, str]]:
     _sync_archive_limits()
     return _inspect_archive(
         path, platform_name, version, sdk_version, sdk_sha256, source_commit,
@@ -238,6 +243,40 @@ def run_smoke(binary: Path, version: str,
     return evidence
 
 
+def run_worker_smoke(worker: Path, environment: dict[str, str],
+                     expected_version: str,
+                     expected_protocol: str) -> dict[str, str]:
+    """Execute the extracted worker and compare both identity outputs.
+
+    The worker is only useful if the CLI can discover and accept it, so the smoke
+    test runs it the same way the CLI does and requires the version and protocol
+    the package claims. A file that merely has the right name is not enough.
+    """
+    commands = (("version", [str(worker), "--version"]),
+                ("protocol", [str(worker), "--protocol-version"]))
+    evidence: dict[str, str] = {}
+    for name, command in commands:
+        try:
+            result = subprocess.run(
+                command, text=True, capture_output=True, check=False, timeout=30,
+                env=environment,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise ValueError(f"extracted CHIR worker {name} smoke timed out") from error
+        output = result.stdout.strip()
+        if result.returncode != 0:
+            raise ValueError(
+                f"extracted CHIR worker {name} smoke failed ({result.returncode}): " +
+                (result.stderr or result.stdout).strip()
+            )
+        expected = expected_version if name == "version" else expected_protocol
+        if output != expected:
+            raise ValueError(
+                f"extracted CHIR worker {name} output {output!r} does not match {expected!r}")
+        evidence[name] = output
+    return evidence
+
+
 def verify_archive(path: Path, platform_name: str, version: str,
                    sdk_version: str, sdk_sha256: str, source_commit: str,
                    smoke: bool, stdx_version: str, stdx_sha256: str,
@@ -246,13 +285,14 @@ def verify_archive(path: Path, platform_name: str, version: str,
                    sdk_marker_verified: bool = False) -> dict[str, object]:
     path = lexical_absolute(path)
     archive_sha256 = sha256_file(path)
-    manifest, members, executable_name = inspect_archive(
+    manifest, members, executables = inspect_archive(
         path, platform_name, version, sdk_version, sdk_sha256, source_commit,
         stdx_version, stdx_sha256
     )
     if repository is not None:
         verify_repository_payload(members, repository, source_commit)
     smoke_evidence: dict[str, str] | None = None
+    worker_smoke: dict[str, str] | None = None
     sdk_environment_evidence: dict[str, str] | None = None
     if smoke:
         if sdk_root is None:
@@ -268,15 +308,20 @@ def verify_archive(path: Path, platform_name: str, version: str,
             root = extract_members(
                 path, expected_format, Path(temporary), f"cjdoc-{version}", members
             )
-            smoke_evidence = run_smoke(root / executable_name, version, environment)
+            smoke_evidence = run_smoke(root / executables["main"], version, environment)
+            worker_smoke = run_worker_smoke(
+                root / executables["worker"], environment,
+                f"{WORKER_VERSION_PREFIX}{release_core(version)}",
+                manifest["chirWorker"]["protocolVersion"])
     if sha256_file(path) != archive_sha256:
         raise ValueError("release archive changed during verification")
     return {
-        "schemaVersion": "cjdoc.release-package-verification/1",
+        "schemaVersion": "cjdoc.release-package-verification/2",
         "archive": path.name,
         "archiveSha256": archive_sha256,
         "manifest": manifest,
         "smoke": smoke_evidence,
+        "workerSmoke": worker_smoke,
         "sdkEnvironment": sdk_environment_evidence,
     }
 

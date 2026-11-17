@@ -487,7 +487,7 @@ private class MetadataTagBuilder {
     }
 }
 
-private func metadataHeaderCandidate(path: String): Bool {
+internal func metadataHeaderCandidate(path: String): Bool {
     let value = path.trimAscii()
     if (value.startsWith("metadata")) {
         if (value.size == 8) { return true }

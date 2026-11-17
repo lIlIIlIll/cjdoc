@@ -23,6 +23,12 @@ try:
         SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
+        WORKER_RECEIPT_KEYS,
+        WORKER_PROTOCOL,
+        WORKER_VERSION_PREFIX,
+        main_executable,
+        release_core,
+        worker_executable,
     )
     from .safe_output_root import lexical_absolute, verify_directory_chain
     from .strict_json import strict_loads
@@ -42,6 +48,12 @@ except ImportError:  # Direct module execution.
         SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
+        WORKER_RECEIPT_KEYS,
+        WORKER_PROTOCOL,
+        WORKER_VERSION_PREFIX,
+        main_executable,
+        release_core,
+        worker_executable,
     )
     from safe_output_root import lexical_absolute, verify_directory_chain
     from strict_json import strict_loads
@@ -92,7 +104,8 @@ def inspect_archive(path: Path, platform_name: str, version: str,
                     sdk_version: str, sdk_sha256: str,
                     source_commit: str,
                     stdx_version: str,
-                    stdx_sha256: str) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
+                    stdx_sha256: str) -> tuple[dict[str, object], dict[str, ArchiveMember],
+                                               dict[str, str]]:
     path = lexical_absolute(path)
     if not RELEASE_SEMVER.fullmatch(version):
         raise ValueError("release package version must be a SemVer release version")
@@ -133,10 +146,27 @@ def inspect_archive(path: Path, platform_name: str, version: str,
         raise ValueError(f"release manifest is invalid: {error}") from error
     schema_version = manifest.get("schemaVersion") if isinstance(manifest, dict) else None
     required_keys = {"schemaVersion", "version", "platform", "sourceCommit", "runtime", "files",
-                     "releaseTag", "sourceTree", "candidateReceiptSha256"}
+                     "executables", "chirWorker", "releaseTag", "sourceTree",
+                     "candidateReceiptSha256"}
     if not isinstance(manifest, dict) or set(manifest) != required_keys or \
-            schema_version != "cjdoc.release-package/4":
+            schema_version != "cjdoc.release-package/5":
         raise ValueError("unknown release package manifest schema")
+    windows = platform_name.startswith("windows-")
+    executable_name = main_executable(windows)
+    worker_name = worker_executable(windows)
+    if manifest.get("executables") != {"main": executable_name, "worker": worker_name}:
+        raise ValueError(
+            "release package must declare the CLI and its adjacent CHIR worker executables")
+    chir_worker = manifest.get("chirWorker")
+    if not isinstance(chir_worker, dict) or set(chir_worker) != {"versionOutput", "protocolVersion"}:
+        raise ValueError("release package must declare its CHIR worker identity")
+    if not isinstance(chir_worker.get("versionOutput"), str) or \
+            not chir_worker["versionOutput"].startswith(WORKER_VERSION_PREFIX) or \
+            chir_worker["versionOutput"].split(" ", 1)[1] != release_core(version):
+        raise ValueError("release package CHIR worker version does not match the package")
+    if not isinstance(chir_worker.get("protocolVersion"), str) or \
+            not WORKER_PROTOCOL.fullmatch(chir_worker["protocolVersion"]):
+        raise ValueError("release package CHIR worker protocol version is invalid")
     if manifest.get("version") != version or manifest.get("platform") != platform_name:
         raise ValueError("release package identity does not match its declared target")
     if manifest.get("sourceCommit") != source_commit:
@@ -176,9 +206,9 @@ def inspect_archive(path: Path, platform_name: str, version: str,
         if metadata.get("size") != member.size or \
                 metadata.get("sha256") != member.sha256:
             raise ValueError(f"release package payload hash/size mismatch: {name}")
-    executable_name = "cjdoc.exe" if platform_name.startswith("windows-") else "cjdoc"
     expected_payload = {
         executable_name,
+        worker_name,
         "README.md",
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",
@@ -193,7 +223,7 @@ def inspect_archive(path: Path, platform_name: str, version: str,
             " unexpected=" + ",".join(sorted(actual_payload - expected_payload))
         )
     expected_modes = {
-        name: (0o755 if name == executable_name else 0o644)
+        name: (0o755 if name in (executable_name, worker_name) else 0o644)
         for name in relative_members
     }
     for name, member in relative_members.items():
@@ -203,13 +233,14 @@ def inspect_archive(path: Path, platform_name: str, version: str,
                 f"release package member mode mismatch: {name} "
                 f"must be {expected_mode:04o}, got {member.mode:04o}"
             )
-    _verify_candidate_receipt(manifest, relative_members, executable_name)
-    return manifest, relative_members, executable_name
+    executables = {"main": executable_name, "worker": worker_name}
+    _verify_candidate_receipt(manifest, relative_members, executables)
+    return manifest, relative_members, executables
 
 
 def _verify_candidate_receipt(manifest: dict, members: dict[str, ArchiveMember],
-                              executable_name: str) -> None:
-    """Bind the packaged binary to the candidate receipt that accepted it."""
+                              executables: dict[str, str]) -> None:
+    """Bind the packaged pair to the candidate receipt that accepted it."""
     receipt_member = members["release-candidate.json"]
     if receipt_member.content is None:
         raise ValueError("release candidate receipt was not captured during bounded inspection")
@@ -219,11 +250,24 @@ def _verify_candidate_receipt(manifest: dict, members: dict[str, ArchiveMember],
         receipt = strict_loads(receipt_member.content, description="release candidate receipt")
     except ValueError as error:
         raise ValueError(f"release candidate receipt is invalid: {error}") from error
-    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/2":
         raise ValueError("unexpected release candidate receipt schema")
     binary = receipt.get("binary")
-    if not isinstance(binary, dict) or binary.get("sha256") != members[executable_name].sha256:
+    if not isinstance(binary, dict) or binary.get("sha256") != members[executables["main"]].sha256:
         raise ValueError("packaged executable does not match the accepted candidate binary")
+    worker = receipt.get("worker")
+    if not isinstance(worker, dict) or set(worker) != WORKER_RECEIPT_KEYS:
+        raise ValueError("release candidate receipt omits its CHIR worker identity")
+    if worker.get("sha256") != members[executables["worker"]].sha256:
+        raise ValueError("packaged CHIR worker does not match the accepted candidate worker")
+    if worker.get("size") != members[executables["worker"]].size:
+        raise ValueError("packaged CHIR worker size does not match the accepted candidate worker")
+    if not isinstance(worker.get("versionOutput"), str) or \
+            not worker["versionOutput"].startswith(WORKER_VERSION_PREFIX):
+        raise ValueError("accepted candidate worker version output is not a CHIR worker version")
+    if not isinstance(worker.get("protocolVersion"), str) or \
+            not WORKER_PROTOCOL.fullmatch(worker["protocolVersion"]):
+        raise ValueError("accepted candidate worker protocol version is invalid")
     source = receipt.get("source") or {}
     if source.get("commit") != manifest["sourceCommit"] or source.get("tree") != manifest["sourceTree"]:
         raise ValueError("release candidate receipt source does not match the package")

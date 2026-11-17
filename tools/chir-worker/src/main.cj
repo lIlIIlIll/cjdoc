@@ -9,6 +9,14 @@ import cjdoc_chir_protocol.*
 private let MAX_CHIR_ARTIFACT_BYTES: Int64 = 128 * 1024 * 1024
 
 main(args: Array<String>): Int64 {
+    if (args.size == 1 && args[0] == "--version") {
+        println("cjdoc-chir-worker " + CJDOC_PRODUCT_VERSION)
+        return 0
+    }
+    if (args.size == 1 && args[0] == "--protocol-version") {
+        println(CHIR_WORKER_PROTOCOL)
+        return 0
+    }
     if (args.size != 3 || args[0] != "--internal-chir-analyze") { return 2 }
     runChirAnalyzeWorker(args[1], args[2])
 }
@@ -50,7 +58,7 @@ internal func runChirAnalyzeWorker(requestPath: String, responsePath: String): I
         }
         if (exitCode != 0) {
             writeChirWorkerFailure(response, "CJDOC2103: compiler failed: " +
-                boundedWorkerCompilerOutput(stdout, stderr))
+                boundedWorkerCompilerOutput(stdout, stderr, root))
             return 0
         }
         let artifact = output.join("package.chir")
@@ -213,11 +221,16 @@ private func validateChirWorkerStagedFile(root: Path, path: Path): Unit {
     }
 }
 
-private func boundedWorkerCompilerOutput(stdout: Array<Byte>, stderr: Array<Byte>): String {
+private func boundedWorkerCompilerOutput(stdout: Array<Byte>, stderr: Array<Byte>, stagingRoot: Path): String {
     let out = try { String.fromUtf8(stdout).trimAscii() } catch (_: Exception) { "" }
     let err = try { String.fromUtf8(stderr).trimAscii() } catch (_: Exception) { "" }
     let combined = if (out.isEmpty()) { err } else if (err.isEmpty()) { out } else { out + "\n" + err }
-    let bytes = combined.toArray()
-    if (bytes.size <= 8192) { return combined }
+    // Per-analysis private directories must not change the captured Doc IR.
+    let stagingPath = stagingRoot.toString()
+    var normalized = combined.replace(stagingPath, "<chir-work>")
+    let canonicalPath = try { canonicalize(stagingRoot).toString() } catch (_: Exception) { stagingPath }
+    if (canonicalPath != stagingPath) { normalized = normalized.replace(canonicalPath, "<chir-work>") }
+    let bytes = normalized.toArray()
+    if (bytes.size <= 8192) { return normalized }
     String.fromUtf8(bytes[..8192]) + "\n... CHIR compiler output truncated"
 }

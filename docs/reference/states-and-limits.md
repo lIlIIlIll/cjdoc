@@ -120,8 +120,8 @@ Doc IR 的每个源文件记录来源状态：
 ## 能力边界
 
 - 源码生成、检查与离线渲染都不下载依赖、不下载标准库文档、不访问外部文档站；依赖与索引须预先准备。`query`、`mcp` 只消费已捕获快照，不扫描源码、不选择 SDK、不编译、不联网。
-- `--semantic source`（默认）只收集源码可见信息，不为普通生成编译被扫描项目；它不读编译器 target profile，也不展开宏。需要其他条件配置时用 `--cfg NAME=VALUE` 显式选择。无法求值或不支持的条件与语法不会被当成已证明声明。
-- CHIR 是显式的可选语义补充，要求匹配的本机 compiler/worker 配置；缺失或失败时保留源码/AST 信息并给出诊断，其字段不应解释为权威的完整类型检查。
+- `generate`、`check`、`serve` 默认尝试 CHIR 语义补充，会调用匹配的本机编译器与配套 worker；它仍不是权威的完整类型检查。worker 缺失、版本或协议不匹配、分析失败时保留源码/AST 信息并给出诊断。
+- `--semantic source` 或项目 `[semantic].mode = "source"` 只收集源码可见信息，不为语义补充编译项目，也不展开宏。其他条件配置用 `--cfg NAME=VALUE` 显式选择；无法求值或不支持的条件与语法不会被当成已证明声明。
 - cjdoc 不猜无法唯一绑定的类型、`@see` 或章节目标，保留可见原文并给出 `unresolved`、`ambiguous` 或 `unavailable`。
 - GitHub 源码 URL 只接受 `https://github.com/<owner>/<repo>` 形式且被引用源码必须位于该仓库根内；其他情况不会变成已验证链接。
 - Windows 当前不实现站点本地图片的安全相对文件读取：图片被省略并报 `CJDOC4026`，Markdown 替代文本保留，生成可为 `partial`。Linux 与 macOS 支持该路径。

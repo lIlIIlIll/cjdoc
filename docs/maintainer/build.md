@@ -137,11 +137,11 @@ bash scripts/check.sh build --repo . \
   --manifest target/ci-build/build-manifest.json
 ```
 
-`--main-binary-out` 只接受 `target/release/bin/main`；`--worker-binary-out` 只接受 worker 的 canonical 路径或其同级 `chir-worker-main`。证据默认写到 `target/ci-evidence/`，可用 `--evidence` 或 `CJDOC_CI_EVIDENCE` 改位置。
+`--main-binary-out` 只接受 `target/release/bin/main`；`--worker-binary-out` 只接受主程序同级的 `chir-worker-main`（Windows 为 `chir-worker-main.exe`，省略后缀时自动补齐）。构建成功后删除本次创建的 worker 临时构建树，后续阶段直接使用同级 worker。证据默认写到 `target/ci-evidence/`，可用 `--evidence` 或 `CJDOC_CI_EVIDENCE` 改位置。
 
 ## 可选 CHIR worker
 
-`--semantic chir` 通过独立 worker 进程使用 `stdx.chir` 做结构化语义补充。只有 `tools/chir-worker` 包导入 `stdx.chir`，core 通过受限文件协议调用它；协议常量 `CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/3"` 定义在 `tools/chir-protocol`。
+CLI 的 `generate`、`check`、`serve` 默认通过配套 worker 使用 `stdx.chir` 做结构化语义补充；`--semantic source` 禁用该路径。只有 `tools/chir-worker` 包导入 `stdx.chir`，core 通过受限文件协议调用它；协议常量 `CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/3"` 与共享产品版本定义在 `tools/chir-protocol`。
 
 在已认证 stdx 的同一环境构建：
 
@@ -149,22 +149,18 @@ bash scripts/check.sh build --repo . \
 python3 scripts/with_stdx.py --variant static -- bash -c 'cd tools/chir-worker && cjpm build --jobs 1'
 ```
 
-产物是 `tools/chir-worker/target/release/bin/main`（Windows 为 `main.exe`）。`scripts/check.sh build` 会把它复制到 `target/release/bin/chir-worker-main` 并记录身份。
+产物是 `tools/chir-worker/target/release/bin/main`（Windows 为 `main.exe`）。正式构建把它与主程序一起封存，并将 worker 暂存到主程序同级的 `chir-worker-main[.exe]`。安装时保留这个同目录关系；主程序按操作系统提供的真实可执行文件位置自动定位 worker，不依赖当前工作目录、启动别名或 PATH。
 
-CLI 用法（只属于 `generate`/`check`）：
+普通 CLI 用法：
 
 ```bash
-cjdoc generate --project . --format json --stdout \
-  --semantic chir \
-  --chir-worker tools/chir-worker/target/release/bin/main \
-  --cjc "$(command -v cjc)" \
-  --chir-import-path "$CANGJIE_STDX_PATH"
+cjdoc generate --project . --format json --stdout
 ```
 
 约束与失败行为：
 
-- 只有 `generate` 和 `check` 接受 `--semantic chir`；`--cjc`、`--chir-worker`、`--chir-import-path` 必须与 `--semantic chir` 同用，`--chir-import-path` 可重复；`render` 只消费已有 Doc IR，不接受这些选项。
-- 未配置 `--chir-worker` 时 `--semantic chir` 仍可运行，但保留 source declarations 并产生 `CJDOC2101` warning。
+- `generate`、`check`、`serve` 接受语义选项，默认 `chir`。项目 `[semantic].mode` 和显式 `--semantic` 可选择 `source`；`--cjc`、`--chir-worker`、`--chir-import-path` 与显式源码模式互斥。`render` 只消费已有 Doc IR，不接受这些选项。
+- `--chir-worker` 只在开发或特殊部署时覆盖自动定位。worker 缺失产生 `CJDOC2101`，产品版本或协议不匹配产生 `CJDOC2104`，两者都保留源码声明；普通项目不配置 worker 路径。
 - CHIR 编译或读取失败时保留 AST/source fallback，并产生 `CJDOC2101`–`CJDOC2106` warning；CHIR 不覆盖源码/注释真值，也不把 `partial` 语义升级为 resolved。
 - 仓颉单测用环境变量 `CJDOC_CHIR_WORKER` 指向 worker 可执行文件；未设置时相关用例跳过 CHIR 路径。
 - CHIR capability 调查与历史结论见 [../research/api-capability-matrix.md](../research/api-capability-matrix.md)、[../research/stdx-chir-findings.md](../research/stdx-chir-findings.md)。当前内置 provider 只提供保守补充，不替代源码/AST fallback。

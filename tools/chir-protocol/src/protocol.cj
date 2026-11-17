@@ -4,6 +4,8 @@ import std.collection.*
 import std.fs.*
 
 public let CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/3"
+public let CJDOC_PRODUCT_VERSION = "0.7.9"
+public let CHIR_WORKER_BASENAME = "chir-worker-main"
 public let MAX_CHIR_REQUEST_BYTES: Int64 = 4 * 1024 * 1024
 public let MAX_CHIR_RESPONSE_BYTES: Int64 = 16 * 1024 * 1024
 

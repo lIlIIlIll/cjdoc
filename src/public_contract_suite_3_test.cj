@@ -27,6 +27,37 @@ class PublicApiContractsSuite3 {
     }
 
     @TestCase
+    func unavailableModulesAreDistinctFromMissingIndividualBindings(): Unit {
+        let unavailable = DocumentationEngine().generate(
+            GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "off",
+                providerFactories: [LifecycleFactory(ProviderLifecycle())],
+                astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
+        @Expect(unavailable.providers[0].state, "unavailable")
+        @Expect(unavailable.declarations.size, 25)
+        @Expect(publicHasDiagnostic(unavailable, "CJDOC2001"))
+        @Expect(!publicHasDiagnostic(unavailable, "CJDOC2007"))
+        for (declaration in unavailable.declarations) {
+            @Expect(declaration.semantic.state, "unavailable")
+        }
+        let encoded = api_render.encodeDocIr(unavailable)
+        @Expect(api_render.encodeDocIr(api_render.decodeDocIr(encoded)), encoded)
+
+        let partial = DocumentationEngine().generate(
+            GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "off",
+                providerFactories: [AnnotationFactory()],
+                astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
+        @Expect(partial.providers[0].state, "partial")
+        @Expect(publicHasDiagnostic(partial, "CJDOC2007"))
+        @Expect(partial.declarations.size, 25)
+        var retainedPartial = false
+        for (declaration in partial.declarations where declaration.name == "oldParse") {
+            @Expect(declaration.semantic.state, "partial")
+            retainedPartial = true
+        }
+        @Expect(retainedPartial)
+    }
+
+    @TestCase
     func strictLintAndProviderLifecycleAreObservable(): Unit {
         let strict = DocumentationEngine().generate(
             GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "strict",
