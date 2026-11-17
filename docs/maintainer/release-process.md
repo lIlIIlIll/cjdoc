@@ -82,6 +82,8 @@ The workflow triggers for both `main` and `dev`. Before SDK setup it verifies th
 
 The sealed site artifact also carries the accepted main executable and its adjacent `chir-worker-main`. Candidate reuse, site assembly and downloaded-source reproduction verify both file digests against the build manifest; the reproduction job restores executable permissions on both files before invoking default CHIR. Transferring only the main executable would change the reproduced semantics and introduce a missing-worker diagnostic.
 
+The optional highlight gate also verifies and copies the adjacent CHIR worker into its private executable directory, then rechecks both original binaries after acceptance. A failed `public-cancel-host` build records the pinned wrapper receipt and any recognized, allowlisted compiler-failure classification on every platform; raw compiler stdout/stderr stays private.
+
 [`daily.yml`](../../.github/workflows/daily.yml) runs the same pinned Cangjie 1.2.0 STS compiler and matching stdx sidecar on a schedule and by manual dispatch, so the scheduled job is self-sufficient and needs no repository configuration. The version is declared in the workflow `env` as `CANGJIE_SDK_VERSION` and can be overridden per manual run through the `sdk_version` input; `Zxilly/setup-cangjie` resolves and checksum-verifies the archive through its version manifest. The job records `cjc -v`, `cjpm -v` and the resolved version, then runs `scripts/check.sh` and the real-repository smoke.
 
 ## Tag release workflow

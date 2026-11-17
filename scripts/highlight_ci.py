@@ -177,6 +177,7 @@ def main() -> int:
     repo, binary = args.repo.resolve(), args.binary.resolve()
     if os.name == "nt" and not binary.is_file():
         binary = Path(str(binary) + ".exe")
+    worker_name = "chir-worker-main.exe" if os.name == "nt" else "chir-worker-main"
     evidence = private_directory(args.evidence_root, repo)
     identity = {"schemaVersion": "cjdoc.highlight-ci/1", "status": "running",
                 "platform": args.platform, "steps": []}
@@ -214,11 +215,10 @@ def main() -> int:
             if name == "public-cancel-host" and step["status"] == "failed":
                 step["wrapperReceipt"] = public_cancel_host_receipt(
                     work / "sts-invocations.jsonl")
-                if args.platform == "windows-x64":
-                    compiler_failure = compiler_failure_evidence(
-                        "public-cancel-host", [("stdout", raw), ("stderr", raw_stderr)])
-                    if compiler_failure is not None:
-                        step["compilerFailure"] = compiler_failure
+                compiler_failure = compiler_failure_evidence(
+                    "public-cancel-host", [("stdout", raw), ("stderr", raw_stderr)])
+                if compiler_failure is not None:
+                    step["compilerFailure"] = compiler_failure
             # Raw stdout/stderr remains private; public artifacts contain fixed facts only.
             step["wallMs"] = round((time.monotonic() - started) * 1000)
             identity["steps"].append(step)
@@ -237,7 +237,8 @@ def main() -> int:
         node_version = run("node-version", [node, "--version"]).strip()
         run("build-identity", [sys.executable, "scripts/ci_stage.py", "verify-identity",
                               "--manifest", str(args.identity.resolve()), "--repo", str(repo),
-                              "--main-binary", str(binary)])
+                              "--main-binary", str(binary),
+                              "--worker-binary", str(binary.with_name(worker_name))])
         manifest = json.loads(args.identity.read_text(encoding="utf-8"))
         head = run("checkout-head", ["git", "-C", str(repo), "rev-parse", "HEAD"]).strip()
         if head != manifest["checkoutCommit"] or (os.environ.get("GITHUB_SHA") and head != os.environ["GITHUB_SHA"]):
@@ -246,6 +247,8 @@ def main() -> int:
             raise ValueError("optional worker sidecar differs from the authenticated main build")
         identity.update({key: manifest[key] for key in ["checkoutCommit", "checkoutTree", "toolchain"]})
         identity["mainBinary"] = {"sha256": sha256(binary), "bytes": binary.stat().st_size}
+        worker = binary.with_name(worker_name)
+        identity["workerBinary"] = {"sha256": sha256(worker)}
         identity["node"] = node_version
         identity["nodeSha256"] = sha256(Path(node))
         identity["runId"] = os.environ.get("GITHUB_RUN_ID", "")
@@ -263,6 +266,7 @@ def main() -> int:
         require_versions(source, node_version)
         private_binary = work / binary.name
         shutil.copy2(binary, private_binary)
+        shutil.copy2(worker, private_binary.with_name(worker_name))
         env.update({"GITHUB_WORKSPACE": str(source), "TMPDIR": str(work), "TMP": str(work),
                     "TEMP": str(work), "RUNNER_TEMP": str(work),
                     "CANGJIE_STDX_PATH": os.environ["CJDOC_STDX_PATH"],
@@ -288,6 +292,8 @@ def main() -> int:
         shutil.copyfile(result / "report.json", evidence / "report.json")
         if sha256(binary) != identity["mainBinary"]["sha256"]:
             raise ValueError("optional CI modified the original main binary")
+        if sha256(worker) != identity["workerBinary"]["sha256"]:
+            raise ValueError("optional CI modified the original CHIR worker")
         identity["reportSha256"] = sha256(evidence / "report.json")
         identity["publicCancelHostSha256"] = sha256(probe)
         identity["status"] = "passed"
