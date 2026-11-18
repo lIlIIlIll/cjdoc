@@ -162,7 +162,12 @@ def copy_code(journey: Journey, button=None):
         code = page.locator("#" + button.get_attribute("data-showcase-copy")).inner_text()
         attribute, expected = "data-copy-result", "copied"
     else:
-        code = button.locator("..").locator("code").first.inner_text()
+        code = button.evaluate("""control => {
+          const block = control.closest('[data-cjdoc-copy-panel], pre');
+          return block?.querySelector('pre > code, :scope > code')?.textContent ?? null;
+        }""")
+        if code is None:
+            raise AssertionError("copy control has no displayed code in its panel")
         attribute, expected = "data-cjdoc-copy-state", "copied"
     journey.click(button)
     expect(button).to_have_attribute(attribute, expected)

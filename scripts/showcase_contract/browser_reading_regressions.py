@@ -97,13 +97,19 @@ def check_sidebar_filters(page):
     }""")
     if not bounds["visible"]:
         raise AssertionError("initial sidebar scroll hides the package filter")
+    packages = page.locator('[data-cjdoc-tree-item="package"]:visible')
+    links = packages.locator(":scope > .cj-tree__row > a")
+    original = links.evaluate_all("nodes => nodes.map(node => node.getAttribute('href'))")
     field.fill("parsing")
-    expect(page.locator('[data-cjdoc-tree-item="package"]:visible')).to_have_count(1)
+    expect(packages).to_have_count(1)
+    expect(links).to_contain_text("pocketkit.parsing")
     field.fill("cjdoc_no_match_72fb")
-    expect(page.locator('[data-cjdoc-tree-item="package"]:visible')).to_have_count(0)
+    expect(packages).to_have_count(0)
     expect(page.locator("[data-cjdoc-sidebar-no-results]")).to_be_visible()
     field.fill("")
-    expect(page.locator('[data-cjdoc-tree-item="package"]:visible')).to_have_count(3)
+    expect(packages).to_have_count(len(original))
+    if links.evaluate_all("nodes => nodes.map(node => node.getAttribute('href'))") != original:
+        raise AssertionError("clearing the filter did not restore the original package links")
     _drawer(page, False)
 
 
