@@ -7,6 +7,19 @@ internal let HTML_READING_SCRIPT = """
 (() => {
   const isChinese = (document.documentElement.lang || "").toLowerCase().startsWith("zh");
   const text = (english, chinese) => isChinese ? chinese : english;
+  const element = (tag, className, caption) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (caption !== undefined) node.textContent = caption;
+    return node;
+  };
+  const attrs = (node, attributes) => {
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    return node;
+  };
+  const svg = (tag, attributes) => attrs(document.createElementNS("http://www.w3.org/2000/svg", tag), attributes);
+  const icon = () => svg("svg", {class: "cj-icon", viewBox: "0 0 24 24",
+    fill: "none", stroke: "currentColor", "stroke-width": "1.8", "aria-hidden": "true"});
 
   // Outline: only reader input releases click ownership, not the jump's scroll.
   const CLICK_RELEASE_EVENTS = ["wheel", "touchstart", "keydown"];
@@ -66,18 +79,16 @@ internal let HTML_READING_SCRIPT = """
       ? Number(heading.dataset.cjdocTocDepth || 3)
       : Number(heading.tagName.slice(1));
     const createLink = heading => {
-      const link = document.createElement("a");
-      link.className = "cj-toc__link";
-      link.setAttribute("href", "#" + targetId(heading));
-      link.dataset.tocTarget = targetId(heading);
-      link.textContent = headingLabel(heading);
+      const id = targetId(heading);
+      const link = element("a", "cj-toc__link", headingLabel(heading));
+      link.setAttribute("href", "#" + id);
+      link.dataset.tocTarget = id;
       return link;
     };
     // CSS draws the chevron; this supplies its accessible name.
     const createToggle = (label, children) => {
-      const button = document.createElement("button");
+      const button = element("button", "cj-toc__toggle");
       button.type = "button";
-      button.className = "cj-toc__toggle";
       button.setAttribute("aria-controls", children.id);
       const apply = expanded => {
         button.setAttribute("aria-expanded", expanded ? "true" : "false");
@@ -92,8 +103,7 @@ internal let HTML_READING_SCRIPT = """
       return button;
     };
     const buildChildren = prefix => {
-      const list = document.createElement("ol");
-      list.className = "cj-toc__children";
+      const list = element("ol", "cj-toc__children");
       list.id = "cjdoc-toc-children-" + boundedTreeKey(prefix);
       return list;
     };
@@ -125,14 +135,12 @@ internal let HTML_READING_SCRIPT = """
     const childLists = new Map();
     // Document order creates parent lists before their children.
     for (const heading of headings) {
-      const item = document.createElement("li");
-      item.className = itemClass(heading);
+      const item = element("li", itemClass(heading));
       item.dataset.depth = String(depthOf(heading));
       const link = createLink(heading);
       if (withChildren.has(heading)) {
         const children = buildChildren(targetId(heading));
-        const row = document.createElement("div");
-        row.className = "cj-toc__row";
+        const row = element("div", "cj-toc__row");
         row.append(createToggle(headingLabel(heading), children), link);
         item.append(row, children);
         childLists.set(heading, children);
@@ -145,8 +153,7 @@ internal let HTML_READING_SCRIPT = """
     if (mobileList) {
       mobileList.replaceChildren();
       for (const heading of headings) {
-        const item = document.createElement("li");
-        item.className = itemClass(heading);
+        const item = element("li", itemClass(heading));
         item.append(createLink(heading));
         mobileList.append(item);
       }
@@ -255,136 +262,88 @@ internal let HTML_READING_SCRIPT = """
   };
   const disclosureOptions = [["expanded", "Expanded", "展开"], ["collapsed", "Collapsed", "折叠"]];
   const displaySettings = [
-    {key: "theme", attribute: "data-cjdoc-theme-value", title: ["Theme", "主题"],
-      rootAttribute: "data-theme", defaultValue: "system", themed: true,
+    {key: "theme", name: "theme", title: ["Theme", "主题"], root: "data-theme", fallback: "system",
       options: [["system", "System", "跟随系统"], ["light", "Light", "浅色"],
         ["dark", "Dark", "深色"], ["paper", "Paper", "纸色"], ["ocean", "Ocean", "海洋"],
         ["forest", "Forest", "森林"], ["terminal", "Terminal", "终端"], ["violet", "Violet", "紫罗兰"]]},
-    {key: "font", attribute: "data-cjdoc-font-value", title: ["Font", "字体"],
-      rootAttribute: "data-cj-font", defaultValue: "system",
+    {key: "font", name: "font", title: ["Font", "字体"], root: "data-cj-font", fallback: "system",
       options: [["system", "System", "系统"], ["serif", "Serif", "衬线"], ["mono-ui", "Monospace", "等宽"]]},
-    {key: "size", attribute: "data-cjdoc-size-value", title: ["Text size", "字号"],
-      rootAttribute: "data-cj-size", defaultValue: "m", options: [["s", "S", "S"], ["m", "M", "M"], ["l", "L", "L"]]},
-    {key: "codeLines", attribute: "data-cjdoc-code-lines-value", title: ["Long code lines", "代码块长行"],
-      rootAttribute: "data-cj-code-lines", defaultValue: "scroll",
+    {key: "size", name: "size", title: ["Text size", "字号"], root: "data-cj-size",
+      fallback: "m", options: [["s", "S", "S"], ["m", "M", "M"], ["l", "L", "L"]]},
+    {key: "codeLines", name: "code-lines", title: ["Long code lines", "代码块长行"],
+      root: "data-cj-code-lines", fallback: "scroll",
       options: [["scroll", "Scroll horizontally", "横向滚动"], ["wrap", "Wrap", "自动换行"]],
       help: ["cjdoc-code-lines-help", "Only changes how code is shown, not copied text or expected output.",
         "只改变代码显示，不改变复制内容或预期输出。"]},
-    {key: "examples", attribute: "data-cjdoc-example-value", title: ["Examples by default", "示例默认状态"],
-      defaultValue: "expanded", options: disclosureOptions,
+    {key: "examples", name: "example", title: ["Examples by default", "示例默认状态"],
+      fallback: "expanded", options: disclosureOptions,
       apply: (value, initial) =>
         setDisclosures(EXAMPLE_SELECTOR, value === "expanded", initial ? exampleFragmentTarget() : null)},
-    {key: "longOutput", attribute: "data-cjdoc-long-output-value", title: ["Long output by default", "长输出默认状态"],
-      defaultValue: "collapsed", options: disclosureOptions,
+    {key: "longOutput", name: "long-output", title: ["Long output by default", "长输出默认状态"],
+      fallback: "collapsed", options: disclosureOptions,
       apply: value => setDisclosures("details.cj-example-pair__disclosure", value === "expanded"),
       help: ["cjdoc-long-output-help", "Does not change the whole example.", "不改变整个示例的状态。"]},
   ];
-  // Fixed close glyph; CSS owns its size.
-  const settingsIcon = () => {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    for (const [key, value] of Object.entries({class: "cj-icon", width: "16", height: "16",
-      viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.8",
-      "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
-      focusable: "false"})) {
-      svg.setAttribute(key, value);
-    }
-    const shape = document.createElementNS(svg.namespaceURI, "path");
-    shape.setAttribute("d", "M6 6l12 12M18 6 6 18");
-    svg.append(shape);
-    return svg;
-  };
-  const settingsGroup = ({title, options, attribute, themed, help}) => {
-    const group = document.createElement("fieldset");
-    group.className = "cj-settings__group";
-    const legend = document.createElement("legend");
-    legend.className = "cj-settings__legend";
-    legend.textContent = text(...title);
-    const list = document.createElement("div");
-    list.className = themed
-      ? "cj-settings__options cj-settings__options--themes" : "cj-settings__options";
-    const buttons = [];
-    for (const [value, optionEnglish, optionChinese] of options) {
-      const button = document.createElement("button");
-      button.className = "cj-settings__option";
-      button.type = "button";
-      button.setAttribute(attribute, value);
-      buttons.push(button);
+  const [theme] = displaySettings;
+  const optionAttr = setting => "data-cjdoc-" + setting.name + "-value";
+  const settingsGroup = (setting, buttons) => {
+    const {title, options, help} = setting;
+    const group = element("fieldset", "cj-settings__group");
+    const themed = setting === theme;
+    const list = element("div", "cj-settings__options" + (themed ? " cj-settings__options--themes" : ""));
+    group.append(element("legend", "cj-settings__legend", text(...title)), list);
+    for (const [value, ...caption] of options) {
+      const button = attrs(element("button", "cj-settings__option"), {type: "button", [optionAttr(setting)]: value});
+      buttons.set(button, {setting, value});
       if (themed) {
-        const swatch = document.createElement("span");
-        swatch.className = "cj-settings__swatch";
-        swatch.setAttribute("data-cjdoc-swatch", value);
-        swatch.setAttribute("aria-hidden", "true");
-        button.append(swatch);
+        button.append(attrs(element("span", "cj-settings__swatch"), {"data-cjdoc-swatch": value, "aria-hidden": "true"}));
       }
-      const name = document.createElement("span");
-      name.textContent = text(optionEnglish, optionChinese);
-      button.append(name);
+      button.append(element("span", "", text(...caption)));
       list.append(button);
     }
-    group.append(legend, list);
     if (help) {
-      const [id, english, chinese] = help;
-      const note = document.createElement("p");
-      note.id = id;
-      note.className = "cj-settings__description";
-      note.textContent = text(english, chinese);
+      const [id, ...caption] = help;
       group.setAttribute("aria-describedby", id);
-      group.append(note);
+      group.append(attrs(element("p", "cj-settings__description", text(...caption)), {id}));
     }
     if (themed) {
-      const hint = document.createElement("p");
-      hint.className = "cj-settings__hint";
-      hint.textContent = text("System follows your device appearance.", "跟随系统会采用设备的外观设置。");
-      group.append(hint);
+      group.append(element("p", "cj-settings__hint",
+        text("System follows your device appearance.", "跟随系统会采用设备的外观设置。")));
     }
-    return {group, buttons};
+    return group;
   };
-  const buildSettingsDialog = () => {
-    const dialog = document.createElement("dialog");
-    dialog.id = "cjdoc-theme-popover";
-    dialog.className = "cj-settings";
-    dialog.setAttribute("data-cjdoc-theme-popover", "");
-    dialog.setAttribute("aria-labelledby", "cjdoc-settings-title");
-    const head = document.createElement("div");
-    head.className = "cj-settings__head";
-    const title = document.createElement("h2");
+  const buildSettingsDialog = buttons => {
+    const title = element("h2", "cj-settings__title", text("Display", "显示"));
     title.id = "cjdoc-settings-title";
-    title.className = "cj-settings__title";
-    title.textContent = text("Display", "显示");
-    const closeButton = document.createElement("button");
-    closeButton.className = "cj-button cj-button--icon";
-    closeButton.type = "button";
-    closeButton.setAttribute("data-cjdoc-theme-close", "");
-    closeButton.setAttribute("aria-label", text("Close", "关闭"));
-    closeButton.append(settingsIcon());
-    head.append(title, closeButton);
-    dialog.append(head);
-    const groups = displaySettings.map(setting => {
-      const {group, buttons} = settingsGroup(setting);
-      dialog.append(group);
-      return {setting, buttons};
+    const dialog = attrs(element("dialog", "cj-settings"), {
+      id: "cjdoc-theme-popover", "data-cjdoc-theme-popover": "", "aria-labelledby": title.id
     });
-    const actions = document.createElement("div");
-    actions.className = "cj-settings__actions";
-    const resetButton = document.createElement("button");
-    resetButton.className = "cj-button";
-    resetButton.type = "button";
-    resetButton.setAttribute("data-cjdoc-reset-display", "");
-    resetButton.textContent = text("Reset display settings", "恢复默认设置");
-    const status = document.createElement("span");
-    status.setAttribute("role", "status");
-    actions.append(resetButton, status);
+    const close = attrs(element("button", "cj-button cj-button--icon"), {
+      type: "button", "data-cjdoc-theme-close": "", "aria-label": text("Close", "关闭")
+    });
+    const glyph = attrs(icon(), {width: "16", height: "16", "stroke-linecap": "round",
+      "stroke-linejoin": "round", focusable: "false"});
+    glyph.append(svg("path", {d: "M6 6l12 12M18 6 6 18"}));
+    close.append(glyph);
+    const head = element("div", "cj-settings__head");
+    head.append(title, close);
+    dialog.append(head);
+    for (const setting of displaySettings) dialog.append(settingsGroup(setting, buttons));
+    const reset = attrs(element("button", "cj-button", text("Reset display settings", "恢复默认设置")), {
+      type: "button", "data-cjdoc-reset-display": ""
+    });
+    const status = attrs(element("span"), {role: "status"});
+    const actions = element("div", "cj-settings__actions");
+    actions.append(reset, status);
     dialog.append(actions);
-    return {dialog, groups, closeButton, resetButton, status};
+    return {dialog, close, reset, status};
   };
+  const readerKey = "cjdoc-reader";
   const readReader = () => {
     try {
-      const value = JSON.parse(localStorage.getItem("cjdoc-reader") || "{}");
+      const value = JSON.parse(localStorage.getItem(readerKey) || "{}");
       return value && typeof value === "object" && !Array.isArray(value) ? value : {};
     } catch (_) { return {}; }
-  };
-  const writeReader = (next) => {
-    try { localStorage.setItem("cjdoc-reader", JSON.stringify(next)); } catch (_) { /* optional */ }
   };
   const initSettings = () => {
     const root = document.documentElement;
@@ -394,91 +353,82 @@ internal let HTML_READING_SCRIPT = """
     const persistence = globalThis.__CJDOC_THEME__;
     const reader = readReader();
     const values = Object.create(null);
-    for (const setting of displaySettings) {
-      const candidate = setting.rootAttribute ? root.getAttribute(setting.rootAttribute) : reader[setting.key];
-      const value = setting.options.some(([allowed]) => allowed === candidate) ? candidate : setting.defaultValue;
-      values[setting.key] = value;
-      // Defaults are already present in static markup; don't walk those disclosures.
-      if (value !== setting.defaultValue) setting.apply?.(value, true);
+    for (const {key, root: attribute, options, fallback, apply} of displaySettings) {
+      const candidate = attribute ? root.getAttribute(attribute) : reader[key];
+      const value = options.some(([allowed]) => allowed === candidate) ? candidate : fallback;
+      values[key] = value;
+      // Defaults are in static markup; only a nondefault choice needs a disclosure walk.
+      if (value !== fallback) apply?.(value, true);
     }
     window.addEventListener("hashchange", () => {
       const example = exampleFragmentTarget();
       if (example) example.open = true;
     });
-    const [themeSetting] = displaySettings;
-    let dialog = null;
-    let groups = [];
+    let dialog;
+    let buttons;
     const sync = () => {
-      for (const {setting, buttons} of groups) {
-        for (const button of buttons) {
-          const pressed = button.getAttribute(setting.attribute) === values[setting.key];
-          button.setAttribute("aria-pressed", String(pressed));
-        }
+      for (const [button, {setting, value}] of buttons || []) {
+        button.setAttribute("aria-pressed", String(value === values[setting.key]));
       }
       if (label) {
-        const [, english, chinese] = themeSetting.options.find(([value]) => value === values.theme);
-        label.textContent = text("Theme: ", "主题：") + text(english, chinese);
+        const [, ...caption] = theme.options.find(([value]) => value === values.theme);
+        label.textContent = text("Theme: ", "主题：") + text(...caption);
       }
     };
-    const apply = (setting, value) => {
-      values[setting.key] = value;
-      if (setting.rootAttribute) {
-        if (value === setting.defaultValue) root.removeAttribute(setting.rootAttribute);
-        else root.setAttribute(setting.rootAttribute, value);
+    const apply = ({key, root: attribute, fallback, apply: present}, value) => {
+      values[key] = value;
+      if (attribute) {
+        if (value === fallback) root.removeAttribute(attribute);
+        else root.setAttribute(attribute, value);
       }
-      setting.apply?.(value);
+      present?.(value);
     };
     const persistTheme = value => {
-      if (persistence && typeof persistence.persist === "function") persistence.persist(value);
+      if (persistence?.persist) persistence.persist(value);
       else try { localStorage.setItem("cjdoc-theme", value); } catch (_) { /* optional */ }
     };
-    const select = (setting, value) => {
-      if (!setting.options.some(([allowed]) => allowed === value)) return;
-      apply(setting, value);
-      if (setting === themeSetting) {
-        persistTheme(value);
-      } else {
+    const save = (setting, value) => {
+      if (setting === theme) persistTheme(value);
+      else try {
         const next = readReader();
         next[setting.key] = value;
-        writeReader(next);
-      }
-      sync();
+        localStorage.setItem(readerKey, JSON.stringify(next));
+      } catch (_) { /* optional */ }
     };
-    // Create/bind once; associate aria-controls only with a real dialog.
     const ensureDialog = () => {
       if (dialog) return dialog;
-      const {dialog: created, groups: createdGroups, closeButton, resetButton, status} = buildSettingsDialog();
-      // Preserve the non-modal fallback's original placement.
+      buttons = new Map();
+      const {dialog: surface, close: dismiss, reset, status} = buildSettingsDialog(buttons);
+      dialog = surface;
       const header = trigger.closest("header");
-      if (header && header.parentNode) header.after(created);
-      else document.body.append(created);
-      groups = createdGroups;
-      closeButton.addEventListener("click", () => close(true));
-      resetButton.addEventListener("click", () => {
-        for (const setting of displaySettings) apply(setting, setting.defaultValue);
-        try { localStorage.removeItem("cjdoc-reader"); } catch (_) { /* optional */ }
-        persistTheme(themeSetting.defaultValue);
-        sync();
-        resetButton.focus();
-        status.textContent = text("Display settings reset.", "已恢复默认设置。");
-      });
-      created.addEventListener("cancel", event => {
+      if (header?.parentNode) header.after(dialog);
+      else document.body.append(dialog);
+      trigger.setAttribute("aria-controls", dialog.id);
+      dialog.addEventListener("cancel", event => {
         event.preventDefault();
-        close(true);
+        close();
       });
-      created.addEventListener("click", event => {
-        if (event.target === created) close(true);
-      });
-      for (const {setting, buttons} of groups) {
-        for (const button of buttons) {
-          button.addEventListener("click", () => {
-            status.textContent = "";
-            select(setting, button.getAttribute(setting.attribute));
-          });
+      dialog.addEventListener("click", event => {
+        const button = event.target.closest?.("button");
+        if (button === dismiss || event.target === dialog) close();
+        else if (button === reset) {
+          for (const setting of displaySettings) apply(setting, setting.fallback);
+          try { localStorage.removeItem(readerKey); } catch (_) { /* optional */ }
+          persistTheme(theme.fallback);
+          sync();
+          reset.focus();
+          status.textContent = text("Display settings reset.", "已恢复默认设置。");
+        } else {
+          const choice = buttons.get(button);
+          if (!choice) return;
+          const {setting, value} = choice;
+          if (button.getAttribute(optionAttr(setting)) !== value) return;
+          status.textContent = "";
+          apply(setting, value);
+          save(setting, value);
+          sync();
         }
-      }
-      trigger.setAttribute("aria-controls", created.id);
-      dialog = created;
+      });
       sync();
       return dialog;
     };
@@ -487,18 +437,15 @@ internal let HTML_READING_SCRIPT = """
       trigger.setAttribute("aria-expanded", "true");
       if (typeof surface.showModal === "function" && !surface.open) surface.showModal();
       else surface.setAttribute("open", "");
-      const active = surface.querySelector("[aria-pressed='true']");
-      if (active && typeof active.focus === "function") active.focus();
+      surface.querySelector("[aria-pressed='true']")?.focus();
     };
-    const close = (restoreFocus = true) => {
+    const close = () => {
       trigger.setAttribute("aria-expanded", "false");
       if (!dialog) return;
       if (typeof dialog.close === "function" && dialog.open) dialog.close();
       else dialog.removeAttribute("open");
-      if (restoreFocus && typeof trigger.focus === "function") trigger.focus();
+      trigger.focus();
     };
-    // The drawer makes the header trigger inert, so it cannot coexist with settings.
-    // Closing must leave no inert surface.
     trigger.hidden = false;
     trigger.addEventListener("click", open);
     sync();
@@ -557,13 +504,11 @@ internal let HTML_READING_SCRIPT = """
         }
         if (status) status.textContent = message;
         if (!copied) {
-          let field = button.parentElement
-            ? button.parentElement.querySelector("[data-cjdoc-copy-link-fallback]") : null;
+          let field = button.parentElement?.querySelector("[data-cjdoc-copy-link-fallback]");
           if (!field) {
-            field = document.createElement("input");
+            field = element("input", "cj-input");
             field.type = "text";
             field.readOnly = true;
-            field.className = "cj-input";
             field.dataset.cjdocCopyLinkFallback = "";
             field.setAttribute("aria-label", text("Link address", "链接地址"));
             button.insertAdjacentElement("afterend", field);
@@ -587,27 +532,15 @@ internal let HTML_READING_SCRIPT = """
       if (!host || host.querySelector("[data-cjdoc-copy]")) continue;
       const copyLabel = panel?.dataset.cjdocCopyPanel === "output"
         ? text("Copy output", "复制输出") : text("Copy code", "复制代码");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "cj-button cj-button--quiet cj-code__copy";
-      button.setAttribute("data-cjdoc-copy", "");
-      button.setAttribute("aria-label", copyLabel);
-      button.setAttribute("title", copyLabel);
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      for (const [key, value] of Object.entries({class: "cj-icon", viewBox: "0 0 24 24",
-        fill: "none", stroke: "currentColor", "stroke-width": "1.8", "aria-hidden": "true"})) {
-        svg.setAttribute(key, value);
-      }
-      const front = document.createElementNS(svg.namespaceURI, "rect");
-      for (const [key, value] of Object.entries({x: "8", y: "8", width: "12", height: "12", rx: "2"})) {
-        front.setAttribute(key, value);
-      }
-      const back = document.createElementNS(svg.namespaceURI, "path");
-      back.setAttribute("d", "M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2");
-      svg.append(front, back);
-      const caption = document.createElement("span");
-      caption.textContent = panel ? copyLabel : text("Copy", "复制");
-      button.append(svg, caption);
+      const button = attrs(element("button", "cj-button cj-button--quiet cj-code__copy"), {
+        type: "button", "data-cjdoc-copy": "", "aria-label": copyLabel, title: copyLabel
+      });
+      const glyph = icon();
+      glyph.append(svg("rect", {x: "8", y: "8", width: "12", height: "12", rx: "2"}),
+        svg("path", {d: "M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"}));
+      const idleCaption = panel ? copyLabel : text("Copy", "复制");
+      const caption = element("span", "", idleCaption);
+      button.append(glyph, caption);
       host.append(button);
       button.addEventListener("click", async () => {
         const original = code.getAttribute("data-cjdoc-source");
@@ -617,14 +550,12 @@ internal let HTML_READING_SCRIPT = """
         }
         const copied = await copyText(value);
         flashCopyState(button, copied);
-        const message = copied ? text("Copied", "已复制") : copyLabel;
-        caption.textContent = copied ? message : (panel ? copyLabel : text("Copy", "复制"));
-        button.setAttribute("aria-label", message);
-        button.setAttribute("title", message);
+        const feedback = copied ? text("Copied", "已复制") : copyLabel;
+        caption.textContent = copied ? feedback : idleCaption;
+        attrs(button, {"aria-label": feedback, title: feedback});
         setTimeout(() => {
-          caption.textContent = panel ? copyLabel : text("Copy", "复制");
-          button.setAttribute("aria-label", copyLabel);
-          button.setAttribute("title", copyLabel);
+          caption.textContent = idleCaption;
+          attrs(button, {"aria-label": copyLabel, title: copyLabel});
         }, 1500);
       });
     }
