@@ -16,7 +16,7 @@ internal let HTML_THEME_BOOTSTRAP_SCRIPT = """
   const readReader = () => {
     try {
       const value = JSON.parse(readStore("cjdoc-reader") || "{}");
-      return value && typeof value === "object" ? value : {};
+      return value && typeof value === "object" && !Array.isArray(value) ? value : {};
     } catch (_) { return {}; }
   };
   const themeName = (value) => themes.has(value) ? value : null;
@@ -28,6 +28,7 @@ internal let HTML_THEME_BOOTSTRAP_SCRIPT = """
   const reader = readReader();
   if (fonts.has(reader.font)) root.setAttribute("data-cj-font", reader.font);
   if (sizes.has(reader.size)) root.setAttribute("data-cj-size", reader.size);
+  if (reader.codeLines === "wrap") root.setAttribute("data-cj-code-lines", "wrap");
   const state = {navigationTheme: queryTheme, linkListenerInstalled: false};
   const installLinkPropagation = () => {
     if (!state.navigationTheme || state.linkListenerInstalled) return;
@@ -50,7 +51,7 @@ internal let HTML_THEME_BOOTSTRAP_SCRIPT = """
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("theme", next);
-      window.history.replaceState(null, "", url.href);
+      window.history.replaceState(window.history.state, "", url.href);
       state.navigationTheme = next;
       installLinkPropagation();
     } catch (_) { /* history can be unavailable */ }
@@ -631,8 +632,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       } catch (_) { /* history can be unavailable */ }
     };
     const selectedFilterChanged = () => { saveSelectedFilters(); render(); };
-    // A theme URL replacement can clear history.state; checkpoint the controls
-    // before departure without changing the immutable prepaint bootstrap.
+    // Checkpoint the current search filters before leaving this history entry.
     window.addEventListener("pagehide", saveSelectedFilters);
 
     const isComposing = event => composing || (event && event.isComposing === true);

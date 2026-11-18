@@ -21,11 +21,18 @@ public struct Token {
  * @param keepEmpty 是否保留空字段，默认为 false。
  * @return 顺序与输入一致的 Token 数组。
  * @throws IllegalArgumentException separator 为空。
- * @example 不保留空字段
+ * @example 不保留空字段 {run}
  * ```cangjie
  * let tokens = parse("alpha,,beta", keepEmpty: false)
- * assert(tokens.size == 2)
- * assert(tokens[1].text == "beta")
+ * println(tokens.size)
+ * println(tokens[1].text)
+ * ```
+ *
+ * **预期输出 / Expected output**
+ *
+ * ```output
+ * 2
+ * beta
  * ```
  */
 public func parse(text: String, separator!: String = ",", keepEmpty!: Bool = false): Array<Token> {

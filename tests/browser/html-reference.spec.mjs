@@ -962,6 +962,166 @@ test.describe('generated HTML reference', () => {
     await expectStable(page);
   });
 
+  test('reader preferences: Example output folds without losing whitespace, escaping, or the clipboard payload', async ({page, context, browser}) => {
+    const guide = 'concepts/guides/getting-started.html';
+    const expected = '  <script>globalThis.exampleOutputRan = true</script>\tvalue\n\n' +
+      Array.from({length: 11}, (_, index) => `${index + 3}\n`).join('');
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: httpOrigin});
+    await page.setViewportSize({width: 320, height: 650});
+    await page.goto(new URL(guide, httpBaseUrl).href);
+    const pair = page.locator('.cj-example-pair--prose');
+    const output = pair.locator('.cj-example-pair__output');
+    const code = pair.locator('.cj-example-pair__code pre code');
+    const transcript = output.locator('pre code');
+    const disclosure = output.locator('summary');
+    const codeBlock = pair.locator('.cj-example-pair__code pre');
+    const ordinary = page.locator('pre').filter({hasText: 'cjdoc-bind target="html_reference_extra.ExtraBox"'});
+    const standalone = page.locator('pre').filter({hasText: 'id:' + '\t\t' + '0123456789abcdef'.repeat(4)});
+    const overflowsX = block => block.evaluate(node => node.scrollWidth > node.clientWidth);
+    const source = await code.textContent();
+    expect(await overflowsX(codeBlock)).toBe(true);
+    expect(await overflowsX(ordinary)).toBe(true);
+    await page.locator('[data-cjdoc-theme-toggle]').click();
+    await page.getByRole('group', {name: 'Long code lines'})
+      .getByRole('button', {name: 'Wrap', exact: true}).click();
+    await page.keyboard.press('Escape');
+    await expect(codeBlock).toHaveCSS('white-space', 'pre-wrap');
+    await expect(ordinary).toHaveCSS('white-space', 'pre-wrap');
+    expect(await overflowsX(codeBlock)).toBe(false);
+    expect(await overflowsX(ordinary)).toBe(false);
+    await expect(standalone).toHaveCSS('white-space', 'pre');
+    expect(await overflowsX(standalone)).toBe(true);
+    expect(await standalone.locator('code').textContent()).toBe('id:\t\t' + '0123456789abcdef'.repeat(4) + '\n');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+    await expect(output.getByText('Expected output', {exact: true})).toBeVisible();
+    await expect(transcript).toBeHidden();
+    await pair.getByRole('button', {name: 'Copy code', exact: true}).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(source);
+    expect(await code.textContent()).toBe(source);
+    await output.getByRole('button', {name: 'Copy output', exact: true}).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
+    await expect(transcript).toBeHidden();
+    await expect(disclosure.getByText('Show all 13 lines', {exact: true})).toBeVisible();
+    await disclosure.press('Enter');
+    await expect(transcript).toBeVisible();
+    await expect(output.locator('pre')).toHaveCSS('white-space', 'pre');
+    expect(await overflowsX(output.locator('pre'))).toBe(true);
+    expect(await transcript.textContent()).toBe(expected);
+    await expect(output.locator('script')).toHaveCount(0);
+    await expect(disclosure.getByText('Hide output', {exact: true})).toBeVisible();
+    await disclosure.press('Enter');
+    await expect(transcript).toBeHidden();
+
+    const offline = await browser.newContext({javaScriptEnabled: false, viewport: {width: 390, height: 844}});
+    try {
+      const file = await offline.newPage();
+      await file.goto(new URL(guide, indexUrl).href);
+      const localCase = file.locator('.cj-example-pair--prose');
+      const localSummary = localCase.locator('.cj-example__summary');
+      const localCode = localCase.locator('.cj-example-pair__code pre code');
+      await expect(localCode).toBeVisible();
+      await localSummary.press('Enter');
+      await expect(localCode).toBeHidden();
+      await localSummary.press('Enter');
+      await expect(localCode).toBeVisible();
+      await file.getByText('Show all 13 lines', {exact: true}).click();
+      const localOutput = file.locator('.cj-example-pair__output pre code');
+      await expect(localOutput).toBeVisible();
+      expect(await localOutput.textContent()).toBe(expected);
+      await localCase.locator('.cj-example-pair__disclosure summary').press('Enter');
+      await localSummary.press('Enter');
+      await expect(localOutput).toBeHidden();
+      await file.emulateMedia({media: 'print'});
+      await expect(localOutput).toBeVisible();
+      await expect(localOutput.locator('..')).toHaveCSS('white-space', 'pre-wrap');
+    } finally {
+      await offline.close();
+    }
+  });
+
+  test('reader preferences: whole examples and long outputs restore independently', async ({page}) => {
+    await page.goto(new URL('concepts/guides/getting-started.html', httpBaseUrl).href);
+    const trigger = page.locator('[data-cjdoc-theme-toggle]');
+    const option = (name, choice) => page.getByRole('group', {name, exact: true})
+      .getByRole('button', {name: choice, exact: true});
+    const pair = page.locator('.cj-example-pair--prose');
+    const summary = pair.locator('.cj-example__summary');
+    const input = pair.locator('.cj-example-pair__code pre');
+    const output = pair.locator('.cj-example-pair__output pre');
+    const disclosure = pair.locator('.cj-example-pair__disclosure summary');
+
+    await trigger.click();
+    await option('Examples by default', 'Collapsed').click();
+    await option('Long output by default', 'Expanded').click();
+    await page.reload();
+    await expect(summary).toBeVisible();
+    await expect(input).toBeHidden();
+    await expect(output).toBeHidden();
+    await summary.press('Enter');
+    await expect(output).toBeVisible();
+    await expect(output.getByText('13', {exact: false})).toBeVisible();
+
+    await disclosure.press('Enter');
+    await trigger.click();
+    await option('Long code lines', 'Wrap').click();
+    await option('Font', 'Serif').click();
+    await page.keyboard.press('Escape');
+    await expect(input).toBeVisible();
+    await expect(output).toBeHidden();
+    await page.reload();
+    await expect(input).toBeHidden();
+    await summary.press('Enter');
+    await expect(output).toBeVisible();
+
+    await trigger.click();
+    await option('Long output by default', 'Collapsed').click();
+    await option('Examples by default', 'Expanded').click();
+    await page.reload();
+    await expect(input).toBeVisible();
+    await expect(output).toBeHidden();
+  });
+
+  test('reader preferences: display controls still work when local storage is denied', async ({page, context}) => {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await context.addInitScript(() => {
+      Object.defineProperty(window, 'localStorage', {
+        get() { throw new DOMException('Storage denied', 'SecurityError'); },
+      });
+    });
+    await page.goto(new URL('concepts/guides/getting-started.html', httpBaseUrl).href);
+    const trigger = page.locator('[data-cjdoc-theme-toggle]');
+    const dialog = page.getByRole('dialog', {name: 'Display'});
+    const option = (name, choice) => dialog.getByRole('group', {name, exact: true})
+      .getByRole('button', {name: choice, exact: true});
+    const pair = page.locator('.cj-example-pair--prose');
+    const input = pair.locator('.cj-example-pair__code pre');
+    const output = pair.locator('.cj-example-pair__output pre');
+    await trigger.click();
+    await option('Theme', 'Dark').click();
+    await option('Long code lines', 'Wrap').click();
+    await option('Examples by default', 'Collapsed').click();
+    await option('Long output by default', 'Expanded').click();
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL(/theme=dark/);
+    await expect(input).toBeHidden();
+    await pair.locator('.cj-example__summary').press('Enter');
+    await expect(input).toHaveCSS('white-space', 'pre-wrap');
+    await expect(output).toBeVisible();
+    await pair.locator('.cj-example-pair__disclosure summary').press('Enter');
+    await expect(output).toBeHidden();
+
+    await trigger.click();
+    await dialog.getByRole('button', {name: 'Reset display settings'}).click();
+    await expect(dialog.getByRole('status')).toHaveText('Display settings reset.');
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL(/theme=system/);
+    await expect(input).toBeVisible();
+    await expect(input).toHaveCSS('white-space', 'pre');
+    await expect(output).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
 
 
   for (const hiddenBy of ['collapse', 'filter']) {

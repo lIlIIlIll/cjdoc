@@ -240,16 +240,45 @@ internal let HTML_READING_SCRIPT = """
   };
 
   // Display settings: first-open construction leaves untouched pages dialog-free.
-  // Header labels use stable options before any option buttons exist.
-  const THEMES = ["system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"];
-  const FONTS = ["system", "serif", "mono-ui"];
-  const SIZES = ["s", "m", "l"];
-  const THEME_OPTIONS = [["system", "System", "跟随系统"], ["light", "Light", "浅色"],
-    ["dark", "Dark", "深色"], ["paper", "Paper", "纸色"], ["ocean", "Ocean", "海洋"],
-    ["forest", "Forest", "森林"], ["terminal", "Terminal", "终端"], ["violet", "Violet", "紫罗兰"]];
-  const FONT_OPTIONS = [["system", "System", "系统"], ["serif", "Serif", "衬线"],
-    ["mono-ui", "Monospace", "等宽"]];
-  const SIZE_OPTIONS = [["s", "S", "S"], ["m", "M", "M"], ["l", "L", "L"]];
+  const EXAMPLE_SELECTOR = "details[data-cjdoc-example]";
+  const setDisclosures = (selector, open, fragment = null) => {
+    for (const details of document.querySelectorAll(selector)) {
+      details.open = open || details === fragment;
+    }
+  };
+  const exampleFragmentTarget = () => {
+    if (!window.location.hash) return null;
+    try {
+      const id = decodeURIComponent(window.location.hash.slice(1));
+      return document.getElementById(id)?.closest(EXAMPLE_SELECTOR) || null;
+    } catch (_) { return null; }
+  };
+  const disclosureOptions = [["expanded", "Expanded", "展开"], ["collapsed", "Collapsed", "折叠"]];
+  const displaySettings = [
+    {key: "theme", attribute: "data-cjdoc-theme-value", title: ["Theme", "主题"],
+      rootAttribute: "data-theme", defaultValue: "system", themed: true,
+      options: [["system", "System", "跟随系统"], ["light", "Light", "浅色"],
+        ["dark", "Dark", "深色"], ["paper", "Paper", "纸色"], ["ocean", "Ocean", "海洋"],
+        ["forest", "Forest", "森林"], ["terminal", "Terminal", "终端"], ["violet", "Violet", "紫罗兰"]]},
+    {key: "font", attribute: "data-cjdoc-font-value", title: ["Font", "字体"],
+      rootAttribute: "data-cj-font", defaultValue: "system",
+      options: [["system", "System", "系统"], ["serif", "Serif", "衬线"], ["mono-ui", "Monospace", "等宽"]]},
+    {key: "size", attribute: "data-cjdoc-size-value", title: ["Text size", "字号"],
+      rootAttribute: "data-cj-size", defaultValue: "m", options: [["s", "S", "S"], ["m", "M", "M"], ["l", "L", "L"]]},
+    {key: "codeLines", attribute: "data-cjdoc-code-lines-value", title: ["Long code lines", "代码块长行"],
+      rootAttribute: "data-cj-code-lines", defaultValue: "scroll",
+      options: [["scroll", "Scroll horizontally", "横向滚动"], ["wrap", "Wrap", "自动换行"]],
+      help: ["cjdoc-code-lines-help", "Only changes how code is shown, not copied text or expected output.",
+        "只改变代码显示，不改变复制内容或预期输出。"]},
+    {key: "examples", attribute: "data-cjdoc-example-value", title: ["Examples by default", "示例默认状态"],
+      defaultValue: "expanded", options: disclosureOptions,
+      apply: (value, initial) =>
+        setDisclosures(EXAMPLE_SELECTOR, value === "expanded", initial ? exampleFragmentTarget() : null)},
+    {key: "longOutput", attribute: "data-cjdoc-long-output-value", title: ["Long output by default", "长输出默认状态"],
+      defaultValue: "collapsed", options: disclosureOptions,
+      apply: value => setDisclosures("details.cj-example-pair__disclosure", value === "expanded"),
+      help: ["cjdoc-long-output-help", "Does not change the whole example.", "不改变整个示例的状态。"]},
+  ];
   // Fixed close glyph; CSS owns its size.
   const settingsIcon = () => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -264,21 +293,22 @@ internal let HTML_READING_SCRIPT = """
     svg.append(shape);
     return svg;
   };
-  const settingsGroup = (english, chinese, options, attribute, themed) => {
+  const settingsGroup = ({title, options, attribute, themed, help}) => {
     const group = document.createElement("fieldset");
     group.className = "cj-settings__group";
     const legend = document.createElement("legend");
     legend.className = "cj-settings__legend";
-    legend.textContent = text(english, chinese);
+    legend.textContent = text(...title);
     const list = document.createElement("div");
     list.className = themed
       ? "cj-settings__options cj-settings__options--themes" : "cj-settings__options";
+    const buttons = [];
     for (const [value, optionEnglish, optionChinese] of options) {
       const button = document.createElement("button");
       button.className = "cj-settings__option";
       button.type = "button";
       button.setAttribute(attribute, value);
-      button.setAttribute("aria-pressed", "false");
+      buttons.push(button);
       if (themed) {
         const swatch = document.createElement("span");
         swatch.className = "cj-settings__swatch";
@@ -292,7 +322,22 @@ internal let HTML_READING_SCRIPT = """
       list.append(button);
     }
     group.append(legend, list);
-    return group;
+    if (help) {
+      const [id, english, chinese] = help;
+      const note = document.createElement("p");
+      note.id = id;
+      note.className = "cj-settings__description";
+      note.textContent = text(english, chinese);
+      group.setAttribute("aria-describedby", id);
+      group.append(note);
+    }
+    if (themed) {
+      const hint = document.createElement("p");
+      hint.className = "cj-settings__hint";
+      hint.textContent = text("System follows your device appearance.", "跟随系统会采用设备的外观设置。");
+      group.append(hint);
+    }
+    return {group, buttons};
   };
   const buildSettingsDialog = () => {
     const dialog = document.createElement("dialog");
@@ -313,21 +358,29 @@ internal let HTML_READING_SCRIPT = """
     closeButton.setAttribute("aria-label", text("Close", "关闭"));
     closeButton.append(settingsIcon());
     head.append(title, closeButton);
-    dialog.append(head,
-      settingsGroup("Theme", "主题", THEME_OPTIONS, "data-cjdoc-theme-value", true),
-      settingsGroup("Font", "字体", FONT_OPTIONS, "data-cjdoc-font-value", false),
-      settingsGroup("Text size", "字号", SIZE_OPTIONS, "data-cjdoc-size-value", false));
-    const hint = document.createElement("p");
-    hint.className = "cj-settings__hint";
-    hint.textContent = text("System follows your device appearance.",
-      "跟随系统会采用设备的外观设置。");
-    dialog.append(hint);
-    return dialog;
+    dialog.append(head);
+    const groups = displaySettings.map(setting => {
+      const {group, buttons} = settingsGroup(setting);
+      dialog.append(group);
+      return {setting, buttons};
+    });
+    const actions = document.createElement("div");
+    actions.className = "cj-settings__actions";
+    const resetButton = document.createElement("button");
+    resetButton.className = "cj-button";
+    resetButton.type = "button";
+    resetButton.setAttribute("data-cjdoc-reset-display", "");
+    resetButton.textContent = text("Reset display settings", "恢复默认设置");
+    const status = document.createElement("span");
+    status.setAttribute("role", "status");
+    actions.append(resetButton, status);
+    dialog.append(actions);
+    return {dialog, groups, closeButton, resetButton, status};
   };
   const readReader = () => {
     try {
       const value = JSON.parse(localStorage.getItem("cjdoc-reader") || "{}");
-      return value && typeof value === "object" ? value : {};
+      return value && typeof value === "object" && !Array.isArray(value) ? value : {};
     } catch (_) { return {}; }
   };
   const writeReader = (next) => {
@@ -339,75 +392,76 @@ internal let HTML_READING_SCRIPT = """
     if (!trigger) return;
     const label = document.querySelector("[data-cjdoc-theme-label]");
     const persistence = globalThis.__CJDOC_THEME__;
-    const themeLabels = new Map(THEME_OPTIONS.map(([value, english, chinese]) =>
-      [value, text(english, chinese)]));
+    const reader = readReader();
+    const values = Object.create(null);
+    for (const setting of displaySettings) {
+      const candidate = setting.rootAttribute ? root.getAttribute(setting.rootAttribute) : reader[setting.key];
+      const value = setting.options.some(([allowed]) => allowed === candidate) ? candidate : setting.defaultValue;
+      values[setting.key] = value;
+      // Defaults are already present in static markup; don't walk those disclosures.
+      if (value !== setting.defaultValue) setting.apply?.(value, true);
+    }
+    window.addEventListener("hashchange", () => {
+      const example = exampleFragmentTarget();
+      if (example) example.open = true;
+    });
+    const [themeSetting] = displaySettings;
     let dialog = null;
-    let themeButtons = [];
-    let fontButtons = [];
-    let sizeButtons = [];
-    const currentTheme = () => {
-      const value = root.dataset.theme;
-      return THEMES.includes(value) ? value : "system";
-    };
-    const currentFont = () => FONTS.includes(root.dataset.cjFont) ? root.dataset.cjFont : "system";
-    const currentSize = () => SIZES.includes(root.dataset.cjSize) ? root.dataset.cjSize : "m";
-    // Sync persisted labels before creation, and option state after creation.
+    let groups = [];
     const sync = () => {
-      const theme = currentTheme();
-      for (const button of themeButtons) {
-        button.setAttribute("aria-pressed",
-          button.dataset.cjdocThemeValue === theme ? "true" : "false");
+      for (const {setting, buttons} of groups) {
+        for (const button of buttons) {
+          const pressed = button.getAttribute(setting.attribute) === values[setting.key];
+          button.setAttribute("aria-pressed", String(pressed));
+        }
       }
-      for (const button of fontButtons) {
-        button.setAttribute("aria-pressed",
-          button.dataset.cjdocFontValue === currentFont() ? "true" : "false");
+      if (label) {
+        const [, english, chinese] = themeSetting.options.find(([value]) => value === values.theme);
+        label.textContent = text("Theme: ", "主题：") + text(english, chinese);
       }
-      for (const button of sizeButtons) {
-        button.setAttribute("aria-pressed",
-          button.dataset.cjdocSizeValue === currentSize() ? "true" : "false");
+    };
+    const apply = (setting, value) => {
+      values[setting.key] = value;
+      if (setting.rootAttribute) {
+        if (value === setting.defaultValue) root.removeAttribute(setting.rootAttribute);
+        else root.setAttribute(setting.rootAttribute, value);
       }
-      if (label) label.textContent = text("Theme: ", "主题：") +
-        (themeLabels.get(theme) || themeLabels.get("system"));
+      setting.apply?.(value);
     };
-    const applyTheme = next => {
-      if (!THEMES.includes(next)) return;
-      if (next === "system") root.removeAttribute("data-theme");
-      else root.setAttribute("data-theme", next);
-      if (persistence && typeof persistence.persist === "function") persistence.persist(next);
-      else try { localStorage.setItem("cjdoc-theme", next); } catch (_) { /* optional */ }
-      sync();
+    const persistTheme = value => {
+      if (persistence && typeof persistence.persist === "function") persistence.persist(value);
+      else try { localStorage.setItem("cjdoc-theme", value); } catch (_) { /* optional */ }
     };
-    const applyFont = next => {
-      if (!FONTS.includes(next)) return;
-      if (next === "system") root.removeAttribute("data-cj-font");
-      else root.setAttribute("data-cj-font", next);
-      const reader = readReader();
-      reader.font = next;
-      writeReader(reader);
-      sync();
-    };
-    const applySize = next => {
-      if (!SIZES.includes(next)) return;
-      if (next === "m") root.removeAttribute("data-cj-size");
-      else root.setAttribute("data-cj-size", next);
-      const reader = readReader();
-      reader.size = next;
-      writeReader(reader);
+    const select = (setting, value) => {
+      if (!setting.options.some(([allowed]) => allowed === value)) return;
+      apply(setting, value);
+      if (setting === themeSetting) {
+        persistTheme(value);
+      } else {
+        const next = readReader();
+        next[setting.key] = value;
+        writeReader(next);
+      }
       sync();
     };
     // Create/bind once; associate aria-controls only with a real dialog.
     const ensureDialog = () => {
       if (dialog) return dialog;
-      const created = buildSettingsDialog();
+      const {dialog: created, groups: createdGroups, closeButton, resetButton, status} = buildSettingsDialog();
       // Preserve the non-modal fallback's original placement.
       const header = trigger.closest("header");
       if (header && header.parentNode) header.after(created);
       else document.body.append(created);
-      const closeButton = created.querySelector("[data-cjdoc-theme-close]");
-      themeButtons = [...created.querySelectorAll("[data-cjdoc-theme-value]")];
-      fontButtons = [...created.querySelectorAll("[data-cjdoc-font-value]")];
-      sizeButtons = [...created.querySelectorAll("[data-cjdoc-size-value]")];
-      if (closeButton) closeButton.addEventListener("click", () => close(true));
+      groups = createdGroups;
+      closeButton.addEventListener("click", () => close(true));
+      resetButton.addEventListener("click", () => {
+        for (const setting of displaySettings) apply(setting, setting.defaultValue);
+        try { localStorage.removeItem("cjdoc-reader"); } catch (_) { /* optional */ }
+        persistTheme(themeSetting.defaultValue);
+        sync();
+        resetButton.focus();
+        status.textContent = text("Display settings reset.", "已恢复默认设置。");
+      });
       created.addEventListener("cancel", event => {
         event.preventDefault();
         close(true);
@@ -415,14 +469,13 @@ internal let HTML_READING_SCRIPT = """
       created.addEventListener("click", event => {
         if (event.target === created) close(true);
       });
-      for (const button of themeButtons) {
-        button.addEventListener("click", () => applyTheme(button.dataset.cjdocThemeValue));
-      }
-      for (const button of fontButtons) {
-        button.addEventListener("click", () => applyFont(button.dataset.cjdocFontValue));
-      }
-      for (const button of sizeButtons) {
-        button.addEventListener("click", () => applySize(button.dataset.cjdocSizeValue));
+      for (const {setting, buttons} of groups) {
+        for (const button of buttons) {
+          button.addEventListener("click", () => {
+            status.textContent = "";
+            select(setting, button.getAttribute(setting.attribute));
+          });
+        }
       }
       trigger.setAttribute("aria-controls", created.id);
       dialog = created;
@@ -529,14 +582,17 @@ internal let HTML_READING_SCRIPT = """
       });
     }
     for (const code of document.querySelectorAll("pre > code")) {
-      const pre = code.parentElement;
-      if (!pre || pre.querySelector("[data-cjdoc-copy]")) continue;
+      const panel = code.closest("[data-cjdoc-copy-panel]");
+      const host = panel?.querySelector("[data-cjdoc-copy-toolbar]") || code.parentElement;
+      if (!host || host.querySelector("[data-cjdoc-copy]")) continue;
+      const copyLabel = panel?.dataset.cjdocCopyPanel === "output"
+        ? text("Copy output", "复制输出") : text("Copy code", "复制代码");
       const button = document.createElement("button");
       button.type = "button";
       button.className = "cj-button cj-button--quiet cj-code__copy";
       button.setAttribute("data-cjdoc-copy", "");
-      button.setAttribute("aria-label", text("Copy code", "复制代码"));
-      button.setAttribute("title", text("Copy code", "复制代码"));
+      button.setAttribute("aria-label", copyLabel);
+      button.setAttribute("title", copyLabel);
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       for (const [key, value] of Object.entries({class: "cj-icon", viewBox: "0 0 24 24",
         fill: "none", stroke: "currentColor", "stroke-width": "1.8", "aria-hidden": "true"})) {
@@ -550,9 +606,9 @@ internal let HTML_READING_SCRIPT = """
       back.setAttribute("d", "M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2");
       svg.append(front, back);
       const caption = document.createElement("span");
-      caption.textContent = text("Copy", "复制");
+      caption.textContent = panel ? copyLabel : text("Copy", "复制");
       button.append(svg, caption);
-      pre.append(button);
+      host.append(button);
       button.addEventListener("click", async () => {
         const original = code.getAttribute("data-cjdoc-source");
         let value = code.textContent || "";
@@ -561,14 +617,14 @@ internal let HTML_READING_SCRIPT = """
         }
         const copied = await copyText(value);
         flashCopyState(button, copied);
-        const message = copied ? text("Copied", "已复制") : text("Copy code", "复制代码");
-        caption.textContent = copied ? text("Copied", "已复制") : text("Copy", "复制");
+        const message = copied ? text("Copied", "已复制") : copyLabel;
+        caption.textContent = copied ? message : (panel ? copyLabel : text("Copy", "复制"));
         button.setAttribute("aria-label", message);
         button.setAttribute("title", message);
         setTimeout(() => {
-          caption.textContent = text("Copy", "复制");
-          button.setAttribute("aria-label", text("Copy code", "复制代码"));
-          button.setAttribute("title", text("Copy code", "复制代码"));
+          caption.textContent = panel ? copyLabel : text("Copy", "复制");
+          button.setAttribute("aria-label", copyLabel);
+          button.setAttribute("title", copyLabel);
         }, 1500);
       });
     }
@@ -824,8 +880,8 @@ internal let HTML_READING_SCRIPT = """
     });
   };
 
-  initToc();
   initSettings();
+  initToc();
   initCopy();
   initMembers();
 })();

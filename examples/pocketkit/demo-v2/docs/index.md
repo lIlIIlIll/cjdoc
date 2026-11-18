@@ -1,7 +1,12 @@
 # PocketKit demo-v2
 
+- [调用 PocketKit](guide.md)：保存文本、按索引读取、关闭阅读会话。
+- [编写文档注释](doc-comments.md)：照抄标签、提示和示例，再打开真实 API 看结果。
+
 用一个文本目录，练习追加、读取和保留快照。`TextCatalog` 保留条目的插入顺序，
 允许重复值和空字符串；简单分隔解析与内存阅读会话放在各自的包中。
+
+运行下面的代码，清空目录后打印快照的第一项。预期仍得到 `hello`，说明清空没有改变快照。
 
 ```cangjie
 import pocketkit.*
@@ -11,8 +16,12 @@ main() {
     catalog.add("hello")
     let saved = catalog.snapshot()
     catalog.clear()
-    assert(saved[0] == "hello")
+    println(saved[0])
 }
+```
+
+```output layout=prose
+hello
 ```
 
 实例没有内部同步，并发读写需要调用方安排同步。指南提供逐步操作，API 参考保留完整签名与调用条件。

@@ -105,8 +105,10 @@ private func appendStandaloneDocumentHtml(w: HtmlWriter, node: MarkdownNode,
     }
     let titleIndex = standaloneTitleHeadingIndex(node, pageTitle)
     var inserted = false
-    for (index in 0..node.children.size) {
+    var index: Int64 = 0
+    while (index < node.children.size) {
         let child = node.children[index]
+        var next = index + 1
         if (titleIndex == Some(index)) {
             let id = context.headingIds[context.nextHeading]
             context.nextHeading++
@@ -114,12 +116,13 @@ private func appendStandaloneDocumentHtml(w: HtmlWriter, node: MarkdownNode,
             w.close("span")
             w.newline()
         } else {
-            appendMarkdownNodeHtml(w, child, assetLookup, rootPrefix, context)
+            next = appendStandaloneExampleOrNode(w, node, index, assetLookup, rootPrefix, context)
         }
         if (!inserted && child.kind == "code_block") {
             appendAfterFirstCode(w, afterFirstCode)
             inserted = true
         }
+        index = next
     }
     if (!inserted) { appendAfterFirstCode(w, afterFirstCode) }
 }
@@ -218,11 +221,13 @@ internal class ExampleFenceOpening {
     let marker: String
     let length: Int64
     let language: String
+    let info: String
 
-    init(marker: String, length: Int64, language: String) {
+    init(marker: String, length: Int64, language: String, info: String) {
         this.marker = marker
         this.length = length
         this.language = language
+        this.info = info
     }
 }
 
@@ -279,7 +284,7 @@ internal func exampleFenceOpening(line: String): ?ExampleFenceOpening {
     if (marker == "`" && info.contains("`")) { return None }
     let fields = info.split(" ", 2, removeEmpty: true)
     let language = if (fields.isEmpty()) { "" } else { fields[0] }
-    Some(ExampleFenceOpening(marker, length, language))
+    ExampleFenceOpening(marker, length, language, info)
 }
 
 internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): Bool {
@@ -293,9 +298,6 @@ internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): B
     length >= fence.length && value[length..].trimAscii().isEmpty()
 }
 
-internal func appendExampleCodeHtml(w: HtmlWriter, code: String, language: String): Unit {
-    appendCodeBlockHtml(w, code, codeBlockAttrs(code, normalizeCodeLanguage(language)), None)
-}
 
 /** Code-block attributes shared by author examples and Markdown fences. */
 internal func codeBlockAttrs(raw: String, language: String,
@@ -312,8 +314,8 @@ internal func codeBlockAttrs(raw: String, language: String,
 // Author examples and Markdown fences share one code-block structure, so the
 // copy controller sees a single DOM shape everywhere.
 internal func appendCodeBlockHtml(w: HtmlWriter, code: String,
-    attrs: Array<HtmlAttr>, highlight: ?CodeHighlight): Unit {
-    w.element("div", [htmlClass("cj-code")]) { block =>
+    attrs: Array<HtmlAttr>, highlight: ?CodeHighlight, output!: Bool = false): Unit {
+    w.element("div", [htmlClass(if (output) { "cj-code cj-code--output" } else { "cj-code" })]) { block =>
         block.element("pre", [htmlClass("cj-code__pre")]) { pre =>
             pre.open("code", attrs: attrs)
             appendHighlightedCodeHtml(pre, code, "", highlight: highlight)
@@ -323,9 +325,8 @@ internal func appendCodeBlockHtml(w: HtmlWriter, code: String,
     w.newline()
 }
 
-internal func appendExampleHtml(w: HtmlWriter, value: String): Unit {
-    let content = trimExampleBlankLines(value)
-    if (content.isEmpty()) { return }
+private func exampleFallbackMarkdown(content: String): MarkdownNode {
+    let children = ArrayList<MarkdownNode>()
     var prose = StringBuilder()
     var proseLineCount: Int64 = 0
     var code = StringBuilder()
@@ -335,7 +336,7 @@ internal func appendExampleHtml(w: HtmlWriter, value: String): Unit {
         match (activeFence) {
             case Some(fence) =>
                 if (isExampleFenceClosing(line, fence)) {
-                    appendExampleCodeHtml(w, code.toString(), fence.language)
+                    children.add(exampleFallbackCode(fence, code.toString()))
                     activeFence = None
                     code = StringBuilder()
                     codeLineCount = 0
@@ -347,7 +348,7 @@ internal func appendExampleHtml(w: HtmlWriter, value: String): Unit {
             case None =>
                 match (exampleFenceOpening(line)) {
                     case Some(fence) =>
-                        appendStructuredTextHtml(w, trimExampleBlankLines(prose.toString()))
+                        appendExampleFallbackProse(children, prose.toString())
                         prose = StringBuilder()
                         proseLineCount = 0
                         activeFence = Some(fence)
@@ -359,10 +360,24 @@ internal func appendExampleHtml(w: HtmlWriter, value: String): Unit {
         }
     }
     match (activeFence) {
-        case Some(fence) => appendExampleCodeHtml(w, code.toString(), fence.language)
+        case Some(fence) => children.add(exampleFallbackCode(fence, code.toString()))
         case None => ()
     }
-    appendStructuredTextHtml(w, trimExampleBlankLines(prose.toString()))
+    appendExampleFallbackProse(children, prose.toString())
+    MarkdownNode("document", children: children.toArray())
+}
+
+private func appendExampleFallbackProse(children: ArrayList<MarkdownNode>, prose: String): Unit {
+    let text = trimExampleBlankLines(prose)
+    if (!text.isEmpty()) {
+        children.add(MarkdownNode("paragraph", children: [MarkdownNode("text", literal: text)]))
+    }
+}
+
+private func exampleFallbackCode(fence: ExampleFenceOpening, value: String): MarkdownNode {
+    let metadata = MarkdownNodeMetadata.forCodeBlock("fenced", Some(fence.marker), fence.length,
+        fence.info, fence.language, "")
+    MarkdownNode("code_block", metadata, literal: value)
 }
 
 // The single-kind heading is the reader's entry point, not an internal
@@ -487,15 +502,17 @@ internal func appendDocumentationExamplesHtml(w: HtmlWriter, comment: DocComment
     for (tag in comment.tags) {
         if (tag.name != "example") { continue }
         exampleIndex++
-        w.open("div", attrs: [htmlClass("cj-example")])
-        appendContentLanguageHtml(w, tag, locale)
-        if (!tag.subject.isEmpty()) {
-            w.textElement("h${min(6, headingLevel + 1)}", tag.subject,
+        let title = if (tag.subject.isEmpty()) {
+            label(locale, "Example ${exampleIndex}", "示例 ${exampleIndex}")
+        } else { tag.subject }
+        openExampleDisclosure(w, "cj-example") { summary =>
+            summary.textElement("h${min(6, headingLevel + 1)}", title,
                 attrs: [htmlClass("cj-example__title")])
+            appendContentLanguageHtml(summary, tag, locale)
         }
         appendExampleBodyHtml(w, tag, locale, assetLookup, rootPrefix, markdownContext,
             symbolPrefix, exampleIndex)
-        w.close("div")
+        w.close("details")
         w.newline()
     }
     w.close("div")
@@ -505,7 +522,8 @@ internal func appendDocumentationExamplesHtml(w: HtmlWriter, comment: DocComment
 private func appendExampleBodyHtml(w: HtmlWriter, tag: DocTag, locale: String,
     assetLookup: HashMap<String, String>, rootPrefix: String,
     markdownContext: HtmlMarkdownContext, symbolPrefix: String, exampleIndex: Int64): Unit {
-    if (trimExampleBlankLines(tag.description).isEmpty()) {
+    let content = trimExampleBlankLines(tag.description)
+    if (content.isEmpty()) {
         w.textElement("p", label(locale, "No example content.", "示例内容为空。"),
             attrs: [htmlClass("cj-empty")])
         w.newline()
@@ -520,9 +538,10 @@ private func appendExampleBodyHtml(w: HtmlWriter, tag: DocTag, locale: String,
             markdownContext.nextHeading = markdownContext.headingIds.size
             collectMarkdownHeadings(tree, "${symbolPrefix}--example-${exampleIndex}",
                 HashMap<String, Int64>(), markdownContext)
-            appendMarkdownNodeHtml(w, tree, assetLookup, rootPrefix, markdownContext)
+            appendApiExampleMarkdownHtml(w, tree, assetLookup, rootPrefix, markdownContext)
             markdownContext.fragmentTargets = enclosingTargets
-        case None => appendExampleHtml(w, tag.description)
+        case None => appendApiExampleMarkdownHtml(w, exampleFallbackMarkdown(content),
+            assetLookup, rootPrefix, markdownContext)
     }
 }
 

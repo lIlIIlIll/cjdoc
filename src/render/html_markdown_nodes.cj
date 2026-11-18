@@ -88,6 +88,7 @@ private func appendMarkdownHeadingHtml(w: HtmlWriter, node: MarkdownNode,
 // A fenced block keeps the author's language, highlight metadata and fenced
 // attributes; only the surrounding structure and class vocabulary changed.
 private func appendMarkdownCodeBlockHtml(w: HtmlWriter, node: MarkdownNode): Unit {
+    let output = isExampleFence(node, "output")
     var language = ""
     var attributesRaw = ""
     var highlight: ?CodeHighlight = None
@@ -99,7 +100,7 @@ private func appendMarkdownCodeBlockHtml(w: HtmlWriter, node: MarkdownNode): Uni
         }
     }
     appendCodeBlockHtml(w, node.literal,
-        codeBlockAttrs(node.literal, language, attributesRaw: attributesRaw), highlight)
+        codeBlockAttrs(node.literal, language, attributesRaw: attributesRaw), highlight, output: output)
 }
 
 private func appendMarkdownListHtml(w: HtmlWriter, node: MarkdownNode,
