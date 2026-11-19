@@ -256,16 +256,19 @@ internal func memberSectionAnchor(title: String): String {
     }
 }
 
-private func overloadCountsOf(entries: ArrayList<HtmlMemberEntry>): HashMap<String, Int64> {
+private func overloadCountsOf(entries: ArrayList<HtmlMemberEntry>): (HashMap<String, Int64>, Bool) {
     let overloadCounts = HashMap<String, Int64>()
+    var hasOverloads = false
     for (entry in entries) {
         let key = "${entry.groupKey}:${entry.symbol.name}"
-        overloadCounts[key] = match (overloadCounts.get(key)) {
+        let count = match (overloadCounts.get(key)) {
             case Some(value) => value + 1
             case None => 1
         }
+        overloadCounts[key] = count
+        if (count == 2) { hasOverloads = true }
     }
-    overloadCounts
+    (overloadCounts, hasOverloads)
 }
 
 // An omitted kind heading keeps the filterable container and its members but
@@ -310,6 +313,9 @@ private func appendOverloadHeading(w: HtmlWriter, member: SymbolDoc, count: Int6
     w.newline()
 }
 
+private let LARGE_MEMBER_BROWSER_ROWS = 256
+private let MEMBER_SLICE_ROWS = 12
+
 internal func appendMemberSection(w: HtmlWriter,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, entries: ArrayList<HtmlMemberEntry>,
@@ -317,31 +323,34 @@ internal func appendMemberSection(w: HtmlWriter,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String,
     layout: DeclarationGroupLayout, kindAnchor: String, rootPrefix: String): Unit {
     if (entries.isEmpty()) { return }
-    let overloadCounts = overloadCountsOf(entries)
+    let (overloadCounts, hasOverloads) = overloadCountsOf(entries)
     let overloadHeadingLevel = min(6, layout.entryParentLevel + 1)
-    var opened = false
+    let sliced = entries.size > LARGE_MEMBER_BROWSER_ROWS && !hasOverloads
+    w.open("section", attrs: [htmlClass(if (layout.showKindHeading) {
+        "cj-member-group"
+    } else { "cj-member-group cj-member-group--plain" }), htmlFlag("data-cjdoc-member-group")])
+    appendMemberGroupHead(w, title, kindAnchor, entries.size, layout, locale)
     var activeOverloadKey = ""
-    for (entry in entries) {
-        let member = entry.symbol
-        if (!opened) {
-            w.open("section", attrs: [htmlClass(if (layout.showKindHeading) {
-                "cj-member-group"
-            } else { "cj-member-group cj-member-group--plain" }), htmlFlag("data-cjdoc-member-group")])
-            appendMemberGroupHead(w, title, kindAnchor, entries.size, layout, locale)
-            opened = true
+    var remainingInSlice: Int64 = 0
+    for (i in 0..entries.size) {
+        if (sliced && remainingInSlice == 0 && entries.size - i >= MEMBER_SLICE_ROWS) {
+            w.open("div", attrs: [htmlClass("cj-member-slice")])
+            remainingInSlice = MEMBER_SLICE_ROWS
         }
-        activeOverloadKey = appendMemberEntry(w, documentation, projection, index, entry,
+        activeOverloadKey = appendMemberEntry(w, documentation, projection, index, entries[i],
             assetLookup, typeLinkIndex, overloadCounts, overloadHeadingLevel, layout, locale,
             activeOverloadKey, rootPrefix)
+        if (remainingInSlice > 0) {
+            remainingInSlice--
+            if (remainingInSlice == 0) { w.close("div"); w.newline() }
+        }
     }
     if (!activeOverloadKey.isEmpty()) {
         w.close("div")
         w.newline()
     }
-    if (opened) {
-        w.close("section")
-        w.newline()
-    }
+    w.close("section")
+    w.newline()
 }
 
 // Returns the overload family that is still open, so the caller can close it
@@ -583,7 +592,9 @@ internal func appendMemberBrowser(w: HtmlWriter, documentation: DocumentationSet
     let browser = projection.members(symbol)
     if (browser.entries.isEmpty()) { return }
     // The stylesheet needs this boundary before any script can force the first layout.
-    let browserClass = if (browser.entries.size > 256) { "cj-members cj-members--large" } else { "cj-members" }
+    let browserClass = if (browser.entries.size > LARGE_MEMBER_BROWSER_ROWS) {
+        "cj-members cj-members--large"
+    } else { "cj-members" }
     w.open("section", attrs: [htmlClass(browserClass), htmlFlag("data-cjdoc-member-browser"),
         htmlAttr("aria-label", label(locale, "Members", "成员"))])
     appendMemberBrowserToolbar(w, browser, locale)

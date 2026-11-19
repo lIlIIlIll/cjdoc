@@ -586,6 +586,17 @@ private let HTML_REFERENCE_STYLE = """
       content-visibility: auto;
       contain-intrinsic-size: auto 4.125rem;
     }
+    /* A dense, flat group can defer twelve full rows behind one layout box.
+       While filtered, expanded or focused, use the original row geometry. */
+    html[data-cj-js] .cj-members--large:not([data-cjdoc-member-filtered])
+      .cj-member-slice:not(:focus-within):not(:has(> .cj-member-row > .cj-member[open])) {
+      content-visibility: auto;
+      contain-intrinsic-block-size: auto 49.5rem;
+    }
+    html[data-cj-js] .cj-members--large:not([data-cjdoc-member-filtered])
+      .cj-member-slice:not(:focus-within):not(:has(> .cj-member-row > .cj-member[open])) > .cj-member-row {
+      content-visibility: visible;
+    }
   }
 }
 .cj-member { grid-area: 1 / 1; min-width: 0; }

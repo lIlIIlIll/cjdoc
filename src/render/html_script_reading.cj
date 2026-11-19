@@ -671,6 +671,7 @@ internal let HTML_READING_SCRIPT = """
         if (wrapper && wrapper.hidden !== hidden) wrapper.hidden = hidden;
         if (matches) visible += 1;
       }
+      browser.toggleAttribute("data-cjdoc-member-filtered", visible !== rows.length);
       for (const [group, members] of overloads) {
         const total = Number(group.dataset.overloadTotal);
         const matches = visibleCount(members);
