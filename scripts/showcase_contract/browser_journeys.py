@@ -6,6 +6,7 @@ import hashlib
 from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser_support import Journey, click_and_return, copy_code, require_text, assert_native_symbol, assert_native_id, directory_navigation, member_action
+from .browser_support import same_declaration_url
 from .site import load_json, load_navigation_index
 
 
@@ -205,7 +206,7 @@ def versions(journey: Journey):
     label = link.inner_text()
     expected = urljoin(origin, link.get_attribute("href"))
     journey.click(link)
-    if page.url != expected:
+    if not same_declaration_url(page.url, expected):
         raise AssertionError("version switch did not follow its native identity-mapped route")
     expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", other)
     index_url = urljoin(page.url, page.locator('[data-machine-format="symbols"]').get_attribute("href"))
@@ -216,11 +217,13 @@ def versions(journey: Journey):
         owners = [entry for entry in index["entries"] if entry["id"] == owner]
         if len(owners) > 1:
             raise AssertionError("fallback owner identity is ambiguous in the target version")
-        fallback = owners[0]["href"] if owners else "index.html"
-        if missing_label not in label or unquote(page.url) != unquote(urljoin(index_url, fallback)):
+        reached_fallback = (journey.matches_native_api(index_url, owners[0]["href"], owner) if owners
+                            else same_declaration_url(page.url, urljoin(index_url, "index.html")))
+        if missing_label not in label or not reached_fallback:
             raise AssertionError("removed native identity must be explicitly unavailable and reach its surviving owner or version overview")
     elif len(matches) == 1:
-        if missing_label in label or unquote(page.url) != unquote(urljoin(index_url, matches[0]["href"])):
+        if missing_label in label or not journey.matches_native_api(
+                index_url, matches[0]["href"], matches[0]["id"]):
             raise AssertionError("version switch must preserve the exact common native identity")
         require_text(page.locator("main"), journey.target["signature"])
     else:

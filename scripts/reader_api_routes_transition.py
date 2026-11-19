@@ -257,14 +257,16 @@ def _lookup_address(table: dict, page_dir: str, path: str) -> str | None:
     return None
 
 
-def _url_token(value: str, table: dict, page_dir: str) -> str:
+def _url_token(value: str, table: dict, page_dir: str, page_symbol: str | None = None) -> str:
     """Map one address to a stable token; unrelated addresses keep their exact spelling."""
     _require(isinstance(value, str), "a published link is not text")
     if value == "":
         return "literal:"
     if value.startswith("#"):
-        # A self fragment addresses the captured declaration's stable section.
-        return "self:" + value
+        # A fragment and a full current-page address name the same section,
+        # but cite its independently bound page identity, never just its anchor.
+        destination = SYMBOL_TOKEN.format(page_symbol) if page_symbol is not None else "self:"
+        return destination + value
     parts = urlsplit(value)
     if parts.scheme or parts.netloc or parts.path.startswith("/"):
         return "literal:" + value
@@ -290,11 +292,12 @@ def _address_token(href: str, table: dict) -> str:
 def link_targets(tree: str, table: dict, page_href: str) -> list[str]:
     """Extract the ordered ARIA link targets, proving only known declaration addresses."""
     page_dir = posixpath.dirname(page_href)
+    page_symbol = table["idByHref"].get(page_href)
     targets = []
     for line in tree.split("\n"):
         match = URL_LINE.fullmatch(line)
         if match is not None:
-            targets.append(_url_token(match.group("value"), table, page_dir))
+            targets.append(_url_token(match.group("value"), table, page_dir, page_symbol))
     return targets
 
 
@@ -463,12 +466,14 @@ class ApiRouteQualification:
     def normalize_tree(self, side: str, tree: str) -> str:
         """Rewrite only address lines of a complete accessible tree."""
         table = self._table(side)
-        page_dir = posixpath.dirname(self.page_href(side))
+        page_href = self.page_href(side)
+        page_dir = posixpath.dirname(page_href)
+        page_symbol = table["idByHref"][page_href]
         lines = []
         for line in tree.split("\n"):
             match = URL_LINE.fullmatch(line)
             lines.append(line if match is None else
-                         match.group("lead") + _url_token(match.group("value"), table, page_dir))
+                         match.group("lead") + _url_token(match.group("value"), table, page_dir, page_symbol))
         return "\n".join(lines)
 
     # -- accessible tree -------------------------------------------------

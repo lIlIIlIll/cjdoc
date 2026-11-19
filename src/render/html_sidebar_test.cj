@@ -152,8 +152,8 @@ class HtmlSidebarNavigationTest {
 
         @Expect(html.contains("data-cjdoc-tree-item=\"member\""))
         @Expect(html.contains("cj-tree__children"))
-        // The member's own anchor is the fragment; the type link owns the page.
-        @Expect(html.contains("href=\"../${ownerPath}#${symbolAnchor(run)}\""))
+        // On the owner itself, a fragment cannot reload the document or drop its query.
+        @Expect(html.contains("href=\"#${symbolAnchor(run)}\""))
         // Attribute order is fixed by the writer: class, data hook, aria state, href.
         @Expect(html.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
             "aria-current=\"page\" href=\"../${ownerPath}\">"))

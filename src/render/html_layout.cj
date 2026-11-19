@@ -122,11 +122,14 @@ private func appendTreeToggle(w: HtmlWriter, controlsId: String, name: String,
 private func appendSidebarMember(w: HtmlWriter, ownerHref: String, member: SymbolDoc): Unit {
     // A member row is never a branch, so it carries no key the scripts resolve;
     // the full identity stays in its link, which is what navigation copies.
+    let anchor = symbolAnchor(member)
+    let destination = if (ownerHref.isEmpty()) { SafeUrl.fragment(anchor) }
+        else { SafeUrl.siteRoute(ownerHref + "#" + anchor) }
     w.open("li", attrs: [htmlClass("cj-tree__item"),
         htmlAttr("data-cjdoc-tree-item", "member")])
     w.element("div", [htmlClass("cj-tree__row")], { row =>
-        row.open("a", attrs: [htmlClass("cj-tree__link"), htmlHref(SafeUrl.siteRoute(
-            ownerHref + "#" + symbolAnchor(member)))])
+        row.open("a", attrs: [htmlClass("cj-tree__link"), htmlHref(destination),
+            htmlFlag("data-cjdoc-api-link")])
         appendTreeKind(row, member.kind)
         row.textElement("span", htmlContextLabel(member),
             attrs: [htmlClass("cj-tree__label")])
@@ -149,9 +152,12 @@ private func appendSidebarMembers(w: HtmlWriter, projection: RenderProjection,
     let (start, end) = sidebarWindow(entries.size, active)
     let partial = end - start < entries.size
     let ownerHref = projection.publicSymbolHref(rootPrefix, owner.id)
+    let memberHref = if (sidebarPageIsCurrent(projection.symbolFileHref(owner.id), currentPagePath)) {
+        ""
+    } else { ownerHref }
     w.open("ul", attrs: sidebarChildrenAttrs(treeChildrenId(owner.id), partial))
     for (index in start..end) {
-        appendSidebarMember(w, ownerHref, entries[index].symbol)
+        appendSidebarMember(w, memberHref, entries[index].symbol)
     }
     if (partial) {
         appendSidebarMore(w, ownerHref,

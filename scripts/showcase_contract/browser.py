@@ -142,8 +142,8 @@ def check_locale_navigation(journey: Journey):
         native = load_json(journey.local_path(index_url))
         identity = journey.target["resolved"].get("ownerSymbolId", journey.target["resolved"]["symbolId"])
         matches = [record for record in native["pages"] if record.get("symbolId") == identity]
-        if len(matches) != 1 or not same_declaration_url(
-                page.url.split("#")[0], urljoin(index_url, matches[0]["href"]).split("#")[0]):
+        if len(matches) != 1 or not journey.matches_native_api(
+                index_url, matches[0]["href"], identity, ignore_fragment=True):
             raise AssertionError("language switch did not preserve the native symbol/owner identity")
     journey.back(before)
     journey.assertions.append("the language control follows the same native declaration/version and browser Back returns")

@@ -47,6 +47,8 @@ macOS 用 `open "$OUT/html/index.html"`，Windows PowerShell 用 `Start-Process 
 
 HTTP 上的类型和独立成员使用目录地址。例如 PocketKit 的 `TextCatalog` 是 `/pocketkit/TextCatalog/`，`join` 是 `/pocketkit/TextCatalog/join/`。打开 `/pocketkit/TextCatalog/find/` 会列出 `find` 的重载签名；从具体签名页复制链接，会回到该签名。离线打开时复制的是带 `index.html` 的实际文件地址。浏览器拒绝写入剪贴板时，可以选中并手动复制显示的地址。
 
+如果多个声明的名字在目标文件系统上无法区分（例如大小写或 Unicode 等价拼写），生成器会分配不同的地址。分享时使用页面的**复制链接**，不用手工拼路径。
+
 站点是三栏布局：左侧导航树可按名称筛选包、类型和成员，中间是正文，宽屏时右侧是本页目录。
 
 打开页眉的**显示设置**可调整主题、字体和字号。窄屏上想读完整的长代码行，选择**代码块长行 → 自动换行**；复制的内容和预期输出原文不变。想直接看到长预期输出，选择**长输出默认状态 → 展开**。整个示例是否默认展开，由**示例默认状态**单独控制。

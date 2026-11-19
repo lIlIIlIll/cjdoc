@@ -63,7 +63,8 @@ private func overloadLayoutContent(artifacts: Array<RenderArtifact>, path: Strin
 }
 
 // Route allocation sees the same visible declaration set the HTML renderer does.
-private func routeAllocationProjection(declarations: Array<SymbolDoc>):
+private func routeAllocationProjection(declarations: Array<SymbolDoc>,
+    pages!: Array<DocumentationPage> = []):
     (RenderProjection, HashMap<String, String>) {
     let ids = ArrayList<String>()
     for (symbol in declarations) { ids.add(symbol.id) }
@@ -75,7 +76,7 @@ private func routeAllocationProjection(declarations: Array<SymbolDoc>):
         packages: [PackageDoc("fixture", "cjdoc:module:v1:route-allocation",
             sourceFiles: ["src/api.cj"], symbolIds: ids.toArray())],
         files: [FileDoc("src/api.cj", "cjdoc:module:v1:route-allocation", "fixture")],
-        declarations: declarations)
+        declarations: declarations, pages: pages)
     let projection = RenderProjection(documentation, buildApiRoutes: true)
     let paths = HashMap<String, String>()
     for (symbol in declarations where projection.visibleIndex.contains(symbol.id)) {
@@ -272,5 +273,31 @@ class HtmlOverloadContractLayoutTest {
             @Expect(!path.startsWith("symbols/"), true)
             @Expect(!path.contains(".."), true)
         }
+    }
+
+    @TestCase
+    func canonicalUnicodeClaimsProtectBothApiAndAuthoredRoutes(): Unit {
+        let moduleId = "cjdoc:module:v1:route-allocation"
+        let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 24, 23))
+        let declare = { name: String =>
+            SymbolDoc("route:" + name, "class", name, "fixture." + name, "fixture", moduleId,
+                "public", source, "public class " + name, SemanticInfo("partial", "ast"))
+        }
+        let page = { id: String, directory: String =>
+            DocumentationPage(id, "docs/" + id + ".md", "fixture/" + directory + "/index.html",
+                id, "guide", "", MarkdownNode("document"))
+        }
+        // Greek tonos/oxia are canonically equivalent, without combining marks
+        // in either declaration name. Authored paths need not be canonical.
+        let names = ["ά", "ά", "Hậ", "가", "解析"]
+        let symbols = names.map(declare)
+        let pages = [page("accented", "Ha\u{0302}\u{0323}"), page("hangul", "가")]
+        let (projection, _) = routeAllocationProjection(symbols, pages: pages)
+        let routes = projection.apiRoutes.getOrThrow()
+        for (name in names[..4]) {
+            @Expect(routes.filePath("route:" + name).getOrThrow().startsWith("fixture/" + name + "~"), true)
+        }
+        @Expect(routes.filePath("route:解析"), Some("fixture/解析/index.html"))
+        @Expect(routes.filePath("route:ά") != routes.filePath("route:ά"), true)
     }
 }

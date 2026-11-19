@@ -289,6 +289,26 @@ test.afterAll(async () => {
   if (httpServer) await new Promise(resolve => httpServer.close(resolve));
 });
 test.describe('generated HTML reference', () => {
+  test('server-rendered member link preserves the current document and filter', async ({ page }) => {
+    await page.goto(httpBaseUrl);
+    const packageHref = await page.locator('ul.cj-package-index > li > a').first().getAttribute('href');
+    await page.goto(new URL(packageHref, httpBaseUrl).href);
+    const typeUrl = new URL(declarationUrl(await referenceBoxClassHref(page), page.url()));
+    typeUrl.searchParams.set('keep', 'query');
+    await page.goto(typeUrl.href);
+
+    const filter = page.locator('[data-cjdoc-member-filter]');
+    await filter.fill('member02');
+    const member = page.locator('details[data-cjdoc-member][data-member-name="member02"]');
+    const anchor = await member.getAttribute('id');
+    const initialDocument = await page.evaluate(() => performance.timeOrigin);
+    await page.locator('[data-cjdoc-tree-item="member"] a').filter({ hasText: /^member02\(\)$/ }).click();
+    typeUrl.hash = anchor;
+    await expect(page).toHaveURL(typeUrl.href);
+    await expect(member).toHaveAttribute('open', '');
+    await expect(filter).toHaveValue('member02');
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(initialDocument);
+  });
 
   for (const width of [1440, 390]) {
     test(`eight theme choices persist and keep keyboard controls usable at ${width}px`, async ({ page }) => {

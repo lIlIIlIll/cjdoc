@@ -72,7 +72,8 @@ internal func apiHtmlWebPath(path: String): String {
     apiHtmlFileHref(path.removeSuffix("index.html"))
 }
 
-// Use the same case and trailing-dot/space rules as the output transaction.
+// Compare spelling independently of case, canonical Unicode normalization and
+// the trailing dots/spaces ignored by Windows.
 protected func portableFileNameKey(name: String): String {
     var end = name.size
     while (end > 0 && (name[end - 1] == b'.' || name[end - 1] == b' ')) { end-- }
@@ -81,7 +82,8 @@ protected func portableFileNameKey(name: String): String {
         if (stem[i] >= 0x80) {
             // Include case-insensitive filesystems that compare by upper case;
             // e.g. both Greek lower-case sigmas address the same directory.
-            return stem.toUpper().toLower().replace("ß", "ss")
+            let canonical = portableCanonicalUnicode(stem)
+            return portableCanonicalUnicode(canonical.toUpper().toLower().replace("ß", "ss"))
         }
     }
     stem.toLower()
@@ -90,13 +92,6 @@ protected func portableFileNameKey(name: String): String {
 private func portableApiName(name: String): Bool {
     if (name.isEmpty() || name.size > API_HTML_MAX_PATH) { return false }
     for (rune in name.runes()) {
-        let cp = UInt32(rune)
-        // Combining marks are not allowed. Also exclude letters/numbers that
-        // can normalize to another permitted spelling on a decomposing volume.
-        if ((cp >= 0x1100 && cp <= 0x11FF) || (cp >= 0xA960 && cp <= 0xA97F) ||
-            (cp >= 0xD7B0 && cp <= 0xD7FF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
-            (cp >= 0x2F800 && cp <= 0x2FA1F) || (cp >= 0x16D68 && cp <= 0x16D6A) ||
-            cp == 0x0374 || cp == 0x1FBE || cp == 0x2126 || cp == 0x212A) { return false }
         if (rune != r'_' && !rune.isLetter() && !rune.isNumber()) { return false }
     }
     let key = portableFileNameKey(name)
