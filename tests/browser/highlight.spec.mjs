@@ -1,6 +1,6 @@
 import { test, expect, chromium } from '@playwright/test';
 import { createServer } from 'node:http';
-import { readFile, readdir, writeFile, mkdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {declarationUrl} from './generated-route.mjs';

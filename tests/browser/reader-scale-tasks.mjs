@@ -128,7 +128,8 @@ export async function memberTasks(context, index, manifest, base, samples) {
   const records = [];
   for (const owner of [...new Set(manifest.members.map(task => task.owner))]) {
     const ownerEntry = typeEntry(index, owner);
-    const { page, client } = await instrumentedPage(context, new URL(ownerEntry.href, base).href);
+    const ownerUrl = publishedDestination(ownerEntry, base).href;
+    const { page, client } = await instrumentedPage(context, ownerUrl);
     try {
       const initialLayout = await pageMetrics(page, client);
       for (const task of manifest.members.filter(item => item.owner === owner)) {
@@ -157,7 +158,7 @@ export async function memberTasks(context, index, manifest, base, samples) {
         const foundByBodyFilter = await target.count() === 1 && await target.isVisible();
         // A deliberately conflicting filter must not suppress a precise deep link.
         await filter.fill('rdr_no_matching_member');
-        await page.goto(new URL(ownerEntry.href, base).href + '#' + anchorFor(expected));
+        const navigation = await page.goto(ownerUrl + '#' + anchorFor(expected));
         await page.waitForFunction(id => {
           const row = document.getElementById(id);
           return row && !row.hidden && row.open;
@@ -170,7 +171,7 @@ export async function memberTasks(context, index, manifest, base, samples) {
           contextItems: document.querySelectorAll('[data-cjdoc-tree-item], [data-cjdoc-context-item]').length,
         }));
         records.push({ id: task.id, owner, expectedId: expected.id, ordinal: task.ordinal,
-          foundByBodyFilter, deepLink, state, pass: foundByBodyFilter && deepLink,
+          foundByBodyFilter, deepLink, state, pass: navigation === null && foundByBodyFilter && deepLink,
           operationCount: 3, automationDurationMs: performance.now() - started,
           synchronous: distribution((timings || []).map(item => item.synchronousMs)),
           frame: distribution((timings || []).map(item => item.frameMs)),
@@ -208,8 +209,8 @@ export async function overloadDetailEvidence(row, target) {
 export async function overloadTasks(context, index, manifest, base) {
   const records = [];
   for (const task of manifest.overloads) {
-    const ownerEntry = typeEntry(index, task.owner);
-    const { page, client } = await instrumentedPage(context, new URL(ownerEntry.href, base).href);
+    const ownerUrl = publishedDestination(typeEntry(index, task.owner), base).href;
+    const { page, client } = await instrumentedPage(context, ownerUrl);
     try {
       const selections = [];
       for (const position of new Set([0, Math.floor(task.targets.length / 2), task.targets.length - 1])) {
@@ -236,7 +237,7 @@ export async function overloadTasks(context, index, manifest, base) {
         selections.push({ callShape: target.callShape, query, expectedId: expected.id,
           pass: selectedCorrectly, operationCount: selectedCorrectly ? 2 : 1,
           automationDurationMs: performance.now() - started });
-        await page.goto(new URL(ownerEntry.href, base).href);
+        await page.goto(ownerUrl);
         await page.waitForSelector('[data-cjdoc-member-filter]');
       }
       const started = performance.now();

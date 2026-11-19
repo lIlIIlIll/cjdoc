@@ -149,7 +149,7 @@ test('localized parameter, return, and exception descriptions keep compact align
 
   const english = await routes(page, 'en', 'root');
   await page.goto(english.api);
-  await join.locator('summary').press('Enter');
+  await join.locator(':scope > summary').press('Enter');
   await expect(separator.locator('dd')).toContainText('Translation missing.');
   await expect(separator.locator('dd p')).toHaveText('分隔符，默认是逗号，不进行转义。');
 });

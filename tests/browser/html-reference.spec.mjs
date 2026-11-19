@@ -627,10 +627,10 @@ test.describe('generated HTML reference', () => {
     // History restoration intentionally keeps the member open. Close it explicitly
     // before exercising the fresh one-action expansion path.
     await expect(normalizeDetail).toHaveAttribute('open', '');
-    await normalizeDetail.locator('summary').click({position:{x:6,y:12}});
+    await normalizeDetail.locator(':scope > summary').click({position:{x:6,y:12}});
     await expect(normalizeDetail).not.toHaveAttribute('open', '');
     const typePageUrl = page.url();
-    await normalizeDetail.locator('summary').click({position:{x:6,y:12}});
+    await normalizeDetail.locator(':scope > summary').click({position:{x:6,y:12}});
     await expect(normalizeDetail).toHaveAttribute('open', '');
     await expect(normalizeDetail.locator('.cj-member__body')).toContainText('Parameters');
     await expect(normalizeDetail.locator('.cj-member__body')).toContainText('Returns');
@@ -769,8 +769,8 @@ test.describe('generated HTML reference', () => {
     await page.goBack();
     await expectStable(page);
 
-    await expect(page.locator('.cj-page-header__source')).not.toHaveCount(0);
-    await expect(page.locator('.cj-page-header__source a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
+    await expect(page.locator('main header.cj-page-header').getByRole('link', {name: 'View source', exact: true}))
+      .toHaveAttribute('href', /github\.com\/example\/reference\/blob\//);
     const memberHref = await memberActions(normalizeDetail).locator('.cj-member-actions__item--standalone').getAttribute('href');
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);

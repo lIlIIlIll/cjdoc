@@ -5,7 +5,7 @@
   "taskManifestSha256": "b9c412ec7553501667f42205764843d968f826a296bf801c5dba36c17c8ddbb2",
   "routeObserver": {
     "baseline": "552b3ed24464804c7d64eda4aa306973ecfa5105d4d7a0c8a5e37e456ddfff35",
-    "after": "619464335c70154595d315d7b870dad1952e13b661cd829d51172b65981d7bf8"
+    "after": "da233880c1b6ec1c4337fd5355fbcaa0b576144314b0068f6a3a0bc99e7f0bea"
   },
   "page": {
     "qualifiedName": "reader_scale.longContract",
