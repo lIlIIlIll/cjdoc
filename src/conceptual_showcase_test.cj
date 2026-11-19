@@ -186,8 +186,13 @@ class CapturedPageShowcaseTest {
             @Expect(guide.contains("<td>three</td>"))
             @Expect(guide.contains("<div class=\"cj-binding\">"), true)
             @Expect(!guide.contains("cjdoc-inline-binding"))
-            let stringPage = showcaseSymbolPage(artifacts, documentation.declarations[1].id)
-            @Expect(stringPage.contains("href=\"../concepts/guides/overload.html#standalone--doc-table-binding\""))
+            let stringId = documentation.declarations[1].id
+            let stringHref = showcaseSearchEntry(artifacts, stringId)["href"].asString()
+            let rootPrefix = StringBuilder()
+            for (_ in 0..stringHref.split("/").size - 1) { rootPrefix.append("../") }
+            let stringPage = showcaseSymbolPage(artifacts, stringId)
+            @Expect(stringPage.contains("href=\"" + rootPrefix.toString() +
+                "concepts/guides/overload.html#standalone--doc-table-binding\""))
             @Expect(stringPage.contains("Exact String overload · Table binding"))
         } finally { let _ = removeIfExists(root, recursive: true) }
     }

@@ -97,7 +97,7 @@ class I18nReturnIdentityTest {
         @Expect(returns, 1)
         var visible = false
         for (artifact in api_render.rendererFor("html").render(documentation)) {
-            if (artifact.path.startsWith("html/symbols/") && artifact.content.contains("Captured return description.")) {
+            if (canonicalHtmlBody(artifact) && artifact.content.contains("Captured return description.")) {
                 visible = true
             }
         }

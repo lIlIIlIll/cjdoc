@@ -87,7 +87,7 @@ class DeclarationGroupingContracts {
         }
         @Expect(sawMarkdownMember)
         var sawMembers = false
-        for (artifact in artifacts where artifact.path.startsWith("html/symbols/")) {
+        for (artifact in artifacts where canonicalHtmlBody(artifact)) {
             if (!artifact.content.contains("data-cjdoc-member-browser")) { continue }
             @Expect(artifact.content.contains("id=\"api-group-10-application\""))
             @Expect(artifact.content.contains("id=\"api-group-20-generated-spi\""))

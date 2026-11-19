@@ -73,6 +73,10 @@ internal func artifactContent(artifacts: Array<api_render.RenderArtifact>, path:
     throw IllegalArgumentException("missing render artifact '${path}'")
 }
 
+internal func canonicalHtmlBody(artifact: api_render.RenderArtifact): Bool {
+    artifact.path.startsWith("html/") && artifact.content.contains("data-cjdoc-symbol-id=\"")
+}
+
 internal func rendererFixture(markdown: api_model.MarkdownNode, summary: String, assets!: Array<api_model.AssetDoc> = []): api_model.DocumentationSet {
     let moduleId = "cjdoc:module:v1:renderer-test"
     let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-test::fixture::function:api#g0()"

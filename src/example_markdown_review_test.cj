@@ -61,8 +61,16 @@ class ExampleMarkdownReviewTest {
         var publishedPath = ""
         for (artifact in artifacts) { if (artifact.mediaType == "image/gif") { publishedPath = artifact.path } }
         @Assert(!publishedPath.isEmpty())
-        let html = renderedContent(artifacts)
-        @Expect(html.contains("src=\"../" + publishedPath.removePrefix("html/") + "\""))
+        var owner: ?api_render.RenderArtifact = None
+        for (artifact in artifacts where canonicalHtmlBody(artifact) && artifact.content.contains("alt=\"pixel\"")) {
+            @Assert(owner.isNone())
+            owner = Some(artifact)
+        }
+        let page = owner.getOrThrow()
+        let html = page.content
+        let rootPrefix = StringBuilder()
+        for (_ in 0..page.path.removePrefix("html/").split("/").size - 1) { rootPrefix.append("../") }
+        @Expect(html.contains("src=\"" + rootPrefix.toString() + publishedPath.removePrefix("html/") + "\""))
         @Expect(html.contains("alt=\"pixel\""))
         @Expect(html.contains("data-language=\"cangjie\""))
     }
@@ -95,7 +103,7 @@ class ExampleMarkdownReviewTest {
         let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
         var checkedPage = false
         for (artifact in artifacts) {
-            if (!artifact.path.startsWith("html/symbols/") || !artifact.content.contains("<div class=\"cj-examples\">")) { continue }
+            if (!canonicalHtmlBody(artifact) || !artifact.content.contains("<div class=\"cj-examples\">")) { continue }
             let html = artifact.content
             let ids = ArrayList<String>()
             for (part in html.split("id=\"")) {
