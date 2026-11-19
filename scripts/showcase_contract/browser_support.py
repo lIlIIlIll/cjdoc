@@ -161,7 +161,8 @@ def click_and_return(journey: Journey, link, expected_name: str, version: str | 
     expected = urljoin(old, link.get_attribute("href"))
     identity = link.get_attribute("data-report-symbol")
     journey.click(link)
-    if unquote(page.url) != unquote(expected):
+    if not (same_declaration_url(page.url, expected) if identity else
+            unquote(page.url) == unquote(expected)):
         raise AssertionError("link activation changed its native resolved route")
     require_text(page.locator("main"), expected_name)
     if identity:
