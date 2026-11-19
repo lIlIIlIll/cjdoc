@@ -16,6 +16,16 @@
 
 从 0.7.8 升级时，把 `cjdoc` 与配套 `chir-worker-main`（Windows 为 `.exe`）安装到同一目录。推荐下载归档包，它同时包含两个文件；单独下载主程序不包含 worker。现有 Doc IR v18 快照仍可离线重放，无需迁移。大型项目在 STS 1.2.0 上仍可能遇到 [Linux GC 崩溃](https://github.com/lIlIIlIll/cjdoc/issues/184)，此版本未修复该崩溃。
 
+### HTML 参考页
+
+- 带预期输出的示例默认在同一框内显示代码和输出，分别复制。长输出可展开；支持[正文式和宽屏并排布局](reference/doc-comments.md#html-示例布局)，窄屏始终上下排列。
+- 示例可整体折叠；在「显示设置 → 示例默认状态」选择默认展开或折叠。
+- 「显示设置」新增代码长行软换行、长输出默认展开和「恢复默认设置」。预期输出和复制内容保留原样。
+
+### PocketKit 示例
+
+- demo-v2 首页加入[双语文档注释指南](../examples/pocketkit/demo-v2/docs/doc-comments.md)，可从可复制的注释、示例与排错写法跳到实际生成的 API。
+
 ## 0.7.8（2026-11-16 发布）
 
 tag `v0.7.8` 指向提交 [`5c065af`](https://github.com/lIlIIlIll/cjdoc/commit/5c065affd2c45f61549c06808537731ce46b436b)。这个版本换了新的 HTML 站点界面，并采用 Doc IR v18 和新的查询、静态搜索协议。升级前请注意：

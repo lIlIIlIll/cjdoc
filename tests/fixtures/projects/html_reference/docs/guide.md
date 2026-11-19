@@ -15,3 +15,33 @@ let answer = referenceBox(42)
 ```
 <!-- cjdoc-bind target="html_reference_extra.ExtraBox" selector="type" -->
 ````
+
+## Review multiline output
+
+```cangjie
+println("  <script>globalThis.exampleOutputRan = true</script>\tvalue")
+println("")
+for (line in 3..=13) { println(line) }
+```
+
+```output layout=prose
+  <script>globalThis.exampleOutputRan = true</script>	value
+
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+```
+
+The following result is shown on its own. Its tab-delimited columns should stay on one line.
+
+```output
+id:		0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```

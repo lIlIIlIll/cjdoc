@@ -42,6 +42,33 @@ severity = "warning"
 symbols = 80
 parameters = 80
 
+[[metadata.groups]]
+package = "pocketkit.io"
+owner = "pocketkit.io.TextReader"
+id = "10-cursor"
+title = "读取位置"
+order = 10
+
+[metadata.groups.titles]
+zh-CN = "读取位置"
+en = "Reading position"
+
+[[metadata.tags]]
+id = "cursor"
+title = "游标"
+
+[metadata.tags.titles]
+zh-CN = "游标"
+en = "Cursor"
+
+[[metadata.tags]]
+id = "reading"
+title = "读取"
+
+[metadata.tags.titles]
+zh-CN = "读取"
+en = "Reading"
+
 [[docs.pages]]
 id = "first-catalogue"
 language = "en"
@@ -56,3 +83,39 @@ store-read = "store-and-read-text"
 snapshot-clear = "keep-a-snapshot"
 index-errors = "check-the-index"
 reader-close = "close-the-reading-session"
+
+[[docs.pages]]
+id = "doc-comments"
+language = "zh-CN"
+source = "docs/doc-comments.md"
+route = "concepts/guides/doc-comments"
+title = "文档注释示例"
+package = "pocketkit"
+
+[docs.pages.sections]
+fields = "参数与返回值"
+contracts = "行为契约"
+alerts = "提示与列表"
+examples = "示例与输出"
+metadata = "弃用与版本"
+classification = "分组与分类"
+languages = "提供译文"
+troubleshooting = "写错怎么办"
+
+[[docs.pages]]
+id = "doc-comments"
+language = "en"
+source = "docs/en/doc-comments.md"
+route = "concepts/guides/doc-comments"
+title = "Doc comment examples"
+package = "pocketkit"
+
+[docs.pages.sections]
+fields = "parameters-returns-and-links"
+contracts = "behavioral-contracts"
+alerts = "alerts-and-lists"
+examples = "examples-and-output"
+metadata = "deprecation-and-versions"
+classification = "groups-and-tags"
+languages = "provide-translations"
+troubleshooting = "fix-common-mistakes"

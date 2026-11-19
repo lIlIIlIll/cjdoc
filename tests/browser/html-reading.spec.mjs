@@ -127,6 +127,181 @@ async function readingMetrics(page) {
   });
 }
 
+const authoringGuidePath = 'concepts/guides/doc-comments.html';
+
+function authoringBinding(page, name) {
+  return page.locator('.cj-guide .cj-binding > a').getByText(name, {exact: true});
+}
+
+test('authoring guide leads from the homepage to alerts and checked examples', async ({page}) => {
+  await page.setViewportSize({width: 1440, height: 900});
+  const {home} = await routes(page, 'zh-CN', 'root');
+  const guide = new URL(authoringGuidePath, home).href;
+  const alerts = manifestSectionUrl('zh-CN', home, guide, 'alerts');
+  await page.goto(home);
+  const intro = page.locator('.cj-home-intro');
+  const sample = intro.locator('.cj-example-pair--prose');
+  await expect(sample.locator('.cj-example-pair__code pre code')).toContainText('println(saved[0])');
+  await expect(sample.locator('.cj-example-pair__output pre code')).toHaveText('hello');
+  await expect(sample.locator('nav.cj-reading-paths')).toHaveCount(0);
+  await intro.getByRole('link', {name: '编写文档注释', exact: true}).click();
+  await expect(page).toHaveURL(guide);
+
+  const article = page.locator('.cj-guide');
+  await expect(article.locator('.cj-binding > .cj-bindings__state')).toHaveCount(0);
+  await article.getByRole('link', {name: '提示与列表', exact: true}).first().click();
+  await expect(page).toHaveURL(alerts);
+  await expect(article.locator('aside.cj-admonition')).toHaveCount(3);
+  for (const level of ['note', 'warning', 'danger']) {
+    await expect(article.locator(`aside[data-admonition-level="${level}"]`)).toBeVisible();
+  }
+  await expect(article.locator('blockquote').filter({hasText: '[!DANGER]'})).toBeVisible();
+
+  await authoringBinding(page, 'join(String)').click();
+  await expect(page.locator('.cj-signature')).toContainText('separator!: String = ","');
+  const joinAlerts = page.locator('main aside.cj-admonition');
+  await expect(joinAlerts.locator('.cj-admonition__body')).toHaveText([
+    /保留条目的插入顺序和重复项/,
+    /分隔符可以包含多个字符/,
+    /逗号、引号和换行不会转义/,
+    /只含一个空字符串的目录都会返回空字符串/,
+    /不要用连接结果覆盖原始数据/,
+    /不要将结果直接写入按行解析的审计日志/,
+  ]);
+  const examplePair = page.locator('.cj-example .cj-example-pair--stacked');
+  const codePanel = examplePair.locator('.cj-example-pair__code');
+  const outputPanel = examplePair.locator('.cj-example-pair__output');
+  const [codeBox, outputBox] = await Promise.all([codePanel.boundingBox(), outputPanel.boundingBox()]);
+  expect(outputBox.x).toBe(codeBox.x);
+  expect(outputBox.y).toBeGreaterThanOrEqual(codeBox.y + codeBox.height - 1);
+  const background = panel => panel.evaluate(node => getComputedStyle(node).backgroundColor);
+  expect(await background(outputPanel)).not.toBe(await background(codePanel));
+  const joinOutput = outputPanel.locator('pre code');
+  expect((await joinOutput.textContent()).trimEnd()).toBe('a,b\na / b\nab\nempty: []');
+  await page.goBack();
+  await expect(page).toHaveURL(alerts);
+
+  await authoringBinding(page, 'window(Int64, Int64)').click();
+  const unordered = page.locator('aside[data-admonition-level="note"] .cj-admonition__body ul > li');
+  const ordered = page.locator('aside[data-admonition-level="warning"] .cj-admonition__body ol > li');
+  await expect(unordered).toHaveText([/limit: 0/, /不会移除或重排/]);
+  await expect(ordered).toHaveText([/校验起点/, /按实际长度读取/]);
+  const windows = page.locator('.cj-example');
+  await expect(windows).toHaveCount(4);
+  for (const [i, output] of [
+    'b\nc',
+    'default length: 3\ntail length: 1',
+    'at end: 0\nzero limit: 0\nempty catalogue: 0',
+    'start=-1, limit=1: IllegalArgumentException\nstart=2, limit=1: IllegalArgumentException\nstart=0, limit=-1: IllegalArgumentException',
+  ].entries()) {
+    const example = windows.nth(i);
+    await expect(example.getByText('预期输出', {exact: true})).toBeVisible();
+    const blocks = example.locator('pre code');
+    await expect(blocks).toHaveCount(i === 0 ? 3 : 2);
+    expect((await blocks.last().textContent()).trimEnd()).toBe(output);
+  }
+
+  await page.goBack();
+  const englishHome = new URL('../en/index.html', home).href;
+  const englishGuide = new URL(authoringGuidePath, englishHome).href;
+  const englishAlerts = manifestSectionUrl('en', englishHome, englishGuide, 'alerts');
+  await page.locator('.cj-lang-toggle__current').click();
+  await page.locator('.cj-lang-toggle a[hreflang="en"]').click();
+  await expect(page).toHaveURL(englishAlerts);
+  await expect(page.getByRole('heading', {name: 'Alerts and lists'})).toBeVisible();
+});
+
+test('authoring guide exposes classification and deprecation on real API pages', async ({page}) => {
+  await page.setViewportSize({width: 1440, height: 900});
+  const {home} = await routes(page, 'zh-CN', 'root');
+  const guide = new URL(authoringGuidePath, home).href;
+  await page.goto(guide);
+  await authoringBinding(page, 'TextReader').click();
+  const group = page.locator('section[data-cjdoc-declaration-group="10-cursor"]');
+  await expect(group.getByRole('heading', {name: /读取位置/})).toBeVisible();
+  const members = '[data-cjdoc-member]';
+  const names = scope => scope.evaluateAll(nodes => nodes.map(node => node.dataset.memberName));
+  expect(await names(group.locator(members))).toEqual(['read', 'rewind']);
+  const read = group.locator('.cj-member-row').filter({has: page.locator('[data-member-name="read"]')});
+  await expect(read.getByRole('link', {name: '游标', exact: true})).toHaveCount(1);
+  await expect(read.getByRole('link', {name: '读取', exact: true})).toBeVisible();
+  const originalNames = await names(page.locator(`${members}:visible`));
+  const filter = page.locator('[data-cjdoc-member-filter]');
+  await filter.fill('tag:cursor tag:reading');
+  await expect.poll(() => names(page.locator(`${members}:visible`))).toEqual(['read']);
+  await filter.fill('');
+  await expect.poll(() => names(page.locator(`${members}:visible`))).toEqual(originalNames);
+  await expect(group.locator('[data-member-name="rewind"]')).toBeVisible();
+
+  await page.goBack();
+  await authoringBinding(page, 'requireFirstText(TextCatalog)').click();
+  await expect(page.locator('.cj-note--callout').filter({hasText: '已弃用'})).toContainText(/catalog\.first\(\).*None.*Some\(""\)/);
+  await expect(page.locator('.cj-throws__row dt')).toHaveText(['IllegalStateException', 'IllegalArgumentException']);
+  const authors = page.getByRole('heading', {name: '作者', exact: true});
+  await expect(authors.locator('+ ul > li')).toHaveText(['PocketKit', 'Documentation team']);
+  const related = page.locator('.cj-see-also__list a');
+  await expect(related).toHaveText(['pocketkit.TextCatalog.first', 'pocketkit.TextCatalog.isEmpty']);
+  for (const link of await related.all()) await expect(link).toHaveAttribute('href', /symbols\/.+\.html/);
+  const exceptional = page.locator('.cj-example').filter({hasText: '首项与两种异常'});
+  const results = exceptional.locator('pre code').last();
+  expect((await results.textContent()).trimEnd()).toBe('alpha\nempty: IllegalStateException\nblank: IllegalArgumentException');
+  const quiet = page.locator('.cj-example').filter({hasText: '不打印也可以核对输出'});
+  await expect(quiet.getByText(/空围栏要求没有标准输出/)).toBeVisible();
+  await expect(quiet.getByText('预期无标准输出。', {exact: true})).toBeVisible();
+  await expect(quiet.locator('.cj-example-pair__output pre')).toHaveCount(0);
+  await expect(page.locator('.cj-example').filter({hasText: '只编译，不运行'}).locator('.cj-example-pair__output')).toHaveCount(0);
+});
+
+test('authoring guide keeps the same alerts section readable in a narrow offline file', async ({page}) => {
+  await page.setViewportSize({width: 390, height: 844});
+  const {home} = await routes(page, 'zh-CN', 'file');
+  const guide = new URL(authoringGuidePath, home).href;
+  const alerts = manifestSectionUrl('zh-CN', home, guide, 'alerts');
+  await page.goto(alerts);
+  await expect(page).toHaveURL(alerts);
+  await expect(page.getByRole('heading', {name: '提示与列表', exact: true})).toBeVisible();
+  await expect(page.locator('.cj-guide aside[data-admonition-level="note"]')).toContainText('用提示记录容易忽略的细节。');
+  await expect(authoringBinding(page, 'window(Int64, Int64)')).toBeVisible();
+  const metrics = await readingMetrics(page);
+  expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
+});
+
+test('authoring guide side-by-side examples stack on narrow screens and touch devices', async ({page, browser}) => {
+  await page.setViewportSize({width: 1440, height: 900});
+  const {home} = await routes(page, 'en', 'root');
+  const guide = new URL(authoringGuidePath, home).href;
+  const section = manifestSectionUrl('en', home, guide, 'examples');
+  await page.goto(section);
+  const pair = page.locator('.cj-example-pair--side-by-side');
+  const code = pair.locator('.cj-example-pair__code');
+  const output = pair.locator('.cj-example-pair__output');
+  await expect(output.locator('pre code')).toHaveText('a / b');
+  const wideCode = await code.boundingBox();
+  const wideOutput = await output.boundingBox();
+  expect(wideOutput.y).toBe(wideCode.y);
+  expect(wideOutput.x).toBeGreaterThan(wideCode.x);
+
+  await page.setViewportSize({width: 390, height: 844});
+  const narrowCode = await code.boundingBox();
+  const narrowOutput = await output.boundingBox();
+  expect(narrowOutput.x).toBe(narrowCode.x);
+  expect(narrowOutput.y).toBeGreaterThan(narrowCode.y);
+  const {scroll, width} = await readingMetrics(page);
+  expect(scroll).toBeLessThanOrEqual(width + 1);
+
+  const mobile = await browser.newContext({isMobile: true, hasTouch: true, viewport: {width: 1040, height: 600}});
+  try {
+    const landscape = await mobile.newPage();
+    await landscape.goto(section);
+    const codeBox = await landscape.locator('.cj-example-pair__code').boundingBox();
+    const outputBox = await landscape.locator('.cj-example-pair__output').boundingBox();
+    expect(outputBox.x).toBe(codeBox.x);
+    expect(outputBox.y).toBeGreaterThan(codeBox.y);
+  } finally {
+    await mobile.close();
+  }
+});
+
 for (const transport of ['root','subpath','file']) {
   test(`four reading roles retain complete content on ${transport}`, async ({page}) => {
     for (const locale of ['zh-CN','en']) {
@@ -280,8 +455,14 @@ test('display settings appear only on first open and stay one reusable instance'
   await expect(trigger).toHaveAttribute('aria-expanded','true');
   await expect(popover).toHaveAttribute('aria-labelledby','cjdoc-settings-title');
   await expect(popover.locator('h2.cj-settings__title')).toHaveText('Display');
-  await expect(popover.locator('.cj-settings__group')).toHaveCount(3);
-  await expect(popover.locator('.cj-settings__legend')).toHaveText(['Theme','Font','Text size']);
+  const codeLines = popover.getByRole('group', {name: 'Long code lines', exact: true});
+  await expect(codeLines).toHaveAccessibleDescription('Only changes how code is shown, not copied text or expected output.');
+  await expect(codeLines.getByRole('button', {name: 'Scroll horizontally', pressed: true})).toBeVisible();
+  const longOutput = popover.getByRole('group', {name: 'Long output by default', exact: true});
+  await expect(longOutput).toHaveAccessibleDescription('Does not change the whole example.');
+  await expect(longOutput.getByRole('button', {name: 'Collapsed', pressed: true})).toBeVisible();
+  await expect(popover.getByRole('group', {name: 'Examples by default', exact: true})
+    .getByRole('button', {name: 'Expanded', pressed: true})).toBeVisible();
   await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
   await expect(popover.locator('[data-cjdoc-font-value]')).toHaveCount(3);
   await expect(popover.locator('[data-cjdoc-size-value]')).toHaveCount(3);
@@ -397,7 +578,15 @@ test('Chinese settings copy and the modal sheet stay intact on the first open', 
   await trigger.click();
   await expect(popover).toBeVisible();
   await expect(popover.locator('#cjdoc-settings-title')).toHaveText('显示');
-  await expect(popover.locator('.cj-settings__legend')).toHaveText(['主题','字体','字号']);
+  const codeLines = popover.getByRole('group', {name: '代码块长行', exact: true});
+  await expect(codeLines).toHaveAccessibleDescription('只改变代码显示，不改变复制内容或预期输出。');
+  await codeLines.getByRole('button', {name: '自动换行', exact: true}).click();
+  await expect(codeLines.getByRole('button', {name: '自动换行', pressed: true})).toBeVisible();
+  const longOutput = popover.getByRole('group', {name: '长输出默认状态', exact: true});
+  await expect(longOutput).toHaveAccessibleDescription('不改变整个示例的状态。');
+  await longOutput.getByRole('button', {name: '展开', exact: true}).click();
+  await expect(longOutput.getByRole('button', {name: '展开', pressed: true})).toBeVisible();
+  await expect(popover.getByRole('button', {name: '恢复默认设置', exact: true})).toBeVisible();
   await expect(popover.locator('[data-cjdoc-theme-value="paper"] span').last()).toHaveText('纸色');
   await expect(popover.locator('[data-cjdoc-theme-value="system"] span').last()).toHaveText('跟随系统');
   await expect(popover.locator('[data-cjdoc-font-value="mono-ui"] span').last()).toHaveText('等宽');
@@ -418,6 +607,188 @@ test('Chinese settings copy and the modal sheet stay intact on the first open', 
   await page.keyboard.press('Escape');
   await expect(popover).toBeHidden();
   await expect(trigger).toBeFocused();
+});
+
+test('reader preferences: reset keeps search and navigation state on a short screen', async ({page}) => {
+  await page.setViewportSize({width: 390, height: 568});
+  await page.emulateMedia({colorScheme: 'light'});
+  const {home} = await routes(page, 'en', 'root');
+  await page.goto(new URL('?theme=dark&keep=1#packages', home).href);
+  const root = page.locator('html');
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+  await page.locator('[data-cjdoc-search-trigger]').click();
+  await page.locator('[data-cjdoc-kind]').selectOption('function');
+  const searchState = () => page.evaluate(() => history.state?.cjdocSearchFilters);
+  const filters = await searchState();
+  expect(filters).toMatchObject({kind: 'function'});
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    localStorage.setItem('other-preference', 'keep-local');
+    sessionStorage.setItem('other-state', 'keep-session');
+  });
+
+  const trigger = page.locator('[data-cjdoc-theme-toggle]');
+  const dialog = page.getByRole('dialog', {name: 'Display'});
+  const option = (name, choice) => dialog.getByRole('group', {name, exact: true})
+    .getByRole('button', {name: choice, exact: true});
+  const reset = dialog.getByRole('button', {name: 'Reset display settings', exact: true});
+  const close = dialog.getByRole('button', {name: 'Close', exact: true});
+  await trigger.click();
+  await option('Font', 'Serif').click();
+  await option('Text size', 'L').click();
+  await expect(root).toHaveAttribute('data-cj-size', 'l');
+  const before = await close.boundingBox();
+  for (const [name, choice, change] of [
+    ['Long code lines', 'Scroll horizontally', false],
+    ['Long code lines', 'Wrap', true],
+    ['Examples by default', 'Expanded', false],
+    ['Examples by default', 'Collapsed', true],
+    ['Long output by default', 'Expanded', true],
+    ['Long output by default', 'Collapsed', false],
+  ]) {
+    const button = option(name, choice);
+    // A preference can reflow the document; moving focus within the panel cannot.
+    const backgroundScroll = await page.evaluate(() => window.scrollY);
+    await page.keyboard.press('Tab');
+    await expect(button).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(backgroundScroll);
+    if (change) {
+      await page.keyboard.press('Space');
+      await expect(button).toHaveAttribute('aria-pressed', 'true');
+    }
+  }
+  const backgroundScroll = await page.evaluate(() => window.scrollY);
+  await page.keyboard.press('Tab');
+  await expect(reset).toBeFocused();
+  await expect(reset).toBeInViewport();
+  const panel = await dialog.evaluate(node => ({
+    scrollTop: node.scrollTop, horizontal: node.scrollWidth - node.clientWidth, pageScroll: window.scrollY,
+  }));
+  expect(panel.scrollTop).toBeGreaterThan(0);
+  expect(panel.horizontal).toBe(0);
+  expect(panel.pageScroll).toBe(backgroundScroll);
+  expect((await close.boundingBox()).y).toBeCloseTo(before.y, 0);
+
+  await page.keyboard.press('Enter');
+  await expect(reset).toBeFocused();
+  await expect(dialog.getByRole('status')).toHaveText('Display settings reset.');
+  for (const [name, choice] of [
+    ['Theme', 'System'], ['Font', 'System'], ['Text size', 'M'], ['Long code lines', 'Scroll horizontally'],
+    ['Examples by default', 'Expanded'], ['Long output by default', 'Collapsed'],
+  ]) {
+    await expect(option(name, choice)).toHaveAttribute('aria-pressed', 'true');
+  }
+  for (const attribute of ['data-theme', 'data-cj-font', 'data-cj-size', 'data-cj-code-lines']) {
+    expect(await root.getAttribute(attribute)).toBeNull();
+  }
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('[data-cjdoc-theme-label]')).toHaveText('Theme: System');
+  expect(new URL(page.url()).searchParams.get('theme')).toBe('system');
+  expect(new URL(page.url()).searchParams.get('keep')).toBe('1');
+  expect(new URL(page.url()).hash).toBe('#packages');
+  expect(await searchState()).toEqual(filters);
+  expect(await page.evaluate(() => [
+    localStorage.getItem('cjdoc-reader'),
+    localStorage.getItem('other-preference'),
+    sessionStorage.getItem('other-state'),
+  ])).toEqual([null, 'keep-local', 'keep-session']);
+
+  await option('Text size', 'M').click();
+  await expect(dialog.getByRole('status')).toBeEmpty();
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+  await page.reload();
+  await expect(root).not.toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('[data-cjdoc-theme-label]')).toHaveText('Theme: System');
+  await trigger.press('Enter');
+  await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(trigger).toBeFocused();
+  await trigger.press('Enter');
+  await page.keyboard.press('Control+k');
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+});
+
+test('reader preferences: wrap follows the language switch and paints before search.js', async ({page}) => {
+  const {home, guide} = await routes(page, 'zh-CN', 'root');
+  await page.goto(home);
+  await page.locator('[data-cjdoc-theme-toggle]').click();
+  await page.getByRole('group', {name: '代码块长行', exact: true})
+    .getByRole('button', {name: '自动换行', exact: true}).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cj-home-intro pre').first()).toHaveCSS('white-space', 'pre-wrap');
+  await page.locator('.cj-home-intro').getByRole('link', {name: '调用 PocketKit', exact: true}).click();
+  await expect(page).toHaveURL(guide);
+  await expect(page.locator('.cj-guide pre').first()).toHaveCSS('white-space', 'pre-wrap');
+  await page.locator('.cj-lang-toggle__current').click();
+  await page.locator('.cj-lang-toggle a[hreflang="en"]').click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  const code = page.locator('.cj-guide pre').first();
+  await expect(code).toHaveCSS('white-space', 'pre-wrap');
+
+  await page.route('**/search.js', route => route.abort());
+  await page.reload();
+  await expect(code).toHaveCSS('white-space', 'pre-wrap');
+  await expect(page.locator('dialog')).toHaveCount(0);
+});
+
+test('Example disclosure preference applies across pages without saving individual toggles', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  const {home} = await routes(page, 'zh-CN', 'root');
+  await page.goto(home);
+  const sample = page.locator('.cj-home-intro .cj-example-pair--prose');
+  const summary = sample.locator('.cj-example__summary');
+  const output = sample.locator('.cj-example-pair__output pre code');
+  await expect(output).toHaveText('hello');
+  await summary.press('Enter');
+  await expect(summary).toBeVisible();
+  await expect(output).toBeHidden();
+  await summary.press('Enter');
+  await expect(output).toBeVisible();
+
+  const settings = page.getByRole('group', {name: '示例默认状态'});
+  const longOutputs = page.getByRole('group', {name: '长输出默认状态'});
+  const trigger = page.locator('[data-cjdoc-theme-toggle]');
+  await trigger.click();
+  await longOutputs.getByRole('button', {name: '展开', exact: true}).click();
+  await expect(sample.locator('.cj-example-pair__disclosure')).toHaveCount(0);
+  await expect(settings.getByRole('button', {name: '展开'})).toHaveAttribute('aria-pressed', 'true');
+  await settings.getByRole('button', {name: '折叠'}).click();
+  await page.keyboard.press('Escape');
+  await expect(output).toBeHidden();
+
+  await page.locator('.cj-home-intro').getByRole('link', {name: '编写文档注释', exact: true}).click();
+  const comparison = page.locator('.cj-guide .cj-example-pair--side-by-side');
+  await expect(comparison.locator('.cj-example__summary')).toBeVisible();
+  await expect(comparison.locator('.cj-example-pair__output')).toBeHidden();
+  await authoringBinding(page, 'window(Int64, Int64)').click();
+  const cases = page.locator('.cj-example');
+  const caseOutputs = cases.locator('.cj-example-pair__output');
+  await expect(cases.locator('.cj-example__summary:visible')).toHaveCount(4);
+  await expect(caseOutputs.filter({visible: true})).toHaveCount(0);
+  await cases.first().locator('.cj-example__summary').press('Enter');
+  await expect(caseOutputs.first()).toBeVisible();
+  await expect(caseOutputs.filter({visible: true})).toHaveCount(1);
+  await page.reload();
+  await expect(caseOutputs.filter({visible: true})).toHaveCount(0);
+
+  await trigger.click();
+  await expect(settings.getByRole('button', {name: '折叠'})).toHaveAttribute('aria-pressed', 'true');
+  await settings.getByRole('button', {name: '展开'}).click();
+  await page.keyboard.press('Escape');
+  await expect(caseOutputs.filter({visible: true})).toHaveCount(4);
+  await trigger.click();
+  await longOutputs.getByRole('button', {name: '折叠', exact: true}).click();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(caseOutputs.filter({visible: true})).toHaveCount(4);
+  await page.goBack();
+  await authoringBinding(page, 'requireFirstText(TextCatalog)').click();
+  const quiet = page.locator('.cj-example').filter({hasText: '不打印也可以核对输出'});
+  await expect(quiet.getByText('预期无标准输出。', {exact: true})).toBeVisible();
+  await expect(quiet.locator('.cj-example-pair__disclosure')).toHaveCount(0);
 });
 
 test('mobile member filters yield to the first complete signature and retain active criteria', async ({page}) => {

@@ -15,16 +15,33 @@ public interface Readable {
  * read 和 rewind 抛出异常。没有文件描述符、网络连接或后台线程需要销毁。
  * 不提供内部同步，调用方不得在多个线程间无同步地共享可变读取位置。
  *
+ * @state 读到末尾时 `read()` 返回 `None`，会话仍然打开。
+ * @state[lang=en] At EOF, `read()` returns `None` and the session stays open.
+ * @invariant 会话一旦关闭就不会重新打开。
+ * @invariant[lang=en] Once closed, the session never reopens.
+ * @concurrency 多个线程共享读取位置时，调用方必须同步访问。
+ * @concurrency[lang=en] Callers must synchronize access when sharing the cursor across threads.
+ * @platform 只读内存文本，不打开文件句柄。
+ * @platform[lang=en] Reads in-memory text without opening a file handle.
  * @see pocketkit.io.Readable
- * @example 读取并关闭会话
- * ```cj
+ * @example 读取并关闭会话 {run}
+ * ```cangjie
  * let reader = openText("first\nsecond")
- * assert(reader.read() == Some("first"))
- * assert(reader.read() == Some("second"))
- * assert(reader.read() == None)
+ * println(reader.read().getOrThrow())
+ * println(reader.read().getOrThrow())
+ * println("eof: ${reader.read().isNone()}")
  * reader.close()
  * reader.close()
- * assert(reader.closed)
+ * println("closed: ${reader.closed}")
+ * ```
+ *
+ * **预期输出 / Expected output**
+ *
+ * ```output
+ * first
+ * second
+ * eof: true
+ * closed: true
  * ```
  */
 public class TextReader <: Readable {
@@ -48,6 +65,10 @@ public class TextReader <: Readable {
      * @return 下一行，读取结束时返回 None。
      * @throws IllegalStateException 会话已经关闭。
      * @postcondition 成功读取时 position 增加一；结束时不再前进。
+     * @group 10-cursor 读取位置
+     * @tag cursor
+     * @tag reading
+     * @tag cursor
      */
     public func read(): ?String {
         if (isClosed) { throw IllegalStateException("reader is closed") }
@@ -60,6 +81,8 @@ public class TextReader <: Readable {
     /**
      * 回到第一行。
      * @throws IllegalStateException 会话已经关闭。
+     * @group 10-cursor
+     * @tag cursor
      */
     public func rewind(): Unit {
         if (isClosed) { throw IllegalStateException("reader is closed") }

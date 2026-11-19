@@ -429,14 +429,30 @@ assert.equal(boot("?theme=system", {"cjdoc-theme": "dark"})["data-theme"], undef
 assert.equal(boot("", {"cjdoc-theme": "dark"})["data-theme"], "dark");
 assert.equal(boot("?theme=ocean", {"cjdoc-theme": "dark"})["data-theme"], "ocean");
 assert.equal(boot("?theme=bogus", {"cjdoc-theme": "paper"})["data-theme"], "paper");
-const reader = boot("", {"cjdoc-reader": JSON.stringify({font: "serif", size: "l"})});
+const bootReader = value => boot("", {"cjdoc-reader": JSON.stringify(value)});
+const reader = bootReader({font: "serif", size: "l", examples: "collapsed"});
 assert.equal(reader["data-cj-font"], "serif");
 assert.equal(reader["data-cj-size"], "l");
 assert.equal("data-cj-js" in reader, true);
-const hostile = boot("", {"cjdoc-reader": JSON.stringify({font: "x\" onload=\"y", size: "xl"})});
+assert.equal(reader["data-cj-code-lines"], undefined);
+const expanded = bootReader({font: "mono-ui", size: "s", codeLines: "wrap", longOutput: "expanded"});
+assert.equal(expanded["data-cj-font"], "mono-ui");
+assert.equal(expanded["data-cj-size"], "s");
+assert.equal(expanded["data-cj-code-lines"], "wrap");
+assert.equal(bootReader({codeLines: "scroll", longOutput: "collapsed"})["data-cj-code-lines"], undefined);
+const mixed = bootReader({font: "serif", codeLines: "Wrap", longOutput: ["expanded"]});
+assert.equal(mixed["data-cj-font"], "serif");
+assert.equal(mixed["data-cj-code-lines"], undefined);
+const hostile = bootReader({font: "x\" onload=\"y", size: "xl", codeLines: {value: "wrap"}});
 assert.equal("data-cj-font" in hostile, false);
 assert.equal("data-cj-size" in hostile, false);
-assert.equal("data-cj-font" in boot("", {"cjdoc-reader": "{not json"}), false);
+assert.equal(hostile["data-cj-code-lines"], undefined);
+for (const raw of ["{not json", "[]", '[{"codeLines":"wrap"}]', "null", '"wrap"']) {
+  const invalid = boot("", {"cjdoc-reader": raw});
+  assert.equal(invalid["data-cj-font"], undefined);
+  assert.equal(invalid["data-cj-size"], undefined);
+  assert.equal(invalid["data-cj-code-lines"], undefined);
+}
 """
         self.run_node(canonical_theme_bootstrap_script(), harness)
 

@@ -190,7 +190,10 @@ html:not([data-cj-js]) .cj-members__toolbar { display: none; }
   .cj-layout { display: block; }
   .cj-main { padding: 0; }
   .cj-content { max-width: none; }
-  .cj-member::details-content { content-visibility: visible; display: block; height: auto; }
+  .cj-member::details-content, [data-cjdoc-example]::details-content, .cj-example-pair__disclosure::details-content {
+    content-visibility: visible; display: block; height: auto;
+  }
+  .cj-example-pair__disclosure > summary { display: none; }
   a { color: inherit; text-decoration: underline; }
   pre { white-space: pre-wrap; overflow: visible; overflow-wrap: anywhere; }
 }

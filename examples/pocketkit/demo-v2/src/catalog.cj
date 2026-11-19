@@ -14,14 +14,22 @@ import std.collection.*
  * Instances do not synchronize access internally. Arrange synchronization between concurrent readers and writers.
  * A snapshot preserves its entries after later catalogue changes.
  *
- * @example 顺序、重复值和快照
+ * @example 顺序、重复值和快照 {run}
  * ```cangjie
  * let catalog = TextCatalog(["alpha", "beta", "alpha"])
- * assert(catalog.size == 3)
- * assert(catalog.at(0) == "alpha")
+ * println("first: ${catalog.at(0)}")
  * let saved = catalog.snapshot()
  * catalog.clear()
- * assert(saved.size == 3)
+ * println("snapshot: ${saved.size}")
+ * println("after clear: ${catalog.size}")
+ * ```
+ *
+ * **预期输出 / Expected output**
+ *
+ * ```output
+ * first: alpha
+ * snapshot: 3
+ * after clear: 0
  * ```
  * @see Stamp
  * @see pocket_support.SourceLabel
@@ -49,11 +57,31 @@ public class TextCatalog {
      * @param[lang=en] value The text to store unchanged; empty strings are allowed.
      * @postcondition size 比调用前增加一。
      * @postcondition[lang=en] size increases by one.
-     * @example 追加后按位置读取
-     * ```cj
+     * @example 追加后按位置读取 {run}
+     * ```cangjie
      * let catalog = TextCatalog()
      * catalog.add("hello")
-     * assert(catalog.at(0) == "hello")
+     * println(catalog.at(0))
+     * ```
+     *
+     * **预期输出 / Expected output**
+     *
+     * ```output
+     * hello
+     * ```
+     * @example[lang=en] Keep an empty entry {run}
+     * ```cangjie
+     * let catalog = TextCatalog()
+     * catalog.add("")
+     * println("count: ${catalog.size}")
+     * println("bytes: ${catalog.at(0).size}")
+     * ```
+     *
+     * **Expected output**
+     *
+     * ```output
+     * count: 1
+     * bytes: 0
      * ```
      */
     public func add(value: String): Unit { values.add(value) }
@@ -65,6 +93,10 @@ public class TextCatalog {
      * @param radix 仅支持十进制，默认值是 10。
      * @throws IllegalArgumentException radix 不是 10。
      * @postcondition 新条目与 value.toString() 相同。
+     * @compatibility 旧的单参数调用仍有效，使用默认的十进制。
+     * @compatibility[lang=en] Existing calls with one argument still use decimal.
+     * @error `radix` 不是 10 时，不追加任何条目。
+     * @error[lang=en] A `radix` other than 10 leaves the catalogue unchanged.
      */
     public func add(value: Int64, radix!: Int64 = 10): Unit {
         if (radix != 10) { throw IllegalArgumentException("only decimal radix is supported") }
@@ -87,7 +119,12 @@ public class TextCatalog {
      * 判断目录是否包含与输入完全相等的文本。
      * @param value 区分大小写的匹配文本。
      * @return 至少存在一项匹配时返回 true。
-     * @performance 最多检查 size 个条目，这是作者说明的复杂度。
+     * @performance 最多检查 `size` 个条目。
+     * @performance[lang=en] Checks at most `size` entries.
+     * @example
+     * ```cangjie
+     * let _ = TextCatalog(["a"]).contains("a")
+     * ```
      */
     public func contains(value: String): Bool {
         for (entry in values) { if (entry == value) { return true } }
@@ -180,6 +217,37 @@ public class TextCatalog {
      * 用显式分隔符连接条目；空目录返回空字符串。
      * @param separator 分隔符，默认是逗号，不进行转义。
      * @return 连接后的文本，不声称这是 CSV 编码。
+     *
+     * @note[id=join-order] 连接结果保留条目的插入顺序和重复项。
+     * @note[lang=en,id=join-order] The result preserves insertion order and duplicate entries.
+     * @note[id=join-custom-separator] 分隔符可以包含多个字符。例如，`separator: " / "` 会把 `["a", "b"]` 连接成 `a / b`。
+     * @note[lang=en,id=join-custom-separator] The separator can contain multiple characters. For example, `separator: " / "` joins `["a", "b"]` as `a / b`.
+     * @warning[id=join-csv] 条目中的逗号、引号和换行不会转义。生成 CSV 时请使用专用编码器。
+     * @warning[lang=en,id=join-csv] Commas, quotes, and newlines in entries are not escaped. Use a CSV encoder to produce CSV.
+     * @warning[id=join-empty-result] 空目录和只含一个空字符串的目录都会返回空字符串。请用 `isEmpty()` 判断目录是否为空。
+     * @warning[lang=en,id=join-empty-result] An empty catalogue and a catalogue containing one empty string both return an empty string. Use `isEmpty()` to tell them apart.
+     * @danger[id=join-backup] 不要用连接结果覆盖原始数据。例如，使用默认分隔符时，`["a,b", "c"]` 和 `["a", "b,c"]` 都会得到 `a,b,c`，无法还原。
+     * @danger[lang=en,id=join-backup] Do not overwrite the original data with this result. With the default separator, `["a,b", "c"]` and `["a", "b,c"]` both produce `a,b,c`, so the original entries cannot be recovered.
+     * @danger[id=join-audit-log] 不要将结果直接写入按行解析的审计日志。条目中的换行会把一条记录拆成多条；请用能转义换行的日志格式。
+     * @danger[lang=en,id=join-audit-log] Do not write the result directly to a line-based audit log. A newline in an entry can split one record into several; use a log format that escapes newlines.
+     *
+     * @example 默认、自定义与空分隔符 {run}
+     * ```cangjie
+     * let catalog = TextCatalog(["a", "b"])
+     * println(catalog.join())
+     * println(catalog.join(separator: " / "))
+     * println(catalog.join(separator: ""))
+     * println("empty: [${TextCatalog().join()}]")
+     * ```
+     *
+     * **预期输出 / Expected output**
+     *
+     * ```output
+     * a,b
+     * a / b
+     * ab
+     * empty: []
+     * ```
      */
     public func join(separator!: String = ","): String {
         let output = StringBuilder()
@@ -196,33 +264,84 @@ public class TextCatalog {
      * @param limit 最大条目数，默认为二十。
      * @return 长度不超过 limit 的可选文本数组，数组内实际返回 Some。
      * @throws IllegalArgumentException start 不在 0..=size 或 limit 小于零。
-     * @example 按位置与上限取窗口
+     * @note[id=window-empty] + 在起点有效时，`limit: 0` 返回空窗口。
+     * +
+     *   读取窗口不会移除或重排目录里的条目。
+     *
+     * @note[lang=en,id=window-empty] + With a valid start, `limit: 0` returns an empty window.
+     * +
+     *   Reading a window does not remove or reorder catalogue entries.
+     *
+     * @warning[id=window-pagination] 1. **校验起点：** `start == size` 返回空窗口，`start > size` 会抛出异常。
+     * 2. **按实际长度读取：** 末页可能少于 `limit` 项，请按返回数组的长度遍历。
+     *
+     * @warning[lang=en,id=window-pagination] 1. **Check the start:** `start == size` returns an empty window; `start > size` throws.
+     * 2. **Iterate over the result:** the final page can have fewer than `limit` entries, so use the returned array's length.
+     *
+     * @example 按位置与上限取窗口 {run}
      * ```cangjie
      * let catalog = TextCatalog(["a", "b", "c", "d"])
-     * let page = catalog.window(start: 1, limit: 2)
-     * assert(page.size == 2)
-     * assert(page[0] == Some("b"))
-     * assert(page[1] == Some("c"))
      * ```
-     * @example 默认参数与末尾短窗口
+     * ```cangjie
+     * let page = catalog.window(start: 1, limit: 2)
+     * for (entry in page) {
+     *     println(entry.getOrThrow())
+     * }
+     * ```
+     *
+     * **预期输出 / Expected output**
+     *
+     * ```output
+     * b
+     * c
+     * ```
+     * @example 默认参数与末尾短窗口 {run}
      * ```cangjie
      * let catalog = TextCatalog(["a", "b", "c"])
-     * // limit 默认是 20；start 默认是 0。起始位置等于 size 时返回空窗口，
-     * // 末尾窗口可以短于 limit，不需要调用方补齐。
-     * assert(catalog.window().size == 3)
-     * assert(catalog.window(start: 2).size == 1)
-     * assert(catalog.window(start: 3).size == 0)
+     * println("default length: ${catalog.window().size}")
+     * println("tail length: ${catalog.window(start: 2).size}")
      * ```
-     * @example 越界参数抛出异常
+     *
+     * **预期输出 / Expected output**
+     *
+     * ```output
+     * default length: 3
+     * tail length: 1
+     * ```
+     * @example 三种空窗口 {run}
+     * ```cangjie
+     * let catalog = TextCatalog(["a", "b", "c"])
+     * println("at end: ${catalog.window(start: catalog.size).size}")
+     * println("zero limit: ${catalog.window(limit: 0).size}")
+     * println("empty catalogue: ${TextCatalog().window().size}")
+     * ```
+     *
+     * **预期输出 / Expected output**
+     *
+     * ```output
+     * at end: 0
+     * zero limit: 0
+     * empty catalogue: 0
+     * ```
+     * @example 越界参数抛出异常 {run}
      * ```cangjie
      * let catalog = TextCatalog(["a"])
-     * // start 大于 size 或 limit 小于零都会抛出；已在契约中声明。
-     * try {
-     *     catalog.window(start: 2)
-     *     assert(false)
-     * } catch (e: IllegalArgumentException) {
-     *     assert(e.message == "invalid window")
+     * for ((start, limit) in [(-1, 1), (catalog.size + 1, 1), (0, -1)]) {
+     *     try {
+     *         catalog.window(start: start, limit: limit)
+     *         throw IllegalStateException("expected an invalid window")
+     *     } catch (_: IllegalArgumentException) {
+     *         println("start=${start}, limit=${limit}: IllegalArgumentException")
+     *     }
      * }
+     * ```
+     *
+     * **预期输出 / Expected output**
+     *
+     * ```output
+     * start=-1, limit=1: IllegalArgumentException
+     * start=2, limit=1: IllegalArgumentException
+     * start=0, limit=-1: IllegalArgumentException
      * ```
      */
     public func window(start!: Int64 = 0, limit!: Int64 = 20): Array<?String> {
