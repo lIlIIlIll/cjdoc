@@ -195,7 +195,7 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
     appendReverseTypeUsages(w, typeLinkIndex, member, rootPrefix, locale)
     projection.apiGuides(documentation, locale).append(w, member, locale, rootPrefix,
         headingTag: headingTag, headingSuffix: "-inline-" + htmlStableSlug(member.id))
-    appendExternalDocumentationHtml(w, documentation, member, locale, compactUnavailable: true,
+    appendExternalDocumentationHtml(w, documentation, member, rootPrefix, locale, compactUnavailable: true,
         headingLevel: sectionHeadingLevel)
     w.close("div")
     w.close("details")
@@ -675,7 +675,7 @@ private func appendSymbolPageBody(w: HtmlWriter, documentation: DocumentationSet
     if (hasMemberPage) {
         for (entry in projection.members(symbol).entries) { let _ = related.add(entry.symbol.id) }
     }
-    appendExternalDocumentationHtml(w, documentation, symbol, locale, relatedSymbolIds: related)
+    appendExternalDocumentationHtml(w, documentation, symbol, rootPrefix, locale, relatedSymbolIds: related)
 }
 
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,

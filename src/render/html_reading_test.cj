@@ -113,7 +113,8 @@ private func readingContent(artifacts: Array<RenderArtifact>, path: String): Str
 }
 
 private func readingSymbolPage(artifacts: Array<RenderArtifact>, name: String): String {
-    for (artifact in artifacts where artifact.path.startsWith("html/symbols/") &&
+    for (artifact in artifacts where artifact.path.startsWith("html/") &&
+        artifact.path.endsWith("/index.html") &&
         artifact.content.contains("class=\"cj-page-header cj-page-header--api\"") &&
         artifact.content.contains("<code>" + name + "</code>")) {
         return artifact.content
@@ -171,9 +172,14 @@ class EditorialReadingTest {
         @Expect(guide.indexOf("The authored condition.").getOrThrow() <
             guide.indexOf("class=\"cj-guide__related\"").getOrThrow())
         var found = false
-        for (artifact in artifacts where artifact.path.startsWith("html/symbols/")) {
+        for (artifact in artifacts where artifact.path.startsWith("html/") &&
+            artifact.path.endsWith("/index.html")) {
             if (!artifact.content.contains("data-cjdoc-page=\"symbol\"")) { continue }
-            @Expect(artifact.content.contains("href=\"../concepts/first.html#standalone--doc-keep-the-original\""))
+            // The canonical body sits at its own directory depth; the guide link
+            // must be computed from that position, never from a fixed `../`.
+            let pagePath = artifact.path.removePrefix("html/")
+            @Expect(artifact.content.contains("href=\"" + pageRootPrefix(pagePath) +
+                "concepts/first.html#standalone--doc-keep-the-original\""))
             @Expect(artifact.content.contains("First guide · Keep the original"))
             found = true
         }
@@ -214,16 +220,22 @@ class EditorialReadingTest {
         ], targetSymbols: [READING_SYMBOL, READING_OTHER_SYMBOL])
         let artifacts = HtmlDocumentationRenderer().render(
             readingDocumentationWithPages([page], includeOther: true))
+        let routes = RenderProjection(readingDocumentationWithPages([page], includeOther: true),
+            buildApiRoutes: true)
+        let keepPath = routes.symbolFileHref(READING_SYMBOL)
+        let otherPath = routes.symbolFileHref(READING_OTHER_SYMBOL)
+        let keepGuide = pageRootPrefix(keepPath) + "concepts/binding-check.html"
         let keep = readingSymbolPage(artifacts, "keep")
-        @Expect(keep.contains("href=\"../concepts/binding-check.html#standalone--doc-inline-table\""))
-        @Expect(keep.split("href=\"../concepts/binding-check.html#standalone--doc-inline-table\"").size, 2)
+        @Expect(keep.contains("href=\"" + keepGuide + "#standalone--doc-inline-table\""))
+        @Expect(keep.split("href=\"" + keepGuide + "#standalone--doc-inline-table\"").size, 2)
         @Expect(!keep.contains("Wrong source"))
         @Expect(!keep.contains("Code literal"))
         @Expect(!keep.contains("Text literal"))
         @Expect(!keep.contains("Wrong line"))
         @Expect(!keep.contains("Non-exact sentinel"))
         let other = readingSymbolPage(artifacts, "other")
-        @Expect(other.contains("href=\"../concepts/binding-check.html#standalone--doc-wrong-target\""))
+        @Expect(other.contains("href=\"" + pageRootPrefix(otherPath) +
+            "concepts/binding-check.html#standalone--doc-wrong-target\""))
         @Expect(other.contains("Binding guide · Wrong target"))
     }
 
@@ -236,8 +248,10 @@ class EditorialReadingTest {
         let page = readingBindingPage(tree, [readingBindingAt(3)])
         let replay = readingDocumentationWithPages([page])
         let artifacts = HtmlDocumentationRenderer().render(replay)
+        let keepGuide = pageRootPrefix(RenderProjection(replay, buildApiRoutes: true)
+            .symbolFileHref(READING_SYMBOL)) + "concepts/binding-check.html"
         let keep = readingSymbolPage(artifacts, "keep")
-        @Expect(keep.contains("href=\"../concepts/binding-check.html\">Binding guide</a>"))
+        @Expect(keep.contains("href=\"" + keepGuide + "\">Binding guide</a>"))
         @Expect(!keep.contains("#standalone--doc-unproven-section"))
     }
 

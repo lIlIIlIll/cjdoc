@@ -74,7 +74,7 @@ private func extensionPageFixture(): DocumentationSet {
 
 private func renderedExtensionPage(documentation: DocumentationSet, symbol: SymbolDoc,
     locale: String): String {
-    let projection = RenderProjection(documentation)
+    let projection = RenderProjection(documentation, buildApiRoutes: true)
     renderSymbolPage(documentation, projection, indexSymbols(documentation), symbol,
         HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection), locale: locale)
 }
@@ -88,6 +88,14 @@ class HtmlExtensionPageTest {
         let target = documentation.declarations[0]
         let member = documentation.declarations[4]
         @Expect(member.ownerId.getOrThrow(), extension.id)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        // Every link is relative to the real depth of the page that carries it.
+        let memberHref = pageRootPrefix(projection.symbolFileHref(extension.id)) +
+            projection.symbolFileHref(member.id)
+        let extensionCopy = pageRootPrefix(projection.symbolFileHref(extension.id)) +
+            projection.symbolFileHref(extension.id)
+        let targetHref = pageRootPrefix(projection.symbolFileHref(extension.id)) +
+            projection.symbolFileHref(target.id)
         for (locale in ["en", "zh-CN"]) {
             let html = renderedExtensionPage(documentation, extension, locale)
             @Expect(html.contains("data-cjdoc-member-browser"), true)
@@ -97,10 +105,9 @@ class HtmlExtensionPageTest {
             @Expect(html.contains("data-member-name=\"otherOnly\""), false)
             @Expect(html.contains("data-member-name=\"hidden\""), false)
             @Expect(html.contains("data-member-name=\"value\""), false)
-            @Expect(html.contains("href=\"../" + symbolPagePath(member) + "\""), true)
-            @Expect(html.contains("data-cjdoc-copy-link=\"../" +
-                symbolReadablePagePath(extension) + "\""), true)
-            @Expect(html.contains("href=\"../" + symbolPagePath(target) + "\""), true)
+            @Expect(html.contains("href=\"" + memberHref + "\""), true)
+            @Expect(html.contains("data-cjdoc-copy-link=\"" + extensionCopy + "\""), true)
+            @Expect(html.contains("href=\"" + targetHref + "\""), true)
             @Expect(html.contains("Entry &lt; String &gt;"), false)
             @Expect(html.contains("Entry&lt;String&gt;"), true)
             @Expect(html.contains("cj-type-link cj-relations__target"), true)
@@ -110,11 +117,18 @@ class HtmlExtensionPageTest {
     @TestCase
     func extensionPageAndMemberBreadcrumbsIdentifyTheExtension(): Unit {
         let documentation = extensionPageFixture()
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let index = indexSymbols(documentation)
         let links = HtmlTypeLinkIndex(documentation, projection)
         let extension = documentation.declarations[1]
         let member = documentation.declarations[4]
+        // The member body lives one level below the extension body.
+        let extensionPath = projection.symbolFileHref(extension.id)
+        let memberPath = projection.symbolFileHref(member.id)
+        let memberToExtension = pageRootPrefix(memberPath) + extensionPath
+        let extensionToTarget = pageRootPrefix(extensionPath) + extensionPath
+        @Expect(memberToExtension != extensionToTarget, true)
+        @Expect(memberToExtension.size, extensionToTarget.size + "../".size)
         for (locale in ["en", "zh-CN"]) {
             let title = if (locale == "zh-CN") {
                 "扩展 Entry&lt;String&gt;"
@@ -127,9 +141,11 @@ class HtmlExtensionPageTest {
             @Expect(extHtml.contains("<code>" + title + "</code></h1>"), true)
             @Expect(extHtml.contains("<li class=\"cj-breadcrumbs__item\" aria-current=\"page\">" +
                 "<code>" + title + "</code>"), true)
-            @Expect(memberHtml.contains("href=\"../" + symbolPagePath(extension) +
+            // The member page reaches its extension from one level deeper.
+            @Expect(memberHtml.contains("href=\"" + memberToExtension +
                 "\"><code>" + title + "</code></a>"), true)
-            @Expect(memberHtml.contains("href=\"../" + symbolPagePath(extension) + "\""), true)
+            @Expect(memberHtml.contains("href=\"" + memberToExtension + "\""), true)
+            @Expect(memberHtml.contains("href=\"" + extensionToTarget + "\""), false)
         }
     }
 

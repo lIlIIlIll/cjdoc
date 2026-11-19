@@ -2,12 +2,20 @@ import { performance } from 'node:perf_hooks';
 import { distribution, frame, matchEntry, pageMetrics, timedQuery, typeEntry } from './reader-scale-metrics.mjs';
 
 export const anchorFor = entry => 'symbol-' + Buffer.from(entry.id, 'utf8').toString('hex');
-const locationKey = (value, base) => { const url = new URL(value, base); return url.pathname + url.hash; };
+const locationKey = url => url.origin + url.pathname + url.search + url.hash;
+const publishedDestination = (entry, base) => {
+  const url = new URL(entry.href, base);
+  if (!entry.concept && ['http:', 'https:'].includes(url.protocol)) {
+    url.pathname = url.pathname.replace(/\/index\.html$/, '/');
+  }
+  return url;
+};
 // A capture pairs the current generator with a pinned older baseline, so the
 // harness addresses both markup generations by contract, not by one class set.
 export const MEMBER_BODY = '.cj-member__body, .member-detail-body';
 export const MEMBER_SIGNATURE = '.cj-signature-inline, .declaration-signature';
-const matching = (hrefs, expected, base) => expected.every(entry => hrefs.some(href => locationKey(href, base) === locationKey(entry.href, base)));
+const matching = (hrefs, expected, base) => expected.every(entry =>
+  hrefs.some(href => locationKey(new URL(href, base)) === locationKey(publishedDestination(entry, base))));
 
 export async function instrumentedPage(context, url, cacheDisabled = false) {
   const page = await context.newPage();
@@ -215,10 +223,15 @@ export async function overloadTasks(context, index, manifest, base) {
         await frame(page);
         const first = page.locator('[data-cjdoc-results] li a').first();
         const href = await first.getAttribute('href');
-        const selectedCorrectly = locationKey(href, page.url()) === locationKey(expected.href, base);
+        const destination = publishedDestination(expected, base);
+        let selectedCorrectly = href !== null && locationKey(new URL(href, page.url())) === locationKey(destination);
         if (selectedCorrectly) {
           await first.click();
           await page.waitForSelector('main');
+          selectedCorrectly = locationKey(new URL(page.url())) === locationKey(destination);
+          if (expected.href.endsWith('/index.html')) {
+            selectedCorrectly &&= await page.locator('body').getAttribute('data-cjdoc-symbol-id') === expected.id;
+          }
         }
         selections.push({ callShape: target.callShape, query, expectedId: expected.id,
           pass: selectedCorrectly, operationCount: selectedCorrectly ? 2 : 1,

@@ -287,15 +287,22 @@ class ModelCodecCurrentSuite5 {
         let documentation = codecTypeLinkDocument(intType,
             parameters: [ParameterDoc("left", intType), ParameterDoc("right", arrayType)],
             declarations: declarations)
-        let html = codecRenderedText(HtmlDocumentationRenderer().render(documentation))
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let html = codecRenderedText(artifacts)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        let functionPath = projection.symbolFileHref(documentation.declarations[3].id)
+        let int64Path = projection.symbolFileHref(documentation.declarations[2].id)
+        let arrayPath = projection.symbolFileHref(documentation.declarations[0].id)
+        let stringPath = projection.symbolFileHref(documentation.declarations[1].id)
+        // Links are relative to the function body's real directory depth.
+        let prefix = pageRootPrefix(functionPath)
         @Expect(html.contains("<dt class=\"cj-params__term\"><code class=\"cj-params__declaration\">" +
             "<span class=\"cj-params__name\">left</span>"), true)
         @Expect(html.contains("<dt class=\"cj-params__term\"><code class=\"cj-params__declaration\">" +
             "<span class=\"cj-params__name\">right</span>"), true)
-        @Expect(html.contains("<a class=\"cj-type-link\" href=\"../symbols/symbol-"))
-        @Expect(html.contains(">Int64</a>"))
-        @Expect(html.contains(">Array</a>&lt;<a class=\"cj-type-link\" href=\"../symbols/symbol-"))
-        @Expect(html.contains(">String</a>&gt;"))
+        @Expect(html.contains("<a class=\"cj-type-link\" href=\"" + prefix + int64Path + "\">Int64</a>"))
+        @Expect(html.contains("<a class=\"cj-type-link\" href=\"" + prefix + arrayPath +
+            "\">Array</a>&lt;<a class=\"cj-type-link\" href=\"" + prefix + stringPath + "\">String</a>&gt;"))
         @Expect(html.contains("<span class=\"cj-returns__type\"><code><a class=\"cj-type-link\""))
         @Expect(!html.contains(">left</a>"))
     }

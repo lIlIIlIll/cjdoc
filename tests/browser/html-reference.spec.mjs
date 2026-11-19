@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { declarationUrl } from './generated-route.mjs';
 
 const fixtureRoot = process.env.CJDOC_HTML_FIXTURE;
 if (!fixtureRoot) throw new Error('CJDOC_HTML_FIXTURE is required');
@@ -146,7 +147,8 @@ async function expectStable(page) {
     const currentUrl = new URL(current.href);
     currentUrl.search = '';
     expect(current.fragment).toBe('');
-    expect(currentUrl.href).toBe(documentUrl.href);
+    const href = await page.locator('body[data-cjdoc-page="symbol"]').count() ? declarationUrl : value => value;
+    expect(href(currentUrl.href)).toBe(href(documentUrl.href));
   }
 }
 
@@ -251,7 +253,7 @@ test.beforeAll(async () => {
         return;
       }
       let relative = pathname.slice(mount.prefix.length);
-      if (!relative) relative = 'index.html';
+      if (!relative || relative.endsWith('/')) relative += 'index.html';
       if (relative.split('/').some(segment => segment === '..')) {
         response.writeHead(400).end();
         return;
@@ -562,9 +564,10 @@ test.describe('generated HTML reference', () => {
     await expect(classUsages).toHaveCount(1);
     const classGuide = classUsages.getByRole('link', { name: 'Getting started', exact: true });
     await expect(classGuide).toHaveCount(1);
-    await expect(classGuide).toHaveAttribute('href', '../concepts/guides/getting-started.html');
+    const guideUrl = new URL('concepts/guides/getting-started.html', indexUrl).href;
+    expect(new URL(await classGuide.getAttribute('href'), classUrl).href).toBe(guideUrl);
     await classGuide.click();
-    await expect(page).toHaveURL(new URL('../concepts/guides/getting-started.html', classUrl).href);
+    await expect(page).toHaveURL(guideUrl);
     await expect(page.locator('.cj-page-header h1')).toHaveText('Getting started');
     await page.goBack();
     await expect(page).toHaveURL(classUrl);
@@ -603,7 +606,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
     await expect(page.locator('[data-cjdoc-member-filter-status]')).toContainText('matching member');
     const normalizeForRestore = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
-    await normalizeForRestore.locator('summary').click({position:{x:6,y:12}});
+    await normalizeForRestore.locator(':scope > summary').click({position:{x:6,y:12}});
     const restoreHref = await memberActions(normalizeForRestore).locator('.cj-member-actions__item--standalone').getAttribute('href');
     expect(restoreHref).toBeTruthy();
     await page.evaluate(() => window.scrollTo(0, Math.min(520, document.documentElement.scrollHeight - innerHeight)));
@@ -938,7 +941,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.cj-page-header h1')).toContainText('Getting started');
     await expect(page.locator('.cj-breadcrumbs')).toContainText('Concepts');
     await expect(page.locator('.cj-bindings')).toContainText('Linked');
-    const boundApiLinks = page.locator('.cj-bindings a[href*="symbols/symbol-"]');
+    const boundApiLinks = page.locator('.cj-bindings a[href$="/index.html"]');
     await expect(boundApiLinks).toHaveCount(2);
     expect(await boundApiLinks.nth(0).getAttribute('href')).not.toBe(
       await boundApiLinks.nth(1).getAttribute('href')
@@ -1191,6 +1194,39 @@ test.describe('generated HTML reference', () => {
     await expectStable(page);
   });
 
+  test('declaration header keeps source and copy link together on desktop and mobile', async ({page, context}) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: httpOrigin});
+    await page.goto(httpBaseUrl + 'index.html');
+    await page.locator('ul.cj-package-index > li > a').first().click();
+    await referenceBoxClassLink(page).click();
+
+    const header = page.locator('main header.cj-page-header');
+    const source = header.getByRole('link', {name: 'View source', exact: true});
+    const copy = header.getByRole('button', {name: 'Copy link', exact: true});
+    await expect(source).toHaveAttribute('href', /^https:\/\/github\.com\/example\/reference\/blob\/[0-9a-f]{40}\/.*\/src\/reference\.cj#L\d+/);
+    await expect(source).toHaveAttribute('rel', 'noreferrer');
+    for (const width of [1440, 320]) {
+      await page.setViewportSize({width, height: 800});
+      await expect(source).toBeInViewport();
+      await expect(copy).toBeInViewport();
+      const [sourceBox, copyBox, signatureBox] = await Promise.all([
+        source.boundingBox(), copy.boundingBox(), header.locator('.cj-signature').boundingBox(),
+      ]);
+      expect(copyBox.x).toBeGreaterThanOrEqual(sourceBox.x + sourceBox.width);
+      expect(copyBox.y).toBeCloseTo(sourceBox.y, 0);
+      expect(copyBox.y + copyBox.height).toBeLessThan(signatureBox.y);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+    const route = await copy.getAttribute('data-cjdoc-copy-link');
+    await copy.click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(declarationUrl(route, page.url()));
+
+    await page.emulateMedia({media: 'print'});
+    await expect(header.locator('[data-cjdoc-copy-link]')).toBeHidden();
+    await expect(source).toBeVisible();
+  });
+
   test('dense type member cards retain complete signatures and bounded height', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openIndex(page);
@@ -1238,13 +1274,14 @@ test.describe('generated HTML reference', () => {
       await ownMember.locator('summary').click({position:{x:6,y:12}});
       await expect(ownMember.locator('.cj-member__body')).toBeVisible();
       await expect(ownMember).toContainText('Member supplied by an extension.');
-      await expect(memberActions(ownMember).locator('.cj-member-actions__item--standalone')).toHaveAttribute('href', /symbol-/);
+      await expect(memberActions(ownMember).locator('.cj-member-actions__item--standalone'))
+        .toHaveAttribute('href', /\/extensionMarker\/index\.html$/);
       const target = page.locator('.cj-relations a.cj-relations__target');
       await expect(target).toHaveCount(1);
       await target.click();
-      await expect(page).toHaveURL(typeUrl);
+      await expect(page).toHaveURL(declarationUrl(typeUrl));
       await page.goBack();
-      await expect(page).toHaveURL(extensionUrl);
+      await expect(page).toHaveURL(declarationUrl(extensionUrl));
       if (!(await ownMember.evaluate(node => node.open))) {
         await ownMember.locator('summary').click({position:{x:6,y:12}});
       }
@@ -1328,7 +1365,8 @@ test.describe('generated HTML reference', () => {
     await page.goto(page.url().split('#')[0] + '#' + anchor);
     await expect(normalize).toHaveAttribute('open', '');
     await expect(page.locator('.cj-tree__link[aria-current="page"]')).toContainText('ReferenceBox');
-    await expect(page.locator('link[href="../style.css"]')).toHaveCount(1);
+    const stylesheet = await page.locator('link[rel="stylesheet"]').getAttribute('href');
+    expect(new URL(stylesheet, page.url()).href).toBe(httpBaseUrl + 'style.css');
     await expectStable(page);
   });
 
@@ -2175,7 +2213,7 @@ test.describe('declaration tag navigation and filtering', () => {
             }
             await expect(actions.locator('.cj-member-actions__list')).toBeVisible();
             const permalink = actions.locator('.cj-member-actions__item--standalone');
-            const permalinkUrl = new URL(await permalink.getAttribute('href'), readerUrl).href;
+            const permalinkUrl = declarationUrl(await permalink.getAttribute('href'), readerUrl);
             await permalink.tap();
             await expect(touchPage).toHaveURL(permalinkUrl);
             await expect(touchPage.locator('body')).toHaveAttribute('data-cjdoc-route', 'api');

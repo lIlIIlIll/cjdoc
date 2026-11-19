@@ -39,10 +39,12 @@ private func introductionPage(kind: String, comment: DocComment, locale: String)
         packages: [PackageDoc("fixture", INTRO_MODULE, sourceFiles: ["src/catalog.cj"], symbolIds: [id])],
         files: [FileDoc("src/catalog.cj", INTRO_MODULE, "fixture")], declarations: [symbol])
     let selected = projectDocumentationLanguage(original, locale)
-    for (artifact in HtmlDocumentationRenderer().render(selected)) {
-        if (artifact.path.startsWith("html/symbols/") && artifact.content.contains("cj-page-header--api")) {
-            return artifact.content
-        }
+    // The canonical body is the route-indexed API page, not the historical alias.
+    for (artifact in HtmlDocumentationRenderer().render(selected)
+        where artifact.path.endsWith("/index.html") &&
+            artifact.content.contains("data-cjdoc-page=\"symbol\"") &&
+            artifact.content.contains("cj-page-header--api")) {
+        return artifact.content
     }
     throw IllegalArgumentException("missing introduction page")
 }
@@ -150,7 +152,7 @@ private func ownerContextTestDocument(symbols: Array<SymbolDoc>): DocumentationS
 private func ownerContextTestPage(symbols: Array<SymbolDoc>, current: SymbolDoc,
     locale!: String = "en"): String {
     let documentation = ownerContextTestDocument(symbols)
-    let projection = RenderProjection(documentation)
+    let projection = RenderProjection(documentation, buildApiRoutes: true)
     renderSymbolPage(documentation, projection, projection.visibleIndex, current,
         HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection), locale: locale)
 }
@@ -190,11 +192,15 @@ class HtmlOwnerDocumentationContextTest {
             ownerId: Some(owner.id), documentation: Some(ownerContextTestComment(
                 "Sibling summary", "sibling-only prose")))
         let html = ownerContextTestPage([owner, current, sibling], current)
+        let projection = RenderProjection(ownerContextTestDocument([owner, current, sibling]),
+            buildApiRoutes: true)
         let memberField = documentationFieldAnchor("shared-field")
         @Expect(html.contains("data-cjdoc-owner-context"))
         @Expect(html.contains("data-cjdoc-owner-context-source=\"${owner.id}\""))
         @Expect(html.split("data-cjdoc-owner-context-source=\"${owner.id}\"").size - 1, 1)
-        @Expect(html.contains("href=\"../${symbolPagePath(owner)}\""))
+        @Expect(html.contains("href=\"" +
+            pageRootPrefix(projection.symbolFileHref(current.id)) +
+            projection.symbolFileHref(owner.id) + "\""))
         @Expect(html.contains("Owner summary"))
         @Expect(html.contains("Owner introduction"))
         @Expect(html.contains("Owner precondition"))
@@ -217,7 +223,7 @@ class HtmlOwnerDocumentationContextTest {
         let leafId = "owner-context-leaf"
         let outer = SymbolDoc(outerId, "class", "Outer", "fixture.Outer", "fixture",
             "cjdoc:module:v1:owner-context", "public", ownerContextTestSource(1),
-            "public class Outer", SemanticInfo("partial", "ast"), ownerId: Some(innerId),
+            "public class Outer", SemanticInfo("partial", "ast"),
             documentation: Some(ownerContextTestComment("Outer declaration context", "Outer details",
                 tags: [DocTag("precondition", "", "Outer constraint", fieldId: "shared-field")])))
         let inner = SymbolDoc(innerId, "class", "Inner", "fixture.Outer.Inner", "fixture",
@@ -229,17 +235,21 @@ class HtmlOwnerDocumentationContextTest {
             "cjdoc:module:v1:owner-context", "public", ownerContextTestSource(3),
             "public class Leaf", SemanticInfo("partial", "ast"), ownerId: Some(innerId))
         let index = HashMap<String, SymbolDoc>()
-        index[outer.id] = outer
+        index[outer.id] = SymbolDoc(outer.id, outer.kind, outer.name, outer.qualifiedName, outer.packageName,
+            outer.moduleId, outer.visibility, outer.source, outer.headerSpelling, outer.semantic,
+            ownerId: Some(innerId), documentation: outer.documentation)
         index[inner.id] = inner
         index[leaf.id] = leaf
         let owners = visibleOwnerChain(index, leaf)
-        let out = HtmlWriter()
-        appendOwnerDocumentationContext(out, index, leaf, owners,
+        let projection = RenderProjection(ownerContextTestDocument([outer, inner, leaf]),
+            buildApiRoutes: true)
+        let out = HtmlWriter(apiRoutes: projection.apiRoutes)
+        appendOwnerDocumentationContext(out, projection, leaf, owners,
             HashMap<String, String>(), "../", "en")
         let html = out.toString()
         @Expect(html.split("data-cjdoc-owner-context-source=").size - 1, 2)
-        @Expect(html.contains("href=\"../${symbolPagePath(outer)}\""))
-        @Expect(html.contains("href=\"../${symbolPagePath(inner)}\""))
+        @Expect(html.contains("href=\"../" + projection.symbolFileHref(outer.id) + "\""))
+        @Expect(html.contains("href=\"../" + projection.symbolFileHref(inner.id) + "\""))
         @Expect(html.contains("Outer declaration context"))
         @Expect(html.contains("Inner declaration context"))
         @Expect(html.indexOf("Outer declaration context").getOrThrow() <
@@ -301,12 +311,15 @@ class HtmlOwnerDocumentationContextTest {
         let symbols = [target, hiddenTarget, extension, extensionMember,
             unresolvedExtension, unresolvedMember, hiddenExtension, hiddenMember]
         let resolvedHtml = ownerContextTestPage(symbols, extensionMember)
+        let projection = RenderProjection(ownerContextTestDocument(symbols), buildApiRoutes: true)
         @Expect(resolvedHtml.contains("Extension summary"))
         @Expect(resolvedHtml.contains("Extension introduction"))
         @Expect(resolvedHtml.contains("Extension constraint"))
         @Expect(resolvedHtml.contains("extend fixture.Target where T &lt;: Eq&lt;T&gt;"))
         @Expect(resolvedHtml.contains("Visible target type explanation"))
-        @Expect(resolvedHtml.contains("href=\"../${symbolPagePath(target)}\""))
+        @Expect(resolvedHtml.contains("href=\"" +
+            pageRootPrefix(projection.symbolFileHref(extensionMember.id)) +
+            projection.symbolFileHref(target.id) + "\""))
         @Expect(!resolvedHtml.contains("extension example payload"))
         @Expect(!resolvedHtml.contains("target example payload"))
 

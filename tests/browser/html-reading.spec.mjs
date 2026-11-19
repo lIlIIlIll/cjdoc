@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import path from 'node:path';
 import {pageMetrics} from './reader-scale-metrics.mjs';
+import {declarationUrl} from './generated-route.mjs';
 
 const fixture = process.env.CJDOC_READING_FIXTURE;
 test.skip(!fixture, 'CJDOC_READING_FIXTURE must point to a generated bilingual PocketKit site');
@@ -29,7 +30,7 @@ test.beforeAll(async () => {
     try {
       const url = new URL(request.url, 'http://localhost');
       const relative = decodeURIComponent(url.pathname).replace(/^\/docs\//, '/');
-      const target = path.resolve(fixture, '.' + relative);
+      const target = path.resolve(fixture, '.' + relative + (relative.endsWith('/') ? 'index.html' : ''));
       if (!target.startsWith(path.resolve(fixture) + path.sep)) throw new Error('outside fixture');
       const data = await readFile(target);
       const type = {'.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json'}[path.extname(target)];
@@ -108,9 +109,50 @@ async function routes(page, locale, transport) {
   await page.goto(home);
   const pkg = new URL(await page.locator('.cj-package-index a').first().getAttribute('href'), home).href;
   await page.goto(pkg);
-  const api = new URL(await page.locator('.cj-decl-table__link').filter({hasText:'TextCatalog'}).first().getAttribute('href'), pkg).href;
+  const api = declarationUrl(await page.locator('.cj-decl-table__link').filter({hasText:'TextCatalog'}).first().getAttribute('href'), pkg);
   return {home, package:pkg, api, guide:new URL('concepts/guides/first-catalogue.html',home).href};
 }
+
+test('localized parameter, return, and exception descriptions keep compact alignment', async ({page}) => {
+  await page.setViewportSize({width: 1440, height: 900});
+  const {api} = await routes(page, 'zh-CN', 'root');
+  await page.goto(api);
+  const join = page.locator('details[data-member-name="join"]');
+  const at = page.locator('details[data-member-name="at"]');
+  for (const member of [join, at]) await member.locator(':scope > summary').press('Enter');
+
+  const separator = join.locator('.cj-params__row');
+  const index = at.locator('.cj-params__row');
+  await expect(separator.locator('dt')).toHaveText('separator: String = ","');
+  await expect(separator.getByRole('link', {name: 'String', exact: true})).toBeVisible();
+  await expect(index.locator('dt')).toHaveText('index: Int64');
+  for (const row of [separator, index, at.locator('.cj-throws__row')]) {
+    const term = await row.locator('dt').boundingBox();
+    const description = await row.locator('dd p').boundingBox();
+    expect(Math.abs(description.y - term.y)).toBeLessThanOrEqual(1);
+    expect(description.x).toBeGreaterThan(term.x + term.width);
+  }
+  const returns = at.locator('.cj-returns');
+  const {lineHeight, descriptionTop} = await returns.evaluate(block => ({
+    lineHeight: parseFloat(getComputedStyle(block).lineHeight),
+    descriptionTop: block.querySelector('p').getBoundingClientRect().top - block.getBoundingClientRect().top,
+  }));
+  expect(descriptionTop).toBeLessThanOrEqual(lineHeight + 1);
+
+  await page.setViewportSize({width: 390, height: 844});
+  for (const row of [separator, at.locator('.cj-throws__row')]) {
+    const term = await row.locator('dt').boundingBox();
+    const description = await row.locator('dd p').boundingBox();
+    expect(Math.abs(description.x - term.x)).toBeLessThanOrEqual(1);
+    expect(description.y).toBeGreaterThanOrEqual(term.y + term.height);
+  }
+
+  const english = await routes(page, 'en', 'root');
+  await page.goto(english.api);
+  await join.locator('summary').press('Enter');
+  await expect(separator.locator('dd')).toContainText('Translation missing.');
+  await expect(separator.locator('dd p')).toHaveText('分隔符，默认是逗号，不进行转义。');
+});
 
 async function readingMetrics(page) {
   return page.evaluate(() => {
@@ -211,6 +253,75 @@ test('authoring guide leads from the homepage to alerts and checked examples', a
   await expect(page.getByRole('heading', {name: 'Alerts and lists'})).toBeVisible();
 });
 
+test('reader preferences: group repeated API notices without crossing declaration boundaries', async ({page}) => {
+  await page.setViewportSize({width: 390, height: 710});
+  const {api, home} = await routes(page, 'zh-CN', 'root');
+  await page.goto(api);
+  const join = page.locator('details[data-member-name="join"]');
+  const windowMember = page.locator('details[data-member-name="window"]');
+  const boxes = join.locator('aside.cj-admonition');
+  const trigger = page.locator('[data-cjdoc-theme-toggle]');
+  const dialog = page.getByRole('dialog', {name: '显示'});
+  const choices = dialog.getByRole('group', {name: 'API 提示'});
+  const change = async name => {
+    await trigger.click();
+    await choices.getByRole('button', {name, exact: true}).click();
+    await page.keyboard.press('Escape');
+  };
+  const levels = ['note', 'warning', 'danger'];
+  const separate = levels.flatMap(level => [level, level]);
+  const noticeLevels = () => boxes.evaluateAll(nodes => nodes.map(node => node.dataset.admonitionLevel));
+  await join.locator('summary.cj-member__summary').press('Enter');
+  await expect.poll(noticeLevels).toEqual(separate);
+  const originalHtml = await boxes.locator('.cj-admonition__body').evaluateAll(nodes =>
+    nodes.map(node => node.innerHTML));
+  const anchors = await join.locator('[id^="doc-field-"]').evaluateAll(nodes =>
+    nodes.filter(node => node.querySelector('aside.cj-admonition')).map(node => node.id));
+  expect(anchors).toHaveLength(6);
+  await change('按类型合并');
+  await expect.poll(noticeLevels).toEqual(levels);
+  await expect(boxes.locator('ul.cj-admonition__body > li')).toHaveCount(6);
+  for (const [index, level] of levels.entries()) {
+    const list = boxes.nth(index).getByRole('list');
+    await expect(list.getByRole('listitem')).toHaveCount(2);
+    for (const [offset, id] of anchors.slice(index * 2, index * 2 + 2).entries()) {
+      const item = list.getByRole('listitem').nth(offset);
+      await expect(item.locator(`[id="${id}"] > div[lang="zh-CN"]`)).toHaveCount(1);
+      expect(await item.locator('.cj-admonition__body').innerHTML()).toBe(originalHtml[index * 2 + offset]);
+    }
+    await expect(boxes.nth(index)).toHaveAttribute('data-admonition-level', level);
+  }
+  await expect(join.locator('summary .cj-risk')).toHaveCount(2);
+  await expect(windowMember).not.toHaveAttribute('open', '');
+  await windowMember.locator('summary.cj-member__summary').press('Enter');
+  await expect(windowMember.locator('aside.cj-admonition')).toHaveCount(2);
+  await expect(windowMember.locator('aside.cj-admonition ol > li')).toHaveCount(2);
+  await expect(windowMember.locator('aside.cj-admonition > ul')).toHaveCount(0);
+
+  await change('逐条显示');
+  await expect.poll(noticeLevels).toEqual(separate);
+  expect(await boxes.locator('.cj-admonition__body').evaluateAll(nodes =>
+    nodes.map(node => node.innerHTML))).toEqual(originalHtml);
+  await expect(join.locator('summary .cj-risk')).toHaveCount(2);
+  await change('按类型合并');
+
+  await page.goto(new URL(authoringGuidePath, home).href);
+  await expect(page.locator('.cj-guide aside.cj-admonition')).toHaveCount(3);
+  await authoringBinding(page, 'join(String)').click();
+  const fullPage = page.locator('main aside.cj-admonition > ul.cj-admonition__body');
+  await expect(fullPage).toHaveCount(3);
+  await expect(fullPage.locator(`[id="${anchors[0]}"]`)).toHaveCount(1);
+  await page.reload();
+  await expect(fullPage).toHaveCount(3);
+  await trigger.click();
+  await expect(choices.getByRole('button', {name: '按类型合并', pressed: true})).toBeVisible();
+  await dialog.getByRole('button', {name: '恢复默认设置'}).click();
+  await expect(choices.getByRole('button', {name: '逐条显示', pressed: true})).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(fullPage).toHaveCount(0);
+  await expect(page.locator('main aside.cj-admonition')).toHaveCount(6);
+});
+
 test('authoring guide exposes classification and deprecation on real API pages', async ({page}) => {
   await page.setViewportSize({width: 1440, height: 900});
   const {home} = await routes(page, 'zh-CN', 'root');
@@ -241,7 +352,8 @@ test('authoring guide exposes classification and deprecation on real API pages',
   await expect(authors.locator('+ ul > li')).toHaveText(['PocketKit', 'Documentation team']);
   const related = page.locator('.cj-see-also__list a');
   await expect(related).toHaveText(['pocketkit.TextCatalog.first', 'pocketkit.TextCatalog.isEmpty']);
-  for (const link of await related.all()) await expect(link).toHaveAttribute('href', /symbols\/.+\.html/);
+  await expect(related.nth(0)).toHaveAttribute('href', /\/TextCatalog\/first\/index\.html$/);
+  await expect(related.nth(1)).toHaveAttribute('href', /\/TextCatalog\/isEmpty\/index\.html$/);
   const exceptional = page.locator('.cj-example').filter({hasText: '首项与两种异常'});
   const results = exceptional.locator('pre code').last();
   expect((await results.textContent()).trimEnd()).toBe('alpha\nempty: IllegalStateException\nblank: IllegalArgumentException');
@@ -347,7 +459,7 @@ for (const transport of ['root','subpath','file']) {
       await expect(page.locator(`.cj-guide [id="${sectionId}"]`)).toBeVisible();
       await expect(page.locator('.cj-binding > .cj-bindings__state')).toHaveCount(0);
       await expect(page.locator('.cj-binding > .cj-bindings__label').first()).toHaveText(locale === 'en' ? 'Related API:' : '相关 API：');
-      await expect(page.locator('.cj-binding a').first()).toHaveAttribute('href', /symbols\/.*\.html(?:#.*)?$/);
+      await expect(page.locator('.cj-binding a').first()).toHaveAttribute('href', /\/pocketkit\/.+\/index\.html(?:#.*)?$/);
       const introduction = siteManifest.routes.find(item => item.language === locale &&
         !item.symbolId && !item.sectionId && item.href === `html/${locale}/concepts/index.html`);
       expect(introduction).toBeTruthy();
@@ -645,6 +757,8 @@ test('reader preferences: reset keeps search and navigation state on a short scr
     ['Examples by default', 'Collapsed', true],
     ['Long output by default', 'Expanded', true],
     ['Long output by default', 'Collapsed', false],
+    ['API notices', 'Show separately', false],
+    ['API notices', 'Group by type', true],
   ]) {
     const button = option(name, choice);
     // A preference can reflow the document; moving focus within the panel cannot.
@@ -675,6 +789,7 @@ test('reader preferences: reset keeps search and navigation state on a short scr
   for (const [name, choice] of [
     ['Theme', 'System'], ['Font', 'System'], ['Text size', 'M'], ['Long code lines', 'Scroll horizontally'],
     ['Examples by default', 'Expanded'], ['Long output by default', 'Collapsed'],
+    ['API notices', 'Show separately'],
   ]) {
     await expect(option(name, choice)).toHaveAttribute('aria-pressed', 'true');
   }
@@ -864,8 +979,15 @@ test('all theme presets keep normal text contrast and use offline font fallbacks
       const session = await page.context().newCDPSession(page);
       await session.send('DOM.enable'); await session.send('CSS.enable');
       const {root} = await session.send('DOM.getDocument');
-      for (const selector of ['h1','.cj-prose > p','pre code','.cj-member__description']) {
-        const {nodeId} = await session.send('DOM.querySelector',{nodeId:root.nodeId,selector});
+      for (const selector of ['h1:visible','.cj-prose > p:visible','pre code:visible','.cj-member__description:visible']) {
+        const locator = page.locator(selector).first();
+        if (!await locator.count()) continue;
+        const plainSelector = selector.replace(':visible', '');
+        // Query the exact visible occurrence, not a collapsed example with no glyphs.
+        const index = await locator.evaluate((node, selector) =>
+          [...document.querySelectorAll(selector)].indexOf(node), plainSelector);
+        const {nodeIds} = await session.send('DOM.querySelectorAll',{nodeId:root.nodeId,selector:plainSelector});
+        const nodeId = nodeIds[index];
         if (nodeId) {
           const {fonts} = await session.send('CSS.getPlatformFontsForNode',{nodeId});
           observations.push({locale,role,selector,fonts});

@@ -36,8 +36,9 @@ class HtmlExternalStatusTest {
                 ExternalDocumentationReference(secondId, "local", "available", "./dependencies/ref.html")])
         let original = encodeDocIr(documentation)
         var checked = false
-        for (artifact in rendererFor("html").render(decodeDocIr(original))) {
-            if (!artifact.path.startsWith("html/symbols/") || !artifact.content.contains("<code>Box</code></h1>")) { continue }
+        for (artifact in rendererFor("html").render(decodeDocIr(original))
+            where artifact.path.startsWith("html/") && artifact.path.endsWith("/index.html")) {
+            if (!artifact.content.contains("<code>Box</code></h1>")) { continue }
             let html = artifact.content
             @Expect(html.split("Shared dependency index failure").size, 2)
             @Expect(html.split("Distinct ambiguity").size, 2)
@@ -45,7 +46,9 @@ class HtmlExternalStatusTest {
             @Expect(html.contains("cj-external__status"), true)
             @Expect(html.split("href=\"#external-reference-status\"").size, 4)
             @Expect(html.contains("href=\"https://docs.example.test/first.html\""))
-            @Expect(html.contains("href=\"../dependencies/ref.html\""))
+            // A relative external index is rebased from the body's own depth.
+            @Expect(html.contains("href=\"" +
+                pageRootPrefix(artifact.path.removePrefix("html/")) + "dependencies/ref.html\""))
             @Expect(html.contains("public func first()"))
             @Expect(html.contains("public func second()"))
             checked = true

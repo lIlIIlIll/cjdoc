@@ -17,12 +17,12 @@ import sys
 import tempfile
 import threading
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 from .browser_journeys import JOURNEYS as API_JOURNEYS
 from .browser_reports import JOURNEYS as REPORT_JOURNEYS
 from .browser_metrics import check_layout, layout, screenshot_name, screenshots, validate_metrics
-from .browser_support import Journey
+from .browser_support import Journey, declaration_url, same_declaration_url
 from .contract import validate_manifest
 from .evidence import _expected_cases, validate_evidence
 from .offline import ARCHIVE, extract_archive
@@ -78,9 +78,17 @@ def serve(root: Path, prefix: str):
 
 
 def same_route(actual: str, base: str, href: str) -> bool:
-    expected, got = urlsplit(base + href), urlsplit(actual)
-    return (got.scheme, got.netloc, unquote(got.path), got.query, unquote(got.fragment)) == (
-        expected.scheme, expected.netloc, unquote(expected.path), expected.query, unquote(expected.fragment))
+    """Compare a navigated address to its declared target.
+
+    The canonical API body is a real `index.html`, and an HTTP reader sees the
+    directory form while `file:` keeps the explicit file; both address one
+    declaration. Host, path, query and fragment still have to match exactly.
+    """
+    expected, got = declaration_url(base + href), declaration_url(actual)
+    return (urlsplit(got).scheme, urlsplit(got).netloc, urlsplit(got).path,
+            urlsplit(got).query, urlsplit(got).fragment) == (
+        urlsplit(expected).scheme, urlsplit(expected).netloc, urlsplit(expected).path,
+        urlsplit(expected).query, urlsplit(expected).fragment)
 
 
 def observe(context, base: str, errors: list, scrolling: dict):
@@ -134,7 +142,8 @@ def check_locale_navigation(journey: Journey):
         native = load_json(journey.local_path(index_url))
         identity = journey.target["resolved"].get("ownerSymbolId", journey.target["resolved"]["symbolId"])
         matches = [record for record in native["pages"] if record.get("symbolId") == identity]
-        if len(matches) != 1 or unquote(page.url.split("#")[0]) != unquote(urljoin(index_url, matches[0]["href"]).split("#")[0]):
+        if len(matches) != 1 or not same_declaration_url(
+                page.url.split("#")[0], urljoin(index_url, matches[0]["href"]).split("#")[0]):
             raise AssertionError("language switch did not preserve the native symbol/owner identity")
     journey.back(before)
     journey.assertions.append("the language control follows the same native declaration/version and browser Back returns")
@@ -309,6 +318,9 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None,
                         timings.append({"key": list(key),
                                         "elapsedMs": round((time.perf_counter() - started) * 1000, 3)})
                         results.append(record)
+                    from .browser_routes import check_canonical_api_routes
+                    if shard is None:
+                        check_canonical_api_routes(browser, site, offline, bases)
                     browser_version = browser.version
                 finally:
                     browser.close()

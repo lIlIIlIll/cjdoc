@@ -12,12 +12,14 @@ import tomllib
 
 sys.dont_write_bytecode = True
 try:
+    from .reader_api_routes_transition import register_api_route_transition
     from .reader_aria_transition import register_aria_transition
     from .reader_ir_transition import TRANSITION_NAME, register_ir_observation, register_ir_transition
     from .reader_search_identity import verify_search_identity
     from .strict_json import strict_dumps, strict_loads
     from .test_agent_artifacts import document
 except ImportError:
+    from reader_api_routes_transition import register_api_route_transition
     from reader_aria_transition import register_aria_transition
     from reader_ir_transition import TRANSITION_NAME, register_ir_observation, register_ir_transition
     from reader_search_identity import verify_search_identity
@@ -27,14 +29,15 @@ except ImportError:
 REPO = Path(__file__).resolve().parent.parent
 REFERENCE_TEMPLATE = REPO / "docs/maintainer/reader-scale-budgets.json"
 REGISTRATION_FIELDS = {"baseline", "baselineQueryFailures", "presentation", "docIrTransition",
-                       "ariaTransition", "transitionTemplate"}
+                       "ariaTransition", "apiRoutesTransition", "transitionTemplate"}
 
 
 def validate_transition_budget(budget: dict, reference: Path) -> None:
-    if "docIrTransition" not in budget and "ariaTransition" not in budget:
+    if "docIrTransition" not in budget and "ariaTransition" not in budget and \
+            "apiRoutesTransition" not in budget:
         return
-    # A transition freezes the exact IR/ARIA difference it allows; it never
-    # changes the numeric budgets. A presentation profile may be registered
+    # A transition freezes the exact IR/ARIA/address difference it allows; it
+    # never changes the numeric budgets. A presentation profile may be registered
     # alongside it because a redesign changes typography and the accessible tree
     # together, and both must be stated explicitly rather than derived.
     encoded = reference.read_bytes()
@@ -86,13 +89,15 @@ def validate_browser_contract(browser: dict) -> None:
 
 
 def register(baseline: Path, template: Path, presentation: Path | None = None, *,
-             doc_ir_transition: str | None = None, aria_transition: Path | None = None) -> dict:
+             doc_ir_transition: str | None = None, aria_transition: Path | None = None,
+             api_routes_transition: Path | None = None) -> dict:
     budget = deepcopy(strict_loads(template.read_bytes(), description="Reader budget template"))
     if budget.get("schemaVersion") != "cjdoc.reader-budgets/1" or "baseline" in budget:
         raise ValueError("an unbound cjdoc.reader-budgets/1 template is required")
     if type(budget.get("minimumSamples")) is not int or budget["minimumSamples"] < 20:
         raise ValueError("registered percentiles require at least 20 raw samples")
-    has_transition = doc_ir_transition is not None or aria_transition is not None
+    has_transition = (doc_ir_transition is not None or aria_transition is not None
+                      or api_routes_transition is not None)
     if has_transition:
         reference_bytes = REFERENCE_TEMPLATE.read_bytes()
         if budget != strict_loads(reference_bytes, description="committed Reader threshold template"):
@@ -120,7 +125,7 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
         native_registration = register_ir_transition(
             baseline / "native-json/docs.json", native["nativeResult"]["docIrSha256"], candidate_version)
         budget["docIrTransition"] = {"name": TRANSITION_NAME, "native": native_registration, "published": {}}
-    browser_hashes, failure_sets = {}, []
+    browser_hashes, failure_sets, sites = {}, [], {}
     for locale in native["locales"]:
         browser_file = document(baseline, locale["browserReport"])
         browser_bytes = browser_file.read_bytes()
@@ -131,9 +136,11 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
         browser_hashes[locale["locale"]] = hashlib.sha256(browser_bytes).hexdigest()
         for transport in browser["transports"]:
             failure_sets.append(sorted(row["id"] for row in transport["queries"] if row["pass"] is not True))
-        if doc_ir_transition is not None:
+        if doc_ir_transition is not None or api_routes_transition is not None:
             site = document(baseline, locale["site"] + "/search-index.json").parent
-            proof = verify_search_identity(site, browser["resources"], REPO / "docs/schema")
+            sites[locale["locale"]] = site
+        if doc_ir_transition is not None:
+            proof = verify_search_identity(sites[locale["locale"]], browser["resources"], REPO / "docs/schema")
             budget["docIrTransition"]["published"][locale["locale"]] = register_ir_observation(
                 proof["docIr"], proof["docIrSha256"], candidate_version)
     if failure_sets and any(items != failure_sets[0] for items in failure_sets):
@@ -144,6 +151,9 @@ def register(baseline: Path, template: Path, presentation: Path | None = None, *
                           "sourceSha256": native["sourceSha256"], "status": native["status"]}
     if aria_transition is not None:
         budget["ariaTransition"] = register_aria_transition(aria_transition, baseline, native, REPO)
+    if api_routes_transition is not None:
+        budget["apiRoutesTransition"] = register_api_route_transition(
+            api_routes_transition, baseline, native, sites, REPO / "docs/schema", REPO)
     validate_transition_budget(budget, REFERENCE_TEMPLATE)
     return budget
 
@@ -156,9 +166,12 @@ def main() -> int:
     parser.add_argument("--presentation", type=Path, help="expected presentation changes, frozen before after capture")
     parser.add_argument("--doc-ir-transition", choices=[TRANSITION_NAME])
     parser.add_argument("--aria-transition", type=Path, help="exact complete ARIA snapshots, frozen before after capture")
+    parser.add_argument("--api-routes-transition", type=Path,
+                        help="readable API address transition profile, frozen before after capture")
     args = parser.parse_args()
     result = register(args.baseline, args.template, args.presentation,
-                      doc_ir_transition=args.doc_ir_transition, aria_transition=args.aria_transition)
+                      doc_ir_transition=args.doc_ir_transition, aria_transition=args.aria_transition,
+                      api_routes_transition=args.api_routes_transition)
     with args.output.open("x", encoding="utf-8") as output:
         output.write(strict_dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     print(strict_dumps({"status": result["baseline"]["status"],

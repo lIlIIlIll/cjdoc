@@ -12,6 +12,8 @@ import sys
 sys.dont_write_bytecode = True
 try:
     from .strict_json import strict_load, strict_loads, strict_dumps
+    from .reader_api_routes_transition import (check_route_observer, qualify_api_routes,
+                                               validate_api_route_registration)
     from .reader_aria_transition import check_aria_pair
     from .reader_ir_transition import TRANSITION_NAME, compare_ir_transition
     from .reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
@@ -19,6 +21,8 @@ try:
     from .test_agent_artifacts import ContractError, document
 except ImportError:
     from strict_json import strict_load, strict_loads, strict_dumps
+    from reader_api_routes_transition import (check_route_observer, qualify_api_routes,
+                                              validate_api_route_registration)
     from reader_aria_transition import check_aria_pair
     from reader_ir_transition import TRANSITION_NAME, compare_ir_transition
     from reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
@@ -80,7 +84,7 @@ def bounded(label: str, before: float, after: float, absolute: float, relative: 
 
 
 def task_metrics(before: list[dict], after: list[dict], tasks: list[dict], budgets: dict,
-                 label: str, failures: list[str]) -> list[dict]:
+                 label: str, failures: list[str], routes=None) -> list[dict]:
     old = keyed(before, "id", label + "/baseline")
     new = keyed(after, "id", label + "/after")
     expected = {task["id"] for task in tasks}
@@ -91,7 +95,14 @@ def task_metrics(before: list[dict], after: list[dict], tasks: list[dict], budge
         require(a.get("expectedIds", a.get("expectedId")) == b.get("expectedIds", b.get("expectedId")),
                 f"{label}/{identifier}: native target identity changed")
         if "first20Hrefs" in a:
-            require(a["first20Hrefs"] == b.get("first20Hrefs"), f"{label}/{identifier}: first-20 ranking changed")
+            old_hrefs = a["first20Hrefs"]
+            new_hrefs = b.get("first20Hrefs")
+            if routes is not None:
+                # Ordered results stay ordered; only proven declaration addresses
+                # are compared by stable identity.
+                old_hrefs = routes.normalize_hrefs("baseline", old_hrefs)
+                new_hrefs = routes.normalize_hrefs("after", new_hrefs)
+            require(old_hrefs == new_hrefs, f"{label}/{identifier}: first-20 ranking changed")
         if b.get("pass") is not True:
             failures.append(f"{label}/{identifier}: reader task failed")
         for name in ("synchronous", "frame"):
@@ -174,6 +185,15 @@ def doc_ir_registration(budgets: dict) -> dict | None:
     return registration
 
 
+def api_routes_registration(budgets: dict) -> dict | None:
+    """Return the registered readable-address transition, if this cohort has one."""
+    registration = budgets.get("apiRoutesTransition")
+    if registration is not None:
+        require(isinstance(registration, dict), "unsupported API route transition registration")
+        validate_api_route_registration(registration)
+    return registration
+
+
 def check_search_transition(before: dict, after: dict, registration: dict,
                             sites: tuple[Path, Path] | None) -> None:
     require(sites is not None, "registered search identity transition requires actual publisher artifacts")
@@ -183,6 +203,24 @@ def check_search_transition(before: dict, after: dict, registration: dict,
     compare_ir_transition(proofs[0]["docIr"], proofs[1]["docIr"],
                           registration["published"][locale], proofs[0]["docIrSha256"])
     compare_search_identities(*proofs)
+
+
+def check_routed_search_transition(before: dict, after: dict, registration: dict,
+                                   routes_registration: dict,
+                                   sites: tuple[Path, Path] | None) -> object:
+    """Prove the local document model, then the address-only search payload."""
+    require(sites is not None, "registered API route transition requires actual publisher artifacts")
+    locale = before["environment"]["requestedUiLocale"]
+    qualification = qualify_api_routes(routes_registration, locale, sites[0], sites[1],
+                                       before["resources"], after["resources"],
+                                       REPO / "docs/schema", doc_ir_transition=registration is not None)
+    if registration is not None:
+        compare_ir_transition(qualification.before_proof["docIr"], qualification.after_proof["docIr"],
+                              registration["published"][locale],
+                              qualification.before_proof["docIrSha256"])
+    # Qualification independently verifies both projection fingerprints before comparing.
+    qualification.check_search_payload(paired_snapshot=registration is not None)
+    return qualification
 
 
 def check_native_ir(baseline: Path, after: Path, old: dict, new: dict, profile: dict | None,
@@ -209,7 +247,8 @@ def check_native_ir(baseline: Path, after: Path, old: dict, new: dict, profile: 
 
 
 def check_visuals(before: dict, after: dict, required: bool, failures: list[str],
-                  profile: dict | None = None, aria_registration: dict | None = None) -> None:
+                  profile: dict | None = None, aria_registration: dict | None = None,
+                  routes=None) -> None:
     def key(row: dict) -> str:
         return json.dumps([row["viewport"], row["theme"], row["target"], row["locale"]], sort_keys=True)
     old, new = {key(row): row for row in before["visuals"]}, {key(row): row for row in after["visuals"]}
@@ -229,9 +268,14 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
                         f"visual {identifier}: unregistered {label} body typography")
     a, b = before["accessibility"], after["accessibility"]
     require(a["screenReaderSpeech"] == b["screenReaderSpeech"], "screen-reader evidence boundary changed")
-    if aria_registration is not None:
+    if routes is not None:
+        if aria_registration is not None:
+            require(aria_registration["snapshots"][routes.locale] == routes.snapshots,
+                    "route transition and ARIA registration target different historical snapshots")
+        routes.check_trees(before, after)
+    elif aria_registration is not None:
         check_aria_pair(before, after, aria_registration)
-    if a.get("status") != "not-applicable":
+    elif a.get("status") != "not-applicable":
         if aria_registration is None and profile is None:
             require(a["noScript"]["accessibleTree"] == b["noScript"]["accessibleTree"], "no-JS accessible tree changed")
         elif aria_registration is None:
@@ -240,7 +284,9 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
                 tree_hash = hashlib.sha256(observation["noScript"]["accessibleTree"].encode()).hexdigest()
                 require(tree_hash == profile["locales"][locale][label]["noScriptTreeSha256"],
                         f"{label}: unregistered no-JS accessible tree")
-        if b["noScript"]["independentlyOpen"] is not True or not b["print"]["contentVisible"] or b["print"]["overflowPx"] > 1:
+    if a.get("status") != "not-applicable":
+        if (b["noScript"]["independentlyOpen"] is not True or not b["print"]["contentVisible"]
+                or b["print"]["overflowPx"] > 1):
             failures.append("no-JS multi-open or print visibility/overflow regression")
         require(a["print"]["signatures"] == b["print"]["signatures"] and
                 a["print"]["detailBodies"] == b["print"]["detailBodies"], "print omitted signatures or detail bodies")
@@ -260,7 +306,7 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
         validate_browser_contract(after)
     except ValueError as error:
         raise EvidenceError(str(error)) from error
-    for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "nativeIndexEntries"):
+    for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "nativeIndexEntries"):
         require(before.get(key) == after.get(key) and before.get(key) is not None, f"browser {key} changed or missing")
     require(before.get("environment") and before["environment"] == after.get("environment"),
             "browser environment changed or missing")
@@ -269,8 +315,17 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
     check_font_usage(before, after, profile)
     require(not before["failures"] and not after["failures"], "browser instrumentation failed")
     transition = doc_ir_registration(budgets)
-    if transition is not None:
-        check_search_transition(before, after, transition, sites)
+    routes = api_routes_registration(budgets)
+    if routes is None:
+        require(before["harness"] == after["harness"], "browser harness changed")
+    else:
+        check_route_observer(routes["profile"], before["harness"], after["harness"])
+    qualification = None
+    if transition is not None or routes is not None:
+        if routes is not None:
+            qualification = check_routed_search_transition(before, after, transition, routes, sites)
+        else:
+            check_search_transition(before, after, transition, sites)
     else:
         for name in ("search-index.json", "search-index.js"):
             require(before["resources"][name]["sha256"] == after["resources"][name]["sha256"],
@@ -282,8 +337,10 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
         a, b = old[transport], new[transport]
         measured_failures = sorted(row["id"] for row in a["queries"] if row.get("pass") is not True)
         require(measured_failures == sorted(budgets["baselineQueryFailures"]), "baseline query failures differ from registration")
-        measurements += task_metrics(a["queries"], b["queries"], manifest["queries"], budgets, transport + "/query", failures)
-        measurements += task_metrics(a["members"], b["members"], manifest["members"], budgets, transport + "/member", failures)
+        measurements += task_metrics(a["queries"], b["queries"], manifest["queries"], budgets,
+                                     transport + "/query", failures, qualification)
+        measurements += task_metrics(a["members"], b["members"], manifest["members"], budgets,
+                                     transport + "/member", failures, qualification)
         check_overloads(a["overloads"], b["overloads"], manifest["overloads"], transport, failures)
         for state in ("cold", "warm"):
             metric = state + "InteractiveMs"
@@ -298,7 +355,8 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
         measurements.append(bounded(name + "/bytes", number(before["resources"][name]["bytes"], name),
             number(size["bytes"], name), number(budgets["absolute"]["bundleFileBytes"], name),
             budgets["relative"]["bundle"], failures))
-    check_visuals(before, after, budgets["requireScreenshots"], failures, profile, budgets.get("ariaTransition"))
+    check_visuals(before, after, budgets["requireScreenshots"], failures, profile,
+                  budgets.get("ariaTransition"), qualification)
     return measurements
 
 
@@ -333,11 +391,12 @@ def compare(baseline: Path, after: Path, manifest_file: Path, budget_file: Path)
     if transition is not None:
         require(set(transition["published"]) == {item["locale"] for item in old["locales"]},
                 "registered publisher locale set changed")
+    routes_registration = api_routes_registration(budgets)
     for a, b in zip(old["locales"], new["locales"]):
         old_browser, new_browser = baseline / a["browserReport"], after / b["browserReport"]
         require(digest(old_browser) == budgets["baseline"]["browserSha256"][a["locale"]], "unregistered browser baseline")
         sites = None
-        if transition is not None:
+        if transition is not None or routes_registration is not None:
             sites = (document(baseline, a["site"] + "/search-index.json").parent,
                      document(after, b["site"] + "/search-index.json").parent)
         measurements += compare_browser(strict_load(old_browser), strict_load(new_browser),

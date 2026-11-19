@@ -228,6 +228,13 @@ class HtmlDocument(HTMLParser):
         self.links: list[str] = []
         self.language: str | None = None
         self.base_element = False
+        # Generated API bodies carry their declaration identity; historical
+        # aliases carry only the redirect target and never a SymbolId.
+        self.route: str | None = None
+        self.symbol_id: str | None = None
+        self.page_id: str | None = None
+        self.alias_target: str | None = None
+        self.canonical: str | None = None
         self.feed(text)
         self.close()
 
@@ -237,6 +244,14 @@ class HtmlDocument(HTMLParser):
             self.language = values.get("lang")
         if tag == "base":
             self.base_element = True
+        if tag == "body":
+            self.route = values.get("data-cjdoc-route")
+            self.symbol_id = values.get("data-cjdoc-symbol-id")
+            self.page_id = values.get("data-cjdoc-page-id")
+        if tag == "a" and "data-cjdoc-alias-target" in values:
+            self.alias_target = values.get("href")
+        if tag == "link" and values.get("rel") == "canonical":
+            self.canonical = values.get("href")
         anchors = [values.get("id")]
         if tag == "a":
             anchors.append(values.get("name"))

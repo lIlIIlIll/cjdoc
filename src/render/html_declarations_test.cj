@@ -62,18 +62,18 @@ class HtmlPackageDeclarationTest {
                 typeRelationships: [TypeRelationship(kind, reference), TypeRelationship(kind, reference)]))
         }
         let documentation = rowDocumentation(symbols.toArray())
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let links = HtmlTypeLinkIndex(documentation, projection)
         @Expect(links.reverseUsages(target.id).size, kinds.size)
         for (locale in ["en", "zh-CN"]) {
             let out = HtmlWriter()
-            appendReverseTypeUsages(out, projection.visibleIndex, links, target, "../", locale)
+            appendReverseTypeUsages(out, links, target, "../", locale)
             let html = out.toString()
             @Expect(html.split("class=\"cj-usages__item\"").size - 1, kinds.size)
             @Expect(!html.contains("provider<&>"))
             @Expect(html.contains("provider&lt;&amp;&gt;"))
             for (usage in links.reverseUsages(target.id)) {
-                @Expect(html.contains("../" + symbolUrl(projection.visibleIndex, usage.source)))
+                @Expect(html.contains("../" + projection.symbolFileHref(usage.source.id)))
             }
         }
     }
@@ -89,6 +89,8 @@ class HtmlPackageDeclarationTest {
                 "extend<T> Entry<String> where T <: Comparable<T>", generics: ["T"])
         ])
         let original = encodeDocIr(documentation)
+        // The route index buckets by the same visible declarations the page lists.
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         for (locale in ["en", "zh-CN"]) {
             let html = declarationRowsHtml(packageRowsHtml(documentation, locale))
             @Expect(html.contains("<code>Entry&lt;T&gt;</code>"))
@@ -97,10 +99,10 @@ class HtmlPackageDeclarationTest {
             @Expect(!html.contains("<code>Unknown&lt;NotInModel&gt;</code>"))
             @Expect(html.contains("<code>Entry&lt;String&gt;</code>"))
             @Expect(!html.contains("Entry&lt;String&gt;&lt;T&gt;"))
-            // Rows link to the stable declaration routes and never inline the
+            // Rows link to the canonical declaration routes and never inline the
             // captured source header; the kind is the badge, not a heading.
             for (symbol in documentation.declarations) {
-                @Expect(html.contains("href=\"../" + symbolPagePath(symbol) + "\""))
+                @Expect(html.contains("href=\"../" + projection.symbolFileHref(symbol.id) + "\""))
             }
             @Expect(!html.contains("where K &lt;: Hashable"))
             @Expect(html.contains("class=\"cj-kind\" data-kind=\"class\""))

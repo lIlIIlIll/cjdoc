@@ -33,6 +33,16 @@ private func languageMarkerContent(artifacts: Array<RenderArtifact>, prefix: Str
     throw IllegalArgumentException("missing language marker artifact")
 }
 
+// A declaration body is a directory index, not the historical opaque alias.
+private func languageMarkerBody(artifacts: Array<RenderArtifact>): String {
+    for (artifact in artifacts where artifact.path.startsWith("html/") &&
+        artifact.path.endsWith("/index.html") &&
+        artifact.content.contains("data-cjdoc-page=\"symbol\"")) {
+        return artifact.content
+    }
+    throw IllegalArgumentException("missing canonical language marker body")
+}
+
 private func appendLanguageMarkdownText(out: StringBuilder, node: NodeRef): Unit {
     match (node.kind) {
         case NodeKind.Text => out.append(node.asText().getOrThrow().value)
@@ -51,7 +61,7 @@ class HtmlContentLanguageTest {
             let document = independentLanguageDocumentation(language)
             let original = encodeDocIr(document)
             let artifacts = renderDocumentationFormatsWithOptions(document, ["html", "markdown"], locale: language)
-            let html = languageMarkerContent(artifacts, "html/symbols/symbol-")
+            let html = languageMarkerBody(artifacts)
             let markdown = languageMarkerContent(artifacts, "markdown/packages/")
             @Expect(html.contains("Session has closed."))
             @Expect(html.contains("data-translation-state=\"unpaired\" hidden lang=\"" + language + "\"></span>"))
@@ -72,7 +82,7 @@ class HtmlContentLanguageTest {
     func foreignIndependentTextStillIdentifiesTheOriginalLanguage(): Unit {
         let document = independentLanguageDocumentation("zh-CN")
         let artifacts = renderDocumentationFormatsWithOptions(document, ["html", "markdown"], locale: "en")
-        let html = languageMarkerContent(artifacts, "html/symbols/symbol-")
+        let html = languageMarkerBody(artifacts)
         @Expect(html.contains("Session has closed."))
         @Expect(html.contains("data-translation-state=\"unpaired\" lang=\"zh-CN\""))
         @Expect(!html.contains("data-translation-state=\"unpaired\" hidden"))
@@ -124,8 +134,7 @@ class HtmlLocalizedDescriptionNoticeTest {
                 symbolIds: [symbolId])],
             files: [FileDoc("src/api.cj", moduleId, "fixture")],
             declarations: [symbol])
-        let html = languageMarkerContent(HtmlDocumentationRenderer().render(document),
-            "html/symbols/symbol-")
+        let html = languageMarkerBody(HtmlDocumentationRenderer().render(document))
         @Expect(html.contains("data-translation-state=\"missing\""))
         @Expect(html.contains("Translation missing"))
         @Expect(html.contains("data-translation-state=\"empty\""))

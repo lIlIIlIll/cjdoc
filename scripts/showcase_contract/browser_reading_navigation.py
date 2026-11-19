@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from urllib.parse import unquote, urljoin, urlsplit
 
-from .browser_support import member_action, member_toc_link
+from .browser_support import declaration_url, member_action, member_toc_link
 
 
 def _native(index: dict, identity: str) -> dict:
@@ -30,8 +30,21 @@ def _select_inline_member(page, identity: str):
 def _expect_version_href(page, selector: str, expected: str):
     page.wait_for_function("""([selector, expected]) => {
       const link = document.querySelector(selector);
-      return link && decodeURI(link.href) === decodeURI(expected);
-    }""", arg=[selector, expected])
+      if (!link) return false;
+      let value = link.href;
+      if (/^https?:/.test(value)) {
+        value = value.replace(/\\/index[.]html(?=([?#]|$))/, '/');
+      }
+      return decodeURI(value) === decodeURI(expected);
+    }""", arg=[selector, declaration_url(expected)])
+
+
+def _wait_for_declaration(page, expected: str):
+    page.wait_for_function("""expected => {
+      const path = decodeURI(location.pathname).replace(/\\/index[.]html$/, '/');
+      return path === expected;
+    }""", arg=declaration_url(expected).split("?", 1)[0].split("#", 1)[0]
+        .replace("/index.html", "/"))
 
 
 def check_version_members(page, member_url: str, current_index: dict, old_index: dict, owner_id: str,
@@ -51,7 +64,9 @@ def check_version_members(page, member_url: str, current_index: dict, old_index:
         _expect_version_href(page, selector, expected)
         origin = page.url
         page.locator(selector).click()
-        page.wait_for_url(expected, wait_until="load")
+        _wait_for_declaration(page, expected)
+        if not page.url.endswith("#" + _anchor(entry["id"])):
+            raise AssertionError("version switch lost the selected member anchor")
         expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", "demo-v1")
         expect(page.locator(".cj-page-header__title-row h1")).to_have_text("TextCatalog")
         selected = page.locator('[data-cjdoc-member][id="' + _anchor(entry["id"]) + '"]')
@@ -70,7 +85,7 @@ def check_version_members(page, member_url: str, current_index: dict, old_index:
     _select_inline_member(page, added[0]["id"])
     expect(page.locator(selector)).to_have_attribute("data-cjdoc-version-state", "missing-symbol")
     page.locator(selector).click()
-    page.wait_for_url(expected_owner, wait_until="load")
+    _wait_for_declaration(page, expected_owner)
     expect(page.locator(".cj-page-header__title-row h1")).to_have_text("TextCatalog")
 
 
@@ -79,11 +94,11 @@ def _copy_url(page, button) -> str:
     expected = urljoin(page.url, button.get_attribute("data-cjdoc-copy-link"))
     button.click()
     expect(button).to_have_attribute("data-cjdoc-copy-state", re.compile("copied|failed"))
-    if button.get_attribute("data-cjdoc-copy-state") == "manual":
+    if button.get_attribute("data-cjdoc-copy-state") == "failed":
         field = button.locator("..").locator("[data-cjdoc-copy-link-fallback]")
-        expect(field).to_have_value(expected)
+        expect(field).to_have_value(declaration_url(expected))
         if not field.evaluate("node => node.readOnly && node.selectionStart === 0 && node.selectionEnd === node.value.length"):
-            raise AssertionError("manual copy fallback must select the complete readonly URL")
+            raise AssertionError("rejected copy must select the complete canonical address")
         return expected
     if page.evaluate("Boolean(navigator.clipboard && window.isSecureContext)"):
         actual = page.evaluate("navigator.clipboard.readText()")
@@ -95,8 +110,8 @@ def _copy_url(page, button) -> str:
             actual = page.locator("#reading-copy-probe").input_value()
         finally:
             page.locator("#reading-copy-probe").evaluate("node => node.remove()")
-    if actual != expected:
-        raise AssertionError("Copy link clipboard contents differ from the readable URL")
+    if declaration_url(actual) != declaration_url(expected):
+        raise AssertionError("Copy link clipboard contents differ from the canonical declaration")
     return actual
 
 
@@ -110,23 +125,25 @@ def check_readable_links(page, member_url: str, current_index: dict, owner_id: s
         else:
             member = page.locator(f'[id="{_anchor(member_id)}"]')
             button = member_action(member, "[data-cjdoc-copy-link]")
-        alias = _copy_url(page, button)
-        filename = urlsplit(alias).path.rsplit("/", 1)[-1]
-        if filename.startswith("symbol-") or "TextCatalog" not in filename or len(filename) > 96:
-            raise AssertionError("copy link must use a bounded human-readable symbol alias")
-        suffix = "?theme=paper"
-        if identity == owner_id:
-            suffix += "#" + _anchor(member_id)
-        expected = urljoin(version_root, _native(current_index, identity)["href"]) + suffix
-        page.goto(alias + suffix, wait_until="load")
-        page.wait_for_url(expected, wait_until="load")
-        expect(page.locator("html")).to_have_attribute("data-theme", "paper")
-        if identity == owner_id:
-            target = next(item for item in page.locator("[data-cjdoc-member]").all()
-                          if item.get_attribute("id") == _anchor(member_id))
-            expect(target).to_have_attribute("open", "")
-        else:
+        copied = _copy_url(page, button)
+        if "/symbols/" in urlsplit(copied).path:
+            raise AssertionError("copy link must address the canonical declaration page, not an alias")
+        expected = urljoin(version_root, _native(current_index, identity)["href"])
+        if declaration_url(copied) != declaration_url(expected):
+            raise AssertionError("copy link must address the selected declaration's own page")
+        if identity != owner_id:
+            suffix = "?theme=paper"
+            page.goto(copied + suffix, wait_until="load")
+            _wait_for_declaration(page, expected)
+            expect(page.locator("html")).to_have_attribute("data-theme", "paper")
             expect(page.locator(".cj-page-header__title-row h1")).to_have_text("add")
+        else:
+            # The type page copy carries the reader to the type body itself, and
+            # the browser keeps the requested query in the address.
+            page.goto(copied + "?theme=paper", wait_until="load")
+            _wait_for_declaration(page, expected)
+            expect(page.locator("html")).to_have_attribute("data-theme", "paper")
+            expect(page.locator(".cj-page-header__title-row h1")).to_have_text("TextCatalog")
 
 
 def run_navigation_regressions(page, member_url: str, current_index: dict,
@@ -137,4 +154,4 @@ def run_navigation_regressions(page, member_url: str, current_index: dict,
     return ["both find overload hrefs preserve exact native identity across versions",
             "clearing the member hash restores the type version href",
             "nonEmpty explicitly falls back to its surviving owner in demo-v1",
-            "copied readable type/member aliases preserve query and fragment when reaching the native route"]
+            "copied type and member addresses point at their own canonical declaration pages"]

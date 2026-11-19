@@ -4,9 +4,41 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 from .site import ContractError, Site
+
+
+def declaration_url(url: str) -> str:
+    """The same declaration address as published: HTTP readers use the directory.
+
+    A canonical API body is a real `index.html`; over HTTP the reader script
+    normalizes that address to its directory while keeping query and fragment.
+    Offline `file:` navigation keeps the explicit file, so it is not rewritten.
+    """
+    parts = urlsplit(url)
+    path = unquote(parts.path)
+    if parts.scheme in ("http", "https") and path.endswith("/index.html"):
+        path = path[: -len("index.html")]
+    return urlunsplit((parts.scheme, parts.netloc, path, parts.query, unquote(parts.fragment)))
+
+
+def same_declaration_url(actual: str, expected: str) -> bool:
+    return declaration_url(actual) == declaration_url(expected)
+
+
+def alias_target_url(alias: str, target_href: str) -> str:
+    """Resolve a historical alias link the way the reader script does.
+
+    Query and fragment are carried from the alias address onto the final API
+    body, and HTTP gets the directory form while `file:` keeps `index.html`.
+    """
+    alias_parts, target = urlsplit(alias), urljoin(alias, target_href)
+    parts = urlsplit(target)
+    path = unquote(parts.path)
+    if parts.scheme in ("http", "https") and path.endswith("/index.html"):
+        path = path[: -len("index.html")]
+    return urlunsplit((parts.scheme, parts.netloc, path, alias_parts.query, alias_parts.fragment))
 
 
 class Journey:
@@ -205,7 +237,8 @@ def assert_native_symbol(journey: Journey, qualified: str, signature: str | None
         identities = {item["id"] for item in ir["declarations"]
                       if item["qualifiedName"] == qualified and item["headerSpelling"] == signature}
         candidates = [entry for entry in candidates if entry["id"] in identities]
-    if len(candidates) != 1 or unquote(page.url) != unquote(urljoin(url, candidates[0]["href"])):
+    if len(candidates) != 1 or not same_declaration_url(
+            page.url, urljoin(url, candidates[0]["href"])):
         raise AssertionError("landed route is not the exact native identity for " + qualified)
 
 
@@ -256,5 +289,6 @@ def assert_native_id(journey: Journey, identity: str):
     url = urljoin(page.url, link.get_attribute("href"))
     native = load_json(journey.local_path(url))
     matches = [entry for entry in native["entries"] if entry["id"] == identity]
-    if len(matches) != 1 or unquote(page.url) != unquote(urljoin(url, matches[0]["href"])):
+    if len(matches) != 1 or not same_declaration_url(
+            page.url, urljoin(url, matches[0]["href"])):
         raise AssertionError("landed route does not match the claimed exact native symbol identity")

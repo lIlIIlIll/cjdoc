@@ -30,7 +30,7 @@ class HtmlMemberBrowserTest {
                 ProjectInfo("member-counts"), ConfigurationSnapshot(audience: "external"),
                 modules: [ModuleDoc(moduleId, "member-counts", "root", "", packageNames: ["fixture"])],
                 packages: [PackageDoc("fixture", moduleId)], declarations: declarations.toArray())
-            let projection = RenderProjection(documentation)
+            let projection = RenderProjection(documentation, buildApiRoutes: true)
             let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
                 HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
             @Expect(html.contains("cj-members__toolbar"), count >= 2)
@@ -88,7 +88,7 @@ class HtmlMemberBrowserTest {
             packages: [PackageDoc("fixture", moduleId,
                 symbolIds: [ownerId, directId, extensionId, extensionMemberId, baseId, inheritedId])],
             declarations: [owner, direct, extension, extensionMember, base, inherited])
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let browser = projection.members(owner)
 
         @Expect(browser.entries.size, 3)
@@ -144,7 +144,7 @@ class HtmlMemberBrowserTest {
             packages: [PackageDoc("fixture", moduleId,
                 symbolIds: ["owner-safe", "direct-safe"])],
             declarations: [owner, direct])
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let browser = projection.members(owner)
         @Expect(browser.entries.size, 1)
         @Expect(browser.entries[0].origin, "declared")
@@ -348,7 +348,7 @@ private func memberSectionFixture(): (DocumentationSet, ArrayList<SymbolDoc>) {
 
 private func memberSectionPage(): String {
     let (documentation, declarations) = memberSectionFixture()
-    let projection = RenderProjection(documentation)
+    let projection = RenderProjection(documentation, buildApiRoutes: true)
     renderSymbolPage(documentation, projection, projection.visibleIndex, declarations[0],
         HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
 }
@@ -397,7 +397,7 @@ class HtmlMemberSectionMarkupTest {
             modules: [ModuleDoc(moduleId, "plain-section", "root", "", packageNames: ["fixture"])],
             packages: [PackageDoc("fixture", moduleId, symbolIds: [owner.id, only.id])],
             declarations: [owner, only])
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
             HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
         @Expect(html.contains("<section class=\"cj-member-group cj-member-group--plain\" " +
@@ -422,7 +422,7 @@ private func memberDescriptionPage(symbol: SymbolDoc, locale!: String = "en"): S
             symbolIds: [symbol.id])],
         files: [FileDoc("src/api.cj", moduleId, symbol.packageName)],
         declarations: [symbol])
-    let projection = RenderProjection(documentation)
+    let projection = RenderProjection(documentation, buildApiRoutes: true)
     renderSymbolPage(documentation, projection, projection.visibleIndex, symbol,
         HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection), locale: locale)
 }

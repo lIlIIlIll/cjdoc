@@ -517,52 +517,52 @@ internal let HTML_READING_SCRIPT = """
     window.setTimeout(() => { delete button.dataset.cjdocCopyState; }, 1500);
   };
   const initCopy = () => {
-    for (const button of all("[data-cjdoc-copy-link]")) {
+    document.addEventListener("click", async event => {
+      const button = event.target.closest?.("[data-cjdoc-copy-link]");
+      if (!button) return;
       const iconOnly = !button.textContent.trim();
       const label = button.getAttribute("aria-label") || button.textContent || "";
       const status = button.parentElement
         ? button.parentElement.querySelector("[data-cjdoc-copy-status]") : null;
-      button.addEventListener("click", async () => {
-        let url = button.dataset.cjdocCopyLink || "";
-        try {
-          url = new URL(globalThis.__CJDOC_API_ROUTE__(url), window.location.href).href;
-        } catch (_) { /* keep raw */ }
-        const copied = await copyText(url);
-        const message = copied ? text("Link copied", "链接已复制")
-          : text("Select and copy the link", "请选择并复制链接");
-        flashCopyState(button, copied);
+      let url = button.dataset.cjdocCopyLink || "";
+      try {
+        url = new URL(globalThis.__CJDOC_API_ROUTE__(url), window.location.href).href;
+      } catch (_) { /* keep raw */ }
+      const copied = await copyText(url);
+      const message = copied ? text("Link copied", "链接已复制")
+        : text("Select and copy the link", "请选择并复制链接");
+      flashCopyState(button, copied);
+      if (iconOnly) {
+        button.setAttribute("aria-label", message);
+        button.setAttribute("title", message);
+      } else {
+        const labelNode = button.querySelector("span") || button.lastChild;
+        if (labelNode) labelNode.textContent = message;
+        if (button.hasAttribute("aria-label")) button.setAttribute("aria-label", message);
+      }
+      if (status) status.textContent = message;
+      if (!copied) {
+        let field = button.parentElement?.querySelector("[data-cjdoc-copy-link-fallback]");
+        if (!field) {
+          field = element("input", "cj-input");
+          field.type = "text";
+          field.readOnly = true;
+          field.dataset.cjdocCopyLinkFallback = "";
+          field.setAttribute("aria-label", text("Link address", "链接地址"));
+          button.insertAdjacentElement("afterend", field);
+        }
+        field.value = url;
+        field.focus();
+        field.select();
+      }
+      window.setTimeout(() => {
         if (iconOnly) {
-          button.setAttribute("aria-label", message);
-          button.setAttribute("title", message);
-        } else {
-          const labelNode = button.querySelector("span") || button.lastChild;
-          if (labelNode) labelNode.textContent = message;
-          if (button.hasAttribute("aria-label")) button.setAttribute("aria-label", message);
+          button.setAttribute("aria-label", label);
+          button.setAttribute("title", label);
+          if (status) status.textContent = "";
         }
-        if (status) status.textContent = message;
-        if (!copied) {
-          let field = button.parentElement?.querySelector("[data-cjdoc-copy-link-fallback]");
-          if (!field) {
-            field = element("input", "cj-input");
-            field.type = "text";
-            field.readOnly = true;
-            field.dataset.cjdocCopyLinkFallback = "";
-            field.setAttribute("aria-label", text("Link address", "链接地址"));
-            button.insertAdjacentElement("afterend", field);
-          }
-          field.value = url;
-          field.focus();
-          field.select();
-        }
-        window.setTimeout(() => {
-          if (iconOnly) {
-            button.setAttribute("aria-label", label);
-            button.setAttribute("title", label);
-            if (status) status.textContent = "";
-          }
-        }, 1800);
-      });
-    }
+      }, 1800);
+    });
     for (const code of all("pre > code")) {
       const panel = code.closest("[data-cjdoc-copy-panel]");
       const host = panel?.querySelector("[data-cjdoc-copy-toolbar]") || code.parentElement;
@@ -605,6 +605,7 @@ internal let HTML_READING_SCRIPT = """
     const index = globalThis.__CJDOC_SEARCH_INDEX__;
     const rows = [...all("[data-cjdoc-member]")];
     const memberFilter = kernel?.createEntryFilter(index, rows.map(row => row.dataset.memberSymbolId));
+    let unfiltered;
     const memberGroups = selector => Array.from(all(selector), group =>
       [group, [...group.querySelectorAll("[data-cjdoc-member]")]]);
     const groups = memberGroups("[data-cjdoc-member-group]");
@@ -623,13 +624,13 @@ internal let HTML_READING_SCRIPT = """
       if (expand) expand.disabled = !rows.some(row => !row.hidden && !row.open);
       if (collapse) collapse.disabled = !rows.some(row => !row.hidden && row.open);
     };
-    const closeActionMenus = (restoreFocus = false) => {
-      let closed = null;
-      for (const toggle of all('[data-cjdoc-member-actions-toggle][aria-expanded="true"]')) {
-        toggle.setAttribute("aria-expanded", "false");
-        closed = closed || toggle;
-      }
-      if (restoreFocus && closed) closed.focus();
+    let openAction;
+    const closeActionMenus = restoreFocus => {
+      if (!openAction) return;
+      const toggle = openAction;
+      openAction = null;
+      toggle.setAttribute("aria-expanded", "false");
+      if (restoreFocus) toggle.focus();
     };
     const emptyIds = new Set();
     const applyFilter = () => {
@@ -640,15 +641,20 @@ internal let HTML_READING_SCRIPT = """
         ? kernel.parseQuery(raw, index.contract)
         : {errorCode: "search_index_unavailable", query: "", filters: [], tags: []};
       let error = parsed.errorCode || null;
+      const active = Boolean(parsed.query || parsed.filters.length || parsed.tags.length);
       let matching = emptyIds;
       if (!error) {
-        const request = {query: parsed.query, filters: parsed.filters};
-        if (parsed.tags.length) request.tags = parsed.tags;
-        const projection = memberFilter(request);
-        if (projection.status !== "ok") error = projection.errorCode || "search_index_invalid";
-        else matching = new Set(projection.canonicalIds);
+        if (!active && unfiltered) {
+          ({error, matching} = unfiltered);
+        } else {
+          const request = {query: parsed.query, filters: parsed.filters};
+          if (parsed.tags.length) request.tags = parsed.tags;
+          const result = memberFilter(request);
+          if (result.status !== "ok") error = result.errorCode || "search_index_invalid";
+          else matching = new Set(result.canonicalIds);
+          if (!active) unfiltered = {error, matching};
+        }
       }
-      const active = Boolean(parsed.query || parsed.filters.length || parsed.tags.length);
       if (filterToggle && filterFields) {
         const count = Number(active) + Number(Boolean(selectedOrigin));
         filterToggle.textContent = text("Filter members", "筛选成员") +
@@ -733,25 +739,27 @@ internal let HTML_READING_SCRIPT = """
         syncActions();
       });
     }
-    for (const actions of all("[data-cjdoc-member-actions]")) {
-      const toggle = actions.querySelector("[data-cjdoc-member-actions-toggle]");
-      if (!toggle) continue;
-      toggle.addEventListener("click", () => {
-        const opening = toggle.getAttribute("aria-expanded") !== "true";
-        closeActionMenus();
-        if (!opening) return;
+    browser.addEventListener("click", event => {
+      const toggle = event.target.closest?.("[data-cjdoc-member-actions-toggle]");
+      if (!toggle) return;
+      const opening = toggle !== openAction;
+      closeActionMenus();
+      if (opening) {
+        openAction = toggle;
         toggle.setAttribute("aria-expanded", "true");
-      });
-      actions.addEventListener("keydown", event => {
-        if (event.key !== "Escape") return;
-        if (toggle.getAttribute("aria-expanded") !== "true") return;
-        event.preventDefault();
-        closeActionMenus(true);
-      });
-      actions.addEventListener("focusout", event => {
-        if (!actions.contains(event.relatedTarget)) closeActionMenus();
-      });
-    }
+      }
+    });
+    browser.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || !openAction) return;
+      const menu = openAction.closest("[data-cjdoc-member-actions]");
+      if (!menu.contains(event.target)) return;
+      event.preventDefault();
+      closeActionMenus(true);
+    });
+    browser.addEventListener("focusout", event => {
+      const menu = openAction?.closest("[data-cjdoc-member-actions]");
+      if (menu?.contains(event.target) && !menu.contains(event.relatedTarget)) closeActionMenus();
+    });
     document.addEventListener("pointerdown", event => {
       if (!event.target.closest || !event.target.closest("[data-cjdoc-member-actions]")) {
         closeActionMenus();

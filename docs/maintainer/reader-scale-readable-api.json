@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "cjdoc.reader-api-routes-transition/1",
+  "recipe": "rdr-scale-v1",
+  "sourceSha256": "ade4b8ef804bdadad567d0df4109ac29fb1832e0a3b74ec85d233aea93bc1a83",
+  "taskManifestSha256": "b9c412ec7553501667f42205764843d968f826a296bf801c5dba36c17c8ddbb2",
+  "routeObserver": {
+    "baseline": "552b3ed24464804c7d64eda4aa306973ecfa5105d4d7a0c8a5e37e456ddfff35",
+    "after": "619464335c70154595d315d7b870dad1952e13b661cd829d51172b65981d7bf8"
+  },
+  "page": {
+    "qualifiedName": "reader_scale.longContract",
+    "kind": "function"
+  },
+  "locales": {
+    "en": {
+      "baseline": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/baseline-en.aria.txt",
+        "sha256": "420bb3b74079f9466b157fb460df5124e747279dac835e1ec30f5524a6549acb"
+      },
+      "after": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/after-en.aria.txt",
+        "sha256": "dcf4edbe8ab36981e98ef0328cd5c68e3216389b83cbae2d037062c0e54c61e1"
+      }
+    },
+    "zh-CN": {
+      "baseline": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/baseline-zh-CN.aria.txt",
+        "sha256": "51ff0ed50b131ee238e62516932b14ce3a3b12b031c305b67d8010ca3ea42a34"
+      },
+      "after": {
+        "snapshot": "docs/maintainer/reader-scale-docs-173-177/after-zh-CN.aria.txt",
+        "sha256": "69ffa451637c913c80ce322f9ed53a4e5f1e4abcc90c69d55cb1f79044cdc7c9"
+      }
+    }
+  }
+}

@@ -66,26 +66,31 @@ internal let HTML_THEME_BOOTSTRAP_SCRIPT = """
 })();
 """
 
-// Call only for files assigned by the API route projection, never author URLs.
+// Only projection-owned links are marked. Resolve static links on interaction
+// instead of mutating every collapsed member link during page initialization.
 internal let HTML_API_LINK_SCRIPT = #"
 (() => {
-  const web = location.protocol === 'http:' || location.protocol === 'https:';
-  globalThis.__CJDOC_API_ROUTE__ = file =>
-    web ? file.replace(/\/index[.]html(?=[?#]|$)/, '/') : file;
-  if (web && location.pathname.endsWith('/index.html') &&
-      document.body.matches('[data-cjdoc-symbol-id], [data-cjdoc-page-id]')) {
-    const url = new URL(location.href);
-    url.pathname = globalThis.__CJDOC_API_ROUTE__(url.pathname);
-    try { history.replaceState(history.state, '', url); } catch (_) { /* the file still works */ }
+  const web = /^https?:$/.test(location.protocol);
+  const route = globalThis.__CJDOC_API_ROUTE__ = web
+    ? file => file.replace(/\/index\.html([?#].*)?$/, '/$1') : file => file;
+  if (!web) return;
+  if (location.pathname.endsWith('/index.html') &&
+      document.body.matches('[data-cjdoc-symbol-id],[data-cjdoc-page-id]')) {
+    try { history.replaceState(history.state, '', route(location.pathname) + location.search + location.hash); }
+    catch (_) {}
   }
-  if (web) {
-    for (const link of document.querySelectorAll('[data-cjdoc-api-link]')) {
-      link.setAttribute('href', globalThis.__CJDOC_API_ROUTE__(link.getAttribute('href')));
-    }
-  }
+  const shorten = event => {
+    const link = event.target.closest?.('a[data-cjdoc-api-link]');
+    if (link) link.setAttribute('href', route(link.getAttribute('href')));
+  };
+  for (const event of ['pointerover', 'focusin', 'contextmenu', 'click', 'auxclick'])
+    document.addEventListener(event, shorten, true);
 })();
 "#
 
+// The trigger carries the publication prefix before the lazy search dialog is built.
+// One controller binds listeners per dialog. URL tag changes preserve other query tokens;
+// incoming tag or snapshot links open the dialog rather than hiding the requested results.
 internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
 (() => {
   const kernel = globalThis.cjdocSearch;
@@ -98,8 +103,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     extend: "扩展", typeAlias: "类型别名", concept: "指南", macro: "宏"};
   const englishKindLabels = {__proto__: null, typeAlias: "type alias", enumCase: "enum case", extend: "extension"};
   const kindLabel = value => isChinese ? (kindLabels[value] || value) : (englishKindLabels[value] || value);
-  // The trigger already carries the publication prefix that the input used to
-  // read, so URL results work before the dialog that owns the input exists.
   const root = trigger ? (trigger.dataset.cjdocRootPrefix || "") : "";
   const apiRoot = trigger ? (trigger.dataset.cjdocApiPrefix ?? root) : root;
   const createElement = (tag, className, content) => {
@@ -108,7 +111,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     if (content !== undefined) node.textContent = content;
     return node;
   };
-  // Same magnifier geometry as HtmlWriter.icon("search").
   const createSearchIcon = () => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     for (const [name, value] of [
@@ -263,8 +265,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     return state;
   };
   const urlSearchState = readUrlSearchState();
-  // A tag badge or shared link lands here with ?tag/moduleId/snapshotId; the
-  // reader asked for those results, so show them instead of a closed dialog.
   const urlRequestsSearch = () => urlSearchState.tags.length > 0 ||
     urlSearchState.hasScope || urlSearchState.errorCode !== null;
   const pageSize = index && index.contract && Number.isSafeInteger(index.contract.defaultLimit)
@@ -279,8 +279,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
   let currentParsed = null;
   let composing = false;
 
-  // One controller per created dialog: it binds its listeners once and reuses
-  // the same nodes, state and cursors for every later open.
   const createController = () => {
     const filterFieldForProperty = property => {
       const rows = index && index.contract && Array.isArray(index.contract.filterFields) ?
@@ -360,8 +358,6 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     const toggleFacet = facet => {
       if (!currentRequest) return;
       const tags = selectedFacetTags(currentRequest.tags || [], facet.id);
-      // The URL owns the toggled tag set; typed predicates must not restore a
-      // removed tag on the next input event. Preserve all non-tag input tokens.
       input.value = input.value.split(/[ \\t\\n\\r\\f\\v]+/u)
         .filter(token => token && kernel.fold(token.slice(0, 4)) !== "tag:").join(" ");
       urlSearchState.tags = tags;

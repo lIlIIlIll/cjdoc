@@ -53,17 +53,14 @@ private func externalReferenceStatus(value: ExternalDocumentationReference, loca
 }
 
 private func appendExternalReference(w: HtmlWriter, value: ExternalDocumentationReference,
-    locale: String): Unit {
+    rootPrefix: String, locale: String): Unit {
     w.open("li", attrs: [htmlClass("cj-external__item")])
     w.textElement("strong", value.name, attrs: [htmlClass("cj-external__name")])
     w.text(" ")
     if (value.state == "available") {
-        let url = if (value.url.startsWith("./")) { "../" + value.url.removePrefix("./") } else { value.url }
-        // Doc IR admits absolute and validated plain relative destinations; the
-        // rebased relative form stays a same-site route.
-        let destination = match (SafeUrl.external(url)) {
+        let destination = match (SafeUrl.external(value.url)) {
             case Some(external) => Some(external)
-            case None => SafeUrl.site(url)
+            case None => navigationHref(rootPrefix, value.url).flatMap(SafeUrl.site)
         }
         match (destination) {
             case Some(safe) =>
@@ -95,7 +92,8 @@ private func externalDocumentationHeading(headingLevel: Int64, compactUnavailabl
 }
 
 internal func appendExternalDocumentationHtml(w: HtmlWriter, documentation: DocumentationSet,
-    symbol: SymbolDoc, locale: String, relatedSymbolIds!: HashSet<String> = HashSet<String>(),
+    symbol: SymbolDoc, rootPrefix: String, locale: String,
+    relatedSymbolIds!: HashSet<String> = HashSet<String>(),
     compactUnavailable!: Bool = false, headingLevel!: Int64 = 0): Unit {
     let failures = ArrayList<ExternalDocumentationReference>()
     let seen = HashSet<String>()
@@ -117,17 +115,17 @@ internal func appendExternalDocumentationHtml(w: HtmlWriter, documentation: Docu
             w.open("ul", attrs: [htmlClass("cj-external__list")])
             opened = true
         }
-        appendExternalReference(w, value, locale)
+        appendExternalReference(w, value, rootPrefix, locale)
     }
     if (opened) {
         w.close("ul")
         w.close("section")
     }
-    appendExternalFailures(w, failures, locale, compactUnavailable)
+    appendExternalFailures(w, failures, rootPrefix, locale, compactUnavailable)
 }
 
 private func appendExternalFailures(w: HtmlWriter,
-    failures: ArrayList<ExternalDocumentationReference>, locale: String,
+    failures: ArrayList<ExternalDocumentationReference>, rootPrefix: String, locale: String,
     compactUnavailable: Bool): Unit {
     if (failures.isEmpty()) { return }
     if (!compactUnavailable) {
@@ -136,7 +134,7 @@ private func appendExternalFailures(w: HtmlWriter,
         w.textElement("summary", label(locale, "External reference status", "外部参考状态"),
             attrs: [htmlClass("cj-disclosure__summary")])
         w.open("ul", attrs: [htmlClass("cj-external__list")])
-        for (value in failures) { appendExternalReference(w, value, locale) }
+        for (value in failures) { appendExternalReference(w, value, rootPrefix, locale) }
         w.close("ul")
         w.close("details")
         return

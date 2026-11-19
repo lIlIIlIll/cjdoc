@@ -177,11 +177,16 @@ class AgentConceptualSemanticLinksTest {
         let destination = link[1].split(" ", 2)[0]
         let parts = destination.split("#", 2)
         @Expect(parts[0].startsWith("../../"), true)
+        // The captured exact evidence names the historical opaque file, but the
+        // published destination is the canonical body it now redirects to.
+        let canonical = context.symbolHtmlPath(target.id).getOrThrow()
+        @Expect(parts[0], "../../" + canonical)
         var destinations: Int64 = 0
         for (artifact in HtmlDocumentationRenderer().render(documentation)
             where artifact.path == "html/" + parts[0].removePrefix("../../")) {
             destinations++
-            @Expect(artifact.path, "html/" + symbolPagePath(target))
+            @Expect(artifact.path, "html/" + canonical)
+            @Expect(artifact.content.contains("data-cjdoc-page=\"symbol\""), true)
             if (parts.size == 2) {
                 @Expect(artifact.content.contains("id=\"" + parts[1] + "\""), true)
             }
@@ -197,10 +202,13 @@ class AgentConceptualSemanticLinksTest {
         let hidden = base.declarations[1]
         let page = overviewSemanticPage(base.declarations[0], hidden)
         let documentation = overviewFixture([page])
-        let markdown = DocumentationReadSnapshot(documentation).renderPageMarkdown(page.id,
+        let context = DocumentationReadSnapshot(documentation)
+        let markdown = context.renderPageMarkdown(page.id,
             pagePath: agentPageMarkdownPath(page)).getOrThrow()
         @Expect(markdown.contains("[Hidden target]"), true)
         @Expect(!markdown.contains("[Hidden target]("), true)
         @Expect(!markdown.contains(symbolPagePath(hidden)), true)
+        // No canonical body exists for a declaration this audience cannot read.
+        @Expect(context.symbolHtmlPath(hidden.id).isNone(), true)
     }
 }

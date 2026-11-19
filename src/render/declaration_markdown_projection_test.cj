@@ -101,7 +101,8 @@ private func projectionDeclaration(documentation: DocumentationSet, id: String):
 
 private func projectionProjection(documentation: DocumentationSet, locale: String):
     DeclarationMarkdownProjection {
-    DeclarationMarkdownProjection(documentation, RenderProjection(documentation), locale)
+    DeclarationMarkdownProjection(documentation,
+        RenderProjection(documentation, buildApiRoutes: true), locale)
 }
 
 private func projectionFragmentTag(name: String, subject: String, linkLabel: String): DocTag {
@@ -229,11 +230,17 @@ class DeclarationMarkdownProjectionTest {
         let documentation = projectionDocumentation()
         let add = projectionDeclaration(documentation, PROJECTION_ADD)
         let markdown = projectionProjection(documentation, "en")
+        let owner = projectionDeclaration(documentation, PROJECTION_CATALOG)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        let canonicalOwner = projection.symbolFileHref(owner.id)
         let nested = markdown.renderSelected(add, "agent/symbols/symbol-add.md", [])
-        @Expect(nested.contains("../../symbols/"), true)
-        @Expect(!nested.contains("../../markdown/"), true)
+        // Agent Markdown keeps its own artifact path; links point at the real
+        // canonical HTML body, never at the aggregate Markdown siblings.
+        @Expect(nested.contains("](../../" + canonicalOwner), true)
+        @Expect(!nested.contains("](../../markdown/"), true)
+        @Expect(!nested.contains("](../../symbols/"), true)
         let aggregate = markdown.renderSelected(add, "llms-full.txt", [])
-        @Expect(aggregate.contains("](symbols/"), true)
+        @Expect(aggregate.contains("](" + canonicalOwner), true)
         @Expect(!aggregate.contains("../html/"), true)
         // Resolved type navigation also lands on the canonical HTML page.
         let target = projectionDeclaration(documentation, PROJECTION_CATALOG)
@@ -241,12 +248,12 @@ class DeclarationMarkdownProjectionTest {
             symbolKey: target.id, url: symbolPagePath(target))
         let typed = TypeRef("named", "Catalog", SemanticType("unavailable"),
             navigation: Some(navigation))
-        let owner = SymbolDoc(PROJECTION_ADD, "function", "add", "fixture.Catalog.add", "fixture",
+        let typedOwner = SymbolDoc(PROJECTION_ADD, "function", "add", "fixture.Catalog.add", "fixture",
             PROJECTION_MODULE, "public", projectionSource(40), "public func add(): Unit",
             SemanticInfo("partial", "ast"), returnType: Some(typed),
             documentation: Some(DocComment("", "", "", MarkdownNode("document"))))
-        let typedText = projectionProjection(documentation, "en").renderSelected(owner,
+        let typedText = projectionProjection(documentation, "en").renderSelected(typedOwner,
             "agent/symbols/symbol-add.md", [])
-        @Expect(typedText.contains("](../../symbols/symbol-"), true)
+        @Expect(typedText.contains("](../../" + canonicalOwner), true)
     }
 }
