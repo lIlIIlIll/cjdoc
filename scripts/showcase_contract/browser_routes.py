@@ -83,12 +83,6 @@ def _declared_path(value: str) -> str:
     return unquote(urlsplit(declaration_url(value)).path)
 
 
-def base_path(base: str) -> str:
-    """The deployment mount point, always slash-terminated."""
-    path = unquote(urlsplit(base).path)
-    return path if path.endswith("/") else path + "/"
-
-
 def _body_identity(page, symbol_id: str) -> None:
     from playwright.sync_api import expect
     body = page.locator("body")
@@ -234,14 +228,17 @@ def check_canonical_api_routes(browser, site: Site, offline: Site, bases: dict[s
             if switch["lang"] == site.documents[owner_file].language:
                 continue
             destination = urljoin(page.url, switch["href"])
-            target_path = unquote(urlsplit(destination).path)
-            if "/symbols/" in target_path:
-                raise AssertionError("language switch points at a historical alias")
-            relative = target_path[target_path.index(base_path(base)) + len(base_path(base)):]
+            mount, address = urlsplit(base), urlsplit(destination)
+            if ((address.scheme, address.netloc) != (mount.scheme, mount.netloc)
+                    or not address.path.startswith(mount.path)):
+                raise AssertionError("language switch leaves the deployment mount")
+            relative = unquote(address.path[len(mount.path):])
+            if relative.endswith("/"):
+                relative += "index.html"
             target = site.documents.get(relative)
             if target is None:
                 raise AssertionError("language switch points outside the publication: " + destination)
-            if target.symbol_id != owner_id:
+            if target.alias_target is not None or target.symbol_id != owner_id:
                 raise AssertionError("language switch lost the declaration identity")
             if target.language == site.documents[owner_file].language:
                 raise AssertionError("language switch did not leave the current language")

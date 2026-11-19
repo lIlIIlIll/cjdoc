@@ -6,11 +6,14 @@ from contextlib import ExitStack
 import json
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser import serve
 from .browser_support import member_action, member_toc_link
+from .browser_routes import check_canonical_api_routes
 from .browser_reading_navigation import run_navigation_regressions
+from .offline import ARCHIVE, extract_archive
 from .routes import public_api_file
 from .site import Site, load_json
 from showcase_build.manifest import roots
@@ -425,6 +428,10 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
             options["channel"] = channel
         browser = playwright.chromium.launch(**options)
         try:
+            with TemporaryDirectory(prefix="cjdoc-reading-offline-") as temporary:
+                offline = extract_archive(site.file(ARCHIVE), Path(temporary) / "site", site)
+                check_canonical_api_routes(browser, site, offline, bases)
+            print("reading regression: canonical API routes and historical aliases", flush=True)
             for target_index, target in enumerate(feature["targets"]):
                 language_roots = roots(site.root, target["locale"])
                 current_index = load_json(language_roots[target["version"]] / "symbol-index.json")
