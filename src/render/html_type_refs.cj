@@ -86,7 +86,7 @@ internal func appendTypeAtomHtml(w: HtmlWriter, typeRef: TypeRef,
     spelling: String, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
     match (typeLinkIndex.targetUrl(typeRef)) {
         case Some(url) =>
-            if (let Some(href) <- navigationHref(rootPrefix, url)) {
+            if (let Some(href) <- typeLinkIndex.targetHref(rootPrefix, url, typeRef.navigation)) {
                 w.open("a", attrs: documentationHrefAttrs(href, navigation: typeRef.navigation,
                     cssClass: "cj-type-link"))
                 w.text(spelling)

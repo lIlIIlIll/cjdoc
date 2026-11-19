@@ -91,7 +91,7 @@ internal func guideSectionTargets(page: DocumentationPage, symbolId: String): Ar
 // The author's first guide that actually binds this type or its members is an
 // entry point; no package-name or prose-keyword inference creates a link.
 internal func appendTypeGuideEntry(w: HtmlWriter, documentation: DocumentationSet,
-    projection: RenderProjection, symbol: SymbolDoc, locale: String): Unit {
+    projection: RenderProjection, symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
     if (!isTypeDeclaration(symbol) && symbol.kind != "extend") { return }
     let related = HashSet<String>()
     let _ = related.add(symbol.id)
@@ -100,7 +100,7 @@ internal func appendTypeGuideEntry(w: HtmlWriter, documentation: DocumentationSe
         for (target in page.targetSymbolIds where related.contains(target)) {
             w.element("p", [htmlClass("cj-guide-entry")]) { paragraph =>
                 paragraph.text(label(locale, "Read the guide: ", "从指南开始："))
-                paragraph.element("a", [htmlHref(documentationRouteHref("../" + page.route))]) { link =>
+                paragraph.element("a", [htmlHref(documentationRouteHref(rootPrefix + page.route))]) { link =>
                     link.text(page.title)
                 }
             }

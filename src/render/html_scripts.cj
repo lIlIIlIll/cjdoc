@@ -66,6 +66,26 @@ internal let HTML_THEME_BOOTSTRAP_SCRIPT = """
 })();
 """
 
+// Call only for files assigned by the API route projection, never author URLs.
+internal let HTML_API_LINK_SCRIPT = #"
+(() => {
+  const web = location.protocol === 'http:' || location.protocol === 'https:';
+  globalThis.__CJDOC_API_ROUTE__ = file =>
+    web ? file.replace(/\/index[.]html(?=[?#]|$)/, '/') : file;
+  if (web && location.pathname.endsWith('/index.html') &&
+      document.body.matches('[data-cjdoc-symbol-id], [data-cjdoc-page-id]')) {
+    const url = new URL(location.href);
+    url.pathname = globalThis.__CJDOC_API_ROUTE__(url.pathname);
+    try { history.replaceState(history.state, '', url); } catch (_) { /* the file still works */ }
+  }
+  if (web) {
+    for (const link of document.querySelectorAll('[data-cjdoc-api-link]')) {
+      link.setAttribute('href', globalThis.__CJDOC_API_ROUTE__(link.getAttribute('href')));
+    }
+  }
+})();
+"#
+
 internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
 (() => {
   const kernel = globalThis.cjdocSearch;
@@ -81,6 +101,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
   // The trigger already carries the publication prefix that the input used to
   // read, so URL results work before the dialog that owns the input exists.
   const root = trigger ? (trigger.dataset.cjdocRootPrefix || "") : "";
+  const apiRoot = trigger ? (trigger.dataset.cjdocApiPrefix ?? root) : root;
   const createElement = (tag, className, content) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -406,7 +427,9 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       item.setAttribute("aria-selected", "false");
       const link = document.createElement("a");
       link.className = "cj-search__hit-link";
-      link.setAttribute("href", root + entry.href + (section ? "#" + section.anchor : ""));
+      const destination = entry.concept ? root + entry.href
+        : globalThis.__CJDOC_API_ROUTE__(apiRoot + encodeURI(entry.href));
+      link.setAttribute("href", destination + (section ? "#" + section.anchor : ""));
       const head = document.createElement("span");
       head.className = "cj-search__hit-head";
       const name = document.createElement("span");

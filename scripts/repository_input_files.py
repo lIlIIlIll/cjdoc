@@ -362,7 +362,16 @@ def validate_schema_document(name: str, value: object,
         raise ValueError(f"{name} schema required/property contract is invalid")
     actual_version = properties.get("schemaVersion", {}).get("const") \
         if isinstance(properties.get("schemaVersion"), dict) else None
-    if actual_version != expected_version:
+    if name == "machine-manifest":
+        pairs = [("cjdoc.machine-manifest/1", "cjdoc.read/1"),
+                 (expected_version, "cjdoc.read/2")]
+        if properties["schemaVersion"] != {"enum": [version for version, _ in pairs]} or \
+                properties["projection"] != {"enum": [projection for _, projection in pairs]} or \
+                value.get("oneOf") != [{"properties": {"schemaVersion": {"const": version},
+                                                       "projection": {"const": projection}}}
+                                       for version, projection in pairs]:
+            raise ValueError("machine-manifest schema must bind each version to its reading projection")
+    elif actual_version != expected_version:
         raise ValueError(f"{name} schema does not declare {expected_version}")
     if name in LOOSE_PROPERTY_SCHEMAS:
         # The request schema belongs to the query contract and may add optional

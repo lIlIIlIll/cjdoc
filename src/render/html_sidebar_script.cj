@@ -13,6 +13,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
   const data = globalThis.__CJDOC_SIDEBAR_INDEX__ || null;
   const isChinese = (document.documentElement.lang || "").toLowerCase().startsWith("zh");
   const root = sidebar ? (sidebar.dataset.cjdocRootPrefix || "") : "";
+  const apiRoot = sidebar ? (sidebar.dataset.cjdocApiPrefix ?? root) : root;
   const currentId = sidebar ? (sidebar.dataset.cjdocCurrentSymbol || "") : "";
   const currentPage = sidebar ? (sidebar.dataset.cjdocCurrentPage || "") : "";
   const packages = [];
@@ -41,7 +42,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
       : "cj-tree__link");
     if (href.indexOf("#") < 0) link.setAttribute("data-cjdoc-nav-link", "");
     if (isPage) link.setAttribute("aria-current", "page");
-    link.setAttribute("href", root + href);
+    link.setAttribute("href", kind ? globalThis.__CJDOC_API_ROUTE__(apiRoot + href) : root + href);
     if (kind) {
       const chip = element("span", "cj-tree__kind");
       chip.setAttribute("data-kind", kind);

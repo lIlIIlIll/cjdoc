@@ -49,7 +49,7 @@ private func appendDeclarationRow(w: HtmlWriter, projection: RenderProjection,
         htmlAttr("data-member-kind", symbol.kind)])
     w.element("td", [htmlClass("cj-decl-table__name")]) { cell =>
         cell.element("a", [htmlClass("cj-decl-table__link"),
-            htmlHref(documentationRouteHref("../" + symbolPagePath(symbol)))]) { link =>
+            htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref("../", symbol.id)))]) { link =>
             link.textElement("code", name)
         }
         appendDeclarationClassificationBadges(cell, projection.catalog, projection.snapshotId,

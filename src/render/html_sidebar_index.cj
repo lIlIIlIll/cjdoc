@@ -61,7 +61,7 @@ private func appendSidebarTypeEntry(out: RenderTextBuffer, projection: RenderPro
     out.append("{\"label\":${escapeJsonString(label)}")
     out.append(",\"kind\":${escapeJsonString(symbol.kind)}")
     out.append(",\"kindLabel\":${escapeJsonString(htmlKindLabel(symbol.kind, locale))}")
-    out.append(",\"href\":${escapeJsonString(symbolPagePath(symbol))}")
+    out.append(",\"href\":${escapeJsonString(projection.symbolFileHref(symbol.id))}")
     out.append(",\"members\":[")
     var first = true
     for (entry in projection.members(symbol).entries) {

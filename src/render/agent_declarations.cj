@@ -63,7 +63,8 @@ internal func renderAgentDeclarationJson(context: DocumentationReadSnapshot, sym
     out.append(",\"classification\":")
     appendDeclarationClassificationJson(out, capturedDeclarationClassification(context, Some(symbol)))
     out.append(",\"representations\":{\"pathBase\":\"document-root\",\"html\":" +
-        escapeJsonString(symbolPagePath(symbol)) + ",\"markdown\":" + escapeJsonString(agentDeclarationMarkdownPath(symbol)) +
+        escapeJsonString(context.symbolHtmlPath(symbol.id).getOrThrow()) +
+        ",\"markdown\":" + escapeJsonString(agentDeclarationMarkdownPath(symbol)) +
         ",\"json\":" + escapeJsonString(agentDeclarationJsonPath(symbol)) + "},\"source\":")
     out.append(sourceReferenceJson(context.projection.sourceReferences.project(
         symbol.moduleId, symbol.source)))
@@ -99,7 +100,7 @@ protected func agentRepresentationMappings(context: DocumentationReadSnapshot): 
     var first = true
     for (symbol in context.projection.visibleSymbols) {
         if (!first) { out.append(",") }; first = false
-        appendAgentRepresentation(out, "symbol", symbol.id, symbolPagePath(symbol),
+        appendAgentRepresentation(out, "symbol", symbol.id, context.symbolHtmlPath(symbol.id).getOrThrow(),
             agentDeclarationMarkdownPath(symbol), agentDeclarationJsonPath(symbol))
     }
     for (page in context.selectedPages()) {
@@ -215,8 +216,8 @@ internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactStore,
     appendAgentPageArtifacts(machine, context)
     let reportRows = appendCapturedReportArtifacts(machine, context, reports)
     let out = StringBuilder()
-    out.append("{\"schemaVersion\":\"cjdoc.machine-manifest/1\",\"snapshotId\":${escapeJsonString(context.snapshotId)}," +
-        "\"pathBase\":\"document-root\",\"projection\":\"cjdoc.read/1\",\"publicationRevision\":" +
+    out.append("{\"schemaVersion\":\"cjdoc.machine-manifest/2\",\"snapshotId\":${escapeJsonString(context.snapshotId)}," +
+        "\"pathBase\":\"document-root\",\"projection\":${escapeJsonString(CJDOC_READ_PROJECTION)},\"publicationRevision\":" +
         escapeJsonString(context.publicationRevision) + ",\"scope\":")
     appendAgentReadingScope(out, context, None)
     out.append(",\"docIr\":{\"path\":\"agent/docs.json\",\"sha256\":" +

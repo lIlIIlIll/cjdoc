@@ -10,7 +10,7 @@ internal func appendHomeIntroduction(w: HtmlWriter, documentation: Documentation
         let assets = buildAssetLookup(projectAssets(documentation, projection, pages: pages))
         w.open("article", attrs: [htmlClass("cj-home-intro cj-prose"), htmlFlag("data-conceptual-entry")])
         appendPageContentLanguage(w, page, locale)
-        appendCapturedPageBodyHtml(w, documentation, page, locale, "index.html", assets,
+        appendCapturedPageBodyHtml(w, documentation, projection, page, locale, "index.html", assets,
             afterFirstCode: Some(homeReadingPaths(pages, locale)))
         w.close("article")
         w.newline()
@@ -30,7 +30,7 @@ private func appendHomeReadingResourceItem(w: HtmlWriter, page: DocumentationPag
 }
 
 private func homeReadingPaths(pages: Array<DocumentationPage>, locale: String): TrustedHtml {
-    TrustedHtml.capture { w =>
+    TrustedHtml.capture({ w =>
         w.element("nav", [htmlClass("cj-reading-paths"), htmlAttr("aria-labelledby", "reading-paths-heading")]) { nav =>
             nav.textElement("h2", label(locale, "Continue reading", "继续阅读"),
                 attrs: [htmlAttr("id", "reading-paths-heading")])
@@ -58,7 +58,7 @@ private func homeReadingPaths(pages: Array<DocumentationPage>, locale: String): 
                 }
             }
         }
-    }
+    })
 }
 
 private func homePackageModuleSuffix(projection: RenderProjection, pkg: ProjectedPackage): String {

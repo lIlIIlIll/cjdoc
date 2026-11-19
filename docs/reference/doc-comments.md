@@ -2,6 +2,8 @@
 
 仓颉声明注释里可用的标签、属性、示例指令、分组与多语言写法，以及指南 Markdown 与 API 的绑定语法。生成流程见[生成与发布](../how-to/generate-and-publish.md)，示例检查的操作步骤见[检查文档示例](../how-to/check-examples.md)，配置项见[配置参考](configuration.md)。
 
+要从源码对照实际页面，打开 [PocketKit 文档注释示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md)；生成 demo-v2 站点后可从首页进入并沿「相关 API」打开对应声明。
+
 ## 注释识别
 
 - 只有声明前紧邻的 `/** ... */` 绑定到该声明；`//` 与 `/* ... */` 不生成文档。
@@ -16,7 +18,7 @@
 | 标签 | 内容 | 规则 |
 |---|---|---|
 | `@param name 说明` | 参数说明 | 名称必须与声明中的真实参数名一致，每个参数一项；不存在报 `CJDOC3109` |
-| `@return 说明` | 返回值说明 | 每个注释只支持一个 `@return`，重复报 `CJDOC3003` |
+| `@return 说明` | 返回值区域 | 每种语言一项；普通单语重复报 `CJDOC3003`，本地化时同语言冲突报 `CJDOC3106` |
 | `@throws Type 说明` | 可能抛出的异常 | 可重复；同一声明重复写同一异常报 `CJDOC3022`；未写说明报 lint `missing-throws` |
 | `@see 目标 说明` | 相关声明引用 | 目标无法唯一解析时报 `CJDOC3008` 或 lint 规则 |
 | `@since 版本` | 引入版本 | 2–4 段数字，如 `0.1.0`；其他形式报 lint `invalid-since-version` |
@@ -24,13 +26,34 @@
 | `@author 名称` | 作者 | 可重复 |
 | `@version 版本` | 版本元数据 | 不参与多语言配对 |
 | `@example [标题] {指令}` | 示例标题、指令与随后的代码围栏 | 见[示例](#示例) |
-| `@precondition`、`@postcondition`、`@invariant`、`@performance`、`@state`、`@concurrency`、`@platform`、`@compatibility`、`@error` | 行为契约 | 说明为空时报 `CJDOC3043` |
+| 九种行为契约 | 条件、状态与调用边界 | 见[行为契约](#行为契约) |
 | `@group id 标题` | 展示分组 | 每个声明最多一个，见[分组与标签](#分组与标签) |
 | `@tag id` | 声明级分类标签 | 可重复，见[分组与标签](#分组与标签) |
-| `@note`、`@warning`、`@danger` | 作者标记的提示块 | 见[提示标签](#提示标签) |
-| `@summary`、`@description` | 显式指定摘要、详细说明 | 需要 `default-language`，见[多语言注释](#多语言注释) |
+| `@note 正文` | 注意 | 可重复；默认独立显示，见[提示标签](#提示标签) |
+| `@warning 正文` | 警告 | 可重复；默认独立显示，见[提示标签](#提示标签) |
+| `@danger 正文` | 危险 | 可重复；默认独立显示，见[提示标签](#提示标签) |
+| `@summary 摘要` | 显式摘要 | 配置默认语言后，每种语言一项；覆盖首段自动提取，见[多语言注释](#多语言注释) |
+| `@description 说明` | 显式详细说明 | 配置默认语言后，每种语言一项，可含多段或列表，见[多语言注释](#多语言注释) |
 
 行为契约描述作者记录的内容，不是编译器证明、测试回执或兼容性保证。`@since`、`@version`、`@author`、`@group`、`@tag` 是共享元数据，不能加语言限定。
+
+### 行为契约
+
+一项契约时显示该项标题；多项时在「行为约束」下分项展示。可以组合不同种类；要配对译文，每种契约在每种语言中只写一项。普通单语注释可写多条；说明为空时报告 `CJDOC3043`。
+
+| 写法 | 显示的约定 | PocketKit 示例 |
+|---|---|---|
+| `@precondition 0 <= index < size。` | 调用前的必要条件 | `TextCatalog.at` |
+| `@postcondition size 比调用前增加一。` | 成功调用后成立的条件 | `TextCatalog.add(String)` |
+| `@invariant 会话一旦关闭就不会重新打开。` | 始终成立的约束 | `TextReader` |
+| `@performance 最多检查 size 个条目。` | 时间、空间或工作量边界 | `TextCatalog.contains` |
+| `@state 读到末尾时 read() 返回 None，会话仍然打开。` | 状态或状态转换 | `TextReader` |
+| `@concurrency 多个线程共享读取位置时，调用方必须同步访问。` | 并发使用责任 | `TextReader` |
+| `@platform 只读内存文本，不打开文件句柄。` | 平台或环境条件 | `TextReader` |
+| `@compatibility 旧的单参数调用仍有效，使用默认的十进制。` | 旧用法与兼容条件 | `TextCatalog.add(Int64, radix:)` |
+| `@error radix 不是 10 时，不追加任何条目。` | 失败时的可见行为；具体异常用 `@throws` | `TextCatalog.add(Int64, radix:)` |
+
+在 [PocketKit 行为契约示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#行为契约)里对照中英文源码与关联 API。契约和 `@throws` 都是说明，不会触发行为检查。
 
 ### 宏声明与宏包裹的源码
 
@@ -127,6 +150,42 @@ error[CJDOC3132]: @tag requires one ASCII identifier (1-64 letters, digits, '-' 
 
 只识别小写的 `@note`、`@warning`、`@danger`，且必须在顶层 Markdown 段落。标签之后的连续顶层普通文本行构成提示正文；空行、下一条顶层 `@...` 或注释结束会结束提示，其后的普通说明需要用空行隔开。列表、引用、代码块里的同样文字，以及 `@Warning`、`@noteish`，都按普通正文处理。
 
+### 在同一声明里写多个提示
+
+同一声明可以重复使用同一级别，也可以混用 `@note`、`@warning`、`@danger`。HTML 默认按注释顺序逐条显示；读者可在[显示设置](../how-to/generate-and-publish.md#2-阅读页面搜索和深链)中选择按类型合并，不用改注释。成员列表折叠时，警告和危险各最多显示一个标记；展开后才显示全部正文。
+
+例如，给一个按分隔符拼接原始条目的方法写：
+
+```text
+@note 连接结果保留条目的插入顺序。
+@note 分隔符可以包含多个字符。
+@warning 连接时不会转义条目内容，不能代替 CSV 编码器。
+@danger 不要用连接结果覆盖原始条目；不同条目可能产生相同结果。
+```
+
+### 在一个提示框内分条
+
+同一事项需要分点时，用一条标签写列表，而不是重复标签。列表里的所有条目同属该标签的级别。把编号都写在同一行只会得到一段文字。
+
+要在一个提示框内显示有序列表，把 `1.` 写在标签同一行，再在后续行写 `2.`、`3.`，中间不留空行。渲染时每一项单独成行：
+
+```text
+@warning 1. 校验分页起点，避免越界。
+2. 按实际返回的条目数遍历，不要假定末页已填满。
+```
+
+要在一个提示框内显示无序列表，第一项用 `@note + 正文`；其余各项先单写一行 `+`，再在下一行缩进两个空格写正文。各项之间不留空行。直接写 `- 正文` 会让后续项成为提示框外的正文列表。
+
+```text
+@note + 在起点有效时，`limit: 0` 返回空窗口。
++
+  读取窗口不会移除或重排目录里的条目。
+```
+
+PocketKit 的 [`TextCatalog.window` 源码](../../examples/pocketkit/demo-v2/src/catalog.cj) 在同一声明中分别演示这两种列表；`TextCatalog.join` 演示重复和混用提示。
+
+### 属性与诊断
+
 属性只能按以下形式和顺序书写，括号内不加空格或引号：
 
 ```text
@@ -151,26 +210,36 @@ error[CJDOC3132]: @tag requires one ASCII identifier (1-64 letters, digits, '-' 
 
 ## 示例
 
-`@example` 的标题可省略。示例正文里一个或多个 `cangjie` 围栏按顺序合成一个示例，直到下一个受支持的顶层标签结束；围栏里形似标签的文字属于示例内容。HTML 与 Markdown 会显示示例，但默认不编译、不运行——检查必须显式加 `--check-examples`。
+同一声明可写多个 `@example`。每个标签对应站点「示例」区的一条独立用例，标题可省略。一个标签下的多个 `cangjie` 围栏按顺序拼接成**同一个用例**，可跨围栏使用先前定义的变量；另一个 `@example` 不共享这些变量。示例延续到下一个受支持的顶层标签，围栏内形似标签的文字不结束示例。
 
-```cangjie
+下面的 `add` 有两个用例。第一个用例的两个代码块一起执行，标准输出为 `3`；第二个用例独立编译，只检查代码能否通过。HTML 和 Markdown 默认只展示；要执行指令，显式加 `--check-examples`。
+
+~~~cangjie
 /**
  * 返回两个数值的和。
  * @param left 左操作数。
  * @param right 右操作数。
  * @return 两数之和。
- * @example 基本用法 {run}
+ * @example 将结果保存后打印 {run}
  * ```cangjie
- * println(add(1, 2))
+ * let sum = add(1, 2)
+ * ```
+ * ```cangjie
+ * println(sum)
  * ```
  * ```output
  * 3
+ * ```
+ * @example 传入负数 {must-pass}
+ * ```cangjie
+ * let sum = add(-2, 1)
+ * println(sum)
  * ```
  */
 public func add(left: Int64, right: Int64): Int64 {
     left + right
 }
-```
+~~~
 
 指令写在标题后的 `{...}` 里：
 
@@ -190,7 +259,11 @@ error[CJDOC3033]: @example '冲突' has invalid directives: 'must-pass' and 'mus
 
 `flags` 白名单只有：`--cfg NAME=VALUE`（用户配置键）、`-Woff GROUP` / `-Won GROUP`（`all`、`unused`、`unused-main`、`deprecated`、`unsupport-compile-source`、`package-import`、`parser`、`semantics`、`interpreter`、`apilevel-check`）、`--int-overflow throwing|wrapping|saturating`，以及单独的 `--experimental`、`-O0`、`-O1`、`-O2`、`-Os`、`-Oz`。输入/输出路径、依赖、import 与包配置不由指令控制；需要的 import 必须写在所属源码文件里，代码片段只写函数体内的语句。
 
-每个示例最多一个 `output` 围栏，且必须与 `run` 同用；比较时统一换行符并忽略首尾空行。示例包在无参数 `main` 里执行，不能使用 `args`。
+只有非空的小写 `cangjie` 围栏参与检查；反引号和波浪线均可，`cj` 只高亮。检查时没有可编译围栏报 `CJDOC3032`；有指令时也报 `CJDOC3070`。
+
+每个有代码的示例最多一个 `output` 围栏，且必须与 `run` 同用。省略 `output` 只检查正常退出；空 `output` 要求没有标准输出。比较时统一换行符并忽略首尾空行。示例包在无参数 `main` 里执行，不能使用 `args`。
+
+生成页面会展示作者写的预期输出，不会自动采集运行结果。可在 PocketKit 的 [`TextCatalog.window` 源码](../../examples/pocketkit/demo-v2/src/catalog.cj) 看到四个带输出的用例：正常分页、默认值与末页、空窗口、非法参数。生成 PocketKit 文档后，在 `window` 页的「示例」区可看到每个用例的代码和预期输出。
 
 | 边界或结果 | 报告 |
 |---|---|
@@ -208,7 +281,7 @@ error[CJDOC3033]: @example '冲突' has invalid directives: 'must-pass' and 'mus
 
 ### HTML 示例布局
 
-小写 `cangjie` 围栏和随后的 `output` 默认合为一个示例单元，先代码后输出。两区可独立复制；复制输出保留围栏内的空格、制表符和换行。超过 12 行的输出默认折叠，折叠时也可复制全文。空 `output` 显示「预期无标准输出」，没有 `output` 则不显示输出区。
+小写 `cangjie` 围栏和随后的 `output` 默认合为一个示例单元，先代码后输出。两区可独立复制；复制输出保留围栏内捕获的空格、制表符和换行。超过 12 行的输出默认折叠，可展开查看，折叠时也可复制全文。空 `output` 显示「预期无标准输出」，没有 `output` 则不显示输出区。
 
 点示例标题可开合整例。读者可在「显示设置」里分别选择整例与长输出的默认状态；单独开合不影响默认设置。
 
@@ -220,13 +293,13 @@ error[CJDOC3033]: @example '冲突' has invalid directives: 'must-pass' and 'mus
 | ` ```output layout=prose ` | 紧贴在代码块下方的正文式输出，适合教程 |
 | ` ```output layout=side-by-side ` | 桌面阅读区足够宽时左右并排；触屏与窄屏仍先代码后输出 |
 
-布局只影响 HTML，不改变编译、运行或输出核对。首页与指南 Markdown 也可用这三种写法：把顶层的 `output` 围栏紧跟在一个或多个小写 `cangjie` 围栏后。两者之间可以写「预期输出」作普通或加粗段落，不要插入标题或其他正文。
+布局只影响 HTML，不改变编译、运行或输出核对。首页与指南 Markdown 也可用这三种写法：把顶层的 `output` 围栏紧跟在一个或多个小写 `cangjie` 围栏后。两者之间可以写「预期输出」作普通或加粗段落，不要插入标题或其他正文。参见 [PocketKit 示例与输出](../../examples/pocketkit/demo-v2/docs/doc-comments.md#示例与输出)。
 
 ## 多语言注释
 
 cjdoc 不自动翻译，也不校验译文是否正确、同步或最新；每种语言的正文由作者提供。启用多语言需在项目自己的 `cjdoc.toml` 里配置 `[i18n]`，见[配置参考](configuration.md)。目前只发布 `zh-CN` 与 `en`，语言标签按大小写归一化到这两个值，不推断 `zh-Hans`、`zh-TW`、`en-US` 等别名。
 
-可本地化字段：摘要、详细说明、参数、返回值、异常、引用、弃用、示例，以及九种行为契约。
+可本地化字段：摘要、详细说明、参数、返回值、异常、引用、弃用、示例、九种行为契约，以及 `@note`、`@warning`、`@danger`。
 
 ```cangjie
 /**
@@ -238,6 +311,8 @@ cjdoc 不自动翻译，也不校验译文是否正确、同步或最新；每�
  * @return[lang=en] The clamped value.
  */
 ```
+
+不写 `@summary` 时，从顶层首个普通段落取摘要。要分别指定摘要和多段详细说明，可照抄 [PocketKit 的弃用示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)。
 
 语言限定必须紧跟标签名、在同一行，形如 `@param[lang=en] text ...`。`@param` 译文仍要写出真实参数名；语言限定之后的多段说明、列表、表格、引用和围栏都属于该译文。自然语言限定不会改变代码围栏语言或 `{run}` 等示例指令的含义。
 
@@ -260,7 +335,14 @@ ID 只在当前声明的 `@throws` 条目内生效，1–64 字节，首字符�
 
 ### 提示的语言配对与回退
 
-提示只支持 `@note`、`@warning`、`@danger`，属性可为空、`[id=x]`、`[lang=en]`、`[lang=en,id=x]`。提示 ID 与 throws ID 字符规则相同但作用域不同：三个提示等级在同一声明内共用一个 ID 命名空间。有 ID 且有效的提示先取请求语言，再取所属输入的默认语言；仍缺时只在存在唯一有效其他语言候选时回退，并标注正文的实际来源。没有有效正文的 ID 变体不能因回退而被算作完成译文。
+不同提示若要分别翻译，各用不同的 `id`；同一条提示的中英文共用 `id` 和提示级别。三个提示等级在同一声明内共用 ID 命名空间。有 ID 且有效的提示先取请求语言，再取所属输入的默认语言；仍缺时只在存在唯一有效其他语言候选时回退，并标注正文的实际来源。没有有效正文的 ID 变体不能因回退而被算作完成译文。
+
+```text
+@warning[id=csv] 连接不会转义，请使用专用 CSV 编码器。
+@warning[lang=en,id=csv] Joining does not escape entries. Use a CSV encoder.
+@warning[id=empty-result] 请用 `isEmpty()` 判断目录是否为空。
+@warning[lang=en,id=empty-result] Use `isEmpty()` to test whether the catalogue is empty.
+```
 
 没有 `[i18n]` 时，普通注释字段按未本地化内容显示；如果注释只有顶层提示标签而没有触发完整本地化的字段，其本地化范围为 `admonitions`，只允许提示使用 `[lang=...]` 与 ID。启用 `[i18n]`，或同一注释里出现普通语言字段、`@summary`、`@description`、带 ID 的 `@throws` 等完整本地化触发项时，范围为 `all`，未限定的正文属于配置的默认语言。
 

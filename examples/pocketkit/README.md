@@ -29,11 +29,16 @@ support-v1。配置受版本控制，不会被整体覆盖。输出目录必须�
 Generated core API pages use the same CLI, sources and configurations as the published showcase.
 The Pages homepage and human-readable report presentation are publication layers, not handwritten API implementations.
 
-`demo-v1` / `demo-v2` 通过 `[i18n]` 和 `@tag[lang=en]` 保存作者提供的正文翻译。
+`demo-v1` / `demo-v2` 通过 `[i18n]` 和 `@summary[lang=en]` 等语言字段保存作者提供的译文。
+`@tag` 只写共享 ID；分类标签的双语显示名写在 `cjdoc.toml` 的 `[metadata.tags.titles]`。
 `--locale both` 是复现脚本选项；它调用原生 `generate --all-languages`，每个版本分析一次，
 再用原生站点清单组合语言与版本。原生 CLI 的 locale 值仍只有 `zh-CN` / `en`。
 入门指南有独立英文文件，TextCatalog 提供真实不同的摘要、参数、返回值、异常和行为契约文字。
 尚未翻译的字段保留带语言标记的原文；示例中的缺译与 `diagnostics` 的故意失败分别报告。
+
+编写注释时，从 demo-v2 首页点「编写文档注释」，可从源码跳到生成的 API。
+也可以直接读指南源码：[文档注释示例](demo-v2/docs/doc-comments.md) /
+[Doc comment examples](demo-v2/docs/en/doc-comments.md)。
 
 ## 边界 / Boundaries
 

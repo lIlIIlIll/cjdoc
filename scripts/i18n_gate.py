@@ -248,15 +248,13 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     for language in ("en", "zh-CN"):
         page = validation / "html" / language / "index.html"
         assert "CJDOC3032" in page.read_text()
-        members = list((page.parent / "symbols").glob("*.html"))
+        members = list((page.parent / "language_fixture").rglob("index.html"))
         assert any("Explanation without executable code." in member.read_text() for member in members)
         # The HTML surface carries no per-example execution claim at all.
         assert all("data-example-state" not in member.read_text() for member in members)
 
     author = json.loads((multi / "docs.json").read_text())
-    routes = json.loads((multi / "site-manifest.json").read_text())["routes"]
-    symbol_route = next(route["href"].removeprefix("html/en/").split("#")[0] for route in routes
-                        if route["language"] == "en" and route["symbolId"] and route["sectionId"] is None)
+    symbol_route = next((multi / "html/en/symbols").glob("symbol-*.html")).relative_to(multi / "html/en").as_posix()
     package_route = next((multi / "html/en/packages").glob("*.html")).relative_to(multi / "html/en").as_posix()
     alias_route = next(path for path in (multi / "html/en/symbols").glob("*.html")
                        if not path.name.startswith("symbol-")).relative_to(multi / "html/en").as_posix()
@@ -342,6 +340,27 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     publication.write_text(json.dumps(published, ensure_ascii=False) + "\n")
     assert "HiddenArithmeticalKeyword" not in publication.read_text()
     run("publication-ir", ["render", "--input", str(publication), "--format", "json", "--stdout"])
+    assert manifest["defaultLanguage"] == "zh-CN"
+    api_routes = {(item["language"], item["symbolId"]): item["href"]
+                  for item in manifest["routes"]
+                  if item["symbolId"] and item["pageId"] is None and item["sectionId"] is None}
+    assert len(api_routes) == 8
+    for (language, identity), href in api_routes.items():
+        relative = href.removeprefix("html/" if language == "zh-CN" else "html/en/")
+        assert relative.startswith("language_fixture/") and relative.endswith("/index.html"), href
+        assert f'data-cjdoc-symbol-id="{identity}"' in (multi / href).read_text()
+        if language == "zh-CN":
+            scoped = multi / "html/zh-CN" / relative
+            assert f'data-cjdoc-symbol-id="{identity}"' in scoped.read_text()
+            canonical = "../" * (relative.count("/") + 1) + relative.removesuffix("index.html")
+            assert f'<link rel="canonical" href="{canonical}">' in scoped.read_text()
+    for language, prefix in (("zh-CN", "html/"), ("en", "html/en/")):
+        choice = next(item for item in manifest["routes"]
+                      if item["language"] == language and (item["pageId"] or "").startswith("api-choice:"))
+        assert choice["symbolId"] is None
+        assert choice["href"] == prefix + "language_fixture/Calculator/increment/index.html"
+        content = (multi / choice["href"]).read_text()
+        assert "increment(value: Int64)" in content and "increment(value: String)" in content
     for route in manifest["routes"]:
         url = urlsplit(route["href"])
         target = multi / unquote(url.path)

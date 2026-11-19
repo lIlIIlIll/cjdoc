@@ -12,12 +12,13 @@ private class CapturedPageBindingTarget {
     let navigation: ?TypeNavigation
     private let binding: DocumentationPageBinding
     private let visible: HashMap<String, SymbolDoc>
+    private let routes: ?ApiHtmlRoutes
 
-    init(binding: DocumentationPageBinding, visible: HashMap<String, SymbolDoc>) {
-        this.binding = binding; this.visible = visible
+    init(binding: DocumentationPageBinding, visible: HashMap<String, SymbolDoc>, routes!: ?ApiHtmlRoutes = None) {
+        this.binding = binding; this.visible = visible; this.routes = routes
         let local: ?SymbolDoc = match (binding.targetSymbolId) { case Some(id) => visible.get(id); case None => None }
         let hiddenNavigation = match (binding.navigation) {
-            case Some(value) => value.symbolKey.startsWith("cjdoc:v2:") && !visible.contains(value.symbolKey)
+            case Some(value) => isCapturedLocalApiLink(value) && !visible.contains(value.symbolKey)
             case None => false
         }
         hidden = binding.state == "unavailable" || (binding.targetSymbolId.isSome() && local.isNone()) || hiddenNavigation
@@ -25,24 +26,26 @@ private class CapturedPageBindingTarget {
         symbol = if (!hidden && state == "resolved") {
             match (binding.navigation) {
                 case None => local
-                case Some(value) => if (value.state == "resolved" && binding.targetSymbolId == Some(value.symbolKey)) { local } else { None }
+                case Some(value) => if (isCapturedLocalApiLink(value) && binding.targetSymbolId == Some(value.symbolKey)) { local } else { None }
             }
         } else { None }
         navigation = if (hidden) { None } else { binding.navigation }
     }
 
-    func destination(rootPrefix: String, markdown: Bool): ?String {
+    func destination(rootPrefix: String, markdown: Bool, unprefixedApiLocale!: String = ""): ?String {
         if (hidden || state == "conflict" || state == "ambiguous") { return None }
         if (let Some(target) <- symbol) {
             if (markdown) {
                 return Some(rootPrefix + markdownTargetPagePath(target, visible) + "#" + symbolAnchor(target))
             }
-            return navigationHref(rootPrefix, symbolUrl(visible, target))
+            return routes.flatMap({ index => index.filePath(target.id) })
+                .map({ path => publicApiRootPrefix(rootPrefix, unprefixedApiLocale) + apiHtmlFileHref(path) })
         }
         // Navigation, when present, is authoritative even over an old visible local id.
         if (let Some(value) <- navigation) {
             if (value.state == "resolved") {
-                return navigationHref(rootPrefix + if (markdown) { "../html/" } else { "" }, value.url)
+                return projectedNavigationHref(rootPrefix + if (markdown) { "../html/" } else { "" },
+                    value, routes, unprefixedLocale: unprefixedApiLocale)
             }
         }
         None
@@ -72,10 +75,10 @@ private class CapturedPageBindingTarget {
 }
 
 internal func projectSearchPageBindings(page: DocumentationPage,
-    visible: HashMap<String, SymbolDoc>, locale: String): ArrayList<SearchPageBinding> {
+    projection: RenderProjection, locale: String): ArrayList<SearchPageBinding> {
     let result = ArrayList<SearchPageBinding>()
     for (binding in page.bindings) {
-        let target = CapturedPageBindingTarget(binding, visible)
+        let target = CapturedPageBindingTarget(binding, projection.visibleIndex, routes: projection.apiRoutes)
         if (target.hidden) { continue }
         result.add(SearchPageBinding(binding.target, binding.selector, binding.provenance,
             binding.version, binding.sourceLine, binding.language, target.state,
@@ -199,7 +202,7 @@ private func appendCapturedPageBindingTargetHtml(w: HtmlWriter,
     compact!: Bool = false): Unit {
     if (target.hidden) { return }
     let title = target.title(locale)
-    let destination = match (target.destination(prefix, false)) {
+    let destination = match (target.destination(prefix, false, unprefixedApiLocale: w.unprefixedApiLocale)) {
         case Some(url) => documentationLinkHref(url)
         case None => None<SafeUrl>
     }
@@ -228,7 +231,7 @@ private func appendCapturedPageBindingTargetHtml(w: HtmlWriter,
 internal func appendCapturedPageBindingChipHtml(w: HtmlWriter, page: DocumentationPage,
     binding: DocumentationPageBinding, visible: HashMap<String, SymbolDoc>, locale: String,
     outputPath!: ?String = None): Unit {
-    let target = CapturedPageBindingTarget(binding, visible)
+    let target = CapturedPageBindingTarget(binding, visible, routes: w.apiRoutes)
     w.open("div", attrs: [htmlClass("cj-binding")])
     w.textElement("span", label(locale, "Related API: ", "相关 API："),
         attrs: [htmlClass("cj-bindings__label")])
@@ -261,9 +264,8 @@ internal func appendCapturedPageBindingChipHtml(w: HtmlWriter, page: Documentati
 }
 
 internal func appendCapturedPageBindingsHtml(w: HtmlWriter, page: DocumentationPage,
-    documentation: DocumentationSet, locale: String): Unit {
+    projection: RenderProjection, locale: String): Unit {
     if (page.bindings.isEmpty()) { return }
-    let visible = RenderProjection(documentation).visibleIndex
     w.open("details", attrs: [htmlClass("cj-bindings cj-disclosure")])
     w.open("summary", attrs: [htmlAttr("id", "conceptual-bindings-heading"),
         htmlClass("cj-disclosure__summary")])
@@ -273,7 +275,7 @@ internal func appendCapturedPageBindingsHtml(w: HtmlWriter, page: DocumentationP
         "本页的显式关联。技术信息见「技术详情」。"), attrs: [htmlClass("cj-bindings__scope")])
     w.open("ul")
     for (binding in page.bindings) {
-        let target = CapturedPageBindingTarget(binding, visible)
+        let target = CapturedPageBindingTarget(binding, projection.visibleIndex, routes: projection.apiRoutes)
         w.open("li")
         w.textElement("span", target.stateLabel(locale),
             attrs: [htmlClass("cj-bindings__state"), htmlAttr("data-state", target.state)])
@@ -287,14 +289,14 @@ internal func appendCapturedPageBindingsHtml(w: HtmlWriter, page: DocumentationP
 }
 
 internal func appendCapturedPageBindingsMarkdown(out: RenderTextBuffer,
-    page: DocumentationPage, documentation: DocumentationSet, locale: String,
-    pagePath!: ?String = None, canonicalHtml!: Bool = false): Unit {
+    page: DocumentationPage, projection: RenderProjection, locale: String,
+    canonicalPagePath!: ?String = None): Unit {
     if (page.bindings.isEmpty()) { return }
     out.append("\n## " + label(locale, "API associations", "API 关联") + "\n\n")
-    let visible = RenderProjection(documentation).visibleIndex
+    let prefix = pageRootPrefix(canonicalPagePath.getOrDefault({ => page.route }))
     for (binding in page.bindings) {
-        let target = CapturedPageBindingTarget(binding, visible)
-        let destination = target.destination(pageRootPrefix(pagePath.getOrDefault({ => page.route })), !canonicalHtml)
+        let target = CapturedPageBindingTarget(binding, projection.visibleIndex, routes: projection.apiRoutes)
+        let destination = target.destination(prefix, canonicalPagePath.isNone())
         out.append("- **" + target.stateLabel(locale) + "** ")
         if (!target.hidden) {
             let spelling = match (target.symbol) { case Some(value) => value.qualifiedName; case None => binding.target }

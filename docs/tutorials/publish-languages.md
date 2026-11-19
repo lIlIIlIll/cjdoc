@@ -190,6 +190,8 @@ xdg-open target/doc/html/zh-CN/index.html
 
 进入 `greet` 页面，在页头的语言标签上点击展开，再选择另一种语言。切换语言就在这个标签里完成，不会另外出现一个独立的语言导航项。切换后参数、返回和示例说明应随之变成另一种语言；再打开指南的“名字的边界”小节并切换语言，应落到英文的 `Name boundaries`，而不是猜一个英文片段。切换后的地址形如 `target/doc/html/en/index.html` 或 `.../en/concepts/guides/start.html#standalone--doc-name-boundaries`。
 
+通过 HTTP 发布时，中文是本例的默认语言，`greet` 的公开地址是 `<站点根>/docdemo/greet/`，英文地址是 `<站点根>/en/docdemo/greet/`。离线打开或复制链接时，地址保留尾部的 `index.html`。发布时复制共同的 `html/` 目录，不要分别发布两个语言目录。
+
 阅读 `target/doc/coverage/translations.json` 时逐项看 `state` 字段：`complete` 表示该字段有当前语言的译文，`fallback` 表示回退到另一种语言的原文，`unpaired` 表示跨语言条目无法配对。文件顶部的 `translated`、`fallback`、`unpaired` 等计数是该语言的汇总。
 
 只发布英文站点时省略 `--all-languages`：

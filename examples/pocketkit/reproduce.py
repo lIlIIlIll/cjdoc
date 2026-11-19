@@ -216,6 +216,8 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
                 language = next(item for item in record["languages"] if item["language"] == locale)
                 root = composed / language["root"]
                 shutil.copytree(support / "html", root / "dependencies/support-v1")
+                shutil.copytree(support / "html",
+                                generated[record["id"]] / "html" / locale / "dependencies/support-v1")
                 roots[record["id"]] = root
             with stage_timing.phase(f"pocketkit.diagnostics:{locale}"):
                 diagnostics = generate(binary, source / "diagnostics", output / locale / "diagnostics",
@@ -263,6 +265,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
                 root = composed / relative
                 # Copy after compose: support-v1 must not acquire PocketKit's version selector.
                 shutil.copytree(support / "html", root / "dependencies/support-v1")
+                shutil.copytree(support / "html", generated[version] / "html/dependencies/support-v1")
                 roots[version] = root
         with stage_timing.phase(f"pocketkit.diagnostics:{locale}"):
             diagnostics = generate(binary, source / "diagnostics", directory / "diagnostics",

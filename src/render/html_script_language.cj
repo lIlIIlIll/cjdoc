@@ -45,7 +45,9 @@ internal let LANGUAGE_NAVIGATION_SCRIPT = """
         ? candidate : null;
       const homeFallback = link.dataset.switchState === "language-home";
       const missingPosition = !homeFallback && Boolean(anchor) && !target;
-      const destination = target && !homeFallback ? target[0] : link.dataset.languageBase;
+      const path = target && !homeFallback ? target[0] : link.dataset.languageBase;
+      const destination = link.hasAttribute("data-language-api-route") && globalThis.__CJDOC_API_ROUTE__
+        ? globalThis.__CJDOC_API_ROUTE__(path) : path;
       try {
         const url = new URL(destination, location.href);
         url.searchParams.delete("tag");

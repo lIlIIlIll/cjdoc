@@ -507,7 +507,7 @@ protected func buildDocumentationSearchProjection(snapshot: DocumentationReadSna
     }
     for (page in snapshot.selectedPages()) {
         result.addEntry(searchPageEntry(page, snapshot.snapshotId, profile, limits,
-            projection.visibleIndex, snapshot.locale))
+            projection, snapshot.locale))
     }
     searchAttachExposures(documentation, result)
     for (entry in result.entries) {
@@ -728,7 +728,7 @@ private func searchDeclarationEntry(snapshot: DocumentationReadSnapshot, symbol:
         symbol.returnType.map({ value: TypeRef =>
             value.semantic.canonical.getOrDefault({ => "" }) }).getOrDefault({ => "" }),
         searchPortableSymbolKey(symbol), "", body, truncated,
-        symbolUrl(snapshot.projection.visibleIndex, symbol), scope,
+        snapshot.symbolHtmlPath(symbol.id).getOrThrow(), scope,
         classification: snapshot.projection.catalog.classificationFor(symbol))
     entry.parameterTypes.add(all: searchParameterTypes(symbol))
     entry.summary = match (symbol.documentation) {
@@ -743,14 +743,14 @@ private func searchDeclarationEntry(snapshot: DocumentationReadSnapshot, symbol:
 }
 
 private func searchPageEntry(page: DocumentationPage, snapshotId: String, profile: String,
-    limits: SearchContractLimits, visible: HashMap<String, SymbolDoc>,
+    limits: SearchContractLimits, projection: RenderProjection,
     locale: String): SearchProjectedEntry {
     let (body, truncated) = searchProjectionBody(
         page.title + "\n" + markdownNodeText(page.markdown), profile, limits)
     let entry = SearchProjectedEntry(page.id, page.id, snapshotId, 0, None, "concept",
         page.title, "", "", "", "", "", "", "", "", "", "", body, truncated,
         page.route, -1, concept: true)
-    entry.pageBindings.add(all: projectSearchPageBindings(page, visible, locale))
+    entry.pageBindings.add(all: projectSearchPageBindings(page, projection, locale))
     entry
 }
 

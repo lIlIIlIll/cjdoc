@@ -375,7 +375,7 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
                 case None => sections.add(querySection("description", "missing", JsonNode.nullValue))
             }
             item.put("sections", sections)
-            item.put("representations", querySymbolRepresentations(symbol))
+            item.put("representations", querySymbolRepresentations(candidate.input, symbol))
             item.put("source", querySymbolSource(candidate.input, symbol))
             item.put("exposures", queryMatchedSymbolExposures(candidate.document, symbol,
                 candidate.matchedExposureIds))
@@ -427,9 +427,9 @@ internal func querySymbolSummary(symbol: query_model.SymbolDoc): ?String {
     }
 }
 
-internal func querySymbolRepresentations(symbol: query_model.SymbolDoc): JsonObject {
+internal func querySymbolRepresentations(input: QuerySnapshotInput, symbol: query_model.SymbolDoc): JsonObject {
     let node = JsonNode.object()
-    node.put("html", JsonNode.string(query_render.symbolPagePath(symbol)))
+    node.put("html", JsonNode.string(input.snapshot.symbolHtmlPath(symbol.id).getOrThrow()))
     node.put("markdown", JsonNode.string(query_render.agentDeclarationMarkdownPath(symbol)))
     node.put("json", JsonNode.string(query_render.agentDeclarationJsonPath(symbol)))
     node

@@ -81,6 +81,21 @@ internal func appendAdmonitionHtml(w: HtmlWriter, node: MarkdownNode,
     }
 }
 
+internal func hasIntroductionAdmonitions(comment: DocComment): Bool {
+    for (node in comment.markdown.children) {
+        if (node.kind == "admonition") { return true }
+    }
+    for (tag in comment.tags) {
+        if (isAdmonitionLevel(tag.name)) { return true }
+        if (tag.name == "description" && let Some(tree) <- tag.descriptionMarkdown) {
+            for (node in tree.children) {
+                if (node.kind == "admonition") { return true }
+            }
+        }
+    }
+    false
+}
+
 /** Add captured independent admonition tags after the introduction, without reparsing source text. */
 internal func appendDocumentationAdmonitionsHtml(w: HtmlWriter,
     comment: DocComment, locale: String, assetLookup: HashMap<String, String>,
@@ -90,7 +105,12 @@ internal func appendDocumentationAdmonitionsHtml(w: HtmlWriter,
         match (tag.descriptionMarkdown) {
             case Some(markdown) =>
                 if (capturedAdmonitionTreeContains(markdown, tag.name)) {
+                    // Only a single captured notice owns this field's anchor and language wrapper.
+                    let standalone = markdown.children.size == 1 &&
+                        capturedAdmonitionLevel(markdown.children[0]) == Some(tag.name)
+                    if (standalone) { w.open("div", attrs: [htmlFlag("data-cjdoc-notice")]) }
                     appendDocumentationTagHtml(w, tag, locale, assetLookup, rootPrefix, context)
+                    if (standalone) { w.close("div") }
                 }
             case None => ()
         }

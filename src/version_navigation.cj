@@ -34,13 +34,20 @@ internal let VERSION_NAVIGATION_SCRIPT = #"
   'use strict';
   var language = document.documentElement.lang;
   var messages = localizedMessages[language === 'zh' || language === 'zh-CN' ? 'zh-CN' : 'en'];
+  var web = location.protocol === 'http:' || location.protocol === 'https:';
+  function apiHref(href, api) {
+    return web && api ? href.replace(/\/index[.]html(?=[?#]|$)/, '/') : href;
+  }
   var links = Array.from(document.querySelectorAll('[data-cjdoc-version-link]')).map(function (link) {
     var routes = {};
     try { routes = JSON.parse(link.getAttribute('data-cjdoc-version-routes') || '{}'); } catch (_) {}
+    var anchors = [];
+    try { anchors = JSON.parse(link.getAttribute('data-cjdoc-version-api-anchors') || '[]'); } catch (_) {}
     return {
       link: link,
       routes: routes,
-      href: link.getAttribute('href'),
+      apiAnchors: new Set(anchors),
+      href: apiHref(link.getAttribute('href'), link.hasAttribute('data-cjdoc-version-api-link')),
       text: link.textContent,
       state: link.getAttribute('data-cjdoc-version-state')
     };
@@ -57,7 +64,7 @@ internal let VERSION_NAVIGATION_SCRIPT = #"
       if (value) {
         var state = value[1];
         var message = Object.prototype.hasOwnProperty.call(messages, state) ? messages[state] : '';
-        entry.link.setAttribute('href', value[0]);
+        entry.link.setAttribute('href', apiHref(value[0], entry.apiAnchors.has(anchor)));
         entry.link.textContent = entry.link.getAttribute('data-cjdoc-version-label') + message;
         entry.link.setAttribute('data-cjdoc-version-state', state);
       } else {

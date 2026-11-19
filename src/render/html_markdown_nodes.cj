@@ -216,7 +216,7 @@ private func appendSemanticLinkHtml(w: HtmlWriter, node: MarkdownNode,
             appendReferenceStateNote(w, semanticState, context)
             return
     }
-    let href = semanticLinkHref(source, rootPrefix, navigation)
+    let href = semanticLinkHref(source, rootPrefix, navigation, w.apiRoutes, w.unprefixedApiLocale)
     match (semanticLinkUrl(href, source, navigation, context.allowExternalLinks)) {
         case Some(url) =>
             let attrs = ArrayList<HtmlAttr>([htmlClass("cj-type-link"), htmlHref(url)])
@@ -240,8 +240,11 @@ private func semanticLinkSource(node: MarkdownNode): ?String {
 }
 
 private func semanticLinkHref(source: String, rootPrefix: String,
-    navigation: ?TypeNavigation): String {
-    if (navigation.isSome()) { return navigationHref(rootPrefix, source).getOrDefault({ => "" }) }
+    navigation: ?TypeNavigation, routes: ?ApiHtmlRoutes, unprefixedApiLocale: String): String {
+    if (let Some(value) <- navigation) {
+        return projectedNavigationHref(rootPrefix, value, routes,
+            unprefixedLocale: unprefixedApiLocale).getOrDefault({ => "" })
+    }
     if (source.startsWith("http://") || source.startsWith("https://") || source.startsWith("#")) {
         return source
     }

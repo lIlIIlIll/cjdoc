@@ -123,7 +123,7 @@ internal class DeclarationMarkdownProjection {
         match (symbol.documentation) {
             case Some(comment) =>
                 appendDocumentationMarkdown(out, comment, assetLookup(pagePath), locale: locale,
-                    pagePath: pagePath, symbolIndex: Some(symbolIndex), canonicalHtml: true,
+                    pagePath: pagePath, symbolIndex: Some(symbolIndex), canonicalHtml: projection.apiRoutes,
                     sections: Some(sections), headingPrefix: "##", headingBase: 3,
                     headingAnchorPrefix: symbolAnchor(symbol))
             case None => if (sections.contains("description")) {
@@ -208,7 +208,7 @@ internal class DeclarationMarkdownProjection {
             appendMarkdownCodeSpan(out, parameter.name)
             out.append(": ")
             appendTypeRefMarkdown(out, parameter.typeRef, pagePath, symbolIndex,
-                canonicalHtml: true)
+                canonicalHtml: projection.apiRoutes)
             if (let Some(defaultExpression) <- parameter.defaultExpression) {
                 out.append(" = ")
                 appendMarkdownCodeSpan(out, defaultExpression)
@@ -222,7 +222,7 @@ internal class DeclarationMarkdownProjection {
                     let _ = documentedSubjects.add(parameter.name)
                     out.append(" — ")
                     appendDocumentationListTagMarkdown(out, value, assetLookup(pagePath), locale,
-                        pagePath, Some(symbolIndex), canonicalHtml: true,
+                        pagePath, Some(symbolIndex), canonicalHtml: projection.apiRoutes,
                         headingAnchorPrefix: parameterHeadingPrefix, headingOrdinal: parameterIndex)
                 case None => match (parameter.documentation) {
                     case Some(value) => appendStructuredTagText(out, value)
@@ -249,7 +249,7 @@ internal class DeclarationMarkdownProjection {
             appendMarkdownCodeSpan(out, tag.subject)
             out.append(" — ")
             appendDocumentationListTagMarkdown(out, tag, assetLookup(pagePath), locale, pagePath,
-                Some(symbolIndex), canonicalHtml: true,
+                Some(symbolIndex), canonicalHtml: projection.apiRoutes,
                 headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
         }
     }
@@ -276,7 +276,7 @@ internal class DeclarationMarkdownProjection {
             out.append("## ${label(locale, "Returns", "返回值")}\n\n")
             if (let Some(value) <- returnType) {
                 out.append("- ")
-                appendTypeRefMarkdown(out, value, pagePath, symbolIndex, canonicalHtml: true)
+                appendTypeRefMarkdown(out, value, pagePath, symbolIndex, canonicalHtml: projection.apiRoutes)
                 out.append("\n")
             }
             if (hasReturnDocumentation) {
@@ -286,7 +286,7 @@ internal class DeclarationMarkdownProjection {
                     let tag = tags[tagIndex]
                     if (tag.name != "return" && tag.name != "returns") { continue }
                     appendDocumentationTagMarkdown(out, tag, assetLookup(pagePath), locale, pagePath,
-                        Some(symbolIndex), canonicalHtml: true,
+                        Some(symbolIndex), canonicalHtml: projection.apiRoutes,
                         headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                     out.append("\n")
                 }
@@ -300,10 +300,10 @@ internal class DeclarationMarkdownProjection {
                 if (tag.name != "throws") { continue }
                 out.append("- ")
                 appendTagSubjectMarkdown(out, tag, pagePath, Some(symbolIndex),
-                    canonicalHtml: true)
+                    canonicalHtml: projection.apiRoutes)
                 out.append(" — ")
                 appendDocumentationListTagMarkdown(out, tag, assetLookup(pagePath), locale, pagePath,
-                    Some(symbolIndex), canonicalHtml: true,
+                    Some(symbolIndex), canonicalHtml: projection.apiRoutes,
                     headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
             }
             out.append("\n")
@@ -312,7 +312,7 @@ internal class DeclarationMarkdownProjection {
 
     private func appendCanonicalSymbolLink(out: RenderTextBuffer, target: SymbolDoc,
         pagePath: String): Unit {
-        match (markdownCanonicalSymbolDestination(target, pagePath)) {
+        match (markdownCanonicalSymbolDestination(target.id, pagePath, projection.apiRoutes.getOrThrow())) {
             case Some(destination) =>
                 out.append("[")
                 appendMarkdownCodeSpan(out, target.qualifiedName)
@@ -339,7 +339,7 @@ internal class DeclarationMarkdownProjection {
             out.append("- "); appendEscapedMarkdownText(out,
                 readerRelationshipLabel(relationship.kind, locale)); out.append(": ")
             appendTypeRefMarkdown(out, relationship.target, pagePath, symbolIndex,
-                canonicalHtml: true)
+                canonicalHtml: projection.apiRoutes)
             if (relationship.target.semantic.state != "resolved") {
                 out.append(" — " + label(locale, "semantic state", "语义状态") + ": ")
                 appendMarkdownCodeSpan(out, relationship.target.semantic.state)

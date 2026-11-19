@@ -28,6 +28,7 @@ cjdoc 把仓颉源码里的文档注释生成为 API 站点。这份手册对应
 
 | 你要完成的事 | 指南 |
 |---|---|
+| 照抄字段、提示、示例与译文，并查看生成效果 | [PocketKit 文档注释示例](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md) |
 | 生成 HTML 站点并发布到静态托管 | [生成与发布](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/generate-and-publish.md) |
 | 边改注释边看页面 | [实时预览](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/preview.md) |
 | 找出缺失或失效的注释，设置覆盖率门槛 | [检查质量](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/check-quality.md) |

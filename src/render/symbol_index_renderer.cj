@@ -74,7 +74,7 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
 
 internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: String = "html/", version!: ?String = None): String {
     validateTypedDocumentationSet(documentation)
-    renderSymbolIndexProjected(documentation, RenderProjection(documentation),
+    renderSymbolIndexProjected(documentation, RenderProjection(documentation, buildApiRoutes: true),
         hrefPrefix: hrefPrefix, version: version)
 }
 
@@ -95,6 +95,7 @@ internal func renderSymbolIndexProjected(documentation: DocumentationSet,
     projection: RenderProjection, hrefPrefix!: String = "html/",
     version!: ?String = None): String {
     let identities = SymbolInventoryIdentity(documentation, publicationRevision: version)
+    let routes = projection.apiRoutes.getOrThrow()
     let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(symbols, lessThan: { left, right => left.id < right.id }, stable: true)
     let out = RenderTextBuffer()
@@ -152,7 +153,7 @@ internal func renderSymbolIndexProjected(documentation: DocumentationSet,
         out.append(",\"source\":")
         appendSymbolIndexSource(out, symbol.source)
         out.append(",\"href\":")
-        appendSearchJsonString(out, hrefPrefix + symbolUrl(projection.visibleIndex, symbol))
+        appendSearchJsonString(out, hrefPrefix + routes.filePath(symbol.id).getOrThrow())
         appendSymbolIndexRelations(out, symbol, projection.visibleIndex)
         appendSymbolIndexReferences(out, symbol, projection.visibleIndex, hrefPrefix)
         appendInventoryTypeNavigations(out, symbol, hrefPrefix)

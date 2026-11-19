@@ -4,7 +4,7 @@ import cjdoc.model.*
 import std.collection.*
 
 internal func appendReverseTypeUsages(w: HtmlWriter,
-    index: HashMap<String, SymbolDoc>, typeLinkIndex: HtmlTypeLinkIndex,
+    typeLinkIndex: HtmlTypeLinkIndex,
     symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
     let usages = typeLinkIndex.reverseUsages(symbol.id)
     if (usages.isEmpty()) { return }
@@ -19,7 +19,7 @@ internal func appendReverseTypeUsages(w: HtmlWriter,
         for (usage in usages) {
             list.element("li", [htmlClass("cj-usages__item")], { item =>
                 item.open("a", attrs: [htmlHref(SafeUrl.siteRoute(
-                    rootPrefix + symbolUrl(index, usage.source)))])
+                    typeLinkIndex.projection.publicSymbolHref(rootPrefix, usage.source.id)))])
                 item.textElement("code", usage.source.qualifiedName)
                 item.close("a")
                 item.text(" ")
@@ -171,26 +171,26 @@ private func appendSymbolRelationshipRows(w: HtmlWriter, index: HashMap<String, 
         if (!readerSymbolRelationshipIsVisible(index, relationship)) { continue }
         if (symbolRelationshipSuperseded(relationship, symbol, index, typeLinkIndex)) { continue }
         appendRelationshipLabel(w, relationship.kind, locale)
-        appendSymbolRelationshipTarget(w, index, relationship, rootPrefix)
+        appendSymbolRelationshipTarget(w, typeLinkIndex.projection, relationship, rootPrefix)
         appendRelationshipUncertainty(w, relationship.state, locale)
         w.close("dd")
     }
 }
 
-private func appendSymbolRelationshipTarget(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+private func appendSymbolRelationshipTarget(w: HtmlWriter, projection: RenderProjection,
     relationship: SymbolRelationship, rootPrefix: String): Unit {
     let isExtensionTarget = relationship.kind == "extensionTarget"
     let display = if (isExtensionTarget) {
         genericTypeDisplaySpelling(relationship.targetDisplay)
     } else { relationship.targetDisplay }
     match (relationship.targetSymbolId) {
-        case Some(targetId) => match (findSymbol(index, targetId)) {
+        case Some(targetId) => match (projection.visibleIndex.get(targetId)) {
             case Some(target) =>
                 let cssClass = if (isExtensionTarget) {
                     "cj-type-link cj-relations__target"
                 } else { "cj-type-link" }
                 w.open("a", attrs: [htmlClass(cssClass),
-                    htmlHref(SafeUrl.siteRoute(rootPrefix + symbolUrl(index, target)))])
+                    htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref(rootPrefix, target.id)))])
                 w.textElement("code", display)
                 w.close("a")
             // The visibility check above already discarded filtered targets.

@@ -178,7 +178,7 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
         'cjdoc.page/2',
         ('schemaVersion', 'id', 'kind', 'scope', 'page', 'package', 'representations', 'markdown')),
  'machine-manifest': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/machine-manifest.schema.json',
-                    'cjdoc.machine-manifest/1',
+                    'cjdoc.machine-manifest/2',
                     ('schemaVersion', 'snapshotId', 'pathBase', 'projection', 'publicationRevision', 'scope', 'docIr', 'symbolIndex', 'documentSets', 'representations', 'resources', 'reports', 'fullReference', 'limits')),
  'query-request': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-request.schema.json',
                   'cjdoc.query-request/3',

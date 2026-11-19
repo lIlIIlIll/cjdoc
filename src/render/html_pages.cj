@@ -41,7 +41,7 @@ private func routeByteAllowed(byte: Byte, extra: String): Bool {
     false
 }
 
-private func percentEncodeRouteComponent(value: String, allowedExtra: String): String {
+internal func percentEncodeRouteComponent(value: String, allowedExtra: String): String {
     let digits = "0123456789ABCDEF"
     let out = RenderTextBuffer()
     for (byte in value.toArray()) {
@@ -122,7 +122,7 @@ internal func appendBreadcrumbs(w: HtmlWriter, ariaLabel: String,
 
 internal func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", docVersion!: ?String = None): String {
-    let w = HtmlWriter()
+    let w = HtmlWriter(apiRoutes: projection.apiRoutes, unprefixedApiLocale: projection.unprefixedApiLocale)
     let pageTitle = documentation.project.name + " " + label(locale, "API documentation", "API 文档")
     appendPageStart(w, pageTitle, "", documentation, projection, locale: locale,
         docVersion: docVersion, agentReadable: true, alternateMarkdown: Some("agent/pages/index.md"),
@@ -135,10 +135,10 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
     w.toString()
 }
 
-internal func renderUtilityHtmlPage(documentation: DocumentationSet, title: String, body: TrustedHtml,
+internal func renderUtilityHtmlPage(documentation: DocumentationSet, projection: RenderProjection,
+    title: String, body: TrustedHtml,
     rootPrefix: String, locale!: String = "en", docVersion!: ?String = None,
     agentReadable!: Bool = false): String {
-    let projection = RenderProjection(documentation)
     let w = HtmlWriter()
     appendPageStart(w, title, rootPrefix, documentation, projection, locale: locale,
         currentRoute: "utility", docVersion: docVersion, agentReadable: agentReadable,
@@ -153,12 +153,11 @@ internal func renderUtilityHtmlPage(documentation: DocumentationSet, title: Stri
     w.toString()
 }
 
-internal func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: TrustedHtml,
-    rootPrefix: String, source!: ?String = None, locale!: String = "en",
+internal func renderConceptualHtmlPage(documentation: DocumentationSet, projection: RenderProjection,
+    title: String, body: TrustedHtml, rootPrefix: String, source!: ?String = None, locale!: String = "en",
     docVersion!: ?String = None, pageRoute!: ?String = None,
     agentMarkdown!: ?String = None): String {
-    let projection = RenderProjection(documentation)
-    let w = HtmlWriter()
+    let w = HtmlWriter(apiRoutes: projection.apiRoutes, unprefixedApiLocale: projection.unprefixedApiLocale)
     appendPageStart(w, title, rootPrefix, documentation, projection, locale: locale,
         currentRoute: "concept", docVersion: docVersion, agentReadable: agentMarkdown.isSome(),
         alternateMarkdown: agentMarkdown, currentPagePath: pageRoute)
@@ -191,7 +190,7 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     pkg: ProjectedPackage, locale!: String = "en", docVersion!: ?String = None): String {
     let packageDoc = pkg.source
     let pagePath = packagePagePath(packageDoc.moduleId, packageDoc.name)
-    let w = HtmlWriter()
+    let w = HtmlWriter(apiRoutes: projection.apiRoutes, unprefixedApiLocale: projection.unprefixedApiLocale)
     appendPageStart(w, "${label(locale, "Package", "包")} ${packageDoc.name}", "../",
         documentation, projection, locale: locale, docVersion: docVersion,
         currentPackagePath: Some(pagePath), currentRoute: "api", agentReadable: true,
@@ -228,7 +227,7 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
         w.close("section")
         w.newline()
     }
-    appendPackageMetadata(w, pkg, index, locale, projection.sourceReferences)
+    appendPackageMetadata(w, pkg, projection, locale)
     appendPageEnd(w, documentation, locale: locale)
     w.toString()
 }

@@ -414,7 +414,7 @@ internal func appendLinkedSignatureHtml(w: HtmlWriter, symbol: SymbolDoc,
     for (span in linkedSignatureSpans(symbol, links)) {
         if (span.start < position) { continue }
         appendSignatureRangeHtml(w, raw, position, span.start, highlight: prepared)
-        let href = navigationHref(rootPrefix, span.url)
+        let href = links.targetHref(rootPrefix, span.url, span.navigation)
         match (href) {
             case Some(url) =>
                 w.open("a", attrs: documentationHrefAttrs(url,

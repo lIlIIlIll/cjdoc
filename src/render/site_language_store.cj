@@ -3,17 +3,42 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+// Read only the generated body start tag, never a similar attribute in prose
+// or an inline declaration. Version composition also uses this identity.
+protected func generatedHtmlBodyAttribute(content: String, name: String): ?String {
+    let start = content.indexOf("<body ")
+    if (start.isNone()) { return None }
+    let end = content.indexOf(b'>', start.getOrThrow())
+    if (end.isNone()) { return None }
+    let tag = content[start.getOrThrow()..end.getOrThrow()]
+    let key = " " + name + "=\""
+    if (let Some(offset) <- tag.indexOf(key)) {
+        let valueStart = offset + key.size
+        return tag.indexOf(b'"', valueStart).map({ valueEnd =>
+            tag[valueStart..valueEnd].replace("&quot;", "\"").replace("&#39;", "'")
+                .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+        })
+    }
+    None
+}
+
 internal class LanguageHtmlPage {
     let language: String
     let route: String
+    let file: String
+    let symbolId: ?String
+    let pageId: ?String
     let entry: Int64
     let anchors: Array<String>
     let anchorMembership = HashSet<String>()
     let needsToggle: Bool
 
-    init(language: String, route: String, entry: Int64, content: String) {
+    init(language: String, route: String, file: String, entry: Int64, content: String) {
         this.language = language
         this.route = route
+        this.file = file
+        symbolId = generatedHtmlBodyAttribute(content, "data-cjdoc-symbol-id")
+        pageId = generatedHtmlBodyAttribute(content, "data-cjdoc-page-id")
         this.entry = entry
         this.anchors = documentationHtmlAnchors(content)
         this.needsToggle = content.contains("id=\"cjdoc-main\"") &&
@@ -26,14 +51,27 @@ internal class LanguageHtmlInventory {
     let pages = ArrayList<LanguageHtmlPage>()
     let files = HashMap<String, LanguageHtmlPage>()
     let routes = HashMap<String, String>()
+    let symbolFiles = HashMap<String, LanguageHtmlPage>()
+
+    func identity(documentation: DocumentationSet, page: LanguageHtmlPage): String {
+        if (let Some(id) <- page.symbolId) { return "symbol:" + id }
+        if (let Some(id) <- page.pageId) { return id }
+        languagePageIdentity(documentation, page.route, page.language)
+    }
 
     func capture(documentation: DocumentationSet, language: String, route: String,
-        entry: Int64, content: String): Unit {
+        entry: Int64, content: String, mounted!: Bool = false): Unit {
         if (!route.endsWith(".html")) { return }
-        let page = LanguageHtmlPage(language, route, entry, content)
+        let file = if (mounted) { route } else { language + "/" + route }
+        let page = LanguageHtmlPage(language, route, file, entry, content)
         pages.add(page)
-        files[language + ":" + route] = page
-        routes[language + ":" + languagePageIdentity(documentation, route, language)] = route
+        let key = language + ":" + route
+        if (!mounted && files.contains(key)) { return }
+        files[key] = page
+        if (let Some(id) <- page.symbolId) { symbolFiles[language + ":" + id] = page }
+        if (page.needsToggle || content.contains("class=\"cj-lang-toggle\"")) {
+            routes[language + ":" + identity(documentation, page)] = file
+        }
     }
 }
 
@@ -93,6 +131,14 @@ internal class LanguageArtifactStore <: RenderArtifactStore {
             }
         }
         entries.size - 1
+    }
+
+    func addMountedApiPage(route: String, content: String): Unit {
+        let path = "html/" + route
+        budget.checkAdd(path, content.size)
+        let entry = target.addText(path, "text/html; charset=utf-8", content)
+        budget.commitAdd(content.size)
+        inventory.capture(documentation, language, route, entry, content, mounted: true)
     }
 
     public func addOwnedBytes(path: String, mediaType: String, bytes: Array<Byte>): Int64 {
