@@ -27,6 +27,12 @@ def same_declaration_url(actual: str, expected: str) -> bool:
     return declaration_url(actual) == declaration_url(expected)
 
 
+def wait_for_declaration(page, expected: str) -> None:
+    destination = urlsplit(declaration_url(expected))._replace(query="", fragment="")
+    page.wait_for_url(lambda actual: urlsplit(declaration_url(actual))._replace(
+        query="", fragment="") == destination)
+
+
 def alias_target_url(alias: str, target_href: str) -> str:
     """Resolve a historical alias link the way the reader script does.
 

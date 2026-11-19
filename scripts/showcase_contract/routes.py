@@ -7,6 +7,7 @@ from emitted HTML. Source signatures are not claimed to be canonical types.
 from __future__ import annotations
 
 from html.parser import HTMLParser
+from pathlib import PurePosixPath
 from urllib.parse import quote, urlsplit
 
 from .site import ContractError, load_json
@@ -119,6 +120,33 @@ def select_declaration(site, target: dict, pages: list[dict]) -> tuple[dict, dic
     return declaration, candidates[0]
 
 
+def public_api_file(site, target: dict, declaration: dict) -> str:
+    """Follow only the same-snapshot default-language mount of this declaration."""
+    path = declaration["href"]
+    if urlsplit(path).fragment:
+        raise ContractError("an API page must name a declaration file")
+    document = site.documents.get(path)
+    if document is None or document.alias_target is not None:
+        raise ContractError("expected an API declaration body, not an alias")
+    if document.canonical is None:
+        return path
+    if document.symbol_id != declaration["symbolId"]:
+        raise ContractError("API canonical path does not name the same declaration body")
+    canonical = site.local_link(path, document.canonical)
+    if canonical == (path, ""):
+        return path
+    scope = PurePosixPath(target["index"]).parent
+    mounted = (scope.parent / PurePosixPath(path).relative_to(scope)).as_posix()
+    if scope.name != target["locale"] or canonical != (mounted, ""):
+        raise ContractError("API canonical path leaves its language publication")
+    body = site.documents.get(mounted)
+    if (body is None or body.language != document.language
+            or body.symbol_id != document.symbol_id
+            or body.alias_target is not None):
+        raise ContractError("API canonical path does not name the same declaration body")
+    return mounted
+
+
 def inline_route(site, target: dict, declaration: dict, pages: list[dict], member: dict) -> dict:
     """Locate the exact member permalink in its generated owner's HTML.
 
@@ -134,15 +162,15 @@ def inline_route(site, target: dict, declaration: dict, pages: list[dict], membe
     owner = site.checked_navigation_page(target, owners[0])
     owner_path = urlsplit(owner["href"]).path
     native_links = MemberLinks(site.file(owner_path).read_text(encoding="utf-8"))
-    expected = site.local_link(target["index"], member["href"])
+    member_result = site.checked_navigation_page(target, member)
+    member_path = public_api_file(site, target, member_result)
     anchors = [anchor for anchor, href in native_links.members
-               if site.local_link(owner_path, href) == expected]
+               if site.local_link(owner_path, href) == (member_path, "")]
     if len(anchors) != 1:
         raise ContractError(f"inline member needs exactly one native permalink, got {len(anchors)}")
     anchor = anchors[0]
     if anchor not in site.documents[owner_path].ids or anchor in site.documents[owner_path].duplicates:
         raise ContractError("missing or duplicate native member anchor")
-    member_result = site.checked_navigation_page(target, member)
     return {**member_result, "href": owner_path + "#" + quote(anchor, safe="-._~"),
-            "memberPageHref": member_result["href"], "ownerSymbolId": owner_id,
+            "memberPageHref": member_path, "ownerSymbolId": owner_id,
             "signature": declaration["headerSpelling"], "memberName": declaration["name"]}

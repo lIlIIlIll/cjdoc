@@ -196,12 +196,16 @@ class ReaderUiTests(unittest.TestCase):
         (self.root / "demo-v2").mkdir()
         (self.root / "demo-v1/report-coverage.html").write_text("report", encoding="utf-8")
         routes = html.escape(json.dumps({"symbol-real": [
-            "../demo-v1/symbols/owner.html#symbol-real", "missing-section"]}), quote=True)
+            "../demo-v1/pocketkit/TextCatalog/index.html#symbol-real", "missing-section"]}), quote=True)
         messages = {"en": {
             "exact": "",
             "missing-section": " (section unavailable; opening an available position)"
         }}
-        source = '<nav class="cj-version-select"><a data-cjdoc-version-link data-cjdoc-version-label="demo-v1" data-cjdoc-version-state="exact" data-cjdoc-version-routes="' + routes + '" href="../demo-v1/validation.html">demo-v1</a></nav>'
+        api_anchors = html.escape(json.dumps(["symbol-real"]), quote=True)
+        source = ('<nav class="cj-version-select"><a data-cjdoc-version-link'
+                  ' data-cjdoc-version-label="demo-v1" data-cjdoc-version-state="exact"'
+                  f' data-cjdoc-version-api-anchors="{api_anchors}" data-cjdoc-version-routes="{routes}"'
+                  ' href="../demo-v1/validation.html">demo-v1</a></nav>')
         rendered = VersionLinks(source, self.root / "demo-v2/report-coverage.html", "en").result()
         from html.parser import HTMLParser
         class Anchor(HTMLParser):
@@ -210,13 +214,13 @@ class ReaderUiTests(unittest.TestCase):
         anchor = Anchor(); anchor.feed(rendered)
         native = (ROOT / "src/version_navigation.cj").read_text(encoding="utf-8").split('internal let VERSION_NAVIGATION_SCRIPT = #"', 1)[1].split('"#', 1)[0]
         harness = 'const attrs=' + json.dumps(anchor.attrs) + ''';
-const handlers={};const link={textContent:"demo-v1",getAttribute:k=>attrs[k]??null,setAttribute:(k,v)=>attrs[k]=String(v),removeAttribute:k=>delete attrs[k]};
-global.document={documentElement:{lang:"en"},querySelectorAll:()=>[link]};global.location={hash:"#diagnostics"};global.addEventListener=(name,fn)=>handlers[name]=fn;
+const handlers={};const link={textContent:"demo-v1",hasAttribute:k=>Object.hasOwn(attrs,k),getAttribute:k=>attrs[k]??null,setAttribute:(k,v)=>attrs[k]=String(v),removeAttribute:k=>delete attrs[k]};
+global.document={documentElement:{lang:"en"},querySelectorAll:()=>[link]};global.location={hash:"#diagnostics",protocol:"https:"};global.addEventListener=(name,fn)=>handlers[name]=fn;
 ''' + native + '(' + json.dumps(messages) + ''');
 if(attrs.href!=="../demo-v1/report-coverage.html")throw Error("initial hash changed published report category");
 if(attrs["data-cjdoc-version-state"]!=="exact"||link.textContent!=="demo-v1")throw Error("initial DOM state was not restored");
 location.hash="#symbol-real";handlers.hashchange();
-if(attrs.href!=="../demo-v1/symbols/owner.html#symbol-real")throw Error("native script lost the symbol route");
+if(attrs.href!=="../demo-v1/pocketkit/TextCatalog/#symbol-real")throw Error("native script lost the symbol route");
 if(attrs["data-cjdoc-version-state"]!=="missing-section"||link.textContent!=="demo-v1 (section unavailable; opening an available position)")throw Error("hash state was not applied");
 location.hash="#unknown";handlers.hashchange();
 if(attrs.href!=="../demo-v1/report-coverage.html"||attrs["data-cjdoc-version-state"]!=="exact"||link.textContent!=="demo-v1")throw Error("unknown hash did not restore initialized DOM");

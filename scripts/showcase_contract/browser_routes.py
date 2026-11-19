@@ -10,7 +10,8 @@ import re
 from pathlib import PurePosixPath
 from urllib.parse import quote, unquote, urljoin, urlsplit
 
-from .browser_support import declaration_url
+from .browser_support import declaration_url, wait_for_declaration
+from .routes import public_api_file
 from .site import ContractError, Site, load_json
 
 HTTP = "/"
@@ -88,11 +89,6 @@ def base_path(base: str) -> str:
     return path if path.endswith("/") else path + "/"
 
 
-def _expect_declaration(page, expected: str) -> None:
-    from playwright.sync_api import expect
-    expect.poll(lambda: _declared_path(page.url)).to_be(_declared_path(expected))
-
-
 def _body_identity(page, symbol_id: str) -> None:
     from playwright.sync_api import expect
     body = page.locator("body")
@@ -106,12 +102,12 @@ def _copy_address(page, button, expected: str) -> str:
     declared = urljoin(page.url, button.get_attribute("data-cjdoc-copy-link"))
     if "/symbols/" in urlsplit(declared).path:
         raise AssertionError("copy control points at a historical alias")
-    if _declared_path(declared) != _declared_path(expected):
+    if declaration_url(declared) != declaration_url(expected):
         raise AssertionError("copy control address differs from the declaration body")
     button.click()
     expect(button).to_have_attribute("data-cjdoc-copy-state", "copied")
     actual = page.evaluate("navigator.clipboard.readText()")
-    if _declared_path(actual) != _declared_path(expected):
+    if urlsplit(actual).path.endswith("/index.html") or declaration_url(actual) != declaration_url(expected):
         raise AssertionError("clipboard address differs from the canonical declaration")
     return actual
 
@@ -157,6 +153,7 @@ def check_canonical_api_routes(browser, site: Site, offline: Site, bases: dict[s
     owner_file, anchor = resolved_href.split("#", 1)
     member_file = resolved["memberPageHref"]
     owner_id, member_id = resolved["ownerSymbolId"], resolved["symbolId"]
+    owner_file = public_api_file(site, found["target"], {"href": owner_file, "symbolId": owner_id})
     _body(site, owner_file, owner_id)
     _body(site, member_file, member_id)
     _body(offline, owner_file, owner_id)
@@ -177,7 +174,7 @@ def check_canonical_api_routes(browser, site: Site, offline: Site, bases: dict[s
         page.set_default_timeout(10000)
         _short_directory(page, base, owner_file, owner_id)
         page.goto(base + owner_file + "?theme=paper#" + quote(anchor), wait_until="load")
-        _expect_declaration(page, base + owner_file)
+        wait_for_declaration(page, base + owner_file)
         expect(page.locator("html")).to_have_attribute("data-theme", "paper")
         details = page.locator('details[data-cjdoc-member][id="' + anchor + '"]')
         expect(details).to_have_attribute("open", "")
@@ -185,7 +182,7 @@ def check_canonical_api_routes(browser, site: Site, offline: Site, bases: dict[s
 
         page.goto(base + member_file, wait_until="load")
         _body_identity(page, member_id)
-        _expect_declaration(page, base + member_file)
+        wait_for_declaration(page, base + member_file)
         copied = _copy_address(page, page.locator("[data-cjdoc-copy-link]").first,
                                base + member_file)
         if _declared_path(copied) == _declared_path(base + owner_file):
@@ -202,23 +199,25 @@ def check_canonical_api_routes(browser, site: Site, offline: Site, bases: dict[s
             row = page.locator("div.cj-member-row").filter(
                 has=page.locator('details[data-cjdoc-member][id="' + anchor + '"]'))
             member_button = row.locator("[data-cjdoc-copy-link]").first
+        member_button.locator("xpath=ancestor::div[contains(@class, 'cj-member-row')]").hover()
         _copy_address(page, member_button, base + member_file)
 
         page.goto(base + selection, wait_until="load")
         expect(page.locator("body")).to_have_attribute("data-cjdoc-route", "api-choice")
         if page.locator("body").get_attribute("data-cjdoc-symbol-id"):
             raise AssertionError("selection page must not fabricate a SymbolId")
-        listed = page.locator("main a[href]").evaluate_all(
-            "nodes => nodes.map(node => node.getAttribute('href'))")
-        expected_links = {_declared_path(urljoin(page.url, member)) for member in members}
+        options = page.locator('main section[aria-labelledby="api-options"] a[href]')
+        listed = options.evaluate_all("nodes => nodes.map(node => node.getAttribute('href'))")
+        expected_links = {_declared_path(urljoin(base, member)) for member in members}
         actual_links = {_declared_path(urljoin(page.url, href)) for href in listed}
-        if not expected_links <= actual_links:
-            raise AssertionError("selection page lost an overload route")
-        expect(page.locator("main a[href]").first).to_be_visible()
+        if expected_links != actual_links:
+            raise AssertionError("selection page did not expose the exact overload routes")
+        for option in options.all():
+            expect(option).to_be_visible()
 
         for alias, target in aliases:
             page.goto(urljoin(base, alias) + "?theme=paper#" + quote(anchor), wait_until="load")
-            _expect_declaration(page, urljoin(base, target))
+            wait_for_declaration(page, urljoin(base, target))
             parts = urlsplit(page.url)
             if parts.query != "theme=paper" or unquote(parts.fragment) != anchor:
                 raise AssertionError("historical alias did not preserve query and fragment")
@@ -248,7 +247,7 @@ def check_canonical_api_routes(browser, site: Site, offline: Site, bases: dict[s
                 raise AssertionError("language switch did not leave the current language")
             page.goto(destination, wait_until="load")
             _body_identity(page, owner_id)
-            _expect_declaration(page, destination)
+            wait_for_declaration(page, destination)
             page.go_back(wait_until="load")
             page.wait_for_load_state("load")
 
@@ -293,7 +292,7 @@ def check_canonical_api_routes(browser, site: Site, offline: Site, bases: dict[s
         _body_identity(page, member_id)
         for alias, target in offline_aliases:
             page.goto(file_base + alias + "?theme=paper#" + quote(anchor), wait_until="load")
-            _expect_declaration(page, file_base + target)
+            wait_for_declaration(page, file_base + target)
             parts = urlsplit(page.url)
             if not parts.path.endswith("/index.html"):
                 raise AssertionError("offline alias must land on the explicit generated file")
