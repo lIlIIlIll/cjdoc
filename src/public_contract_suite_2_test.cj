@@ -37,7 +37,9 @@ class PublicApiContractsSuite2 {
         @Expect(artifactContent(externalArtifacts, "html/search-index.js").startsWith(
             "globalThis.__CJDOC_SEARCH_INDEX__ ="))
         let searchIndex = artifactContent(externalArtifacts, "html/search-index.json")
-        @Expect(searchIndex.contains("\"href\": \"symbols/"))
+        @Expect(searchIndex.contains("\"href\": \"basic/Parser/index.html\""))
+        @Expect(artifactContent(externalArtifacts, "html/basic/Parser/index.html")
+            .contains("data-cjdoc-symbol-id=\""))
         @Expect(!searchIndex.contains("index.html#"))
         @Expect(!searchIndex.contains("basic.Parser.hidden"))
         @Expect(artifactContent(externalArtifacts, "html/index.html").contains(

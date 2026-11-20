@@ -128,7 +128,8 @@ class DocumentationPageNavigationRenderTest {
         }
         @Assert(!actual.isEmpty())
         @Expect(!frozenPageContent(baseline, actual).isEmpty())
-        let matching = TypeNavigation("resolved", "exact", "Exact local source", symbolKey: FROZEN_PAGE_RUN, url: actual.removePrefix("html/"))
+        let matching = TypeNavigation("resolved", "exact", "Exact local source", symbolKey: FROZEN_PAGE_RUN,
+            url: historicalSymbolPagePath(FROZEN_PAGE_RUN))
         for (document in [legacy, frozenPageDocument([frozenPageBinding("fixture.run", Some(matching), state: "resolved", id: Some(FROZEN_PAGE_RUN))])]) {
             let artifacts = renderDocumentationFormatsWithOptions(document, ["html", "markdown"], locale: "en")
             let html = frozenPageContent(artifacts, "html/" + FROZEN_PAGE_ROUTE)

@@ -8,7 +8,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from showcase_contract.site import (ContractError, HtmlDocument, load_json,
+from showcase_contract.routes import public_api_file
+from showcase_contract.site import (ContractError, HtmlDocument, Site, load_json,
     load_navigation_index, relative_path)
 
 STYLE = '.showcase-tools{display:flex;flex-wrap:wrap;gap:.5rem 1rem;border-top:1px solid currentColor;margin:2rem 1rem 0;padding:1rem;max-width:100%;font-size:.875rem}.showcase-tools a,.showcase-tools span{overflow-wrap:anywhere}.showcase-tools a:focus-visible{outline:2px solid currentColor;outline-offset:3px}'
@@ -107,7 +108,25 @@ def native_pages(root: Path) -> dict[str, str]:
     return result
 
 
-def mount(root: Path, site: Path, locale: str, alternate: Path | None = None) -> None:
+def mounted_api_pages(scope: Path, locale: str, pages: dict[str, str]) -> dict[str, Path]:
+    """Map scoped machine inventory addresses to their verified public bodies."""
+    inventory = Site(scope.parent)
+    prefix = scope.name + "/"
+    target = {"index": prefix + "navigation-index.json", "locale": locale}
+    mounted = {}
+    for identity, rel in pages.items():
+        path = prefix + rel
+        doc = inventory.documents.get(path)
+        if doc is not None and doc.symbol_id == identity:
+            canonical = public_api_file(inventory, target, {"symbolId": identity, "href": path})
+            if canonical != path:
+                mounted[rel] = scope.parent / canonical
+    return mounted
+
+
+def mount(root: Path, site: Path, locale: str, alternate: Path | None = None,
+          public_bodies: dict[str, Path] | None = None,
+          alternate_bodies: dict[str, Path] | None = None) -> None:
     pages = native_pages(root)
     other = native_pages(alternate) if alternate else {}
     manifest = root / "agent/manifest.json"
@@ -115,14 +134,17 @@ def mount(root: Path, site: Path, locale: str, alternate: Path | None = None) ->
         relative_path(item["html"]): relative_path(item["markdown"])
         for item in load_json(manifest)["representations"]
     } if manifest.is_file() else {}
-    counterparts = {path: alternate / other[key] for key, path in pages.items() if key in other}
+    alternate_bodies = alternate_bodies or {}
+    counterparts = {path: alternate_bodies.get(other[key], alternate / other[key])
+                    for key, path in pages.items() if key in other}
     # These are explicit report-view identities produced by report_views, not API routes.
     for name in ("report-native-check.html", "report-diff.html", "report-coverage.html", "report-diagnostics.html"):
         if alternate is not None and (alternate / name).is_file():
             counterparts[name] = alternate / name
-    for page in sorted(root.rglob("*.html")):
-        relative = page.relative_to(root)
-        if "dependencies" in relative.parts or "machine" in relative.parts:
+    documents = {path: path.relative_to(root).as_posix() for path in root.rglob("*.html")}
+    documents.update({path: rel for rel, path in (public_bodies or {}).items()})
+    for page, relative in sorted(documents.items()):
+        if "dependencies" in Path(relative).parts or "machine" in Path(relative).parts:
             continue
         content = page.read_text(encoding="utf-8")
         if 'data-showcase-tools' in content or content.count('</body>') != 1:
@@ -130,7 +152,7 @@ def mount(root: Path, site: Path, locale: str, alternate: Path | None = None) ->
         nav = '<nav class="showcase-tools" data-showcase-tools aria-label="Showcase and machine outputs">'
         home = site / ("index.html" if locale == "zh-CN" else "en.html")
         nav += '<a data-showcase-home href="' + href(page, home) + '">' + ('展示首页' if locale == 'zh-CN' else 'Showcase') + '</a>'
-        counterpart = counterparts.get(relative.as_posix())
+        counterpart = counterparts.get(relative)
         if counterpart is not None:
             anchors = sorted(HtmlDocument(counterpart.read_text(encoding="utf-8")).ids)
             nav += '<a data-showcase-locale data-locale-anchors="' + html.escape(json.dumps(anchors), quote=True) + '" href="' + href(page, counterpart) + '">' + ('English' if locale == 'zh-CN' else '中文') + '</a>'
@@ -140,7 +162,7 @@ def mount(root: Path, site: Path, locale: str, alternate: Path | None = None) ->
                    "navigation": ("navigation-index.json", "Navigation JSON"),
                    "symbols": ("symbol-index.json", "Symbol JSON"),
                    "llms": ("llms.txt", "llms.txt"), "llms-full": ("llms-full.txt", "llms-full.txt")}
-        markdown_path = markdown_pages.get(relative.as_posix())
+        markdown_path = markdown_pages.get(relative)
         if markdown_path is not None:
             machine["markdown"] = (markdown_path, "Markdown")
         for kind, (path, label) in machine.items():
@@ -160,10 +182,14 @@ def publish(site: Path) -> None:
     (site / "publication.js").write_text(SCRIPT, encoding="utf-8")
     from .manifest import roots
     documents = {locale: roots(site, locale) for locale in ("zh-CN", "en")}
+    public = {version: mounted_api_pages(root, "zh-CN", native_pages(root))
+              for version, root in documents["zh-CN"].items()}
     for locale, sets in documents.items():
         other = documents["en" if locale == "zh-CN" else "zh-CN"]
         for version, root in sets.items():
-            mount(root, site, locale, other[version])
+            mount(root, site, locale, other[version],
+                  public_bodies=public[version] if locale == "zh-CN" else None,
+                  alternate_bodies=public[version] if locale == "en" else None)
             for dependency in (root / "dependencies").glob("*"):
                 if dependency.is_dir():
                     mount(dependency, site, locale)

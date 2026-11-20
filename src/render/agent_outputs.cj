@@ -113,9 +113,10 @@ private func agentNavigationPages(context: DocumentationReadSnapshot,
             "package", packageName, packagePagePath(pkg.source.moduleId, packageName),
             packageName: Some(packageName), moduleId: Some(pkg.source.moduleId)))
     }
+    let routes = projection.apiRoutes.getOrThrow()
     for (symbol in projection.visibleSymbols) {
         pages.add(AgentNavigationPage(symbol.id, "symbol", symbol.qualifiedName,
-            symbolUrl(projection.visibleIndex, symbol), summary: agentSymbolSummary(symbol),
+            routes.filePath(symbol.id).getOrThrow(), summary: agentSymbolSummary(symbol),
             symbolId: Some(symbol.id), moduleId: Some(symbol.moduleId),
             packageName: Some(symbol.packageName), semanticState: Some(symbol.semantic.state)))
     }

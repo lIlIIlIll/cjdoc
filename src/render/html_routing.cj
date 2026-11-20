@@ -44,12 +44,16 @@ internal func packagePagePath(moduleId: String, name: String): String {
     "packages/package-${boundedHtmlSlug(routeKey(moduleId, name))}.html"
 }
 
+// Historical flat route, also retained verbatim as the v18 local-link evidence.
 protected func symbolPagePath(symbol: SymbolDoc): String {
-    "symbols/symbol-${boundedHtmlSlug(symbol.id)}.html"
+    historicalSymbolPagePath(symbol.id)
 }
 
-// Human-readable aliases do not replace the stable SymbolId routes. Restrict
-// the label to portable ASCII and disambiguate overloads/modules by identity.
+internal func historicalSymbolPagePath(symbolId: String): String {
+    "symbols/symbol-${boundedHtmlSlug(symbolId)}.html"
+}
+
+// Historical readable slug. Never use it as a new publication destination.
 internal func symbolReadablePagePath(symbol: SymbolDoc): String {
     let name = StringBuilder()
     var length: Int64 = 0
@@ -71,8 +75,11 @@ internal func symbolReadablePagePath(symbol: SymbolDoc): String {
     "symbols/${readable}-${stableFileHash(symbol.id)}.html"
 }
 
-internal func renderSymbolAlias(symbol: SymbolDoc, locale: String): String {
-    let target = symbolPagePath(symbol)["symbols/".size..]
+internal func renderSymbolAlias(symbol: SymbolDoc, locale: String, aliasFile: String,
+    targetFile: String, unprefixedLocale: String): String {
+    let prefix = pageRootPrefix(aliasFile)
+    let targetPrefix = publicApiRootPrefix(prefix, unprefixedLocale)
+    let target = targetPrefix + apiHtmlFileHref(targetFile)
     let w = HtmlWriter()
     w.doctype()
     w.open("html", attrs: [htmlAttr("lang", locale)])
@@ -84,21 +91,21 @@ internal func renderSymbolAlias(symbol: SymbolDoc, locale: String): String {
         htmlAttr("content", HTML_PAGE_CSP)])
     w.textElement("title", readerQualifiedName(symbol))
     w.void("link", attrs: [htmlAttr("rel", "canonical"),
-        htmlHref(SafeUrl.relative(target).getOrThrow())])
+        htmlHref(SafeUrl.siteRoute(targetPrefix + apiHtmlWebPath(targetFile)))])
     w.void("link", attrs: [htmlAttr("rel", "describedby"), htmlAttr("type", "text/plain"),
-        htmlHref(SafeUrl.siteRoute("../llms.txt"))])
+        htmlHref(SafeUrl.siteRoute(prefix + "llms.txt"))])
     w.void("link", attrs: [htmlAttr("rel", "alternate"), htmlAttr("type", "text/markdown"),
-        htmlHref(SafeUrl.siteRoute("../" + agentDeclarationMarkdownPath(symbol)))])
+        htmlHref(SafeUrl.siteRoute(prefix + agentDeclarationMarkdownPath(symbol)))])
     w.close("head")
     w.open("body", attrs: [htmlAttr("data-cjdoc-route", "symbol-alias")])
     w.open("main")
     w.element("a", [htmlFlag("data-cjdoc-alias-target"),
-        htmlHref(SafeUrl.relative(target).getOrThrow())], { link =>
+        htmlHref(SafeUrl.siteRoute(target))], { link =>
         link.text(label(locale, "Open API documentation", "打开 API 文档") + ": " +
             readerQualifiedName(symbol))
     })
     w.close("main")
-    w.open("script", attrs: [htmlSrc(SafeUrl.siteRoute("../symbol-alias.js")),
+    w.open("script", attrs: [htmlSrc(SafeUrl.siteRoute(prefix + "symbol-alias.js")),
         htmlFlag("defer")])
     w.close("script")
     w.close("body")
@@ -112,6 +119,9 @@ internal let HTML_SYMBOL_ALIAS_SCRIPT = #"
   var link = document.querySelector('[data-cjdoc-alias-target]');
   if (!link) return;
   var target = new URL(link.getAttribute('href'), location.href);
+  if (target.protocol === 'http:' || target.protocol === 'https:') {
+    target.pathname = target.pathname.slice(0, -'index.html'.length);
+  }
   target.search = location.search;
   target.hash = location.hash;
   link.href = target.href;
@@ -163,6 +173,8 @@ internal class RenderProjection {
     let sourceReferences: SourceReferenceProjection
     let catalog: DeclarationGroupCatalog
     let snapshotId: String
+    let apiRoutes: ?ApiHtmlRoutes
+    let unprefixedApiLocale: String
     let visibleIndex = HashMap<String, SymbolDoc>()
     let visibleSymbols = ArrayList<SymbolDoc>()
     let packages = ArrayList<ProjectedPackage>()
@@ -173,6 +185,23 @@ internal class RenderProjection {
     private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
 
     private let apiGuideIndexes = HashMap<String, CapturedApiGuideIndex>()
+
+    func symbolFileHref(symbolId: String): String {
+        apiRoutes.getOrThrow().fileHref(symbolId)
+    }
+
+    func publicApiPrefix(resourcePrefix: String): String {
+        publicApiRootPrefix(resourcePrefix, unprefixedApiLocale)
+    }
+
+    func publicSymbolHref(resourcePrefix: String, symbolId: String): String {
+        publicApiPrefix(resourcePrefix) + symbolFileHref(symbolId)
+    }
+
+    func apiPageResourcePrefix(file: String, mounted: Bool): String {
+        let prefix = pageRootPrefix(file)
+        if (mounted) { prefix + unprefixedApiLocale + "/" } else { prefix }
+    }
 
     // Standalone and inline members share the same visible, locale-selected usages.
     func apiGuides(documentation: DocumentationSet, locale: String): CapturedApiGuideIndex {
@@ -195,8 +224,11 @@ internal class RenderProjection {
         }
     }
 
-    init(documentation: DocumentationSet, snapshotId!: String = "") {
+    init(documentation: DocumentationSet, snapshotId!: String = "",
+        buildApiRoutes!: Bool = false, legacyApiRoutes!: Bool = false, apiRoutes!: ?ApiHtmlRoutes = None,
+        unprefixedApiLocale!: String = "") {
         this.snapshotId = snapshotId
+        this.unprefixedApiLocale = unprefixedApiLocale
         this.sourceReferences = SourceReferenceProjection(documentation)
         allIndex = indexSymbols(documentation)
         let renderable = renderabilityIndex(documentation, allIndex)
@@ -221,6 +253,9 @@ internal class RenderProjection {
                 case None => groups[key] = ArrayList<SymbolDoc>([symbol])
             }
         }
+        this.apiRoutes = if (buildApiRoutes) {
+            Some(ApiHtmlRoutes(documentation, visibleSymbols, membersByOwner, legacy: legacyApiRoutes))
+        } else { apiRoutes }
 
         let packagesByRoute = HashMap<String, ProjectedPackage>()
         for (pkg in documentation.packages) {
@@ -375,13 +410,6 @@ internal func renderabilityIndex(documentation: DocumentationSet,
     results
 }
 
-
-internal func symbolUrl(index: HashMap<String, SymbolDoc>, symbol: SymbolDoc): String {
-    // Every visible declaration has a stable detail page. Keeping routing uniform
-    // lets package pages remain indexes rather than mixing summaries and contracts.
-    symbolPagePath(symbol)
-}
-
 internal func isTypeDeclaration(symbol: SymbolDoc): Bool {
     symbol.kind == "class" || symbol.kind == "struct" || symbol.kind == "interface" ||
         symbol.kind == "enum" || symbol.kind == "typeAlias"
@@ -440,10 +468,11 @@ internal class HtmlTypeLinkIndex {
     // Only for comparing identities during rendering; never used for public links.
     // Ambiguous canonical keys map to the empty sentinel, not an arbitrary target.
     private let unfilteredSymbolIdByCanonical = HashMap<String, String>()
-    private let urlBySymbolId = HashMap<String, String>()
+    let projection: RenderProjection
     private let reverseUsagesByTarget = HashMap<String, ArrayList<HtmlTypeUsage>>()
 
     init(documentation: DocumentationSet, projection: RenderProjection) {
+        this.projection = projection
         let moduleNameById = HashMap<String, String>()
         for (module in documentation.modules) { moduleNameById[module.id] = module.name }
         for (symbol in projection.allIndex.values()) {
@@ -452,7 +481,6 @@ internal class HtmlTypeLinkIndex {
             }
         }
         for (symbol in projection.visibleSymbols) {
-            urlBySymbolId[symbol.id] = symbolUrl(projection.visibleIndex, symbol)
             if (!isTypeDeclaration(symbol)) { continue }
             registerTypeLinkKeys(symbolIdByCanonical, symbol, moduleNameById)
         }
@@ -496,7 +524,9 @@ internal class HtmlTypeLinkIndex {
 
     private func targetSymbolId(typeRef: TypeRef): ?String {
         if (let Some(navigation) <- typeRef.navigation) {
-            if (navigation.state != "resolved" || !urlBySymbolId.contains(navigation.symbolKey)) { return None }
+            if (!isCapturedLocalApiLink(navigation) || !projection.visibleIndex.contains(navigation.symbolKey)) {
+                return None
+            }
             return Some(navigation.symbolKey)
         }
         if (typeRef.kind == "typeParameter") { return None }
@@ -540,18 +570,23 @@ internal class HtmlTypeLinkIndex {
 
     func targetUrl(typeRef: TypeRef): ?String {
         if (let Some(navigation) <- typeRef.navigation) {
-            if (navigation.state != "resolved") { return None }
-            if (navigation.symbolKey.startsWith("cjdoc:v2:") && !urlBySymbolId.contains(navigation.symbolKey)) { return None }
-            return navigationHref("", navigation.url)
+            return projectedNavigationHref("", navigation, projection.apiRoutes)
         }
         match (targetSymbolId(typeRef)) {
-            case Some(symbolId) => urlBySymbolId.get(symbolId)
+            case Some(symbolId) => targetUrlForSymbolId(symbolId)
             case None => None
         }
     }
 
     func targetUrlForSymbolId(symbolId: String): ?String {
-        urlBySymbolId.get(symbolId)
+        if (!projection.visibleIndex.contains(symbolId)) { return None }
+        Some(projection.symbolFileHref(symbolId))
+    }
+
+    func targetHref(rootPrefix: String, url: String, navigation: ?TypeNavigation): ?String {
+        let isLocal = navigation.map(isCapturedLocalApiLink).getOrDefault({ => true })
+        let prefix = if (isLocal) { projection.publicApiPrefix(rootPrefix) } else { rootPrefix }
+        navigationHref(prefix, url)
     }
 
     func reverseUsages(symbolId: String): ArrayList<HtmlTypeUsage> {
@@ -586,6 +621,36 @@ internal func navigationHref(rootPrefix: String, url: String): ?String {
     let path = relative.split("#", 2)[0].split("?", 2)[0]
     if (!safeRelativePath(path) || !isSafeDocumentationRoute(relative)) { return None }
     Some(rootPrefix + relative)
+}
+
+// This exact form is the v18 evidence for a captured local declaration.
+internal func isCapturedLocalApiLink(value: TypeNavigation): Bool {
+    value.state == "resolved" && value.matchLevel == "exact" &&
+        value.documentSetId.isEmpty() && value.dependencyInstanceId.isEmpty() &&
+        value.symbolKey.startsWith("cjdoc:v2:") &&
+        value.url == historicalSymbolPagePath(value.symbolKey)
+}
+
+// Only a default-language API body can live outside its own resource tree.
+internal func publicApiRootPrefix(resourcePrefix: String, unprefixedLocale: String): String {
+    if (unprefixedLocale.isEmpty()) { return resourcePrefix }
+    let directory = unprefixedLocale + "/"
+    if (resourcePrefix.endsWith(directory)) {
+        resourcePrefix.removeSuffix(directory)
+    } else { resourcePrefix + "../" }
+}
+
+internal func projectedNavigationHref(rootPrefix: String, value: TypeNavigation,
+    routes: ?ApiHtmlRoutes, unprefixedLocale!: String = ""): ?String {
+    if (value.state != "resolved") { return None }
+    if (isCapturedLocalApiLink(value)) {
+        match (routes) {
+            case Some(index) => return index.filePath(value.symbolKey)
+                .map({ path => publicApiRootPrefix(rootPrefix, unprefixedLocale) + apiHtmlFileHref(path) })
+            case None => return None
+        }
+    }
+    navigationHref(rootPrefix, value.url)
 }
 
 internal func buildAssetLookup(assets: ArrayList<AssetDoc>,
@@ -682,13 +747,6 @@ internal func validateHtmlRouting(projection: RenderProjection, assets: ArrayLis
         let path = assetOutputPath(asset)
         if (!paths.add(path)) {
             throw IllegalArgumentException("HTML route collision for asset '${asset.id}'")
-        }
-    }
-    let urls = HashSet<String>()
-    for (symbol in projection.visibleSymbols) {
-        let url = symbolUrl(projection.visibleIndex, symbol)
-        if (!urls.add(url)) {
-            throw IllegalArgumentException("non-injective HTML URL for SymbolId '${symbol.id}'")
         }
     }
 }

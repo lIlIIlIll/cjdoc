@@ -211,6 +211,11 @@ class DomElement {
     return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null;
   }
   hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name); }
+  toggleAttribute(name, force = !this.hasAttribute(name)) {
+    if (!force) this.removeAttribute(name);
+    else if (!this.hasAttribute(name)) this.setAttribute(name, "");
+    return Boolean(force);
+  }
   matches(selector) { return matchesSelector(this, selector); }
   closest(selector) {
     for (let node = this; node; node = node.parentElement) {

@@ -38,15 +38,13 @@ private func appendReExportStateBadges(w: HtmlWriter, reExport: ReExportDoc, loc
         "data-state", reExport.state)
 }
 
-private func appendReExportTargetLink(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+private func appendReExportTargetLink(w: HtmlWriter, projection: RenderProjection,
     targetId: String, locale: String): Unit {
-    match (findSymbol(index, targetId)) {
-        case Some(target) => match (documentationLinkHref("../" + symbolUrl(index, target))) {
-            case Some(href) => w.element("a", [htmlHref(href)]) { link =>
+    match (projection.visibleIndex.get(targetId)) {
+        case Some(target) =>
+            w.element("a", [htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref("../", target.id)))]) { link =>
                 link.textElement("code", target.qualifiedName)
             }
-            case None => w.textElement("code", target.qualifiedName)
-        }
         case None => w.text(label(locale, "Target not present in this documentation",
             "目标未包含在当前文档中"))
     }
@@ -69,7 +67,7 @@ private func appendReExportPackageEntry(w: HtmlWriter, reExport: ReExportDoc,
 }
 
 // One imported name: each visible target is a separate link, never nested.
-private func appendReExportBindingEntry(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+private func appendReExportBindingEntry(w: HtmlWriter, projection: RenderProjection,
     reExport: ReExportDoc, binding: ReExportBinding, locale: String,
     sourceReferences: SourceReferenceProjection, moduleId: String): Unit {
     w.open("li")
@@ -79,7 +77,7 @@ private func appendReExportBindingEntry(w: HtmlWriter, index: HashMap<String, Sy
     for (targetId in binding.targetSymbolIds) {
         if (!firstTarget) { w.text(", ") }
         firstTarget = false
-        appendReExportTargetLink(w, index, targetId, locale)
+        appendReExportTargetLink(w, projection, targetId, locale)
     }
     appendReExportStateBadges(w, reExport, locale, includeKind: false)
     appendReExportSourceLink(w, sourceReferences, moduleId, reExport.source, locale)
@@ -88,12 +86,12 @@ private func appendReExportBindingEntry(w: HtmlWriter, index: HashMap<String, Sy
 }
 
 private func appendReExportRows(w: HtmlWriter, pkg: ProjectedPackage,
-    index: HashMap<String, SymbolDoc>, locale: String,
-    sourceReferences: SourceReferenceProjection): Unit {
+    projection: RenderProjection, locale: String): Unit {
+    let sourceReferences = projection.sourceReferences
     for (reExport in pkg.source.reExports) {
         if (reExport.kind != "packageAlias" && !reExport.bindings.isEmpty()) {
             for (binding in reExport.bindings) {
-                appendReExportBindingEntry(w, index, reExport, binding, locale, sourceReferences,
+                appendReExportBindingEntry(w, projection, reExport, binding, locale, sourceReferences,
                     pkg.source.moduleId)
             }
             continue
@@ -103,8 +101,7 @@ private func appendReExportRows(w: HtmlWriter, pkg: ProjectedPackage,
 }
 
 internal func appendPackageMetadata(w: HtmlWriter, pkg: ProjectedPackage,
-    index: HashMap<String, SymbolDoc>, locale: String,
-    sourceReferences: SourceReferenceProjection): Unit {
+    projection: RenderProjection, locale: String): Unit {
     let packageDoc = pkg.source
     if (!packageDoc.reExports.isEmpty()) {
         w.open("details", attrs: [htmlClass("cj-reexports cj-disclosure")])
@@ -113,7 +110,7 @@ internal func appendPackageMetadata(w: HtmlWriter, pkg: ProjectedPackage,
             " (${packageDoc.reExports.size} ${label(locale, "imports", "条导入")})")
         w.close("summary")
         w.open("ul", attrs: [htmlClass("cj-record-list")])
-        appendReExportRows(w, pkg, index, locale, sourceReferences)
+        appendReExportRows(w, pkg, projection, locale)
         w.close("ul")
         w.close("details")
         w.newline()

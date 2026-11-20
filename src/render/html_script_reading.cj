@@ -2,11 +2,17 @@ package cjdoc.render
 
 // Reading-surface controllers: on-page table of contents, display settings,
 // copy actions and the member browser. Each runs independently so a page
-// without members or without headings still gets the rest.
+// without members or without headings still gets the rest. Outline clicks and
+// fragments own the active highlight until reader input releases it. Overloads
+// stay siblings. Member history restores filters before considering the hash;
+// copy fallback uses the clipboard event to preserve bytes lost by textarea
+// line-ending normalization.
 internal let HTML_READING_SCRIPT = """
 (() => {
   const isChinese = (document.documentElement.lang || "").toLowerCase().startsWith("zh");
   const text = (english, chinese) => isChinese ? chinese : english;
+  const find = selector => document.querySelector(selector);
+  const all = selector => document.querySelectorAll(selector);
   const element = (tag, className, caption) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -21,17 +27,15 @@ internal let HTML_READING_SCRIPT = """
   const icon = () => svg("svg", {class: "cj-icon", viewBox: "0 0 24 24",
     fill: "none", stroke: "currentColor", "stroke-width": "1.8", "aria-hidden": "true"});
 
-  // Outline: only reader input releases click ownership, not the jump's scroll.
   const CLICK_RELEASE_EVENTS = ["wheel", "touchstart", "keydown"];
-  // Hidden document sections must disappear from the outline too.
   let syncTocVisibility = () => {};
   const initToc = () => {
-    const toc = document.querySelector("[data-cjdoc-toc]");
-    const content = document.querySelector("[data-cjdoc-content]");
+    const toc = find("[data-cjdoc-toc]");
+    const content = find("[data-cjdoc-content]");
     if (!toc || !content) return;
     const layout = toc.closest(".cj-layout");
     const tocList = toc.querySelector("ol");
-    const mobileToc = document.querySelector("[data-cjdoc-mobile-toc]");
+    const mobileToc = find("[data-cjdoc-mobile-toc]");
     const mobileList = mobileToc && mobileToc.querySelector("ol");
     if (!tocList) return;
     const mobileOutline = window.matchMedia("(max-width: 1180px)");
@@ -40,12 +44,11 @@ internal let HTML_READING_SCRIPT = """
       const role = heading.dataset.cjdocTocRole;
       if (role === "member") return true;
       if (heading.closest("[data-cjdoc-member]")) return false;
-      // Collapsed reference disclosures are not outline sections.
       if (heading.closest("details")) return false;
       return (role === "api-root" || role === "api" || role === "group" ||
         role === "overload" || heading.tagName === "H2" || heading.tagName === "H3");
     });
-    const usedIds = new Set([...document.querySelectorAll("[id]")].map(node => node.id));
+    const usedIds = new Set(Array.from(all("[id]"), node => node.id));
     const ensureId = (heading, index) => {
       if (heading.id) return;
       let id = (heading.textContent || "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
@@ -85,7 +88,6 @@ internal let HTML_READING_SCRIPT = """
       link.dataset.tocTarget = id;
       return link;
     };
-    // CSS draws the chevron; this supplies its accessible name.
     const createToggle = (label, children) => {
       const button = element("button", "cj-toc__toggle");
       button.type = "button";
@@ -109,8 +111,6 @@ internal let HTML_READING_SCRIPT = """
     };
     for (let index = 0; index < headings.length; index += 1) ensureId(headings[index], index);
     tocList.replaceChildren();
-    // Nest under the containing kind/declaration group, else the previous section.
-    // Overload titles are siblings, not another level; sectionless pages stay flat.
     const headingSet = new Set(headings);
     const containerHeading = (heading, containerSelector, titleSelector) => {
       const container = heading.closest(containerSelector);
@@ -133,7 +133,6 @@ internal let HTML_READING_SCRIPT = """
     }
     const withChildren = new Set(parentOf.values());
     const childLists = new Map();
-    // Document order creates parent lists before their children.
     for (const heading of headings) {
       const item = element("li", itemClass(heading));
       item.dataset.depth = String(depthOf(heading));
@@ -172,8 +171,6 @@ internal let HTML_READING_SCRIPT = """
       if (next) next.classList.add("cj-toc__link--active");
       activeLink = next;
     };
-    // Jump targets sit above the observer band. Keep click ownership until reader
-    // input or timeout instead of retaining the observer's previous entry.
     let clickedTarget = null;
     let releaseTimer = 0;
     const releaseClick = () => {
@@ -208,7 +205,6 @@ internal let HTML_READING_SCRIPT = """
       for (const heading of headings) observer.observe(heading);
     }
     setActive(targetId(headings[0]));
-    // Fragments also land above the observer band: follow clicks and history.
     const syncHash = () => {
       if (!window.location.hash || window.location.hash.length <= 1) return;
       let id = window.location.hash.slice(1);
@@ -230,7 +226,6 @@ internal let HTML_READING_SCRIPT = """
         if (list !== activeList) continue;
         const hidden = !visibleIds.has(link.dataset.tocTarget);
         if (item && item.hidden !== hidden) item.hidden = hidden;
-        // Filtering changes group counts, not member signatures.
         if (heading && heading.dataset.cjdocTocRole !== "member") {
           const label = headingLabel(heading);
           if (link.textContent !== label) link.textContent = label;
@@ -246,10 +241,9 @@ internal let HTML_READING_SCRIPT = """
     mobileOutline.addEventListener("change", syncTocVisibility);
   };
 
-  // Display settings: first-open construction leaves untouched pages dialog-free.
   const EXAMPLE_SELECTOR = "details[data-cjdoc-example]";
   const setDisclosures = (selector, open, fragment = null) => {
-    for (const details of document.querySelectorAll(selector)) {
+    for (const details of all(selector)) {
       details.open = open || details === fragment;
     }
   };
@@ -259,6 +253,47 @@ internal let HTML_READING_SCRIPT = """
       const id = decodeURIComponent(window.location.hash.slice(1));
       return document.getElementById(id)?.closest(EXAMPLE_SELECTOR) || null;
     } catch (_) { return null; }
+  };
+  const restoreNotices = [];
+  const groupNotices = value => {
+    if (value !== "grouped") {
+      for (const restore of restoreNotices.splice(0)) restore();
+      return;
+    }
+    if (restoreNotices.length) return;
+    for (const scope of all("[data-cjdoc-api-intro]")) {
+      const groups = Object.create(null);
+      for (const box of scope.querySelectorAll(":scope > :is(.cj-description,[data-cjdoc-notice]) .cj-admonition")) {
+        if (!box.parentElement.closest("aside,blockquote,li,table"))
+          (groups[box.dataset.admonitionLevel] ??= []).push(box);
+      }
+      for (const same of Object.values(groups)) {
+        if (same.length < 2) continue;
+        const first = same[0];
+        const combined = first.cloneNode();
+        const list = element("ul", "cj-admonition__body cj-prose");
+        combined.append(first.firstElementChild.cloneNode(true), list);
+        (first.closest("[data-cjdoc-notice]") || first).before(combined);
+        for (const box of same) {
+          // Move the authored subtree, including its field anchor and language.
+          const unit = box.closest("[data-cjdoc-notice]") || box;
+          const original = document.createComment("");
+          const item = element("li");
+          const body = box.lastElementChild;
+          if (unit === box) item.lang = box.closest("[lang]").lang;
+          else box.replaceWith(body);
+          unit.replaceWith(original);
+          item.append(unit === box ? body : unit);
+          list.append(item);
+          restoreNotices.push(() => {
+            body.replaceWith(box);
+            box.append(body);
+            original.replaceWith(unit);
+          });
+        }
+        restoreNotices.push(() => combined.remove());
+      }
+    }
   };
   const disclosureOptions = [["expanded", "Expanded", "展开"], ["collapsed", "Collapsed", "折叠"]];
   const displaySettings = [
@@ -283,6 +318,9 @@ internal let HTML_READING_SCRIPT = """
       fallback: "collapsed", options: disclosureOptions,
       apply: value => setDisclosures("details.cj-example-pair__disclosure", value === "expanded"),
       help: ["cjdoc-long-output-help", "Does not change the whole example.", "不改变整个示例的状态。"]},
+    {key: "apiNotices", name: "api-notices", title: ["API notices", "API 提示"],
+      fallback: "separate", options: [["separate", "Show separately", "逐条显示"],
+        ["grouped", "Group by type", "按类型合并"]], apply: groupNotices},
   ];
   const [theme] = displaySettings;
   const optionAttr = setting => "data-cjdoc-" + setting.name + "-value";
@@ -347,9 +385,9 @@ internal let HTML_READING_SCRIPT = """
   };
   const initSettings = () => {
     const root = document.documentElement;
-    const trigger = document.querySelector("[data-cjdoc-theme-toggle]");
+    const trigger = find("[data-cjdoc-theme-toggle]");
     if (!trigger) return;
-    const label = document.querySelector("[data-cjdoc-theme-label]");
+    const label = find("[data-cjdoc-theme-label]");
     const persistence = globalThis.__CJDOC_THEME__;
     const reader = readReader();
     const values = Object.create(null);
@@ -357,7 +395,6 @@ internal let HTML_READING_SCRIPT = """
       const candidate = attribute ? root.getAttribute(attribute) : reader[key];
       const value = options.some(([allowed]) => allowed === candidate) ? candidate : fallback;
       values[key] = value;
-      // Defaults are in static markup; only a nondefault choice needs a disclosure walk.
       if (value !== fallback) apply?.(value, true);
     }
     window.addEventListener("hashchange", () => {
@@ -451,7 +488,6 @@ internal let HTML_READING_SCRIPT = """
     sync();
   };
 
-  // Copy actions.
   const copyText = async value => {
     if (navigator.clipboard && window.isSecureContext) {
       try { await navigator.clipboard.writeText(value); return true; } catch (_) { /* fallback */ }
@@ -464,7 +500,6 @@ internal let HTML_READING_SCRIPT = """
     document.body.append(area);
     area.select();
     let copied = false;
-    // Textarea selection normalizes CRLF; the real copy event gets original bytes.
     const preserveOriginal = event => {
       if (event.clipboardData) {
         event.clipboardData.setData("text/plain", value);
@@ -482,51 +517,53 @@ internal let HTML_READING_SCRIPT = """
     window.setTimeout(() => { delete button.dataset.cjdocCopyState; }, 1500);
   };
   const initCopy = () => {
-    for (const button of document.querySelectorAll("[data-cjdoc-copy-link]")) {
+    document.addEventListener("click", async event => {
+      const button = event.target.closest?.("[data-cjdoc-copy-link]");
+      if (!button) return;
       const iconOnly = !button.textContent.trim();
       const label = button.getAttribute("aria-label") || button.textContent || "";
       const status = button.parentElement
         ? button.parentElement.querySelector("[data-cjdoc-copy-status]") : null;
-      button.addEventListener("click", async () => {
-        let url = button.dataset.cjdocCopyLink || "";
-        try { url = new URL(url, window.location.href).href; } catch (_) { /* keep raw */ }
-        const copied = await copyText(url);
-        const message = copied ? text("Link copied", "链接已复制")
-          : text("Select and copy the link", "请选择并复制链接");
-        flashCopyState(button, copied);
+      let url = button.dataset.cjdocCopyLink || "";
+      try {
+        url = new URL(globalThis.__CJDOC_API_ROUTE__(url), window.location.href).href;
+      } catch (_) { /* keep raw */ }
+      const copied = await copyText(url);
+      const message = copied ? text("Link copied", "链接已复制")
+        : text("Select and copy the link", "请选择并复制链接");
+      flashCopyState(button, copied);
+      if (iconOnly) {
+        button.setAttribute("aria-label", message);
+        button.setAttribute("title", message);
+      } else {
+        const labelNode = button.querySelector("span") || button.lastChild;
+        if (labelNode) labelNode.textContent = message;
+        if (button.hasAttribute("aria-label")) button.setAttribute("aria-label", message);
+      }
+      if (status) status.textContent = message;
+      if (!copied) {
+        let field = button.parentElement?.querySelector("[data-cjdoc-copy-link-fallback]");
+        if (!field) {
+          field = element("input", "cj-input");
+          field.type = "text";
+          field.readOnly = true;
+          field.dataset.cjdocCopyLinkFallback = "";
+          field.setAttribute("aria-label", text("Link address", "链接地址"));
+          button.insertAdjacentElement("afterend", field);
+        }
+        field.value = url;
+        field.focus();
+        field.select();
+      }
+      window.setTimeout(() => {
         if (iconOnly) {
-          button.setAttribute("aria-label", message);
-          button.setAttribute("title", message);
-        } else {
-          const labelNode = button.querySelector("span") || button.lastChild;
-          if (labelNode) labelNode.textContent = message;
-          if (button.hasAttribute("aria-label")) button.setAttribute("aria-label", message);
+          button.setAttribute("aria-label", label);
+          button.setAttribute("title", label);
+          if (status) status.textContent = "";
         }
-        if (status) status.textContent = message;
-        if (!copied) {
-          let field = button.parentElement?.querySelector("[data-cjdoc-copy-link-fallback]");
-          if (!field) {
-            field = element("input", "cj-input");
-            field.type = "text";
-            field.readOnly = true;
-            field.dataset.cjdocCopyLinkFallback = "";
-            field.setAttribute("aria-label", text("Link address", "链接地址"));
-            button.insertAdjacentElement("afterend", field);
-          }
-          field.value = url;
-          field.focus();
-          field.select();
-        }
-        window.setTimeout(() => {
-          if (iconOnly) {
-            button.setAttribute("aria-label", label);
-            button.setAttribute("title", label);
-            if (status) status.textContent = "";
-          }
-        }, 1800);
-      });
-    }
-    for (const code of document.querySelectorAll("pre > code")) {
+      }, 1800);
+    });
+    for (const code of all("pre > code")) {
       const panel = code.closest("[data-cjdoc-copy-panel]");
       const host = panel?.querySelector("[data-cjdoc-copy-toolbar]") || code.parentElement;
       if (!host || host.querySelector("[data-cjdoc-copy]")) continue;
@@ -561,41 +598,39 @@ internal let HTML_READING_SCRIPT = """
     }
   };
 
-  // Member browser.
   const initMembers = () => {
-    const browser = document.querySelector("[data-cjdoc-member-browser]");
+    const browser = find("[data-cjdoc-member-browser]");
     if (!browser) return;
     const kernel = globalThis.cjdocSearch;
     const index = globalThis.__CJDOC_SEARCH_INDEX__;
-    const rows = [...document.querySelectorAll("[data-cjdoc-member]")];
+    const rows = [...all("[data-cjdoc-member]")];
     const memberFilter = kernel?.createEntryFilter(index, rows.map(row => row.dataset.memberSymbolId));
-    const groups = [...document.querySelectorAll("[data-cjdoc-member-group]")].map(group =>
+    let unfiltered;
+    const memberGroups = selector => Array.from(all(selector), group =>
       [group, [...group.querySelectorAll("[data-cjdoc-member]")]]);
-    const overloads = [...document.querySelectorAll("[data-cjdoc-overload-group]")].map(group =>
-      [group, [...group.querySelectorAll("[data-cjdoc-member]")]]);
-    const roles = [...document.querySelectorAll("[data-cjdoc-declaration-group]")].map(group =>
-      [group, [...group.querySelectorAll("[data-cjdoc-member]")]]);
+    const groups = memberGroups("[data-cjdoc-member-group]");
+    const overloads = memberGroups("[data-cjdoc-overload-group]");
+    const roles = memberGroups("[data-cjdoc-declaration-group]");
     const visibleCount = members => members.reduce((count, row) => count + Number(!row.hidden), 0);
-    const filter = document.querySelector("[data-cjdoc-member-filter]");
-    const origin = document.querySelector("[data-cjdoc-member-origin]");
-    const filterToggle = document.querySelector("[data-cjdoc-member-filter-toggle]");
-    const filterFields = document.querySelector("#cjdoc-member-filter-fields");
-    const status = document.querySelector("[data-cjdoc-member-filter-status]");
-    const expand = document.querySelector("[data-cjdoc-members-expand]");
-    const collapse = document.querySelector("[data-cjdoc-members-collapse]");
+    const filter = find("[data-cjdoc-member-filter]");
+    const origin = find("[data-cjdoc-member-origin]");
+    const filterToggle = find("[data-cjdoc-member-filter-toggle]");
+    const filterFields = find("#cjdoc-member-filter-fields");
+    const status = find("[data-cjdoc-member-filter-status]");
+    const expand = find("[data-cjdoc-members-expand]");
+    const collapse = find("[data-cjdoc-members-collapse]");
     let notice = "";
     const syncActions = () => {
       if (expand) expand.disabled = !rows.some(row => !row.hidden && !row.open);
       if (collapse) collapse.disabled = !rows.some(row => !row.hidden && row.open);
     };
-    // CSS reads aria-expanded, avoiding stale touch-menu state after resizing.
-    const closeActionMenus = (restoreFocus = false) => {
-      let closed = null;
-      for (const toggle of document.querySelectorAll('[data-cjdoc-member-actions-toggle][aria-expanded="true"]')) {
-        toggle.setAttribute("aria-expanded", "false");
-        closed = closed || toggle;
-      }
-      if (restoreFocus && closed) closed.focus();
+    let openAction;
+    const closeActionMenus = restoreFocus => {
+      if (!openAction) return;
+      const toggle = openAction;
+      openAction = null;
+      toggle.setAttribute("aria-expanded", "false");
+      if (restoreFocus) toggle.focus();
     };
     const emptyIds = new Set();
     const applyFilter = () => {
@@ -606,15 +641,20 @@ internal let HTML_READING_SCRIPT = """
         ? kernel.parseQuery(raw, index.contract)
         : {errorCode: "search_index_unavailable", query: "", filters: [], tags: []};
       let error = parsed.errorCode || null;
+      const active = Boolean(parsed.query || parsed.filters.length || parsed.tags.length);
       let matching = emptyIds;
       if (!error) {
-        const request = {query: parsed.query, filters: parsed.filters};
-        if (parsed.tags.length) request.tags = parsed.tags;
-        const projection = memberFilter(request);
-        if (projection.status !== "ok") error = projection.errorCode || "search_index_invalid";
-        else matching = new Set(projection.canonicalIds);
+        if (!active && unfiltered) {
+          ({error, matching} = unfiltered);
+        } else {
+          const request = {query: parsed.query, filters: parsed.filters};
+          if (parsed.tags.length) request.tags = parsed.tags;
+          const result = memberFilter(request);
+          if (result.status !== "ok") error = result.errorCode || "search_index_invalid";
+          else matching = new Set(result.canonicalIds);
+          if (!active) unfiltered = {error, matching};
+        }
       }
-      const active = Boolean(parsed.query || parsed.filters.length || parsed.tags.length);
       if (filterToggle && filterFields) {
         const count = Number(active) + Number(Boolean(selectedOrigin));
         filterToggle.textContent = text("Filter members", "筛选成员") +
@@ -631,6 +671,7 @@ internal let HTML_READING_SCRIPT = """
         if (wrapper && wrapper.hidden !== hidden) wrapper.hidden = hidden;
         if (matches) visible += 1;
       }
+      browser.toggleAttribute("data-cjdoc-member-filtered", visible !== rows.length);
       for (const [group, members] of overloads) {
         const total = Number(group.dataset.overloadTotal);
         const matches = visibleCount(members);
@@ -680,7 +721,6 @@ internal let HTML_READING_SCRIPT = """
       status.textContent = countText + notice;
     };
     if (filterToggle && filterFields) {
-      // CSS unfolds fields on wide layouts and folds them behind this control.
       filterToggle.addEventListener("click", () => {
         const opening = filterToggle.getAttribute("aria-expanded") !== "true";
         filterToggle.setAttribute("aria-expanded", opening ? "true" : "false");
@@ -700,25 +740,27 @@ internal let HTML_READING_SCRIPT = """
         syncActions();
       });
     }
-    for (const actions of document.querySelectorAll("[data-cjdoc-member-actions]")) {
-      const toggle = actions.querySelector("[data-cjdoc-member-actions-toggle]");
-      if (!toggle) continue;
-      toggle.addEventListener("click", () => {
-        const opening = toggle.getAttribute("aria-expanded") !== "true";
-        closeActionMenus();
-        if (!opening) return;
+    browser.addEventListener("click", event => {
+      const toggle = event.target.closest?.("[data-cjdoc-member-actions-toggle]");
+      if (!toggle) return;
+      const opening = toggle !== openAction;
+      closeActionMenus();
+      if (opening) {
+        openAction = toggle;
         toggle.setAttribute("aria-expanded", "true");
-      });
-      actions.addEventListener("keydown", event => {
-        if (event.key !== "Escape") return;
-        if (toggle.getAttribute("aria-expanded") !== "true") return;
-        event.preventDefault();
-        closeActionMenus(true);
-      });
-      actions.addEventListener("focusout", event => {
-        if (!actions.contains(event.relatedTarget)) closeActionMenus();
-      });
-    }
+      }
+    });
+    browser.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || !openAction) return;
+      const menu = openAction.closest("[data-cjdoc-member-actions]");
+      if (!menu.contains(event.target)) return;
+      event.preventDefault();
+      closeActionMenus(true);
+    });
+    browser.addEventListener("focusout", event => {
+      const menu = openAction?.closest("[data-cjdoc-member-actions]");
+      if (menu?.contains(event.target) && !menu.contains(event.relatedTarget)) closeActionMenus();
+    });
     document.addEventListener("pointerdown", event => {
       if (!event.target.closest || !event.target.closest("[data-cjdoc-member-actions]")) {
         closeActionMenus();
@@ -747,7 +789,6 @@ internal let HTML_READING_SCRIPT = """
       syncActions();
       if (scroll) requestAnimationFrame(() => member.scrollIntoView({block: "start"}));
     };
-    // Persist per-page state, but an explicitly chosen hash wins over it.
     const stateKey = "cjdoc-member-state:" + [document.body.dataset.cjdocProject || "",
       document.body.dataset.cjdocDocVersion || "", document.documentElement.lang,
       document.body.dataset.cjdocAudience || "", location.pathname].join("|");
@@ -760,7 +801,6 @@ internal let HTML_READING_SCRIPT = """
         }));
       } catch (_) { /* storage is optional */ }
     };
-    // History restores filters; fresh hashes reveal their target.
     const navigationEntry = typeof performance !== "undefined" &&
       performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
     const isHistoryNavigation = Boolean(navigationEntry && navigationEntry.type === "back_forward");
@@ -795,10 +835,8 @@ internal let HTML_READING_SCRIPT = """
     if (origin) origin.addEventListener("change", saveState);
     window.addEventListener("pagehide", saveState);
     if (!restored) applyFilter();
-    // Restored open/filter state already wins over the restored URL's hash.
     if (!restored) revealHashTarget(true);
     window.addEventListener("hashchange", () => revealHashTarget(true));
-    // Same-fragment clicks fire no hashchange; still unfilter and reopen.
     document.addEventListener("click", event => {
       if (event.defaultPrevented || event.button || event.ctrlKey || event.metaKey ||
           event.shiftKey || event.altKey) return;

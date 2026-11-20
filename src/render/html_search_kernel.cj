@@ -2,6 +2,9 @@ package cjdoc.render
 
 // The browser half of the published search contract. This script is shipped
 // with the index and is also a pure ES2020 API usable from Node and file://.
+// Admit exact schemas (including enum order), printable titles and well-formed
+// identity strings. Return the first validation error. Precise and discovery
+// share selector primitives, but resolve their own evidence and overload rules.
 internal let HTML_SEARCH_KERNEL_SCRIPT = #"
 globalThis.cjdocSearch = (() => {
   const INDEX_CACHE = new WeakMap();
@@ -143,7 +146,6 @@ globalThis.cjdocSearch = (() => {
   const validRulePrimitive = primitive => RULE_PRIMITIVES.has(primitive);
   const validOperatorPrimitive = primitive => OP_PRIMITIVES.has(primitive);
 
-  // Enum schemas are pinned exactly: same members, same order, no extras.
   const sameItems = (value, expected) => Array.isArray(value) &&
     value.length === expected.length && expected.every((item, index) => value[index] === item);
   const sameSet = (values, expected) => Array.isArray(values) && values.length === expected.size &&
@@ -263,8 +265,6 @@ globalThis.cjdocSearch = (() => {
     !hasUnpairedSurrogate(section.kind) && !hasUnpairedSurrogate(section.anchor) && !hasUnpairedSurrogate(section.text);
   const validTagId = value => typeof value === "string" && TAG_ID_PATTERN.test(value);
   const hasDisplayControl = value => /[\u0000-\u001f\u007f]/u.test(value);
-  // A tag or group title is short, printable metadata; one bound serves both
-  // the current and the legacy spellings.
   const boundedTitle = value => nonemptyString(value) && utf8Bytes(value).length <= 256 &&
     !hasDisplayControl(value);
   const validMetadataTitle = value => boundedTitle(value) && value.trim().length > 0;
@@ -276,8 +276,6 @@ globalThis.cjdocSearch = (() => {
     "baseUrl"];
   const DEPENDENCY_FIELDS = ["moduleId", "componentModuleId", "name", "instanceId", "kind",
     "identity", "state", "evidence", "version", "revision", "target", "cfg"];
-  // Every recorded identity field is a well-formed string; the same key list
-  // bounds the object shape, so one table per record keeps them in step.
   const exactStringFields = (value, fields) => exactKeys(value, fields) &&
     fields.every(key => typeof value[key] === "string" && !hasUnpairedSurrogate(value[key]));
   const validDocumentSet = value => value === null ||
@@ -488,8 +486,6 @@ globalThis.cjdocSearch = (() => {
     INDEX_CACHE.set(index, prepared);
     return prepared;
   };
-  // Each rejection returns its own code, so validation reads top to bottom
-  // instead of threading a mutable error through every stage.
   const buildPreparedIndex = index => {
     const invalid = {error: "search_index_invalid"};
     if (index.schemaVersion !== "cjdoc.search-index/11") {
@@ -778,9 +774,6 @@ globalThis.cjdocSearch = (() => {
   };
   const exactAliasFacts = (exposures, value) => exposures.filter(exposure =>
     exposure.raw.name === value);
-  // Selector fields are strict identities: precise and discovery share the
-  // same admission rules and evidence primitives; only the rule table and its
-  // overload variants differ, which ruleFor resolves from the mode.
   const selectorEvidence = (facts, exposures, request, prepared, mode, hasOverload = false) => {
     const evidence = (primitive, exposureId = "") => {
       const row = evidenceFrom(prepared, mode, primitive, exposureId, {overload: hasOverload});

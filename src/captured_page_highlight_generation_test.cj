@@ -123,7 +123,7 @@ class CapturedPageHighlightGenerationTest {
             @Expect(guide.indexOf("After hidden binding.").getOrThrow() < indexAt)
             let associations = guide[indexAt..]
             @Expect(associations.contains("fixture-v1"))
-            @Expect(associations.split("symbols/symbol-").size, 2)
+            @Expect(associations.split("href=\"../language_fixture/add/index.html\"").size, 2)
             @Expect(associations.contains("Not available in this audience"))
             @Expect(!guide.contains("language_fixture.hidden"))
             @Expect(!guide.contains("private/source.cj"))

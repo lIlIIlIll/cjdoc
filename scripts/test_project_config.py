@@ -1,6 +1,8 @@
 """Project settings exercised through the installed public CLI and its outputs."""
 from __future__ import annotations
 
+from contextlib import closing
+import http.client
 import json
 import os
 from pathlib import Path
@@ -346,6 +348,33 @@ class ProjectConfigurationCliTest(unittest.TestCase):
         self.assertTrue(any(provider["name"] == "chir" for provider in document["providers"]))
         with urllib.request.urlopen(url + "/index.html", timeout=5) as response:
             self.assertEqual(response.read(), (self.project / "published/html/index.html").read_bytes())
+
+        api = "/configuration_demo/answer"
+        query = "?origin=a%2Fb&empty="
+        expected_body = (self.project / "published/html/configuration_demo/answer/index.html").read_bytes()
+        with closing(http.client.HTTPConnection("localhost", port, timeout=5)) as client:
+            for method in ("GET", "HEAD"):
+                client.request(method, api + query)
+                redirect = client.getresponse()
+                self.assertEqual(redirect.status, 308)
+                self.assertEqual(redirect.getheader("Location"), api + "/" + query)
+                self.assertEqual(redirect.read(), b"")
+                client.request(method, api + "/" + query)
+                page = client.getresponse()
+                self.assertEqual(page.status, 200)
+                self.assertEqual(page.getheader("Content-Type"), "text/html; charset=utf-8")
+                self.assertEqual(int(page.getheader("Content-Length")), len(expected_body))
+                self.assertEqual(page.read(), expected_body if method == "GET" else b"")
+            for path in ("/configuration_demo/missing/", "/symbols/", "/symbols"):
+                client.request("GET", path)
+                missing = client.getresponse()
+                self.assertEqual(missing.status, 404)
+                missing.read()
+            client.request("GET", "/configuration_demo%2Fanswer")
+            rejected = client.getresponse()
+            self.assertEqual(rejected.status, 400)
+            self.assertIsNone(rejected.getheader("Location"))
+            rejected.read()
         accepted = document_path.read_bytes()
         self.configure('[output]\nformats = ["not-a-format"]\n', source_mode=False)
         invalid = wait_status(lambda status: status["builds"] > changed["builds"])

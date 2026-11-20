@@ -4,9 +4,48 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
+from .routes import public_api_file
 from .site import ContractError, Site
+
+
+def declaration_url(url: str) -> str:
+    """The same declaration address as published: HTTP readers use the directory.
+
+    A canonical API body is a real `index.html`; over HTTP the reader script
+    normalizes that address to its directory while keeping query and fragment.
+    Offline `file:` navigation keeps the explicit file, so it is not rewritten.
+    """
+    parts = urlsplit(url)
+    path = unquote(parts.path)
+    if parts.scheme in ("http", "https") and path.endswith("/index.html"):
+        path = path[: -len("index.html")]
+    return urlunsplit((parts.scheme, parts.netloc, path, parts.query, unquote(parts.fragment)))
+
+
+def same_declaration_url(actual: str, expected: str) -> bool:
+    return declaration_url(actual) == declaration_url(expected)
+
+
+def wait_for_declaration(page, expected: str) -> None:
+    destination = urlsplit(declaration_url(expected))._replace(query="", fragment="")
+    page.wait_for_url(lambda actual: urlsplit(declaration_url(actual))._replace(
+        query="", fragment="") == destination)
+
+
+def alias_target_url(alias: str, target_href: str) -> str:
+    """Resolve a historical alias link the way the reader script does.
+
+    Query and fragment are carried from the alias address onto the final API
+    body, and HTTP gets the directory form while `file:` keeps `index.html`.
+    """
+    alias_parts, target = urlsplit(alias), urljoin(alias, target_href)
+    parts = urlsplit(target)
+    path = unquote(parts.path)
+    if parts.scheme in ("http", "https") and path.endswith("/index.html"):
+        path = path[: -len("index.html")]
+    return urlunsplit((parts.scheme, parts.netloc, path, alias_parts.query, alias_parts.fragment))
 
 
 class Journey:
@@ -61,6 +100,19 @@ class Journey:
             raise ContractError("journey escaped its project subpath")
         return self.site.file(path[len(base):])
 
+    def matches_native_api(self, index_url: str, relative_href: str, identity: str,
+                           *, ignore_fragment: bool = False) -> bool:
+        actual = self.page.url.split("#", 1)[0] if ignore_fragment else self.page.url
+        scoped_url = urljoin(index_url, relative_href)
+        if same_declaration_url(actual, scoped_url):
+            return True
+        path = self.local_path(scoped_url).relative_to(self.site.root).as_posix()
+        index = self.local_path(index_url).relative_to(self.site.root).as_posix()
+        document = self.site.documents[path]
+        target = {"index": index, "locale": document.language}
+        mounted = public_api_file(self.site, target, {"href": path, "symbolId": identity})
+        return same_declaration_url(actual, urljoin(self.base, mounted))
+
     def raw(self, selector: str, schema: str | None = None):
         """Follow the rendered raw-evidence link, inspect it, then use browser Back."""
         from playwright.sync_api import expect
@@ -109,7 +161,8 @@ def click_and_return(journey: Journey, link, expected_name: str, version: str | 
     expected = urljoin(old, link.get_attribute("href"))
     identity = link.get_attribute("data-report-symbol")
     journey.click(link)
-    if unquote(page.url) != unquote(expected):
+    if not (same_declaration_url(page.url, expected) if identity else
+            unquote(page.url) == unquote(expected)):
         raise AssertionError("link activation changed its native resolved route")
     require_text(page.locator("main"), expected_name)
     if identity:
@@ -205,7 +258,8 @@ def assert_native_symbol(journey: Journey, qualified: str, signature: str | None
         identities = {item["id"] for item in ir["declarations"]
                       if item["qualifiedName"] == qualified and item["headerSpelling"] == signature}
         candidates = [entry for entry in candidates if entry["id"] in identities]
-    if len(candidates) != 1 or unquote(page.url) != unquote(urljoin(url, candidates[0]["href"])):
+    if len(candidates) != 1 or not journey.matches_native_api(
+            url, candidates[0]["href"], candidates[0]["id"]):
         raise AssertionError("landed route is not the exact native identity for " + qualified)
 
 
@@ -256,5 +310,5 @@ def assert_native_id(journey: Journey, identity: str):
     url = urljoin(page.url, link.get_attribute("href"))
     native = load_json(journey.local_path(url))
     matches = [entry for entry in native["entries"] if entry["id"] == identity]
-    if len(matches) != 1 or unquote(page.url) != unquote(urljoin(url, matches[0]["href"])):
+    if len(matches) != 1 or not journey.matches_native_api(url, matches[0]["href"], identity):
         raise AssertionError("landed route does not match the claimed exact native symbol identity")

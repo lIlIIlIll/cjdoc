@@ -39,13 +39,14 @@ private func replaceLanguageLabel(content: String, locale: String, switcher: Str
 }
 
 private func appendLanguageOption(w: HtmlWriter, locale: String, target: String,
-    href: String, routes: String, current!: Bool, homeFallback!: Bool): Unit {
+    href: String, routes: String, current!: Bool, homeFallback!: Bool, apiTarget!: Bool = false): Unit {
     let name = if (target == "zh-CN") { "中文" } else { "English" }
     let notice = languageHomeNotice(locale)
     let attrs = ArrayList<HtmlAttr>([htmlClass("cj-lang-toggle__option")])
     // Language routes are generated page routes; characters an attribute
     // cannot carry are percent-encoded so the same page stays the target.
     attrs.add(htmlHref(documentationRouteHref(href)))
+    if (apiTarget) { attrs.add(htmlFlag("data-language-api-route")) }
     attrs.add(htmlAttr("hreflang", target))
     attrs.add(htmlAttr("lang", target))
     attrs.add(htmlAttr("data-language-routes", routes))
@@ -68,26 +69,35 @@ private func appendLanguageOption(w: HtmlWriter, locale: String, target: String,
 }
 
 internal func appendLanguageToggle(w: HtmlWriter, locale: String, languages: Array<String>,
-    routes: HashMap<String, String>, route: String, identity: String,
-    published: ArrayList<PublishedLanguageRoute>): Unit {
+    routes: HashMap<String, String>, sourceFile: String, canonicalFile: String,
+    identity: String, published: ArrayList<PublishedLanguageRoute>): Unit {
     appendLanguageSwitcherStart(w, locale)
     for (target in languages) {
         let same = routes.get(target + ":" + identity)
-        let destination = same.getOrDefault({ => "index.html" })
-        let href = pageRootPrefix(route) + "../" + target + "/" + destination
+        let destination = same.getOrDefault({ => target + "/index.html" })
+        let href = pageRootPrefix(sourceFile) + destination
         appendLanguageOption(w, locale, target, href,
-            languagePositionRoutes(published, locale, route, target),
-            current: target == locale, homeFallback: same.isNone())
+            languagePositionRoutes(published, locale, canonicalFile, sourceFile, target),
+            current: target == locale, homeFallback: same.isNone(),
+            apiTarget: same.isSome() && (identity.startsWith("symbol:") || identity.startsWith("api-choice:")))
     }
     appendLanguageSwitcherEnd(w)
 }
 
 internal func languageToggleHtml(locale: String, languages: Array<String>,
-    routes: HashMap<String, String>, route: String, identity: String,
-    published: ArrayList<PublishedLanguageRoute>): String {
+    routes: HashMap<String, String>, sourceFile: String, canonicalFile: String,
+    identity: String, published: ArrayList<PublishedLanguageRoute>): String {
     TrustedHtml.capture({ w =>
-        appendLanguageToggle(w, locale, languages, routes, route, identity, published)
+        appendLanguageToggle(w, locale, languages, routes, sourceFile, canonicalFile, identity, published)
     }).value
+}
+
+private func publishedDefaultLanguage(documentation: DocumentationSet): String {
+    let options = documentation.languageOptions.getOrThrow()
+    let languages = options.languages.toArray()
+    if (languages.contains(options.defaultLanguage)) { return options.defaultLanguage }
+    // A selected single-language publication may omit the authoring default.
+    languages[0]
 }
 
 internal func renderAllDocumentationLanguagesInto(artifacts: RenderArtifactStore,
@@ -98,13 +108,17 @@ internal func renderAllDocumentationLanguagesInto(artifacts: RenderArtifactStore
         case Some(value) => value
         case None => throw IllegalArgumentException("--all-languages requires explicit [i18n] languages")
     }
+    let defaultLanguage = publishedDefaultLanguage(documentation)
     let inventory = LanguageHtmlInventory()
     var firstLanguage = true
     for (language in options.languages) {
         let localized = LanguageArtifactStore(artifacts, documentation, language,
             firstLanguage, inventory)
-        renderDocumentationInto(localized, documentation, formats, locale: language,
-            docVersion: version, agentFull: agentFull, reports: reports, htmlFonts: htmlFonts)
+        let mounted: ?LanguageArtifactStore = if (language == defaultLanguage && formats.contains("html")) {
+            Some(localized)
+        } else { None }
+        renderDocumentationLocaleInto(localized, documentation, formats, language,
+            version, agentFull, reports, htmlFonts, mountedApi: mounted)
         firstLanguage = false
     }
     if (formats.contains("html")) {
@@ -117,9 +131,10 @@ private func finalizeLanguageStore(artifacts: RenderArtifactStore,
     inventory: LanguageHtmlInventory, version: ?String): Unit {
     let published = publishedLanguageRoutes(documentation, languages, inventory)
     for (page in inventory.pages where page.needsToggle) {
-        let identity = languagePageIdentity(documentation, page.route, page.language)
+        let identity = inventory.identity(documentation, page)
+        let primary = inventory.files[page.language + ":" + page.route]
         let switcher = languageToggleHtml(page.language, languages, inventory.routes,
-            page.route, identity, published)
+            page.file, primary.file, identity, published)
         let content = artifacts.readText(page.entry, RENDER_ARTIFACT_LIMIT)
         artifacts.replaceText(page.entry, replaceLanguageLabel(content, page.language, switcher))
     }
@@ -129,15 +144,12 @@ private func finalizeLanguageStore(artifacts: RenderArtifactStore,
 internal func appendSiteLanguageManifest(artifacts: RenderArtifactStore, documentation: DocumentationSet,
     routes: ArrayList<PublishedLanguageRoute>, version: ?String): Unit {
     let out = RenderTextBuffer()
-    let defaultLanguage: ?String = documentation.languageOptions.map({ profile =>
-        if (profile.languages.toArray().contains(profile.defaultLanguage)) { profile.defaultLanguage }
-        else { profile.languages[0] }
-    })
+    let defaultLanguage = documentation.languageOptions.map({ _ => publishedDefaultLanguage(documentation) })
     out.append("{\"schemaVersion\":\"cjdoc.site-manifest/1\",\"project\":${escapeJsonString(documentation.project.name)},\"version\":${nullableString(version)},\"defaultLanguage\":${nullableString(defaultLanguage)},\"routes\":[")
     var first = true
     for (route in routes) {
         if (!first) { out.append(",") }; first = false
-        let href = "html/" + route.language + "/" + route.href
+        let href = "html/" + route.href
         out.append("{\"language\":${escapeJsonString(route.language)},\"pageId\":${nullableString(route.pageId)},\"symbolId\":${nullableString(route.symbolId)},\"sectionId\":${nullableString(route.sectionId)},\"ownerSymbolId\":${nullableString(route.ownerSymbolId)},\"href\":${escapeJsonString(href)}}")
     }
     out.append("]}\n")
@@ -148,6 +160,7 @@ internal func appendSiteLanguageManifest(artifacts: RenderArtifactStore, documen
 public func finalizeDocumentationLanguageArtifacts(documentation: DocumentationSet,
     values: Array<RenderArtifact>, docVersion!: ?String = None): Array<RenderArtifact> {
     let languages = documentation.languageOptions.getOrThrow().languages.toArray()
+    let defaultLanguage = publishedDefaultLanguage(documentation)
     let inventory = LanguageHtmlInventory()
     let artifacts = RenderArtifactCollector()
     for (artifact in values) {
@@ -157,13 +170,21 @@ public func finalizeDocumentationLanguageArtifacts(documentation: DocumentationS
         } else {
             artifacts.addText(artifact.path, artifact.mediaType, artifact.content)
         }
+        var scoped = false
         for (language in languages) {
             let prefix = "html/" + language + "/"
             if (artifact.path.startsWith(prefix)) {
                 inventory.capture(documentation, language, artifact.path.removePrefix(prefix),
                     entry, artifact.content)
+                scoped = true
                 break
             }
+        }
+        if (!scoped && artifact.path.startsWith("html/") && artifact.path.endsWith("/index.html") &&
+            (generatedHtmlBodyAttribute(artifact.content, "data-cjdoc-symbol-id").isSome() ||
+                generatedHtmlBodyAttribute(artifact.content, "data-cjdoc-page-id").isSome())) {
+            inventory.capture(documentation, defaultLanguage, artifact.path.removePrefix("html/"),
+                entry, artifact.content, mounted: true)
         }
     }
     finalizeLanguageStore(artifacts, documentation, languages, inventory, docVersion)

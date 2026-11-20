@@ -4,10 +4,10 @@ import cjdoc.model.*
 
 // This page reports captured diagnostics only. Absence of an attached example or
 // API-diff report is not evidence of a successful check or compatibility.
-internal func renderValidationHtml(documentation: DocumentationSet,
+internal func renderValidationHtml(documentation: DocumentationSet, projection: RenderProjection,
     docVersion: ?String, locale: String): String {
     let version = docVersion.getOrDefault({ => label(locale, "not provided", "未提供") })
-    let body = TrustedHtml.capture { w =>
+    let body = TrustedHtml.capture({ w =>
         w.open("div", attrs: [htmlClass("cj-validation")])
         w.open("p", attrs: [htmlClass("cj-validation__context")])
         w.text(label(locale, "Documentation version", "文档版本") + ": " + version + " · ")
@@ -23,7 +23,7 @@ internal func renderValidationHtml(documentation: DocumentationSet,
             "本次生成未附带比较报告。请显式运行 cjdoc diff 命令检查版本间变化；本页面不会推断兼容性。"))
         w.close("section")
         w.close("div")
-    }
-    renderUtilityHtmlPage(documentation, label(locale, "Validation results", "验证结果"),
+    })
+    renderUtilityHtmlPage(documentation, projection, label(locale, "Validation results", "验证结果"),
         body, "", locale: locale, docVersion: docVersion, agentReadable: true)
 }

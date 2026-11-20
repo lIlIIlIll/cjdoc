@@ -46,6 +46,19 @@ private func externalSnapshotArtifact(artifacts: Array<api_render.RenderArtifact
     throw IllegalStateException("expected rendered artifact: " + path)
 }
 
+private func externalSnapshotMarkdown(artifacts: Array<api_render.RenderArtifact>,
+    symbol: api_model.SymbolDoc): String {
+    // Unlike the HTML search address, Markdown still uses the historical file.
+    let legacy = api_render.symbolPagePath(symbol)
+    externalSnapshotArtifact(artifacts, "markdown/" + legacy.removeSuffix(".html") + ".md")
+}
+
+private func externalSnapshotSymbol(documentation: api_model.DocumentationSet,
+    id: String): api_model.SymbolDoc {
+    for (symbol in documentation.declarations where symbol.id == id) { return symbol }
+    throw IllegalStateException("expected declaration in snapshot: " + id)
+}
+
 private func externalSnapshotSearchEntry(artifacts: Array<api_render.RenderArtifact>, id: String): JsonObject {
     let entries = JsonNode.parse(externalSnapshotArtifact(artifacts, "html/search-index.json"))
         .asObject()["entries"].asArray()
@@ -133,13 +146,14 @@ class ExternalDocumentationSnapshotTest {
             @Expect(html, externalSnapshotArtifact(before, page))
             @Expect(externalSnapshotArtifact(after, "html/search-index.json"),
                 externalSnapshotArtifact(before, "html/search-index.json"))
-            let markdownPath = "markdown/" + entry["href"].asString().removeSuffix(".html") + ".md"
-            let markdown = externalSnapshotArtifact(after, markdownPath)
+            let symbol = externalSnapshotSymbol(imported, reference.symbolId)
+            let markdown = externalSnapshotMarkdown(after, symbol)
             expectExternalSnapshotMarkdown(markdown, reference)
-            @Expect(markdown, externalSnapshotArtifact(before, markdownPath))
+            @Expect(markdown, externalSnapshotMarkdown(before, symbol))
             let direct = api_render.MarkdownDocumentationRenderer().render(imported)
-            expectExternalSnapshotMarkdown(externalSnapshotArtifact(direct, markdownPath), reference)
-            @Expect(externalSnapshotArtifact(direct, markdownPath), markdown)
+            let directMarkdown = externalSnapshotMarkdown(direct, symbol)
+            expectExternalSnapshotMarkdown(directMarkdown, reference)
+            @Expect(directMarkdown, markdown)
         } finally { let _ = removeIfExists(root, recursive: true) }
     }
 
@@ -178,8 +192,7 @@ class ExternalDocumentationSnapshotTest {
             @Expect(html.contains("data-state=\"unavailable\""))
             @Expect(!html.contains("href=\"" + EXTERNAL_SNAPSHOT_URL + "\""))
             @Expect(!html.contains("hidden.html"))
-            let markdownPath = "markdown/" + entry["href"].asString().removeSuffix(".html") + ".md"
-            let markdown = externalSnapshotArtifact(rendered, markdownPath)
+            let markdown = externalSnapshotMarkdown(rendered, externalSnapshotSymbol(imported, ambiguous.symbolId))
             @Expect(markdown.contains("Ambiguous reference"))
             @Expect(markdown.contains("No external reference"))
             @Expect(!markdown.contains(EXTERNAL_SNAPSHOT_URL))
@@ -229,8 +242,8 @@ class ExternalDocumentationSnapshotTest {
             @Expect(member.contains("index: docs/support.json"))
             @Expect(member.contains("format: cjdoc.symbol-index/1"))
             @Expect(member.contains("fingerprint: " + reference.fingerprint))
-            let markdownPath = "markdown/" + ownerPath.removeSuffix(".html") + ".md"
-            expectExternalSnapshotMarkdown(externalSnapshotArtifact(rendered, markdownPath), reference)
+            expectExternalSnapshotMarkdown(
+                externalSnapshotMarkdown(rendered, externalSnapshotSymbol(imported, ownerId)), reference)
         } finally { let _ = removeIfExists(root, recursive: true) }
     }
 }

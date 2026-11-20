@@ -49,7 +49,10 @@ def _json(path: Path) -> dict:
 
 def _captured_ir(snapshot: Path) -> dict:
     value = _json(snapshot)
-    if value.get("schemaVersion") == "cjdoc.machine-manifest/1":
+    pairs = {"cjdoc.machine-manifest/1": "cjdoc.read/1", "cjdoc.machine-manifest/2": "cjdoc.read/2"}
+    if value.get("schemaVersion") in pairs:
+        if value.get("projection") != pairs[value["schemaVersion"]]:
+            raise SearchCaseFailure("manifest schema and read projection disagree")
         root = snapshot.parent.parent
         target = (root / value["docIr"]["path"]).resolve()
         if not target.is_relative_to(root.resolve()):

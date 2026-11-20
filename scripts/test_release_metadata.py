@@ -226,7 +226,16 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             schema_id, version, required = SCHEMA_CONTRACTS[name]
             value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
             self.assertEqual(value["$id"], schema_id, name)
-            self.assertEqual(value["properties"]["schemaVersion"]["const"], version, name)
+            if name == "machine-manifest":
+                pairs = [("cjdoc.machine-manifest/1", "cjdoc.read/1"), (version, "cjdoc.read/2")]
+                self.assertEqual(value["properties"]["schemaVersion"]["enum"], [v for v, _ in pairs])
+                self.assertEqual(value["properties"]["projection"]["enum"], [p for _, p in pairs])
+                self.assertEqual([
+                    (branch["properties"]["schemaVersion"]["const"],
+                     branch["properties"]["projection"]["const"]) for branch in value["oneOf"]
+                ], pairs)
+            else:
+                self.assertEqual(value["properties"]["schemaVersion"]["const"], version, name)
             self.assertEqual(tuple(value["required"]), required, name)
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("doc-ir")},

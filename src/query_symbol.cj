@@ -264,7 +264,7 @@ private func queryCandidateIdentityItem(candidate: QueryGetCandidate): JsonObjec
             item.put("summary", querySymbolSummary(symbol))
             item.put("match", matchNode)
             item.put("sections", JsonNode.array())
-            item.put("representations", querySymbolRepresentations(symbol))
+            item.put("representations", querySymbolRepresentations(candidate.input, symbol))
             item.put("source", querySymbolSource(candidate.input, symbol))
             item.put("exposures", querySymbolExposures(candidate.document, symbol))
         case None =>
@@ -370,7 +370,7 @@ private func queryFillSymbol(outcome: QueryOutcome, input: QuerySnapshotInput,
     matchNode.put("reason", JsonNode.string("requested_identity"))
     item.put("match", matchNode)
     item.put("sections", chaptersOut)
-    item.put("representations", querySymbolRepresentations(symbol))
+    item.put("representations", querySymbolRepresentations(input, symbol))
     item.put("source", source)
     item.put("exposures", querySymbolExposures(document, symbol))
     outcome.items.add(item)

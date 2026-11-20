@@ -83,12 +83,9 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 }
 
 internal func appendHtmlArtifacts(artifacts: RenderArtifactStore,
-    documentation: DocumentationSet, snapshot: DocumentationReadSnapshot,
+    documentation: DocumentationSet, snapshot: DocumentationReadSnapshot, projection: RenderProjection,
     locale!: String = "en", docVersion!: ?String = None,
-    htmlFonts!: HtmlFontOptions = HtmlFontOptions()): Unit {
-        // Keep the original localized HTML view for asset and hidden-target
-        // context; links bind to the one captured reader snapshot.
-        let projection = RenderProjection(documentation, snapshotId: snapshot.snapshotId)
+    htmlFonts!: HtmlFontOptions = HtmlFontOptions(), mountedApi!: ?LanguageArtifactStore = None): Unit {
         let index = projection.visibleIndex
         let typeLinkIndex = HtmlTypeLinkIndex(documentation, projection)
         let projectedAssets = projectAssets(documentation, projection,
@@ -107,7 +104,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactStore,
         let _ = artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8",
             HTML_THEME_BOOTSTRAP_SCRIPT)
         let _ = artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
-            HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
+            HTML_API_LINK_SCRIPT + HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
         let _ = artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8",
             HTML_SYMBOL_ALIAS_SCRIPT)
         let _ = artifacts.addText("html/style.css", "text/css; charset=utf-8",
@@ -117,13 +114,28 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactStore,
                 "text/html; charset=utf-8",
                 renderPackagePage(documentation, projection, index, typeLinkIndex, pkg, locale: locale, docVersion: docVersion))
         }
+        let routes = projection.apiRoutes.getOrThrow()
         for (symbol in projection.visibleSymbols) {
-            let _ = artifacts.addText("html/${symbolReadablePagePath(symbol)}", "text/html; charset=utf-8",
-                renderSymbolAlias(symbol, locale))
-            let rendered = renderSymbolPage(documentation, projection, index, symbol, assetLookup,
-                    typeLinkIndex, locale: locale, docVersion: docVersion)
-            let _ = artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
-                rendered)
+            let pageFile = routes.filePath(symbol.id).getOrThrow()
+            for (alias in [symbolPagePath(symbol), symbolReadablePagePath(symbol)]) {
+                let _ = artifacts.addText("html/" + alias, "text/html; charset=utf-8",
+                    renderSymbolAlias(symbol, locale, alias, pageFile, projection.unprefixedApiLocale))
+            }
+            let _ = artifacts.addText("html/" + pageFile, "text/html; charset=utf-8",
+                renderSymbolPage(documentation, projection, index, symbol, assetLookup,
+                    typeLinkIndex, locale: locale, docVersion: docVersion))
+            if (let Some(store) <- mountedApi) {
+                store.addMountedApiPage(pageFile, renderSymbolPage(documentation, projection, index, symbol,
+                    assetLookup, typeLinkIndex, locale: locale, docVersion: docVersion, mounted: true))
+            }
+        }
+        for (choice in routes.selectionPages) {
+            let _ = artifacts.addText("html/" + choice.file, "text/html; charset=utf-8",
+                renderApiSelectionPage(documentation, projection, choice, locale, docVersion))
+            if (let Some(store) <- mountedApi) {
+                store.addMountedApiPage(choice.file,
+                    renderApiSelectionPage(documentation, projection, choice, locale, docVersion, mounted: true))
+            }
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }
@@ -529,6 +541,14 @@ protected func renderDocumentationInto(artifacts: RenderArtifactStore,
             agentFull: agentFull, reports: reports, htmlFonts: htmlFonts)
         return
     }
+    renderDocumentationLocaleInto(artifacts, documentation, formats, locale, docVersion,
+        agentFull, reports, htmlFonts)
+}
+
+internal func renderDocumentationLocaleInto(artifacts: RenderArtifactStore,
+    documentation: DocumentationSet, formats: Array<String>, locale: String, docVersion: ?String,
+    agentFull: Bool, reports: Array<DocumentationReportAttachment>, htmlFonts: HtmlFontOptions,
+    mountedApi!: ?LanguageArtifactStore = None): Unit {
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
     }
@@ -542,13 +562,17 @@ protected func renderDocumentationInto(artifacts: RenderArtifactStore,
     } else { None }
     // Search and Agent companions share one captured reader snapshot. HTML keeps
     // the source view: publication pruning removes asset and hidden-target context.
+    let htmlProjection = htmlSnapshot.map({ snapshot =>
+        RenderProjection(localized, snapshotId: snapshot.snapshotId, apiRoutes: snapshot.projection.apiRoutes,
+            unprefixedApiLocale: if (mountedApi.isSome()) { locale } else { "" })
+    })
     for (format in formats) {
         match (format) {
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => appendMarkdownSiteArtifacts(artifacts, localized, locale)
             case "html" => match (htmlSnapshot) {
-                case Some(context) => appendHtmlArtifacts(artifacts, localized, context,
-                    locale: locale, docVersion: docVersion, htmlFonts: htmlFonts)
+                case Some(context) => appendHtmlArtifacts(artifacts, localized, context, htmlProjection.getOrThrow(),
+                    locale: locale, docVersion: docVersion, htmlFonts: htmlFonts, mountedApi: mountedApi)
                 case None => throw IllegalArgumentException(
                     "HTML rendering requires its captured reader snapshot")
             }
@@ -567,11 +591,12 @@ protected func renderDocumentationInto(artifacts: RenderArtifactStore,
         }
     }
     if (!capturedFormats.isEmpty()) {
-        appendCapturedPageArtifacts(artifacts, localized, capturedFormats.toArray(), locale, docVersion)
+        appendCapturedPageArtifacts(artifacts, localized, capturedFormats.toArray(), locale, docVersion,
+            htmlProjection)
     }
     if (formats.contains("html")) {
         let _ = artifacts.addText("html/validation.html", "text/html; charset=utf-8",
-            renderValidationHtml(localized, docVersion, locale))
+            renderValidationHtml(localized, htmlProjection.getOrThrow(), docVersion, locale))
         // Machine companions are emitted at their original position, after the
         // validation page, through the same store instead of a second collector.
         match (htmlSnapshot) {

@@ -21,6 +21,12 @@ def _require(condition: bool, message: str) -> None:
         raise ValueError("Reader search identity: " + message)
 
 
+# Both published generations are verified; each keeps its own reading projection
+# and therefore its own snapshot identity domain. A package never mixes them.
+MANIFEST_PAIRS = (("cjdoc.machine-manifest/1", "cjdoc.read/1"),
+                  ("cjdoc.machine-manifest/2", "cjdoc.read/2"))
+
+
 def _raw_contract(encoded: str) -> str:
     """Locate a root value without reserializing or searching inside strings."""
     decoder = json.JSONDecoder()
@@ -183,7 +189,8 @@ def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None 
     scripted_index, signatures = _script_data(wrapper)
     _require(scripted_index == index, "script data differs from the JSON index")
     manifest = strict_load(document(site, "agent/manifest.json"))
-    _require(manifest["projection"] == "cjdoc.read/1" and manifest["pathBase"] == "document-root",
+    pair = (manifest["schemaVersion"], manifest["projection"])
+    _require(pair in MANIFEST_PAIRS and manifest["pathBase"] == "document-root",
              "unsupported publisher manifest")
     doc_record = manifest["docIr"]
     matching = [row for row in manifest["resources"] if row["path"] == doc_record["path"]]
@@ -191,7 +198,7 @@ def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None 
              "packaged Doc IR receipt is absent, duplicate or contradictory")
     packaged = _verified_bytes(site, doc_record["path"], matching[0]).decode("utf-8")
     packaged_ir = strict_loads(packaged, description="packaged Doc IR")
-    snapshot = publisher_snapshot_id(packaged, manifest["publicationRevision"])
+    snapshot = publisher_snapshot_id(packaged, manifest["publicationRevision"], manifest["projection"])
     _require(snapshot == manifest["snapshotId"] == manifest["scope"]["snapshotId"],
              "publisher snapshot identity is forged")
     _require(index["scope"]["snapshotId"] == snapshot and index["scope"]["sourceSnapshotId"] == snapshot,
@@ -206,10 +213,21 @@ def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None 
     projection = projection_fingerprint(index, contract)
     _require(projection == index["projectionId"] == index["coverage"]["projectionId"],
              "search projection identity is forged")
+    inventory, inventory_sha = None, None
+    if "symbolIndex" in manifest:
+        record = manifest["symbolIndex"]
+        rows = [row for row in manifest["resources"] if row["path"] == record["path"]]
+        _require(len(rows) == 1 and rows[0]["sha256"] == record["sha256"],
+                 "machine symbol inventory receipt is absent, duplicate or contradictory")
+        payload = _verified_bytes(site, record["path"], rows[0])
+        inventory_sha = record["sha256"]
+        inventory = strict_loads(payload, description="machine symbol inventory")
+        check_schema(inventory, strict_load(schema_dir / "symbol-index.schema.json"), record["path"])
     return {"index": index, "signatures": signatures, "contractText": contract,
             "snapshotId": snapshot, "projectionId": projection,
             "docIr": packaged_ir, "docIrSha256": doc_record["sha256"],
-            "docIrPath": doc_record["path"]}
+            "docIrPath": doc_record["path"], "manifestPair": pair,
+            "inventory": inventory, "symbolIndexSha256": inventory_sha}
 
 
 def compare_search_identities(before: dict, after: dict) -> None:

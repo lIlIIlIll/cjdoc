@@ -28,7 +28,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_stage
@@ -149,11 +149,15 @@ STRUCTURE_PROBE = r"""() => {
 
 TAG_SEARCH_PROBE = r"""() => {
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
-  const pathOf = href => new URL(href, document.baseURI).pathname;
+  const apiPrefix = document.querySelector('[data-cjdoc-search-trigger]').dataset.cjdocApiPrefix ?? '';
+  const apiPath = href => {
+    const url = new URL(apiPrefix + encodeURI(href), document.baseURI);
+    return url.protocol === 'file:' ? url.pathname : url.pathname.replace(/\/index\.html$/, '/');
+  };
   const resultRows = [...document.querySelectorAll('[data-cjdoc-results] > li')].map(item => {
     const link = item.querySelector('a');
-    const href = link && pathOf(link.href);
-    const entry = href && index.entries.find(candidate => pathOf(candidate.href) === href);
+    const href = link && new URL(link.href).pathname;
+    const entry = href && index.entries.find(candidate => !candidate.concept && apiPath(candidate.href) === href);
     return entry ? {
       canonicalId: entry.canonicalId, name: entry.name, ownerName: entry.ownerName || '',
       kind: entry.kind, qualifiedName: entry.qualifiedName, parameterTypes: entry.parameterTypes,
@@ -287,12 +291,16 @@ def symbol_page_routes(root: Path, symbol_name: str) -> list[str]:
     heading = re.compile(
         r'<h1\b[^>]*>\s*<code>' + re.escape(escaped_name) + r'</code>\s*</h1>'
     )
-    routes = []
-    for path in sorted((root / "symbols").glob("*.html")):
-        text = path.read_text(encoding="utf-8")
+    index = json.loads((root / "search-index.json").read_text(encoding="utf-8"))
+    routes = set()
+    for entry in index["entries"]:
+        if entry["name"] != symbol_name or entry["concept"]:
+            continue
+        route = entry["href"]
+        text = (root / unquote(urlparse(route).path)).read_text(encoding="utf-8")
         if 'data-cjdoc-member-browser' in text and heading.search(text):
-            routes.append(f"symbols/{path.name}")
-    return routes
+            routes.add(route)
+    return sorted(routes)
 
 
 def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[dict]:
@@ -353,7 +361,7 @@ def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[di
 
 @contextmanager
 def mounted_http_server(work: Path, pages: list[dict]):
-    """Mount the generated bilingual sites at the real /docs/ subpath."""
+    """Mount whole publications so default-language API pages remain unprefixed."""
     served_root = work / "served"
     docs_root = served_root / "docs"
     docs_root.mkdir(parents=True, exist_ok=True)
@@ -362,16 +370,14 @@ def mounted_http_server(work: Path, pages: list[dict]):
         fixture = entry["fixture"]
         if fixture not in MULTILINGUAL_FIXTURES:
             continue
-        key = (fixture, entry["locale"])
-        if key in mounted:
-            continue
-        mounted.add(key)
         mount = MULTILINGUAL_FIXTURES[fixture]
-        destination = docs_root / mount / entry["locale"]
-        destination.parent.mkdir(parents=True, exist_ok=True)
+        if mount in mounted:
+            continue
+        mounted.add(mount)
+        destination = docs_root / mount
         if destination.exists() or destination.is_symlink():
-            raise ValueError(f"served mount already exists: {fixture}/{entry['locale']}")
-        destination.symlink_to(Path(entry["root"]).resolve(), target_is_directory=True)
+            raise ValueError(f"served mount already exists: {fixture}")
+        destination.symlink_to(Path(entry["root"]).resolve().parent, target_is_directory=True)
 
     class QuietHandler(SimpleHTTPRequestHandler):
         def log_message(self, format, *args):  # noqa: A002

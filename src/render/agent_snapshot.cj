@@ -13,8 +13,12 @@ private func publicationForReading(documentation: DocumentationSet, locale: Stri
     projectPublicationDocumentation(selected, audience: audience)
 }
 
-private func readSnapshotContentId(encoded: String, revision: String): String {
-    let configuration = "\n{\"projection\":\"cjdoc.read/1\",\"publicationRevision\":" + escapeJsonString(revision) + "}"
+internal let CJDOC_READ_PROJECTION = "cjdoc.read/2"
+private let LEGACY_READ_PROJECTION = "cjdoc.read/1"
+
+private func readSnapshotContentId(encoded: String, revision: String, readProjection: String): String {
+    let configuration = "\n{\"projection\":" + escapeJsonString(readProjection) +
+        ",\"publicationRevision\":" + escapeJsonString(revision) + "}"
     "cjdoc:snapshot:v1:" + contractFingerprint(encoded + configuration)
 }
 
@@ -40,6 +44,19 @@ public class DocumentationReadSnapshot {
 
     public init(documentation: DocumentationSet, locale!: ?String = None,
         audience!: ?String = None, version!: ?String = None) {
+        this(documentation, locale, audience, version, CJDOC_READ_PROJECTION)
+    }
+
+    protected static func readPackaged(documentation: DocumentationSet, version: ?String,
+        readProjection: String): DocumentationReadSnapshot {
+        if (readProjection != LEGACY_READ_PROJECTION && readProjection != CJDOC_READ_PROJECTION) {
+            throw IllegalArgumentException("unsupported documentation reading projection")
+        }
+        DocumentationReadSnapshot(documentation, None, None, version, readProjection)
+    }
+
+    private init(documentation: DocumentationSet, locale: ?String, audience: ?String,
+        version: ?String, readProjection: String) {
         if (version == Some("")) { throw IllegalArgumentException("publication revision must not be empty when specified") }
         this.locale = locale.getOrDefault({ => documentation.readingLanguage.getOrDefault({ => "en" }) })
         this.publicationRevision = version.getOrDefault({ => documentation.documentationRevision })
@@ -48,8 +65,9 @@ public class DocumentationReadSnapshot {
         dependencyStates = capturedDependencyProjection(this.documentation)
         identity = SymbolInventoryIdentity(this.documentation, publicationRevision: Some(publicationRevision))
         encodedDocumentation = encodeDocIr(this.documentation)
-        snapshotId = readSnapshotContentId(encodedDocumentation, publicationRevision)
-        projection = RenderProjection(this.documentation, snapshotId: snapshotId)
+        snapshotId = readSnapshotContentId(encodedDocumentation, publicationRevision, readProjection)
+        projection = RenderProjection(this.documentation, snapshotId: snapshotId, buildApiRoutes: true,
+            legacyApiRoutes: readProjection == LEGACY_READ_PROJECTION)
         markdown = DeclarationMarkdownProjection(this.documentation, projection, this.locale)
         pageMarkdown = AgentPageMarkdownProjection(this.documentation, projection, this.locale)
     }
@@ -67,6 +85,11 @@ public class DocumentationReadSnapshot {
     /** Resolve captured file evidence without consulting source files or receipts. */
     public func sourceReference(moduleId: String, range: SourceRange): SourceReference {
         projection.sourceReferences.project(moduleId, range)
+    }
+
+    /** The published HTML file for a declaration in this snapshot's audience. */
+    public func symbolHtmlPath(symbolId: String): ?String {
+        projection.apiRoutes.getOrThrow().filePath(symbolId)
     }
 
     protected func moduleFor(moduleId: String): ?ModuleDoc {
@@ -144,5 +167,6 @@ public func documentationSnapshotId(documentation: DocumentationSet, locale!: ?S
     if (version == Some("")) { throw IllegalArgumentException("publication revision must not be empty when specified") }
     let selectedLocale = locale.getOrDefault({ => documentation.readingLanguage.getOrDefault({ => "en" }) })
     let selected = publicationForReading(documentation, selectedLocale, audience)
-    readSnapshotContentId(encodeDocIr(selected), version.getOrDefault({ => documentation.documentationRevision }))
+    readSnapshotContentId(encodeDocIr(selected), version.getOrDefault({ => documentation.documentationRevision }),
+        CJDOC_READ_PROJECTION)
 }

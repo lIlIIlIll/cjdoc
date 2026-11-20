@@ -20,7 +20,7 @@ internal func visibleOwnerChain(index: HashMap<String, SymbolDoc>,
     owners
 }
 
-internal func appendOwnerBreadcrumbs(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+internal func appendOwnerBreadcrumbs(w: HtmlWriter, projection: RenderProjection,
     owners: ArrayList<SymbolDoc>, rootPrefix: String, locale: String): Unit {
     var position = owners.size
     while (position > 0) {
@@ -28,7 +28,7 @@ internal func appendOwnerBreadcrumbs(w: HtmlWriter, index: HashMap<String, Symbo
         let owner = owners[position]
         w.element("li", [htmlClass("cj-breadcrumbs__item")], { item =>
             item.open("a", attrs: [htmlHref(SafeUrl.siteRoute(
-                rootPrefix + symbolUrl(index, owner)))])
+                projection.publicSymbolHref(rootPrefix, owner.id)))])
             item.textElement("code", readerSymbolTitle(owner, locale))
             item.close("a")
         })
@@ -36,7 +36,7 @@ internal func appendOwnerBreadcrumbs(w: HtmlWriter, index: HashMap<String, Symbo
 }
 
 private func appendOwnerContextSource(w: HtmlWriter,
-    index: HashMap<String, SymbolDoc>, source: SymbolDoc,
+    projection: RenderProjection, source: SymbolDoc,
     assetLookup: HashMap<String, String>, rootPrefix: String, locale: String,
     contextRole: String): Unit {
     let sourcePrefix = "owner-context-${contractFingerprint(source.id)}"
@@ -52,7 +52,7 @@ private func appendOwnerContextSource(w: HtmlWriter,
     if (targetContext) {
         w.text(label(locale, "Resolved extension target: ", "已解析的扩展目标："))
     }
-    w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(rootPrefix + symbolUrl(index, source)))])
+    w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref(rootPrefix, source.id)))])
     w.textElement("code", readerSymbolTitle(source, locale))
     w.close("a")
     w.close(headingTag)
@@ -113,7 +113,7 @@ private func ownerContextMissingText(targetContext: Bool, locale: String): Strin
 }
 
 internal func appendOwnerDocumentationContext(w: HtmlWriter,
-    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, owners: ArrayList<SymbolDoc>,
+    projection: RenderProjection, symbol: SymbolDoc, owners: ArrayList<SymbolDoc>,
     assetLookup: HashMap<String, String>, rootPrefix: String, locale: String): Unit {
     if (owners.isEmpty()) { return }
     w.open("section", attrs: [htmlClass("cj-owner-context"), htmlFlag("data-cjdoc-owner-context")])
@@ -129,25 +129,25 @@ internal func appendOwnerDocumentationContext(w: HtmlWriter,
         let owner = owners[position]
         if (!sourceIds.add(owner.id)) { continue }
         w.open("li", attrs: [htmlClass("cj-owner-context__item")])
-        appendOwnerContextSource(w, index, owner, assetLookup, rootPrefix, locale, "owner")
-        appendOwnerExtensionTargets(w, index, owner, sourceIds, assetLookup, rootPrefix, locale)
+        appendOwnerContextSource(w, projection, owner, assetLookup, rootPrefix, locale, "owner")
+        appendOwnerExtensionTargets(w, projection, owner, sourceIds, assetLookup, rootPrefix, locale)
         w.close("li")
     }
     w.close("ol")
     w.close("section")
 }
 
-private func appendOwnerExtensionTargets(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
+private func appendOwnerExtensionTargets(w: HtmlWriter, projection: RenderProjection,
     owner: SymbolDoc, sourceIds: HashSet<String>, assetLookup: HashMap<String, String>,
     rootPrefix: String, locale: String): Unit {
     if (owner.kind != "extend") { return }
     for (relationship in owner.symbolRelationships) {
         if (relationship.kind != "extensionTarget" || relationship.state != "resolved") { continue }
         match (relationship.targetSymbolId) {
-            case Some(targetId) => match (index.get(targetId)) {
+            case Some(targetId) => match (projection.visibleIndex.get(targetId)) {
                 case Some(target) =>
                     if (sourceIds.add(target.id)) {
-                        appendOwnerContextSource(w, index, target,
+                        appendOwnerContextSource(w, projection, target,
                             assetLookup, rootPrefix, locale, "extension-target")
                     }
                 case None => ()

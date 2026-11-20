@@ -43,22 +43,18 @@ internal func markdownCanonicalHtmlDestination(value: String, pagePath: String):
     Some(encodeMarkdownDestination(destination))
 }
 
-internal func markdownCanonicalSymbolDestination(symbol: SymbolDoc, pagePath: String): ?String {
-    markdownCanonicalHtmlDestination(symbolPagePath(symbol), pagePath)
+internal func markdownCanonicalSymbolDestination(symbolId: String, pagePath: String,
+    routes: ApiHtmlRoutes): ?String {
+    routes.filePath(symbolId).flatMap({ path => markdownCanonicalHtmlDestination(apiHtmlFileHref(path), pagePath) })
 }
 
 internal func markdownResolvedNavigationDestination(navigation: TypeNavigation,
     pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
-    canonicalHtml: Bool): ?String {
-    if (canonicalHtml) {
-        if (navigation.symbolKey.startsWith("cjdoc:v2:") &&
-            !symbolIndex.contains(navigation.symbolKey)) { return None }
-        if (let Some(target) <- symbolIndex.get(navigation.symbolKey)) {
-            // Standalone HTML pages do not carry aggregate Markdown anchors.
-            // Keep their canonical route rather than inventing a fragment.
-            if (navigation.url == symbolPagePath(target)) {
-                return markdownCanonicalSymbolDestination(target, pagePath)
-            }
+    canonicalHtml: ?ApiHtmlRoutes): ?String {
+    if (let Some(routes) <- canonicalHtml) {
+        if (navigation.state != "resolved") { return None }
+        if (isCapturedLocalApiLink(navigation)) {
+            return markdownCanonicalSymbolDestination(navigation.symbolKey, pagePath, routes)
         }
         return markdownCanonicalHtmlDestination(navigation.url, pagePath)
     }
@@ -83,12 +79,12 @@ internal func markdownTargetPagePath(target: SymbolDoc,
 private func markdownSemanticLinkDestination(destination: String, pagePath: String,
     targetSymbolId!: ?String = None,
     symbolIndex!: ?HashMap<String, SymbolDoc> = None,
-    canonicalHtml!: Bool = false): ?String {
+    canonicalHtml!: ?ApiHtmlRoutes = None): ?String {
     match ((targetSymbolId, symbolIndex)) {
         case (Some(targetId), Some(index)) => match (index.get(targetId)) {
             case Some(target) =>
-                if (canonicalHtml) {
-                    return markdownCanonicalSymbolDestination(target, pagePath)
+                if (let Some(routes) <- canonicalHtml) {
+                    return markdownCanonicalSymbolDestination(target.id, pagePath, routes)
                 }
                 let targetPage = if (pagePath.isEmpty()) {
                     "#${symbolAnchor(target)}"
@@ -105,7 +101,7 @@ private func markdownSemanticLinkDestination(destination: String, pagePath: Stri
         }
         case _ => ()
     }
-    if (canonicalHtml) { return markdownCanonicalHtmlDestination(destination, pagePath) }
+    if (canonicalHtml.isSome()) { return markdownCanonicalHtmlDestination(destination, pagePath) }
     let localDestination = if (!pagePath.isEmpty() && destination.startsWith("symbols/") &&
         destination.endsWith(".html")) {
         destination[..destination.size - 5] + ".md"
@@ -118,7 +114,7 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
     assetLookup: HashMap<String, String>, headingBase: Int64,
     pagePath!: String = "", symbolIndex!: ?HashMap<String, SymbolDoc> = None,
     tableCell!: Bool = false, capturedLinks!: ?HashMap<String, String> = None,
-    canonicalHtml!: Bool = false): Unit {
+    canonicalHtml!: ?ApiHtmlRoutes = None): Unit {
     match (node.kind) {
         case "text" => appendEscapedMarkdownText(out, node.literal)
         case "soft_break" => out.append(if (tableCell) { "<br>" } else { "\n" })
@@ -220,7 +216,7 @@ internal func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownN
     assetLookup: HashMap<String, String>, headingBase: Int64, pagePath!: String = "",
     symbolIndex!: ?HashMap<String, SymbolDoc> = None,
     capturedLinks!: ?HashMap<String, String> = None,
-    canonicalHtml!: Bool = false): Unit {
+    canonicalHtml!: ?ApiHtmlRoutes = None): Unit {
     var rowIndex: Int64 = 0
     for (row in node.children) {
         out.append("|")
@@ -262,7 +258,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
     assetLookup: HashMap<String, String>, headingBase: Int64,
     pagePath!: String = "", symbolIndex!: ?HashMap<String, SymbolDoc> = None,
     capturedLinks!: ?HashMap<String, String> = None,
-    canonicalHtml!: Bool = false, headingContext!: ?MarkdownOutputHeadingContext = None,
+    canonicalHtml!: ?ApiHtmlRoutes = None, headingContext!: ?MarkdownOutputHeadingContext = None,
     headingAnchorPrefix!: String = "markdown", headingOrdinal!: Int64 = -1): Unit {
     if (headingContext.isNone()) {
         if (let Some(context) <- markdownOutputHeadingContext(node, headingBase,
@@ -466,7 +462,7 @@ private func markdownSectionSelected(sections: ?Array<String>, name: String): Bo
 
 internal func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
-    symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: Bool = false,
+    symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: ?ApiHtmlRoutes = None,
     headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown",
     headingOrdinal!: Int64 = -1,
     headingContext!: ?MarkdownOutputHeadingContext = None): Unit {
@@ -500,7 +496,7 @@ internal func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
 
 private func appendDocumentationAdmonitionsMarkdown(out: RenderTextBuffer,
     comment: DocComment, assetLookup: HashMap<String, String>, locale: String,
-    pagePath: String, symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml: Bool,
+    pagePath: String, symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml: ?ApiHtmlRoutes,
     headingBase: Int64, headingAnchorPrefix: String): Unit {
     for (tagIndex in 0..comment.tags.size) {
         let tag = comment.tags[tagIndex]
@@ -520,7 +516,7 @@ private func appendDocumentationAdmonitionsMarkdown(out: RenderTextBuffer,
 
 internal func appendDocumentationListTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
-    symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: Bool = false,
+    symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: ?ApiHtmlRoutes = None,
     headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown",
     headingOrdinal!: Int64 = -1): Unit {
     let content = RenderTextBuffer()
@@ -535,7 +531,7 @@ internal func appendDocumentationListTagMarkdown(out: RenderTextBuffer, tag: Doc
 // author's unmodified text and code.
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
     assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = "",
-    symbolIndex!: ?HashMap<String, SymbolDoc> = None, canonicalHtml!: Bool = false,
+    symbolIndex!: ?HashMap<String, SymbolDoc> = None, canonicalHtml!: ?ApiHtmlRoutes = None,
     sections!: ?Array<String> = None, headingPrefix!: String = "####",
     headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown"): Unit {
     if (markdownSectionSelected(sections, "description") && markdownHasDescription(comment)) {
@@ -726,9 +722,8 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
 internal func markdownNavigationDestination(navigation: TypeNavigation, pagePath: String,
     symbolIndex: HashMap<String, SymbolDoc>): ?String {
     if (navigation.state != "resolved" || navigationHref("", navigation.url).isNone()) { return None }
-    if (navigation.symbolKey.startsWith("cjdoc:v2:") && !symbolIndex.contains(navigation.symbolKey)) { return None }
-    if (let Some(target) <- symbolIndex.get(navigation.symbolKey)) {
-        if (navigation.url == symbolPagePath(target)) {
+    if (isCapturedLocalApiLink(navigation)) {
+        if (let Some(target) <- symbolIndex.get(navigation.symbolKey)) {
             let destination = if (pagePath.isEmpty()) { "#" + symbolAnchor(target) } else {
                 let targetPage = markdownTargetPagePath(target, symbolIndex)
                 if (targetPage == pagePath) { "#" + symbolAnchor(target) } else {
@@ -737,6 +732,7 @@ internal func markdownNavigationDestination(navigation: TypeNavigation, pagePath
             }
             return Some(encodeMarkdownDestination(destination))
         }
+        return None
     }
     let prefix = if (pagePath.startsWith("packages/") || pagePath.startsWith("symbols/")) { "../../html/" } else { "../html/" }
     let destination = if (navigation.url.startsWith("https://") || navigation.url.startsWith("http://")) {
@@ -760,7 +756,7 @@ private func appendMarkdownNavigationTitle(out: RenderTextBuffer, navigation: ?T
 
 internal func appendTagSubjectMarkdown(out: RenderTextBuffer, tag: DocTag,
     pagePath: String, symbolIndex: ?HashMap<String, SymbolDoc>,
-    canonicalHtml!: Bool = false): Unit {
+    canonicalHtml!: ?ApiHtmlRoutes = None): Unit {
     let index = symbolIndex.getOrDefault({ => HashMap<String, SymbolDoc>() })
     let destination: ?String = match (tag.navigation) {
         case Some(navigation) => markdownResolvedNavigationDestination(navigation, pagePath,
@@ -776,7 +772,7 @@ internal func appendTagSubjectMarkdown(out: RenderTextBuffer, tag: DocTag,
 
 private func appendMarkdownTypeAtom(out: RenderTextBuffer, typeRef: TypeRef,
     spelling: String, pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
-    canonicalHtml: Bool): Unit {
+    canonicalHtml: ?ApiHtmlRoutes): Unit {
     if (typeRef.navigation.isNone()) {
         appendMarkdownCodeSpan(out, spelling); return
     }
@@ -794,7 +790,7 @@ private func appendMarkdownTypeAtom(out: RenderTextBuffer, typeRef: TypeRef,
 
 internal func appendTypeRefMarkdown(out: RenderTextBuffer, typeRef: TypeRef,
     pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
-    canonicalHtml!: Bool = false): Unit {
+    canonicalHtml!: ?ApiHtmlRoutes = None): Unit {
     if (typeRef.kind == "optional" && typeRef.arguments.size == 1) {
         out.append("?")
         appendTypeRefMarkdown(out, typeRef.arguments[0], pagePath, symbolIndex,

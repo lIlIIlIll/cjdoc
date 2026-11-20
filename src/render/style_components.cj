@@ -441,8 +441,7 @@ pre:hover > .cj-code__copy, .cj-code__copy:focus-visible, .cj-code__copy[data-cj
 .cj-page-header__title code { font-size: inherit; font-weight: 650; }
 .cj-page-header--home .cj-page-header__title { font-size: 2.125rem; }
 .cj-page-header__badges { display: inline-flex; flex-wrap: wrap; gap: .3rem; }
-.cj-page-header__copy { margin-left: auto; }
-.cj-page-header__source { margin: .5rem 0 0; }
+.cj-page-header__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; margin-left: auto; }
 .cj-kind {
   display: inline-flex; align-items: center; padding: .05rem .42rem;
   border-radius: 4px; background: var(--cj-surface-2); color: var(--cj-muted);
@@ -499,7 +498,7 @@ a.cj-badge:hover { border-color: var(--cj-accent); background: var(--cj-accent-s
 @media (max-width: 760px) {
   .cj-content .cj-page-header__title { font-size: 1.5rem; }
   .cj-page-header--api .cj-page-header__title, .cj-page-header--extension .cj-page-header__title { font-size: 1.25rem; }
-  .cj-page-header__copy { margin-left: 0; }
+  .cj-page-header__actions { margin-left: 0; }
   .cj-guide-sequence { grid-template-columns: minmax(0, 1fr); }
 }
 """
@@ -587,6 +586,17 @@ private let HTML_REFERENCE_STYLE = """
       content-visibility: auto;
       contain-intrinsic-size: auto 4.125rem;
     }
+    /* A dense, flat group can defer twelve full rows behind one layout box.
+       While filtered, expanded or focused, use the original row geometry. */
+    html[data-cj-js] .cj-members--large:not([data-cjdoc-member-filtered])
+      .cj-member-slice:not(:focus-within):not(:has(> .cj-member-row > .cj-member[open])) {
+      content-visibility: auto;
+      contain-intrinsic-block-size: auto 49.5rem;
+    }
+    html[data-cj-js] .cj-members--large:not([data-cjdoc-member-filtered])
+      .cj-member-slice:not(:focus-within):not(:has(> .cj-member-row > .cj-member[open])) > .cj-member-row {
+      content-visibility: visible;
+    }
   }
 }
 .cj-member { grid-area: 1 / 1; min-width: 0; }
@@ -673,10 +683,14 @@ html:not([data-cj-js]) .cj-member-actions { position: static; }
 .cj-params__colon { margin-right: .15rem; color: var(--cj-muted); }
 .cj-params__type, .cj-params__default { color: var(--cj-muted); }
 .cj-params__description:empty { display: none; }
-.cj-params__description > :first-child, .cj-throws__row > dd > :first-child { margin-top: 0; }
-.cj-params__description > :last-child, .cj-throws__row > dd > :last-child { margin-bottom: 0; }
+/* Trim the body edges even when a tag carries field and language wrappers. */
+:is(.cj-params__description, .cj-throws__description, .cj-returns__description) > :nth-child(1 of :not(.cj-content-language)),
+:is(.cj-params__description, .cj-throws__description, .cj-returns__description)
+  :is(div[id^="doc-field-"], div[lang]) > :nth-child(1 of :not(.cj-content-language)) { margin-block-start: 0; }
+:is(.cj-params__description, .cj-throws__description) > :last-child,
+:is(.cj-params__description, .cj-throws__description)
+  :is(div[id^="doc-field-"], div[lang]) > :last-child { margin-block-end: 0; }
 .cj-returns { margin: .5rem 0 1rem; }
-.cj-returns__description > :first-child { margin-top: 0; }
 @media (max-width: 760px) {
   .cj-params__row, .cj-throws__row { grid-template-columns: minmax(0, 1fr); }
 }

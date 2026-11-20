@@ -33,9 +33,10 @@ private func appendInlineMemberActions(w: HtmlWriter,
         attrs: [htmlClass("cj-sr-only"), htmlAttr("id", actionId + "-more-label")])
     w.close("button")
     w.open("div", attrs: [htmlClass("cj-member-actions__list"), htmlAttr("id", actionId)])
-    appendMemberStandaloneAction(w, member, rootPrefix, standaloneLabel, actionId, summaryId)
+    let destination = projection.publicSymbolHref(rootPrefix, member.id)
+    appendMemberStandaloneAction(w, destination, standaloneLabel, actionId, summaryId)
     appendMemberSourceAction(w, projection, member, sourceLabel, actionId, summaryId)
-    appendMemberCopyAction(w, member, rootPrefix, copyLabel, actionId, summaryId)
+    appendMemberCopyAction(w, destination, copyLabel, actionId, summaryId)
     w.textElement("span", "", attrs: [htmlClass("cj-sr-only"),
         htmlFlag("data-cjdoc-copy-status"), htmlAttr("role", "status"),
         htmlAttr("aria-live", "polite")])
@@ -52,11 +53,11 @@ private func memberActionAttrs(cssClass: String, actionLabel: String,
         htmlAttr("aria-labelledby", labelId + " " + summaryId)]
 }
 
-private func appendMemberStandaloneAction(w: HtmlWriter, member: SymbolDoc,
-    rootPrefix: String, actionLabel: String, actionId: String, summaryId: String): Unit {
+private func appendMemberStandaloneAction(w: HtmlWriter, destination: String,
+    actionLabel: String, actionId: String, summaryId: String): Unit {
     let attrs = ArrayList<HtmlAttr>(memberActionAttrs(
         "cj-member-actions__item--standalone", actionLabel, actionId, "standalone", summaryId))
-    attrs.add(htmlHref(SafeUrl.siteRoute(rootPrefix + symbolPagePath(member))))
+    attrs.add(htmlHref(SafeUrl.siteRoute(destination)))
     w.open("a", attrs: attrs.toArray())
     w.icon("standalone")
     w.text(actionLabel)
@@ -85,12 +86,12 @@ private func appendMemberSourceAction(w: HtmlWriter, projection: RenderProjectio
     }
 }
 
-private func appendMemberCopyAction(w: HtmlWriter, member: SymbolDoc, rootPrefix: String,
+private func appendMemberCopyAction(w: HtmlWriter, destination: String,
     actionLabel: String, actionId: String, summaryId: String): Unit {
     let attrs = ArrayList<HtmlAttr>(memberActionAttrs(
         "cj-member-actions__item--copy", actionLabel, actionId, "copy", summaryId))
     attrs.add(htmlAttr("type", "button"))
-    attrs.add(htmlAttr("data-cjdoc-copy-link", rootPrefix + symbolReadablePagePath(member)))
+    attrs.add(htmlAttr("data-cjdoc-copy-link", destination))
     w.open("button", attrs: attrs.toArray())
     w.icon("copy")
     w.text(actionLabel)
@@ -120,8 +121,8 @@ private func appendInlineMemberSignature(w: HtmlWriter, member: SymbolDoc,
 }
 
 private func appendMemberSummary(w: HtmlWriter, member: SymbolDoc, origin: String,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
-    appendInlineMemberSignature(w, member, typeLinkIndex, "../")
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
+    appendInlineMemberSignature(w, member, typeLinkIndex, rootPrefix)
     if (origin != "declared") {
         w.textElement("span", memberOriginLabel(origin, locale),
             attrs: [htmlClass("cj-badge cj-badge--origin")])
@@ -137,14 +138,14 @@ private func appendMemberSummary(w: HtmlWriter, member: SymbolDoc, origin: Strin
     appendAdmonitionRiskBadges(w, member, locale)
 }
 
-private func appendMemberOriginContext(w: HtmlWriter, entry: HtmlMemberEntry,
+private func appendMemberOriginContext(w: HtmlWriter, projection: RenderProjection, entry: HtmlMemberEntry,
     rootPrefix: String, locale: String): Unit {
     if (entry.origin == "declared") { return }
     match (entry.declaredBy) {
         case Some(declaredBy) =>
             w.open("p", attrs: [htmlClass("cj-member__origin")])
             w.text(memberOriginLabel(entry.origin, locale) + " · ")
-            w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(rootPrefix + symbolPagePath(declaredBy)))])
+            w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref(rootPrefix, declaredBy.id)))])
             w.textElement("code", readerQualifiedName(declaredBy))
             w.close("a")
             w.close("p")
@@ -182,19 +183,19 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
         htmlAttr("id", anchor + "-summary"), htmlAttr("data-cjdoc-toc-role", "member"),
         htmlAttr("data-cjdoc-toc-depth", sectionHeadingLevel.toString()),
         htmlAttr("data-cjdoc-toc-label", htmlContextLabel(member))])
-    appendMemberSummary(w, member, entry.origin, typeLinkIndex, locale)
+    appendMemberSummary(w, member, entry.origin, typeLinkIndex, rootPrefix, locale)
     w.close("summary")
     w.open("div", attrs: [htmlClass("cj-member__body")])
-    appendMemberOriginContext(w, entry, rootPrefix, locale)
+    appendMemberOriginContext(w, projection, entry, rootPrefix, locale)
     appendDocumentationHtml(w, index, member, rootPrefix, assetLookup, typeLinkIndex,
         headingBase: sectionHeadingLevel, locale: locale, sectionHeadingLevel: sectionHeadingLevel)
     let headingTag = "h${min(6, sectionHeadingLevel)}"
     appendReaderRelationships(w, index, member, rootPrefix, typeLinkIndex, locale,
         headingTag: headingTag)
-    appendReverseTypeUsages(w, index, typeLinkIndex, member, rootPrefix, locale)
-    projection.apiGuides(documentation, locale).append(w, member, locale,
+    appendReverseTypeUsages(w, typeLinkIndex, member, rootPrefix, locale)
+    projection.apiGuides(documentation, locale).append(w, member, locale, rootPrefix,
         headingTag: headingTag, headingSuffix: "-inline-" + htmlStableSlug(member.id))
-    appendExternalDocumentationHtml(w, documentation, member, locale, compactUnavailable: true,
+    appendExternalDocumentationHtml(w, documentation, member, rootPrefix, locale, compactUnavailable: true,
         headingLevel: sectionHeadingLevel)
     w.close("div")
     w.close("details")
@@ -255,16 +256,19 @@ internal func memberSectionAnchor(title: String): String {
     }
 }
 
-private func overloadCountsOf(entries: ArrayList<HtmlMemberEntry>): HashMap<String, Int64> {
+private func overloadCountsOf(entries: ArrayList<HtmlMemberEntry>): (HashMap<String, Int64>, Bool) {
     let overloadCounts = HashMap<String, Int64>()
+    var hasOverloads = false
     for (entry in entries) {
         let key = "${entry.groupKey}:${entry.symbol.name}"
-        overloadCounts[key] = match (overloadCounts.get(key)) {
+        let count = match (overloadCounts.get(key)) {
             case Some(value) => value + 1
             case None => 1
         }
+        overloadCounts[key] = count
+        if (count == 2) { hasOverloads = true }
     }
-    overloadCounts
+    (overloadCounts, hasOverloads)
 }
 
 // An omitted kind heading keeps the filterable container and its members but
@@ -309,38 +313,44 @@ private func appendOverloadHeading(w: HtmlWriter, member: SymbolDoc, count: Int6
     w.newline()
 }
 
+private let LARGE_MEMBER_BROWSER_ROWS = 256
+private let MEMBER_SLICE_ROWS = 12
+
 internal func appendMemberSection(w: HtmlWriter,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, entries: ArrayList<HtmlMemberEntry>,
     title: String, assetLookup: HashMap<String, String>,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String,
-    layout: DeclarationGroupLayout, kindAnchor: String): Unit {
+    layout: DeclarationGroupLayout, kindAnchor: String, rootPrefix: String): Unit {
     if (entries.isEmpty()) { return }
-    let overloadCounts = overloadCountsOf(entries)
+    let (overloadCounts, hasOverloads) = overloadCountsOf(entries)
     let overloadHeadingLevel = min(6, layout.entryParentLevel + 1)
-    var opened = false
+    let sliced = entries.size > LARGE_MEMBER_BROWSER_ROWS && !hasOverloads
+    w.open("section", attrs: [htmlClass(if (layout.showKindHeading) {
+        "cj-member-group"
+    } else { "cj-member-group cj-member-group--plain" }), htmlFlag("data-cjdoc-member-group")])
+    appendMemberGroupHead(w, title, kindAnchor, entries.size, layout, locale)
     var activeOverloadKey = ""
-    for (entry in entries) {
-        let member = entry.symbol
-        if (!opened) {
-            w.open("section", attrs: [htmlClass(if (layout.showKindHeading) {
-                "cj-member-group"
-            } else { "cj-member-group cj-member-group--plain" }), htmlFlag("data-cjdoc-member-group")])
-            appendMemberGroupHead(w, title, kindAnchor, entries.size, layout, locale)
-            opened = true
+    var remainingInSlice: Int64 = 0
+    for (i in 0..entries.size) {
+        if (sliced && remainingInSlice == 0 && entries.size - i >= MEMBER_SLICE_ROWS) {
+            w.open("div", attrs: [htmlClass("cj-member-slice")])
+            remainingInSlice = MEMBER_SLICE_ROWS
         }
-        activeOverloadKey = appendMemberEntry(w, documentation, projection, index, entry,
+        activeOverloadKey = appendMemberEntry(w, documentation, projection, index, entries[i],
             assetLookup, typeLinkIndex, overloadCounts, overloadHeadingLevel, layout, locale,
-            activeOverloadKey)
+            activeOverloadKey, rootPrefix)
+        if (remainingInSlice > 0) {
+            remainingInSlice--
+            if (remainingInSlice == 0) { w.close("div"); w.newline() }
+        }
     }
     if (!activeOverloadKey.isEmpty()) {
         w.close("div")
         w.newline()
     }
-    if (opened) {
-        w.close("section")
-        w.newline()
-    }
+    w.close("section")
+    w.newline()
 }
 
 // Returns the overload family that is still open, so the caller can close it
@@ -349,7 +359,7 @@ private func appendMemberEntry(w: HtmlWriter, documentation: DocumentationSet,
     projection: RenderProjection, index: HashMap<String, SymbolDoc>, entry: HtmlMemberEntry,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     overloadCounts: HashMap<String, Int64>, overloadHeadingLevel: Int64,
-    layout: DeclarationGroupLayout, locale: String, activeOverloadKey: String): String {
+    layout: DeclarationGroupLayout, locale: String, activeOverloadKey: String, rootPrefix: String): String {
     let member = entry.symbol
     var active = activeOverloadKey
     let overloadKey = "${entry.groupKey}:${member.name}"
@@ -365,7 +375,7 @@ private func appendMemberEntry(w: HtmlWriter, documentation: DocumentationSet,
     }
     let parentLevel = if (count > 1) { overloadHeadingLevel } else { layout.entryParentLevel }
     appendInlineMemberDetail(w, documentation, projection, index, entry, assetLookup,
-        typeLinkIndex, "../", locale, sectionHeadingLevel: min(6, parentLevel + 1))
+        typeLinkIndex, rootPrefix, locale, sectionHeadingLevel: min(6, parentLevel + 1))
     active
 }
 
@@ -422,24 +432,24 @@ private func appendMemberOriginFilter(w: HtmlWriter, browser: HtmlMemberBrowser,
     w.close("select")
 }
 
-private func appendSymbolBreadcrumbs(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
-    symbol: SymbolDoc, owners: ArrayList<SymbolDoc>, locale: String): Unit {
+private func appendSymbolBreadcrumbs(w: HtmlWriter, projection: RenderProjection,
+    symbol: SymbolDoc, owners: ArrayList<SymbolDoc>, rootPrefix: String, locale: String): Unit {
     w.open("nav", attrs: [htmlClass("cj-breadcrumbs"),
         htmlAttr("aria-label", label(locale, "Breadcrumb", "面包屑导航"))])
     w.open("ol", attrs: [htmlClass("cj-breadcrumbs__list")])
     w.element("li", [htmlClass("cj-breadcrumbs__item")], { item =>
-        item.open("a", attrs: [htmlHref(SafeUrl.siteRoute("../index.html"))])
+        item.open("a", attrs: [htmlHref(SafeUrl.siteRoute(rootPrefix + "index.html"))])
         item.text(label(locale, "Home", "首页"))
         item.close("a")
     })
     w.element("li", [htmlClass("cj-breadcrumbs__item")], { item =>
         item.open("a", attrs: [htmlHref(SafeUrl.siteRoute(
-            "../" + packagePagePath(symbol.moduleId, symbol.packageName)))])
+            rootPrefix + packagePagePath(symbol.moduleId, symbol.packageName)))])
         item.text(label(locale, "Package", "包") + " ")
         item.textElement("code", symbol.packageName)
         item.close("a")
     })
-    appendOwnerBreadcrumbs(w, index, owners, "../", locale)
+    appendOwnerBreadcrumbs(w, projection, owners, rootPrefix, locale)
     w.element("li", [htmlClass("cj-breadcrumbs__item"), htmlAttr("aria-current", "page")],
         { item =>
         item.textElement("code", readerSymbolTitle(symbol, locale))
@@ -450,7 +460,7 @@ private func appendSymbolBreadcrumbs(w: HtmlWriter, index: HashMap<String, Symbo
 }
 
 private func appendSymbolHeaderTitle(w: HtmlWriter, projection: RenderProjection,
-    symbol: SymbolDoc, assetLookup: HashMap<String, String>, locale: String): Unit {
+    symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String, locale: String): Unit {
     w.open("div", attrs: [htmlClass("cj-page-header__title-row")])
     w.open("h1", attrs: [htmlClass("cj-page-header__title"),
         htmlAttr("data-cjdoc-toc-role", "api-root"),
@@ -461,17 +471,20 @@ private func appendSymbolHeaderTitle(w: HtmlWriter, projection: RenderProjection
         attrs: [htmlClass("cj-kind"), htmlAttr("data-kind", symbol.kind)])
     w.element("div", [htmlClass("cj-page-header__badges")], { badges =>
         appendDeclarationClassificationBadges(badges, projection.catalog, projection.snapshotId,
-            symbol, "../")
+            symbol, rootPrefix)
     })
+    w.open("div", attrs: [htmlClass("cj-page-header__actions")])
+    appendSymbolSourceAction(w, projection, symbol, locale)
     w.open("button", attrs: [htmlClass("cj-button cj-button--quiet cj-page-header__copy"),
         htmlAttr("type", "button"),
-        htmlAttr("data-cjdoc-copy-link", "../" + symbolReadablePagePath(symbol))])
+        htmlAttr("data-cjdoc-copy-link", projection.publicSymbolHref(rootPrefix, symbol.id))])
     w.icon("link")
     w.textElement("span", label(locale, "Copy link", "复制链接"))
     w.close("button")
     w.close("div")
+    w.close("div")
     match (symbol.documentation) {
-        case Some(comment) => appendSummaryHtml(w, comment, symbol, assetLookup, "../", locale: locale)
+        case Some(comment) => appendSummaryHtml(w, comment, symbol, assetLookup, rootPrefix, locale: locale)
         case None => ()
     }
 }
@@ -493,13 +506,13 @@ private func symbolHasIntroduction(symbol: SymbolDoc): Bool {
 }
 
 private func appendSymbolOverview(w: HtmlWriter, symbol: SymbolDoc,
-    assetLookup: HashMap<String, String>, locale: String): Unit {
+    assetLookup: HashMap<String, String>, rootPrefix: String, locale: String): Unit {
     let hasIntroduction = symbolHasIntroduction(symbol)
     if (hasIntroduction) {
         w.open("div", attrs: [htmlAttr("id", "overview"),
             htmlClass("cj-introduction cj-prose")])
     }
-    appendDocumentationIntroductionHtml(w, symbol, "../", assetLookup, 4, locale)
+    appendDocumentationIntroductionHtml(w, symbol, rootPrefix, assetLookup, 4, locale)
     if (hasIntroduction) { w.close("div") }
     match (symbol.documentation) {
         case Some(comment) =>
@@ -514,24 +527,15 @@ private func appendSymbolSourceAction(w: HtmlWriter, projection: RenderProjectio
         case Some(url) =>
             match (SafeUrl.external(url)) {
                 case Some(external) =>
-                    w.element("p", [htmlClass("cj-page-header__source")], { action =>
-                        action.open("a", attrs: [htmlClass("cj-button cj-button--quiet"),
-                            htmlHref(external), htmlAttr("rel", "noreferrer")])
-                        action.icon("source")
-                        action.textElement("span", label(locale, "View source", "查看源码"))
-                        action.close("a")
-                    })
-                    w.newline()
+                    w.open("a", attrs: [htmlClass("cj-button cj-button--quiet cj-page-header__source"),
+                        htmlHref(external), htmlAttr("rel", "noreferrer")])
+                    w.icon("source")
+                    w.textElement("span", label(locale, "View source", "查看源码"))
+                    w.close("a")
                 case None => ()
             }
         case None => ()
     }
-}
-
-private func appendSymbolTypeRelationships(w: HtmlWriter, index: HashMap<String, SymbolDoc>,
-    symbol: SymbolDoc, typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
-    // Relations explain the type before readers browse its members.
-    appendReaderRelationships(w, index, symbol, "../", typeLinkIndex, locale)
 }
 
 private func appendKindAliasesForRole(w: HtmlWriter, sections: HtmlMemberSections,
@@ -584,11 +588,13 @@ private func appendGroupHeading(w: HtmlWriter, role: DeclarationGroup, locale: S
 internal func appendMemberBrowser(w: HtmlWriter, documentation: DocumentationSet,
     projection: RenderProjection, index: HashMap<String, SymbolDoc>,
     symbol: SymbolDoc, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
     let browser = projection.members(symbol)
     if (browser.entries.isEmpty()) { return }
     // The stylesheet needs this boundary before any script can force the first layout.
-    let browserClass = if (browser.entries.size > 256) { "cj-members cj-members--large" } else { "cj-members" }
+    let browserClass = if (browser.entries.size > LARGE_MEMBER_BROWSER_ROWS) {
+        "cj-members cj-members--large"
+    } else { "cj-members" }
     w.open("section", attrs: [htmlClass(browserClass), htmlFlag("data-cjdoc-member-browser"),
         htmlAttr("aria-label", label(locale, "Members", "成员"))])
     appendMemberBrowserToolbar(w, browser, locale)
@@ -612,7 +618,7 @@ internal func appendMemberBrowser(w: HtmlWriter, documentation: DocumentationSet
         }
     }
     appendSymbolMemberRoles(w, documentation, projection, index, sections, roles, grouped,
-        kindIdsByGroup, assetLookup, typeLinkIndex, locale)
+        kindIdsByGroup, assetLookup, typeLinkIndex, rootPrefix, locale)
     w.close("section")
     w.newline()
 }
@@ -622,7 +628,7 @@ private func appendSymbolMemberRoles(w: HtmlWriter, documentation: Documentation
     sections: HtmlMemberSections, roles: ArrayList<DeclarationGroup>, grouped: Bool,
     kindIdsByGroup: HashMap<String, HashSet<String>>,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale: String): Unit {
+    rootPrefix: String, locale: String): Unit {
     appendSymbolKindAliases(w, sections, roles, kindIdsByGroup, grouped)
     for (role in roles) {
         let kinds = sections.kinds(role)
@@ -639,7 +645,7 @@ private func appendSymbolMemberRoles(w: HtmlWriter, documentation: Documentation
             let kindAnchor = if (grouped) { role.kindPrefix + kindId } else { kindId }
             appendMemberSection(w, documentation, projection, index,
                 sections.entries(role, title), title, assetLookup, typeLinkIndex,
-                locale, layout, kindAnchor)
+                locale, layout, kindAnchor, rootPrefix)
         }
         if (grouped) {
             w.close("section")
@@ -651,12 +657,12 @@ private func appendSymbolMemberRoles(w: HtmlWriter, documentation: Documentation
 private func appendSymbolMemberArea(w: HtmlWriter, documentation: DocumentationSet,
     projection: RenderProjection, index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
     hasMemberPage: Bool, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
     if (!hasMemberPage) { return }
-    appendReaderRelationships(w, index, symbol, "../", typeLinkIndex, locale)
+    appendReaderRelationships(w, index, symbol, rootPrefix, typeLinkIndex, locale)
     if (!projection.members(symbol).entries.isEmpty()) {
         appendMemberBrowser(w, documentation, projection, index, symbol, assetLookup,
-            typeLinkIndex, locale)
+            typeLinkIndex, rootPrefix, locale)
     } else if (symbol.kind == "extend") {
         w.textElement("p", label(locale, "No visible members for this audience.",
             "当前受众范围内没有可展示的成员。"), attrs: [htmlClass("cj-empty")])
@@ -667,56 +673,59 @@ private func appendSymbolMemberArea(w: HtmlWriter, documentation: DocumentationS
 private func appendSymbolPageBody(w: HtmlWriter, documentation: DocumentationSet,
     projection: RenderProjection, index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
     hasMemberPage: Bool, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
-    appendDocumentationHtml(w, index, symbol, "../", assetLookup,
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
+    appendDocumentationHtml(w, index, symbol, rootPrefix, assetLookup,
         typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !hasMemberPage,
         includeIntroduction: !hasMemberPage)
     if (!hasMemberPage) {
-        appendSymbolTypeRelationships(w, index, symbol, typeLinkIndex, locale)
+        appendReaderRelationships(w, index, symbol, rootPrefix, typeLinkIndex, locale)
     }
-    appendReverseTypeUsages(w, index, typeLinkIndex, symbol, "../", locale)
-    projection.apiGuides(documentation, locale).append(w, symbol, locale)
+    appendReverseTypeUsages(w, typeLinkIndex, symbol, rootPrefix, locale)
+    projection.apiGuides(documentation, locale).append(w, symbol, locale, rootPrefix)
     let related = HashSet<String>()
     if (hasMemberPage) {
         for (entry in projection.members(symbol).entries) { let _ = related.add(entry.symbol.id) }
     }
-    appendExternalDocumentationHtml(w, documentation, symbol, locale, relatedSymbolIds: related)
+    appendExternalDocumentationHtml(w, documentation, symbol, rootPrefix, locale, relatedSymbolIds: related)
 }
 
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale!: String = "en", docVersion!: ?String = None): String {
-    let w = HtmlWriter()
+    locale!: String = "en", docVersion!: ?String = None, mounted!: Bool = false): String {
+    let routes = projection.apiRoutes.getOrThrow()
+    let pageFile = routes.filePath(symbol.id).getOrThrow()
+    let rootPrefix = projection.apiPageResourcePrefix(pageFile, mounted)
+    let w = HtmlWriter(apiRoutes: projection.apiRoutes, unprefixedApiLocale: projection.unprefixedApiLocale)
     let pageTitle = if (symbol.kind == "extend") {
         "${label(locale, "Extension", "扩展")} ${readerQualifiedName(symbol)}"
     } else { symbol.qualifiedName }
     let hasMemberPage = isTypeDeclaration(symbol) || symbol.kind == "extend"
     let owners = visibleOwnerChain(index, symbol)
-    appendPageStart(w, pageTitle, "../", documentation, projection, locale: locale,
+    appendPageStart(w, pageTitle, rootPrefix, documentation, projection, locale: locale,
         currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
         currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol),
-        currentPagePath: Some(symbolPagePath(symbol)),
-        agentReadable: true, alternateMarkdown: Some(agentDeclarationMarkdownPath(symbol)))
-    appendSymbolBreadcrumbs(w, index, symbol, owners, locale)
+        currentPagePath: Some(apiHtmlFileHref(pageFile)),
+        agentReadable: true, alternateMarkdown: Some(agentDeclarationMarkdownPath(symbol)),
+        canonical: Some(projection.publicApiPrefix(rootPrefix) + routes.webPath(symbol.id)))
+    appendSymbolBreadcrumbs(w, projection, symbol, owners, rootPrefix, locale)
     w.open("header", attrs: [htmlClass(if (symbol.kind == "extend") {
         "cj-page-header cj-page-header--api cj-page-header--extension"
     } else { "cj-page-header cj-page-header--api" })])
-    appendSymbolHeaderTitle(w, projection, symbol, assetLookup, locale)
+    appendSymbolHeaderTitle(w, projection, symbol, assetLookup, rootPrefix, locale)
     if (hasMemberPage) {
-        appendSymbolOverview(w, symbol, assetLookup, locale)
+        appendSymbolOverview(w, symbol, assetLookup, rootPrefix, locale)
     }
-    appendSymbolMetadata(w, index, symbol, "../", assetLookup, typeLinkIndex,
+    appendSymbolMetadata(w, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
         locale: locale, includeSummary: false, pagePresentation: true)
-    appendSymbolSourceAction(w, projection, symbol, locale)
-    appendTypeGuideEntry(w, documentation, projection, symbol, locale)
+    appendTypeGuideEntry(w, documentation, projection, symbol, rootPrefix, locale)
     w.close("header")
     w.newline()
-    appendOwnerDocumentationContext(w, index, symbol, owners, assetLookup, "../", locale)
+    appendOwnerDocumentationContext(w, projection, symbol, owners, assetLookup, rootPrefix, locale)
     appendSymbolMemberArea(w, documentation, projection, index, symbol,
-        hasMemberPage, assetLookup, typeLinkIndex, locale)
+        hasMemberPage, assetLookup, typeLinkIndex, rootPrefix, locale)
     appendSymbolPageBody(w, documentation, projection, index, symbol,
-        hasMemberPage, assetLookup, typeLinkIndex, locale)
+        hasMemberPage, assetLookup, typeLinkIndex, rootPrefix, locale)
     appendPageEnd(w, documentation, locale: locale)
     w.toString()
 }

@@ -8,7 +8,8 @@ import shutil
 import subprocess
 import unittest
 
-from test_validate_html_site import canonical_search_script, canonical_theme_bootstrap_script
+from test_validate_html_site import (canonical_api_route_script, canonical_search_script,
+                                     canonical_theme_bootstrap_script)
 
 
 def extract_between(script: str, start: str, end: str, prelude: bool = True) -> str:
@@ -20,8 +21,8 @@ def extract_between(script: str, start: str, end: str, prelude: bool = True) -> 
     assert start in script, start
     body = script.split(start, 1)[1].split(end, 1)[0]
     terminator = end.split("\n\n", 1)[0]
-    shared = ("  const isChinese = false;\n  const root = \"\";\n  const currentId = \"\";\n"
-              "  const currentPage = \"\";\n")
+    shared = ('  const isChinese = false;\n  const root = "";\n  const apiRoot = root;\n'
+              '  const currentId = "";\n  const currentPage = "";\n')
     return (shared if prelude else "") + start + body + terminator + "\n"
 
 
@@ -199,7 +200,7 @@ vm.runInContext("syncRouteState();", context);
 assert.deepEqual(state(overview), {page: "page", ancestor: false});
 assert.deepEqual(state(api), {page: null, ancestor: true});
 document.body.dataset.cjdocRoute = "api";
-sidebar.dataset.cjdocCurrentPage = "symbols/member.html";
+sidebar.dataset.cjdocCurrentPage = "copper/Copper/wire/index.html";
 vm.runInContext("syncRouteState();", context);
 assert.deepEqual(state(overview), {page: null, ancestor: false});
 assert.deepEqual(state(api), {page: null, ancestor: true});
@@ -309,9 +310,8 @@ const document = {
   createElement: tag => new Node(tag),
 };
 const window = {location: {hash: ""}, matchMedia: () => ({matches: false})};
-const context = vm.createContext({document, window, location: window.location,
-  tree, data, packages: undefined});
-vm.runInContext(SOURCE + "\ninitSidebarTree();\nfilterSidebar();", context);
+const context = vm.createContext({document, window, location: {protocol: "file:"}, tree, data});
+vm.runInContext(API_ROUTES + SOURCE + "\ninitSidebarTree();\nfilterSidebar();", context);
 assert.equal(alphaItem.hidden, false);
 assert.equal(copperItem.hidden, false);
 filterInput.value = "Copper";
@@ -359,7 +359,7 @@ assert.equal(copperTypes.hidden, true, "clearing the filter restores the collaps
 assert.equal(copperMembers.hidden, true, "clearing the filter restores the collapsed type");
 assert(memberRows.every(member => !member.hidden));
 """
-        self.run_node(source, harness)
+        self.run_node(source, "const API_ROUTES = " + json.dumps(canonical_api_route_script()) + ";\n" + harness)
 
     def test_drawer_sets_page_state_and_restores_focus(self) -> None:
         script = canonical_search_script()

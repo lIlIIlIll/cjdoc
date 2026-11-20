@@ -121,7 +121,7 @@ class HtmlSignatureMappingTest {
                 "where", "T", "<:", "Token", "&", "Token", ",", "U", "<:", "Token"],
             [TypeRelationship("genericConstraint", token), TypeRelationship("genericConstraint", token),
                 TypeRelationship("genericConstraint", token), TypeRelationship("superType", token)], kind: "class")
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Assert(spans.size, 4)
         @Expect(spans[0].start, raw.indexOf("<: Token").getOrThrow() + "<: ".size)
@@ -140,7 +140,7 @@ class HtmlSignatureMappingTest {
             ["public", "func", "accept", "<", "T", ",", "U", ">", "(", "label", ":", "String", "=",
                 "\"Token\"", ")", ":", "T", "where", "T", "<:", "Token", "<", "Token", ">", ",", "U", "<:", "Token"],
             [TypeRelationship("genericConstraint", nested), TypeRelationship("genericConstraint", token)])
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Assert(spans.size, 3)
         let boundsStart = raw.indexOf("where").getOrThrow()
@@ -155,7 +155,8 @@ class HtmlSignatureMappingTest {
         let body = constraintSignatureDocument("public func accept<T>() { where T <: Token }",
             ["public", "func", "accept", "<", "T", ">", "(", ")", "{", "where", "T", "<:", "Token", "}"],
             [TypeRelationship("genericConstraint", token)])
-        @Expect(linkedSignatureSpans(body.declarations[1], HtmlTypeLinkIndex(body, RenderProjection(body))).isEmpty(), true)
+        @Expect(linkedSignatureSpans(body.declarations[1],
+            HtmlTypeLinkIndex(body, RenderProjection(body, buildApiRoutes: true))).isEmpty(), true)
     }
 
 
@@ -182,7 +183,7 @@ class HtmlSignatureMappingTest {
             let subject = document.declarations[1]
             let out = signatureHtml({ w => appendSignatureTextHtml(w, subject) })
             @Expect(out, expected)
-            let links = HtmlTypeLinkIndex(document, RenderProjection(document))
+            let links = HtmlTypeLinkIndex(document, RenderProjection(document, buildApiRoutes: true))
             let linked = signatureHtml({ w => appendLinkedSignatureHtml(w, subject, links, "../") })
             let uncoloured = unwrappedSignature(linked)
             if (originalLinked.isEmpty()) { originalLinked = uncoloured }
@@ -214,7 +215,7 @@ class HtmlSignatureMappingTest {
             [CodeSpan(0, 6, "keyword"), CodeSpan(7, 11, "keyword"),
                 CodeSpan(literalStart, literalStart + 7, "string")])
         let document = signatureTestDocument(raw, highlight: Some(prepared))
-        let links = HtmlTypeLinkIndex(document, RenderProjection(document))
+        let links = HtmlTypeLinkIndex(document, RenderProjection(document, buildApiRoutes: true))
         let html = signatureHtml({ w => appendLinkedSignatureHtml(w, document.declarations[1], links, "../") })
         @Expect(html.contains("<span class=\"cj-tok-string\">&quot;Token&quot;</span>"), true)
         @Expect(html.contains("class=\"cj-type-link\""), true)
@@ -243,7 +244,7 @@ class HtmlSignatureMappingTest {
     func namedParameterAndReturnLinksNeverSelectDefaultLiteral(): Unit {
         let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"
         let documentation = signatureTestDocument(raw, highlight: Some(signatureTestHighlight(raw)))
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Expect(spans.size, 2)
         @Expect(raw[spans[0].start..spans[0].end], "Token")
@@ -263,7 +264,7 @@ class HtmlSignatureMappingTest {
         let raw = "public /* Token /* nested */ */ func accept(label!: String = \"Token\",\n" +
             "/* item!: Token */ item! : Token): Token // Token"
         let documentation = signatureTestDocument(raw)
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Expect(spans.size, 2)
         @Expect(spans[0].start,
@@ -277,7 +278,7 @@ class HtmlSignatureMappingTest {
         tokens[9] = "STRING_LITERAL:3:\",\""
         let documentation = signatureTestDocument(raw, tokens: tokens.toArray(),
             highlight: Some(signatureTestHighlight(raw)))
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Expect(spans.size, 2)
         @Expect(raw[spans[0].start..spans[0].end], "Token")
@@ -297,7 +298,7 @@ class HtmlSignatureMappingTest {
         tokens[9] = "STRING_LITERAL:${literal.size}:${literal}"
         let documentation = signatureTestDocument(raw, tokens: tokens.toArray(),
             highlight: Some(signatureTestHighlight(raw)))
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
         let html = out
         @Expect(html.contains("<img"), false)
@@ -311,7 +312,7 @@ class HtmlSignatureMappingTest {
         let documentation = signatureTestDocument(raw)
         let subject = documentation.declarations[1]
         @Expect(alignedSignatureTokens(subject).isEmpty(), true)
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         @Expect(linkedSignatureSpans(subject, links).isEmpty(), true)
         let out = signatureHtml({ w => appendLinkedSignatureHtml(w, subject, links, "../") })
         @Expect(out, signatureEscaped(raw))
@@ -325,7 +326,7 @@ class HtmlSignatureMappingTest {
         let literal = "\"中文 Token : ()\""
         tokens[9] = "STRING_LITERAL:${literal.size}:${literal}"
         let documentation = signatureTestDocument(raw, tokens: tokens.toArray())
-        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Expect(spans.size, 2)
         @Expect(spans[0].start,

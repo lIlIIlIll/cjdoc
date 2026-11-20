@@ -136,19 +136,20 @@ private func serveContentType(path: String): String {
 }
 
 private func serveResponse(socket: TcpSocket, status: String, contentType: String,
-    body: Array<Byte>, headOnly!: Bool = false): Unit {
-    let header = "HTTP/1.1 ${status}\r\nContent-Type: ${contentType}\r\n" +
+    body: Array<Byte>, headOnly!: Bool = false, location!: String = ""): Unit {
+    let redirect = if (location.isEmpty()) { "" } else { "Location: ${location}\r\n" }
+    let header = "HTTP/1.1 ${status}\r\nContent-Type: ${contentType}\r\n" + redirect +
         "Content-Length: ${body.size}\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
     socket.write(header.toArray())
     if (!headOnly) { socket.write(body) }
 }
 
-private func serveError(socket: TcpSocket, status: String, message: String): Unit {
+private func serveError(socket: TcpSocket, status: String, message: String, headOnly!: Bool = false): Unit {
     let body = "${status}\n${message}\n".toArray()
     // A client can disconnect after any read or write. Reporting its error is
     // best-effort: another failed write must never escape into the accept loop.
     try {
-        serveResponse(socket, status, "text/plain; charset=utf-8", body)
+        serveResponse(socket, status, "text/plain; charset=utf-8", body, headOnly: headOnly)
     } catch (_: Exception) { () }
 }
 
@@ -187,7 +188,11 @@ private func servePercentDecode(value: String): String {
         let high = serveHexDigit(source[index + 1])
         let low = serveHexDigit(source[index + 2])
         if (high < 0 || low < 0) { throw IllegalArgumentException("invalid URL path encoding") }
-        decoded.add(UInt8(high * 16 + low))
+        let decodedByte = UInt8(high * 16 + low)
+        if (decodedByte == b'/' || decodedByte == b'\\' || decodedByte < 0x20 || decodedByte == 0x7F) {
+            throw IllegalArgumentException("unsafe encoded HTTP path byte")
+        }
+        decoded.add(decodedByte)
         index += 3
     }
     try { String.fromUtf8(decoded.toArray()) } catch (_: Exception) {
@@ -195,16 +200,36 @@ private func servePercentDecode(value: String): String {
     }
 }
 
-private func serveRequestPath(request: String): (String, Bool, Bool) {
+private struct ServeRequestPath {
+    let relative: String
+    let headOnly: Bool
+    let directory: Bool
+    let encodedPath: String
+    let query: String
+
+    init(path: String, encodedPath: String, query: String, headOnly: Bool) {
+        relative = path.removePrefix("/")
+        directory = path.endsWith("/")
+        this.encodedPath = encodedPath
+        this.query = query
+        this.headOnly = headOnly
+    }
+}
+
+private func serveRequestPath(request: String): ServeRequestPath {
     let lines = request.split("\r\n")
     if (lines.isEmpty()) { throw IllegalArgumentException("empty HTTP request") }
     let fields = lines[0].split(" ")
     if (fields.size != 3 || (fields[0] != "GET" && fields[0] != "HEAD") || fields[2] != "HTTP/1.1") {
         throw IllegalArgumentException("unsupported HTTP request")
     }
-    let encodedPath = fields[1].split("?")[0]
-    if (!encodedPath.startsWith("/") || encodedPath.contains("\\") ||
-        encodedPath.contains("\u{0000}")) {
+    let target = fields[1]
+    for (byte in target.toArray()) {
+        if (byte <= 0x20 || byte >= 0x7F || byte == b'#') { throw IllegalArgumentException("unsafe HTTP target") }
+    }
+    let queryOffset = target.indexOf(b'?').getOrDefault({ => target.size })
+    let encodedPath = target[0..queryOffset]
+    if (!encodedPath.startsWith("/") || encodedPath.startsWith("//") || encodedPath.contains("\\")) {
         throw IllegalArgumentException("unsafe HTTP path")
     }
     let rawPath = servePercentDecode(encodedPath)
@@ -212,39 +237,55 @@ private func serveRequestPath(request: String): (String, Bool, Bool) {
         rawPath.contains("..") || rawPath.contains("\u{0000}")) {
         throw IllegalArgumentException("unsafe HTTP path")
     }
-    let relative = if (rawPath == "/") { "index.html" } else { rawPath[1..].toString() }
-    (relative, fields[0] == "HEAD", true)
+    ServeRequestPath(rawPath, encodedPath, target[queryOffset..target.size], fields[0] == "HEAD")
 }
 
-private func serveStaticPath(siteRoot: Path, relative: String): Array<Byte> {
+private func serveStaticFile(siteRoot: Path, relative: String): Path {
     if (!isSafeOutputPath(relative)) { throw IllegalArgumentException("unsafe static path") }
     let path = siteRoot.join(relative)
+    ensureNoSymbolicLinkAncestors(path, "served artifact")
     ensureRegularNonSymlink(path, "served artifact")
     let canonicalRoot = canonicalize(siteRoot)
     let canonicalPath = canonicalize(path)
     if (!pathContains(canonicalRoot, canonicalPath)) {
         throw IllegalArgumentException("served artifact escaped site root")
     }
-    readFileBounded(canonicalPath, SERVE_FILE_LIMIT)
+    canonicalPath
+}
+
+private func serveArtifact(socket: TcpSocket, siteRoot: Path, request: ServeRequestPath): Unit {
+    let relative = if (request.directory) { request.relative + "index.html" } else { request.relative }
+    let file = try { Some(serveStaticFile(siteRoot, relative)) } catch (_: Exception) { None<Path> }
+    if (let Some(path) <- file) {
+        let body = try { Some(readFileBounded(path, SERVE_FILE_LIMIT)) } catch (_: Exception) { None<Array<Byte>> }
+        if (let Some(content) <- body) {
+            serveResponse(socket, "200 OK", serveContentType(relative), content, headOnly: request.headOnly)
+            return
+        }
+    } else if (!request.directory) {
+        let hasIndex = try {
+            let _ = serveStaticFile(siteRoot, relative + "/index.html")
+            true
+        } catch (_: Exception) { false }
+        if (hasIndex) {
+            serveResponse(socket, "308 Permanent Redirect", "text/plain; charset=utf-8", [],
+                headOnly: request.headOnly, location: request.encodedPath + "/" + request.query)
+            return
+        }
+    }
+    serveError(socket, "404 Not Found", "artifact not found", headOnly: request.headOnly)
 }
 
 private func serveClient(socket: TcpSocket, siteRoot: Path, state: ServeState,
     port: Int64): Unit {
     try {
         socket.readTimeout = Some(Duration.second * 5)
-        let request = readServeRequest(socket)
-        let (relative, headOnly, _) = serveRequestPath(request)
-        if (relative == "__cjdoc/status.json") {
+        let request = serveRequestPath(readServeRequest(socket))
+        if (!request.directory && request.relative == "__cjdoc/status.json") {
             serveResponse(socket, "200 OK", "application/json; charset=utf-8",
-                serveStatusJson(state, port), headOnly: headOnly)
+                serveStatusJson(state, port), headOnly: request.headOnly)
         } else {
-            let body = try {
-                serveStaticPath(siteRoot, relative)
-            } catch (_: Exception) {
-                serveError(socket, "404 Not Found", "artifact not found")
-                return
-            }
-            serveResponse(socket, "200 OK", serveContentType(relative), body, headOnly: headOnly)
+            serveArtifact(socket, siteRoot, request)
         }
     } catch (_: SocketTimeoutException) {
         serveError(socket, "408 Request Timeout", "request timed out")

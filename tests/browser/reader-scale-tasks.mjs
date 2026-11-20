@@ -2,12 +2,20 @@ import { performance } from 'node:perf_hooks';
 import { distribution, frame, matchEntry, pageMetrics, timedQuery, typeEntry } from './reader-scale-metrics.mjs';
 
 export const anchorFor = entry => 'symbol-' + Buffer.from(entry.id, 'utf8').toString('hex');
-const locationKey = (value, base) => { const url = new URL(value, base); return url.pathname + url.hash; };
+const locationKey = url => url.origin + url.pathname + url.search + url.hash;
+const publishedDestination = (entry, base) => {
+  const url = new URL(entry.href, base);
+  if (!entry.concept && ['http:', 'https:'].includes(url.protocol)) {
+    url.pathname = url.pathname.replace(/\/index\.html$/, '/');
+  }
+  return url;
+};
 // A capture pairs the current generator with a pinned older baseline, so the
 // harness addresses both markup generations by contract, not by one class set.
 export const MEMBER_BODY = '.cj-member__body, .member-detail-body';
 export const MEMBER_SIGNATURE = '.cj-signature-inline, .declaration-signature';
-const matching = (hrefs, expected, base) => expected.every(entry => hrefs.some(href => locationKey(href, base) === locationKey(entry.href, base)));
+const matching = (hrefs, expected, base) => expected.every(entry =>
+  hrefs.some(href => locationKey(new URL(href, base)) === locationKey(publishedDestination(entry, base))));
 
 export async function instrumentedPage(context, url, cacheDisabled = false) {
   const page = await context.newPage();
@@ -120,7 +128,8 @@ export async function memberTasks(context, index, manifest, base, samples) {
   const records = [];
   for (const owner of [...new Set(manifest.members.map(task => task.owner))]) {
     const ownerEntry = typeEntry(index, owner);
-    const { page, client } = await instrumentedPage(context, new URL(ownerEntry.href, base).href);
+    const ownerUrl = publishedDestination(ownerEntry, base).href;
+    const { page, client } = await instrumentedPage(context, ownerUrl);
     try {
       const initialLayout = await pageMetrics(page, client);
       for (const task of manifest.members.filter(item => item.owner === owner)) {
@@ -149,7 +158,7 @@ export async function memberTasks(context, index, manifest, base, samples) {
         const foundByBodyFilter = await target.count() === 1 && await target.isVisible();
         // A deliberately conflicting filter must not suppress a precise deep link.
         await filter.fill('rdr_no_matching_member');
-        await page.goto(new URL(ownerEntry.href, base).href + '#' + anchorFor(expected));
+        const navigation = await page.goto(ownerUrl + '#' + anchorFor(expected));
         await page.waitForFunction(id => {
           const row = document.getElementById(id);
           return row && !row.hidden && row.open;
@@ -162,7 +171,7 @@ export async function memberTasks(context, index, manifest, base, samples) {
           contextItems: document.querySelectorAll('[data-cjdoc-tree-item], [data-cjdoc-context-item]').length,
         }));
         records.push({ id: task.id, owner, expectedId: expected.id, ordinal: task.ordinal,
-          foundByBodyFilter, deepLink, state, pass: foundByBodyFilter && deepLink,
+          foundByBodyFilter, deepLink, state, pass: navigation === null && foundByBodyFilter && deepLink,
           operationCount: 3, automationDurationMs: performance.now() - started,
           synchronous: distribution((timings || []).map(item => item.synchronousMs)),
           frame: distribution((timings || []).map(item => item.frameMs)),
@@ -200,8 +209,8 @@ export async function overloadDetailEvidence(row, target) {
 export async function overloadTasks(context, index, manifest, base) {
   const records = [];
   for (const task of manifest.overloads) {
-    const ownerEntry = typeEntry(index, task.owner);
-    const { page, client } = await instrumentedPage(context, new URL(ownerEntry.href, base).href);
+    const ownerUrl = publishedDestination(typeEntry(index, task.owner), base).href;
+    const { page, client } = await instrumentedPage(context, ownerUrl);
     try {
       const selections = [];
       for (const position of new Set([0, Math.floor(task.targets.length / 2), task.targets.length - 1])) {
@@ -215,15 +224,20 @@ export async function overloadTasks(context, index, manifest, base) {
         await frame(page);
         const first = page.locator('[data-cjdoc-results] li a').first();
         const href = await first.getAttribute('href');
-        const selectedCorrectly = locationKey(href, page.url()) === locationKey(expected.href, base);
+        const destination = publishedDestination(expected, base);
+        let selectedCorrectly = href !== null && locationKey(new URL(href, page.url())) === locationKey(destination);
         if (selectedCorrectly) {
           await first.click();
           await page.waitForSelector('main');
+          selectedCorrectly = locationKey(new URL(page.url())) === locationKey(destination);
+          if (expected.href.endsWith('/index.html')) {
+            selectedCorrectly &&= await page.locator('body').getAttribute('data-cjdoc-symbol-id') === expected.id;
+          }
         }
         selections.push({ callShape: target.callShape, query, expectedId: expected.id,
           pass: selectedCorrectly, operationCount: selectedCorrectly ? 2 : 1,
           automationDurationMs: performance.now() - started });
-        await page.goto(new URL(ownerEntry.href, base).href);
+        await page.goto(ownerUrl);
         await page.waitForSelector('[data-cjdoc-member-filter]');
       }
       const started = performance.now();

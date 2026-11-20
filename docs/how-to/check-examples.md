@@ -53,6 +53,11 @@ public func add(left: Int64, right: Int64): Int64 {
 }
 ~~~
 
+这里两个 `@example` 分别检查，可以使用不同的指令。若要把同一个用例的准备步骤和调用分开展示，把两个 `cangjie` 围栏写在同一个 `@example` 下，见[多用例写法](../reference/doc-comments.md#示例)。
+
+围栏语言必须是小写 `cangjie`，可以用反引号或波浪线；`cj` 只高亮，不供检查。空的 `cangjie` 围栏也不算代码。
+配置 `[i18n]` 时，无语言限定的示例属于默认语言；`@example[lang=en]` 是独立用例，即使同标题也不和默认语言配对。`--check-examples` 检查两条，变量不能跨用例使用。
+
 保存后再次检查：
 
 ```bash
@@ -75,6 +80,10 @@ cjdoc generate --project . --format html --check-examples --output target/doc-ch
 
 `check` 只做检查，不写 HTML、Markdown 或 JSON。HTML 页面显示作者写下的示例代码和预期输出，不显示逐例通过标记，也没有执行徽章；示例是否真的编译、运行过，只能看这两条命令的诊断和退出码。
 
+同一个 `{run}` 用例省略 `output` 时只要求正常退出，不比较 stdout；写一个空的 `output` 围栏则要求没有 stdout。只编译的用例不要写 `output`。
+
+HTML 将代码和预期输出放在同一个单元里。你可以独立复制两部分；即使长输出已折叠，「复制输出」也会复制全文。教程和短例对照可选[其他布局](../reference/doc-comments.md#html-示例布局)，不影响检查。
+
 ## 4. 按诊断码处理失败
 
 | 诊断码 | 含义 | 处理 |
@@ -84,7 +93,7 @@ cjdoc generate --project . --format html --check-examples --output target/doc-ch
 | `CJDOC3030` | 编译器错误落在示例代码上 | 检查片段里的标识符、类型和语句位置 |
 | `CJDOC3031` | 错误落在所属项目或源文件；超过 256 个示例时也报这个码 | 先让 `cjpm build` 和普通 `cjdoc check` 通过 |
 | `CJDOC3033` | 示例指令本身写错 | 见下表 |
-| `CJDOC3032` | `@example` 中没有 `cangjie` 代码围栏（warning） | 补上围栏；写了指令的示例还会同时得到 `CJDOC3070` |
+| `CJDOC3032` | `@example` 中没有非空的小写 `cangjie` 围栏（warning） | 补上可编译代码；只有 `output` 不算。有指令的示例还会同时得到 `CJDOC3070` |
 | `CJDOC3070` | 写了指令但没得到预期检查结果 | 例如预期失败实际编译成功、`error="…"` 指定的文字没出现在编译错误中，或示例因环境原因没被真正检查 |
 | `CJDOC3073` | 单次运行超过 10 秒被终止 | 缩短示例，或把长时间计算移出注释示例 |
 | `CJDOC3074` | 无法构建可执行文件或建立内存限制 | 换一个支持该能力的平台或环境，或去掉 `run` |
@@ -106,6 +115,8 @@ error[CJDOC3072]: @example '计算两个整数之和' output mismatch: expected 
 
 命令以 `1` 结束。比较时统一换行符并忽略首尾空行，中间的空格、标点和行数必须完全一致。先比较两段文本，然后修改函数让行为符合说明，或修改围栏让预期符合真实输出，再重新检查。不要删除示例来让检查通过。
 
+诊断优先显示示例标题；无标题时显示声明限定名。若希望仅有 warning 时也返回失败，使用 `--deny-warnings`。
+
 ## 资源上限
 
 每次检查最多编译 256 个示例，超出后停止并报告 `CJDOC3031`（`example compilation stopped after 256 examples`）。带 `run` 的示例另有固定上限：
@@ -120,5 +131,6 @@ error[CJDOC3072]: @example '计算两个整数之和' output mismatch: expected 
 
 ## 下一步
 
+- [PocketKit 的文档注释示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#示例与输出)：对照四种检查方式与生成页面。
 - [检查文档质量](check-quality.md)：读取覆盖率报告并设置发布门槛。
 - [生成并发布文档](generate-and-publish.md)：输出六种格式并发布站点。

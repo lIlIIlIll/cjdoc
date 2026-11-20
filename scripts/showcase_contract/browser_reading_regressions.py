@@ -6,11 +6,15 @@ from contextlib import ExitStack
 import json
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser import serve
 from .browser_support import member_action, member_toc_link
+from .browser_routes import check_canonical_api_routes
 from .browser_reading_navigation import run_navigation_regressions
+from .offline import ARCHIVE, extract_archive
+from .routes import public_api_file
 from .site import Site, load_json
 from showcase_build.manifest import roots
 
@@ -180,8 +184,9 @@ def check_member_filters_and_actions(page):
     field = _member_filters(page)
     field.fill("find")
     expect(_visible_members(page)).to_have_count(2)
-    expect(page.locator(".cj-member-row:not([hidden]) > details[data-cjdoc-member]")).to_have_count(2)
-    for row in page.locator(".cj-member-row[hidden]").all():
+    expect(page.locator(".cj-member-row:visible > details[data-cjdoc-member]")).to_have_count(2)
+    for row in page.locator(".cj-member-row:has(> details[data-cjdoc-member][hidden])").all():
+        expect(row).to_be_hidden()
         expect(row.locator(".cj-member-actions")).to_be_hidden()
     _toc_matches_content(page)
     hidden_open = page.locator("[data-cjdoc-member][hidden][open]").count()
@@ -390,6 +395,14 @@ def check_no_script_member_links(browser, member_url: str):
         context.close()
 
 
+def _owner_file(site: Site, scope: Path, target: dict, index: dict) -> str:
+    identity = target["resolved"]["ownerSymbolId"]
+    owner, = (entry for entry in index["entries"] if entry["id"] == identity)
+    relative = scope.relative_to(site.root).as_posix()
+    return public_api_file(site, {**target, "index": relative + "/navigation-index.json"},
+                           {"href": relative + "/" + owner["href"], "symbolId": identity})
+
+
 def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
         expect_site_sha256: str | None = None):
     from playwright.sync_api import sync_playwright
@@ -415,10 +428,18 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
             options["channel"] = channel
         browser = playwright.chromium.launch(**options)
         try:
+            with TemporaryDirectory(prefix="cjdoc-reading-offline-") as temporary:
+                offline = extract_archive(site.file(ARCHIVE), Path(temporary) / "site", site)
+                check_canonical_api_routes(browser, site, offline, bases)
+            print("reading regression: canonical API routes and historical aliases", flush=True)
             for target_index, target in enumerate(feature["targets"]):
                 language_roots = roots(site.root, target["locale"])
                 current_index = load_json(language_roots[target["version"]] / "symbol-index.json")
                 old_index = load_json(language_roots["demo-v1"] / "symbol-index.json")
+                owner_file = _owner_file(site, language_roots[target["version"]], target, current_index)
+                old_owner_file = _owner_file(site, language_roots["demo-v1"], target, old_index)
+                resolved = target["resolved"]
+                member_anchor = urlsplit(resolved["href"]).fragment
                 for mode, base in bases.items():
                     for width, height in ((1440, 960), (390, 844)):
                         key = f"{target['locale']}-{target['version']}-{mode.strip('/') or 'root'}-{width}"
@@ -430,14 +451,15 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
                         errors = []
                         page.on("pageerror", lambda error: errors.append(str(error)))
                         try:
-                            assertions = run_reading_regressions(page, base + target["resolved"]["href"])
-                            assertions += run_navigation_regressions(page, base + target["resolved"]["href"],
-                                                                    current_index, old_index,
-                                                                    target["resolved"]["ownerSymbolId"],
-                                                                    target["resolved"]["symbolId"],
-                                                                    base + language_roots["demo-v1"].relative_to(site.root).as_posix() + "/")
+                            owner_url = base + owner_file
+                            member_url = owner_url + "#" + member_anchor
+                            assertions = run_reading_regressions(page, member_url)
+                            assertions += run_navigation_regressions(
+                                page, member_url, current_index, old_index, resolved["ownerSymbolId"],
+                                resolved["symbolId"], base + old_owner_file, owner_url,
+                                base + resolved["memberPageHref"])
                             if target_index == 0 and width == 390:
-                                check_no_script_member_links(browser, base + target["resolved"]["href"])
+                                check_no_script_member_links(browser, member_url)
                                 assertions.append("touch member links navigate without JavaScript")
                             if errors:
                                 raise AssertionError("; ".join(errors))

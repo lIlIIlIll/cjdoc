@@ -7,20 +7,11 @@ import std.fs.*
 import std.io.*
 import std.process.*
 import std.sort.*
-import std.unicode.*
 import yjson.*
 
 internal func isSafeRootName(rootName: String): Bool {
     !rootName.isEmpty() && rootName != "." && rootName != ".." &&
         !rootName.contains("/") && !rootName.contains("\\") && !rootName.contains(":")
-}
-
-internal func portableFileNameKey(name: String): String {
-    var trimmed = name
-    while (trimmed.endsWith(".") || trimmed.endsWith(" ")) {
-        trimmed = trimmed[..trimmed.size - 1]
-    }
-    trimmed.toLower()
 }
 
 internal func collidesWithInternalSibling(rootName: String): Bool {

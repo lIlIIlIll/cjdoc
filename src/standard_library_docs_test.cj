@@ -365,8 +365,7 @@ class StandardLibraryMemberSignatureDocsTest {
 private func standardLibraryMemberSummary(artifacts: Array<standard_library_render.RenderArtifact>,
     name: String): String {
     let marker = "data-member-name=\"" + name + "\""
-    for (artifact in artifacts where artifact.path.startsWith("html/symbols/") &&
-        artifact.content.contains(marker)) {
+    for (artifact in artifacts where canonicalHtmlBody(artifact) && artifact.content.contains(marker)) {
         return artifact.content.split(marker, 2)[1].split("<summary", 2)[1].split("</summary>", 2)[0]
     }
     throw IllegalArgumentException("expected generated member summary is missing")

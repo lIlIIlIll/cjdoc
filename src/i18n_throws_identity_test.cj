@@ -8,7 +8,9 @@ import std.unittest.testmacro.*
 
 private func localizedThrowsHtml(documentation: api_model.DocumentationSet, locale: String): String {
     for (artifact in api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: locale)) {
-        if (artifact.path.startsWith("html/symbols/") && artifact.content.contains("<dl class=\"cj-throws\"")) { return artifact.content }
+        if (canonicalHtmlBody(artifact) && artifact.content.contains("<dl class=\"cj-throws\"")) {
+            return artifact.content
+        }
     }
     throw IllegalArgumentException("missing symbol HTML artifact")
 }

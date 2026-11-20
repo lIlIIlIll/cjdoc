@@ -106,7 +106,10 @@ class ChirCompilerOptionsTest(unittest.TestCase):
             types = [(number, "#int64"), (text, "#struct-string"),
                      (array, "#struct-arrayt"), (array["arguments"][0], "#int64"),
                      (function["returnType"], "#int64")]
-            html = "\n".join(page.read_text(encoding="utf-8") for page in (output / "symbols").glob("*.html"))
+            index = json.loads((output / "symbol-index.json").read_text(encoding="utf-8"))
+            destinations = [row["href"] for row in index["entries"] if row["id"] == function["id"]]
+            self.assertEqual(destinations, ["core_links/accept/index.html"])
+            html = (output / destinations[0]).read_text(encoding="utf-8")
             for value, anchor in types:
                 with self.subTest(type=value["spelling"]):
                     self.assertEqual(value["semanticState"], "resolved")

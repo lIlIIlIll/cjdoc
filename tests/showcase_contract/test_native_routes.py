@@ -59,6 +59,28 @@ class NativeRouteTests(unittest.TestCase):
         self.assertEqual(result["memberPageHref"], self.fixture.page_name)
         self.assertEqual(result["semanticState"], "partial")
 
+    def test_committed_language_mount_preserves_member_identity_and_scope(self):
+        f = self.fixture
+        f.index_name = "demo/en/navigation-index.json"
+        f.target["index"] = f.index_name
+        f.page["href"] = "types/Bag/add/index.html"
+        f.index["pages"][1]["href"] = "types/Bag/index.html"
+        f.save_index()
+        body = f'<body data-cjdoc-symbol-id="{self.declaration["id"]}">Member</body>'
+        scoped = "demo/en/types/Bag/add/index.html"
+        mounted = "demo/types/Bag/add/index.html"
+        declaration = '<html lang="en">{canonical}' + body + '</html>'
+        write(f.site, scoped, declaration.format(canonical='<link rel="canonical" href="../../../../types/Bag/add/">'))
+        write(f.site, mounted, declaration.format(canonical=""))
+        self.owner = "demo/en/types/Bag/index.html"
+        write(f.site, self.owner, self.owner_html.replace(
+            'href="generated-route.html"', 'href="../../../types/Bag/add/index.html"'))
+        self.assertEqual(self.resolved()["memberPageHref"], mounted)
+        self.assertEqual(self.resolved()["href"], self.owner + "#" + self.anchor)
+        write(f.site, mounted, declaration.format(canonical="").replace(self.declaration["id"], "other-id"))
+        with self.assertRaisesRegex(ContractError, "does not name the same declaration"):
+            self.resolved()
+
     def test_same_title_overloads_join_by_full_signature_and_id(self):
         self.fixture.target["signature"] = "public func add(value: String): Unit"
         self.fixture.target["placement"] = "page"

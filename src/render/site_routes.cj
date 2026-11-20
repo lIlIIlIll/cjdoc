@@ -23,10 +23,14 @@ internal class PublishedLanguageRoute {
 private func addPublishedLanguageRoute(routes: ArrayList<PublishedLanguageRoute>,
     files: HashMap<String, LanguageHtmlPage>, route: PublishedLanguageRoute): Unit {
     let parts = route.href.split("#", 2)
-    let file = files.get(route.language + ":" + parts[0])
-    if (file.isNone()) { return }
-    if (parts.size == 2 && !file.getOrThrow().anchorMembership.contains(escapeHtml(parts[1]))) { return }
-    routes.add(route)
+    let page = match (files.get(route.language + ":" + parts[0])) {
+        case Some(value) => value
+        case None => return
+    }
+    if (parts.size == 2 && !page.anchorMembership.contains(escapeHtml(parts[1]))) { return }
+    let href = if (parts.size == 2) { page.file + "#" + parts[1] } else { page.file }
+    routes.add(PublishedLanguageRoute(route.language, href, pageId: route.pageId, symbolId: route.symbolId,
+        sectionId: route.sectionId, ownerSymbolId: route.ownerSymbolId))
 }
 
 protected func documentationHtmlAnchors(content: String): Array<String> {
@@ -61,9 +65,12 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
                 pageId: Some("package:" + pkg.source.moduleId + ":" + pkg.source.name)))
         }
         for (symbol in projection.visibleSymbols) {
-            let href = symbolUrl(projection.visibleIndex, symbol)
-            addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, href, symbolId: Some(symbol.id), ownerSymbolId: symbol.ownerId))
-            let page = href.split("#", 2)[0]
+            let page = match (inventory.symbolFiles.get(language + ":" + symbol.id)) {
+                case Some(physical) => physical.route
+                case None => continue
+            }
+            addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, page,
+                symbolId: Some(symbol.id), ownerSymbolId: symbol.ownerId))
             for (kind in ["parameters", "return", "throws"]) {
                 addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, page + "#" + docBlockAnchor(symbol, kind),
                     symbolId: Some(symbol.id), sectionId: Some(kind), ownerSymbolId: Some(symbol.id)))
@@ -86,24 +93,25 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
                 }
             }
         }
+        for (published in inventory.pages where published.language == language && published.pageId.isSome()) {
+            if (files[language + ":" + published.route].entry != published.entry) { continue }
+            routes.add(PublishedLanguageRoute(language, published.file, pageId: published.pageId))
+        }
         let anchors = HashMap<String, (String, ?String)>()
-        let contexts = HashMap<String, String>()
         for (symbol in projection.visibleSymbols) {
-            contexts[symbolPagePath(symbol)] = symbol.id
             anchors[symbolAnchor(symbol)] = (symbol.id, None<String>)
             for (kind in ["parameters", "return", "throws"]) { anchors[docBlockAnchor(symbol, kind)] = (symbol.id, Some(kind)) }
             if (let Some(comment) <- symbol.documentation) {
                 for (tag in comment.tags where !tag.fieldId.isEmpty()) { anchors[documentationFieldAnchor(tag.fieldId)] = (symbol.id, Some(tag.fieldId)) }
             }
         }
-        for (published in inventory.pages where published.language == language &&
-            published.route.startsWith("symbols/")) {
-            let page = published.route
-            let owner = contexts.get(page)
+        for (published in inventory.pages where published.language == language) {
+            if (files[language + ":" + published.route].entry != published.entry) { continue }
+            let owner = published.symbolId
             if (owner.isNone()) { continue }
             for (anchor in published.anchors) {
                 if (let Some((symbolId, sectionId)) <- anchors.get(anchor)) {
-                    routes.add(PublishedLanguageRoute(language, page + "#" + anchor,
+                    routes.add(PublishedLanguageRoute(language, published.file + "#" + anchor,
                         pageId: Some("context:" + owner.getOrThrow()), symbolId: Some(symbolId), sectionId: sectionId,
                         ownerSymbolId: Some(symbolId)))
                 }
@@ -114,7 +122,7 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
 }
 
 internal func languagePositionRoutes(routes: ArrayList<PublishedLanguageRoute>, fromLanguage: String,
-    fromPage: String, targetLanguage: String): String {
+    fromPage: String, currentFile: String, targetLanguage: String): String {
     let out = RenderTextBuffer(); out.append("{")
     var first = true
     let anchors = ArrayList<String>()
@@ -125,7 +133,7 @@ internal func languagePositionRoutes(routes: ArrayList<PublishedLanguageRoute>, 
         let parts = route.href.split("#", 2)
         if (parts.size != 2 || parts[0] != fromPage) { continue }
         if (let Some(target) <- targetById.get(route.identity())) {
-            let href = pageRootPrefix(fromPage) + "../" + targetLanguage + "/" + target.href
+            let href = pageRootPrefix(currentFile) + target.href
             if (!destinations.contains(parts[1])) { anchors.add(parts[1]) }
             destinations[parts[1]] = href
         }

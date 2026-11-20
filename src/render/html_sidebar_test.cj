@@ -57,16 +57,17 @@ class HtmlSidebarNavigationTest {
         }
         let documentation = sidebarFixtureDocumentation(moduleId, "fixture",
             declarations.toArray())
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let packagePath = packagePagePath(moduleId, "fixture")
+        let selectedPath = projection.symbolFileHref(selected.getOrThrow().id)
         let html = renderSidebarHtml(projection, Some(packagePath),
-            selected, Some(symbolPagePath(selected.getOrThrow())))
+            selected, Some(selectedPath))
 
         // The current declaration stays in the bounded server-rendered branch;
         // its full index keeps declarations outside the window reachable without scripts.
         @Expect(html.contains("data-cjdoc-tree-item=\"package\""))
         @Expect(html.contains("data-cjdoc-current-symbol=\"sidebar-269\""))
-        @Expect(html.contains("data-cjdoc-current-page=\"${symbolPagePath(selected.getOrThrow())}\""))
+        @Expect(html.contains("data-cjdoc-current-page=\"${selectedPath}\""))
         @Expect(html.contains("zz_Last"))
         @Expect(html.contains("aria-current=\"page\""))
         @Expect(html.contains("cj-tree__link--ancestor"))
@@ -113,21 +114,21 @@ class HtmlSidebarNavigationTest {
                 provenance: SourceProvenance.unavailable("no_project_repository"))],
             declarations: [outer, inner, member])
         validateDocumentationSet(documentation)
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let packagePath = packagePagePath(moduleId, packageName)
+        let outerPath = projection.symbolFileHref(outer.id)
         for (current in [inner, member]) {
-            let currentPath = symbolPagePath(current)
+            let currentPath = projection.symbolFileHref(current.id)
             let html = renderSidebarHtml(projection, Some(packagePath),
                 Some(current), Some(currentPath))
             @Expect(html.contains("data-cjdoc-current-symbol=\"${outerId}\""))
             @Expect(html.contains("data-cjdoc-current-page=\"${currentPath}\""))
             // The context owner stays a single, reachable ancestor link.
-            @Expect(html.split("href=\"../${symbolPagePath(outer)}\"").size - 1, 1)
+            @Expect(html.split("href=\"../${outerPath}\"").size - 1, 1)
             @Expect(html.contains("cj-tree__link--ancestor"))
             @Expect(!html.contains("aria-current=\"page\""))
-            @Expect(!html.contains("href=\"../${currentPath}\""))
             // Nested declarations stay reachable as fragment links on the owner page.
-            @Expect(html.contains("../${symbolPagePath(outer)}#${symbolAnchor(inner)}"))
+            @Expect(html.contains("../${outerPath}#${symbolAnchor(inner)}"))
         }
     }
 
@@ -143,18 +144,19 @@ class HtmlSidebarNavigationTest {
             SemanticInfo("partial", "ast"), ownerId: Some("type-owner"))
         let documentation = sidebarFixtureDocumentation(moduleId, "fixture",
             [owner, run])
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let packagePath = packagePagePath(moduleId, "fixture")
+        let ownerPath = projection.symbolFileHref(owner.id)
         let html = renderSidebarHtml(projection, Some(packagePath),
-            Some(owner), Some(symbolPagePath(owner)))
+            Some(owner), Some(ownerPath))
 
         @Expect(html.contains("data-cjdoc-tree-item=\"member\""))
         @Expect(html.contains("cj-tree__children"))
-        // The member's own anchor is the fragment; the type link owns the page.
-        @Expect(html.contains("href=\"../${symbolPagePath(owner)}#${symbolAnchor(run)}\""))
+        // On the owner itself, a fragment cannot reload the document or drop its query.
+        @Expect(html.contains("href=\"#${symbolAnchor(run)}\""))
         // Attribute order is fixed by the writer: class, data hook, aria state, href.
         @Expect(html.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
-            "aria-current=\"page\" href=\"../${symbolPagePath(owner)}\">"))
+            "aria-current=\"page\" href=\"../${ownerPath}\">"))
         @Expect(html.contains("data-kind=\"function\""))
     }
 
@@ -234,7 +236,7 @@ class HtmlSidebarIndexTest {
             SemanticInfo("partial", "ast"), ownerId: Some("type-b"))
         let documentation = sidebarFixtureDocumentation(moduleId, "fixture",
             [owner, second, run, stop])
-        let projection = RenderProjection(documentation)
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
         let script = renderSidebarIndexScript(projection, "en")
         let packagePath = packagePagePath(moduleId, "fixture")
 
@@ -244,7 +246,7 @@ class HtmlSidebarIndexTest {
         @Expect(script.contains("\"href\":\"${packagePath}\""))
         @Expect(script.contains("\"types\":{\"type-a\":{\"label\":\"Axis\""))
         @Expect(script.contains("\"kind\":\"class\""))
-        @Expect(script.contains("\"href\":\"${symbolPagePath(second)}\""))
+        @Expect(script.contains("\"href\":\"${projection.symbolFileHref(second.id)}\""))
         // The members array keeps reader display order; the JSON object keys are
         // sorted separately and asserted below.
         @Expect(script.contains("\"members\":[\"member-b\",\"member-a\"]"))
@@ -270,7 +272,8 @@ class HtmlSidebarIndexTest {
             "fixture", moduleId, "public", sidebarFixtureSource(),
             "public class Box", SemanticInfo("partial", "ast"))
         let documentation = sidebarFixtureDocumentation(moduleId, "fixture", [owner])
-        let script = renderSidebarIndexScript(RenderProjection(documentation), "en")
+        let script = renderSidebarIndexScript(
+            RenderProjection(documentation, buildApiRoutes: true), "en")
         // The payload is an external JSON literal: quotes are escaped, never raw.
         @Expect(script.contains("\"label\":\"Box\\\"quoted\\\"\""))
         @Expect(!script.contains("Box\"quoted\""))

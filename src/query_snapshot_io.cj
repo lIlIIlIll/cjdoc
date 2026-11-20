@@ -108,7 +108,7 @@ private func loadQueryMachineManifest(path: Path, text: String, budget: QuerySou
     isLatest!: Bool = false, catalogIdentity!: String = ""): QuerySnapshotInput {
     query_render.validateDocumentationArtifactJson(text, "machine-manifest")
     let manifest = querySnapshotJson(text)
-    // The layout is part of machine-manifest/1, independent of the deployment
+    // Both manifest generations use the same layout, independent of deployment
     // URL: <document-root>/agent/manifest.json with root-relative resource paths.
     if (path.parent.fileName != "agent") {
         throw DocumentationQueryException("unavailable", "manifest_layout", "A machine manifest must be inside the document root's agent directory.")
@@ -157,8 +157,8 @@ private func loadQueryMachineManifest(path: Path, text: String, budget: QuerySou
         throw DocumentationQueryException("unavailable", "required_resource_missing", "The bundle does not contain its Doc IR and inventory.")
     }
     let revision = queryString(manifest, "publicationRevision")
-    let snapshot = query_render.DocumentationReadSnapshot(query_render.decodeDocIr(docIr.getOrThrow()),
-        version: if (revision.isEmpty()) { None } else { Some(revision) })
+    let snapshot = query_render.DocumentationReadSnapshot.readPackaged(query_render.decodeDocIr(docIr.getOrThrow()),
+        if (revision.isEmpty()) { None } else { Some(revision) }, queryString(manifest, "projection"))
     budget.reserveModel(snapshot.encodedDocumentation.size)
     // Physical JSON whitespace cannot change content identity. Both accepted
     // encodings must still exactly represent the frozen publication projection.
@@ -241,7 +241,9 @@ internal func loadDocumentationQuerySources(paths: Array<String>): ArrayList<Que
         budget.reserveFile(text.size)
         let root = querySnapshotJson(text)
         let version = queryString(root, "schemaVersion")
-        if (version == "cjdoc.machine-manifest/1") { result.add(loadQueryMachineManifest(path, text, budget)) }
+        if (version == "cjdoc.machine-manifest/1" || version == "cjdoc.machine-manifest/2") {
+            result.add(loadQueryMachineManifest(path, text, budget))
+        }
         else if (version == "cjdoc.versions/2") { appendQueryVersionSources(result, path, root, budget) }
         else {
             let snapshot = query_render.DocumentationReadSnapshot(query_render.decodeDocIr(text))

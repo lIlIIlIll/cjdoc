@@ -25,6 +25,8 @@ from reader_contract_review import (GUIDE_TASKS, copy_sources, extract_guide_pro
 from reader_corpus import digest, generate_corpus
 from reader_process import measured_process
 from reader_aria_transition import check_aria_pair, register_aria_transition, validate_aria_registration
+from reader_api_routes_transition import (check_route_observer, qualify_api_routes, register_api_route_transition,
+                                          validate_api_route_registration)
 from reader_ir_transition import (TRANSITION_NAME, compare_ir_transition, register_ir_observation,
                                  register_ir_transition)
 from reader_register import register as register_reader, validate_transition_budget
@@ -192,6 +194,7 @@ def write_search_site(site, doc_ir, locale="en", *, body="Searchable body",
     (site / "search-index.js").write_bytes(encoded_script.encode("utf-8"))
     doc_ir_sha = hashlib.sha256(doc_ir_bytes).hexdigest()
     manifest = {
+        "schemaVersion": "cjdoc.machine-manifest/1",
         "projection": "cjdoc.read/1", "pathBase": "document-root",
         "publicationRevision": revision, "snapshotId": snapshot_id,
         "scope": {
@@ -275,6 +278,190 @@ def aria_observation(registration, locale, label):
             "noScript": {"accessibleTree": registration["snapshots"][locale][label]},
         },
     }
+
+
+ROUTE_SYMBOLS = [
+    ("cjdoc:v2:type", "reader_scale.Overload2", "class", "reader_scale/Overload2/index.html"),
+    ("cjdoc:v2:first", "reader_scale.Overload2.choose", "function",
+     "reader_scale/Overload2/choose/~0123456789ab/index.html"),
+    ("cjdoc:v2:second", "reader_scale.Overload2.choose", "function",
+     "reader_scale/Overload2/choose/~abcdef012345/index.html"),
+]
+
+
+def write_route_site(site, doc_ir, locale="en", *, pair=None, addresses=None):
+    """Publish one genuine search site whose manifest and inventory agree."""
+    site = Path(site)
+    (site / "agent").mkdir(parents=True, exist_ok=True)
+    revision = "fixture-revision"
+    projection = "cjdoc.read/2" if pair is None or pair == 2 else "cjdoc.read/1"
+    manifest_version = "cjdoc.machine-manifest/2" if projection == "cjdoc.read/2" else \
+        "cjdoc.machine-manifest/1"
+    doc_ir_bytes = json.dumps(doc_ir, ensure_ascii=False, sort_keys=True,
+                              separators=(",", ":")).encode("utf-8")
+    doc_ir_path = site / "agent/doc-ir.json"
+    doc_ir_path.write_bytes(doc_ir_bytes)
+    doc_ir_sha = hashlib.sha256(doc_ir_bytes).hexdigest()
+    snapshot_id = publisher_snapshot_id(doc_ir_bytes.decode("utf-8"), revision, projection)
+    schema_path = Path(__file__).resolve().parent.parent / "docs/schema/search-index-v11.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    contract = schema_example(schema["$defs"]["searchContract"], schema)
+    entries = []
+    symbols = []
+    for symbol, qualified, kind, default_href in ROUTE_SYMBOLS:
+        href = (addresses or {}).get(symbol, default_href)
+        entries.append({
+            "id": symbol, "canonicalId": symbol, "snapshotId": snapshot_id, "scope": 0,
+            "concept": False, "genericArity": 0, "ownerId": None, "name": qualified.rsplit(".", 1)[-1],
+            "packageName": "reader_scale", "qualifiedName": qualified, "kind": kind,
+            "ownerName": None, "ownerQualifiedName": None, "symbolKey": symbol,
+            "parameterTypes": [] if kind == "class" else ["Choice00" if symbol.endswith("first") else "Choice01"],
+            "returnType": None, "returnCanonical": None, "summary": qualified, "summaryDisplay": qualified,
+            "body": "", "bodyTruncated": False, "href": href, "exposures": [], "externalDocs": [],
+            "bindings": [], "sections": [{"kind": "declaration", "anchor": "cjdoc-section-declaration",
+                                          "text": qualified}],
+            "classification": {"group": None, "tags": []},
+        })
+        symbols.append({
+            "id": symbol, "canonicalId": symbol, "identity": "", "documentSetId": "",
+            "symbolKey": symbol, "name": qualified.rsplit(".", 1)[-1], "qualifiedName": qualified,
+            "kind": kind, "moduleId": "module:reader_scale", "packageName": "reader_scale",
+            "ownerId": None, "visibility": "public", "semanticState": "resolved",
+            "summary": qualified,
+            "source": {"path": "src/api.cj", "start": {"line": 1, "column": 1, "byteOffset": 0},
+                       "end": {"line": 1, "column": 2, "byteOffset": 1}},
+            "href": href, "relations": [], "references": [], "typeNavigations": [],
+        })
+    index = {
+        "schemaVersion": "cjdoc.search-index/11", "profile": "bounded-static",
+        "contract": contract, "projectionId": "pending",
+        "scope": {"snapshotId": snapshot_id, "sourceSnapshotId": snapshot_id,
+                  "publicationRevision": revision, "project": "fixture", "language": locale,
+                  "audience": "external", "cfgProfile": "default", "apiCollectionState": "resolved"},
+        "coverage": {"profile": "bounded-static", "projectionId": "pending", "bodyTextLimit": 2000,
+                     "bodyComplete": True, "truncatedEntries": 0},
+        "modules": [{"moduleId": "module:reader_scale", "moduleName": "reader_scale",
+                     "documentSet": None, "dependency": None,
+                     "dependencyInstanceState": "not_applicable"}],
+        "tags": [], "entries": entries,
+    }
+    encoded_index = json.dumps(index, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    projection_id = projection_fingerprint(index, raw_object_member(encoded_index, "contract"))
+    index["projectionId"] = projection_id
+    index["coverage"]["projectionId"] = projection_id
+    encoded_index = json.dumps(index, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    signatures = {symbol: qualified + "()" for symbol, qualified, *_ in ROUTE_SYMBOLS}
+    encoded_script = (
+        "globalThis.__CJDOC_SEARCH_INDEX__ = " + encoded_index +
+        ";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = " +
+        json.dumps(signatures, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + ";\n")
+    (site / "search-index.json").write_text(encoded_index, encoding="utf-8")
+    (site / "search-index.js").write_bytes(encoded_script.encode("utf-8"))
+    inventory = {
+        "schemaVersion": "cjdoc.symbol-index/2",
+        "project": {"name": "fixture", "audience": "external"},
+        "dependencies": [], "documentSets": [], "entries": symbols,
+    }
+    inventory_bytes = json.dumps(inventory, ensure_ascii=False, sort_keys=True,
+                                 separators=(",", ":")).encode("utf-8")
+    (site / "symbol-index.json").write_bytes(inventory_bytes)
+    inventory_sha = hashlib.sha256(inventory_bytes).hexdigest()
+    manifest = {
+        "schemaVersion": manifest_version, "projection": projection, "pathBase": "document-root",
+        "publicationRevision": revision, "snapshotId": snapshot_id,
+        "scope": {"snapshotId": snapshot_id, "audience": "external", "cfgProfile": "default",
+                  "readingLanguage": locale, "apiCollectionState": "resolved",
+                  "publicationRevision": revision, "documentSet": None},
+        "docIr": {"path": "agent/doc-ir.json", "sha256": doc_ir_sha},
+        "symbolIndex": {"path": "symbol-index.json", "sha256": inventory_sha},
+        "resources": [{"path": "agent/doc-ir.json", "sha256": doc_ir_sha},
+                      {"path": "symbol-index.json", "sha256": inventory_sha, "mediaType": "application/json",
+                       "bytes": len(inventory_bytes)}],
+    }
+    (site / "agent/manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8")
+    return site, search_resource_receipts(site)
+
+
+ROUTE_PAGE = {"qualifiedName": "reader_scale.Overload2", "kind": "class"}
+
+
+def route_tree(page_href, addresses):
+    """Render the shape ``page.locator('main').ariaSnapshot()`` produces."""
+    import posixpath as _posix
+
+    page_dir = _posix.dirname(page_href)
+
+    def relative(target):
+        return _posix.relpath(target, page_dir)
+
+    lines = [
+        "- main:",
+        "  - navigation \"Breadcrumb\":",
+        "    - list:",
+        "      - listitem:",
+        "        - link \"Home\":",
+        "          - /url: " + relative("index.html"),
+        "      - listitem:",
+        "        - link \"Package reader_scale\":",
+        "          - /url: " + relative("packages/package-reader_scale.html"),
+        "  - heading \"Overload2\" [level=1]:",
+        "    - code: Overload2",
+        "  - paragraph: class",
+        "  - button \"Copy link\"",
+        "  - link \"choose 2 overloads\":",
+        "    - /url: " + relative(addresses["cjdoc:v2:first"]) + "#cjdoc-section-declaration",
+        "  - link \"choose value: Choice01\":",
+        "    - /url: " + relative(addresses["cjdoc:v2:second"]) + "#cjdoc-section-declaration",
+        "  - link \"External Int64\":",
+        "    - /url: https://cj-docs.gitcode.com/zh/1.2.0/core_package_intrinsics.html#int64",
+        "  - link \"Guide\":",
+        "    - /url: " + relative("guides/value.html") + "#store-and-read",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+HISTORICAL_ADDRESSES = {symbol: "symbols/symbol-" + symbol.replace(":", "-") + ".html"
+                        for symbol, *_ in ROUTE_SYMBOLS}
+READABLE_ADDRESSES = {symbol: default for symbol, _, _, default in ROUTE_SYMBOLS}
+
+
+def route_profile(root, page_by_side, baseline_resources):
+    """Write a route transition profile and its two snapshot files per locale."""
+    root = Path(root)
+    recipe, source_sha, tasks_sha = "route-reader-recipe", "c" * 64, "d" * 64
+    profile = {"schemaVersion": "cjdoc.reader-api-routes-transition/1", "recipe": recipe,
+               "sourceSha256": source_sha, "taskManifestSha256": tasks_sha,
+               "routeObserver": {"baseline": "a" * 64, "after": "b" * 64},
+               "page": dict(ROUTE_PAGE), "locales": {}}
+    baseline = root / "baseline"
+    baseline.mkdir(parents=True, exist_ok=True)
+    native_locales = []
+    for locale in ("en", "zh-CN"):
+        profile["locales"][locale] = {}
+        browser_name = f"browser-route-{locale}.json"
+        native_locales.append({"locale": locale, "browserReport": browser_name})
+        for label in ("baseline", "after"):
+            page_href, addresses = page_by_side[label]
+            tree = route_tree(page_href, addresses)
+            name = f"route-{label}-{locale}.aria.txt"
+            encoded = tree.encode("utf-8")
+            (root / name).write_bytes(encoded)
+            profile["locales"][locale][label] = {"snapshot": name,
+                                                 "sha256": hashlib.sha256(encoded).hexdigest()}
+        before_browser = {"recipe": recipe, "sourceSha256": source_sha, "taskManifestSha256": tasks_sha,
+                          "harness": {"reader-scale-tasks.mjs": "a" * 64},
+                          "environment": {"requestedUiLocale": locale},
+                          "resources": baseline_resources[locale],
+                          "accessibility": {"status": "measured", "noScript": {"accessibleTree": (
+                              root / profile["locales"][locale]["baseline"]["snapshot"]).read_text(
+                                  encoding="utf-8")}}}
+        (baseline / browser_name).write_text(json.dumps(before_browser, sort_keys=True), encoding="utf-8")
+    profile_file = root / "api-routes-profile.json"
+    profile_file.write_text(json.dumps(profile, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    return profile_file, {"recipe": recipe, "sourceSha256": source_sha,
+                          "taskManifestSha256": tasks_sha, "locales": native_locales}
 
 
 def distribution(value):
@@ -1207,6 +1394,182 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     register_reader(missing_baseline, modified_template_path,
                                     doc_ir_transition=TRANSITION_NAME)
+
+    def route_pair(self, root, *, after_addresses=None):
+        """Publish genuine old/current products and freeze the readable transition."""
+        before_ir, after_ir = ir_transition_pair()
+        addresses = {"baseline": HISTORICAL_ADDRESSES, "after": after_addresses or READABLE_ADDRESSES}
+        sites, page_by_side = {}, {}
+        for label, doc_ir in (("baseline", before_ir), ("after", after_ir)):
+            page_by_side[label] = (addresses[label]["cjdoc:v2:type"], addresses[label])
+            for locale in ("en", "zh-CN"):
+                sites[(locale, label)] = write_route_site(
+                    Path(root) / f"{label}-{locale}", doc_ir, locale,
+                    pair=1 if label == "baseline" else 2, addresses=addresses[label])
+        profile_root = Path(root) / "profile"
+        baseline_resources = {locale: sites[(locale, "baseline")][1] for locale in ("en", "zh-CN")}
+        profile_file, native = route_profile(
+            profile_root, {side: page_by_side["baseline"] for side in page_by_side}, baseline_resources)
+        registration = register_api_route_transition(
+            profile_file, profile_root / "baseline", native,
+            {locale: sites[(locale, "baseline")][0] for locale in ("en", "zh-CN")},
+            REPO_SCHEMA, profile_root)
+        return registration, sites, native
+
+    def _observation(self, registration, locale, label):
+        return {"recipe": registration["profile"]["recipe"],
+                "sourceSha256": registration["profile"]["sourceSha256"],
+                "taskManifestSha256": registration["profile"]["taskManifestSha256"],
+                "environment": {"requestedUiLocale": locale},
+                "accessibility": {"status": "measured",
+                                  "noScript": {"accessibleTree":
+                                               registration["snapshots"][locale][label] if label == "baseline"
+                                               else route_tree(READABLE_ADDRESSES["cjdoc:v2:type"],
+                                                               READABLE_ADDRESSES)}}}
+
+    def test_registered_route_transition_proves_only_the_address_mapping(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registration, sites, _ = self.route_pair(directory)
+            profile = validate_api_route_registration(registration)
+            self.assertEqual(set(profile["locales"]), {"en", "zh-CN"})
+            for locale in ("en", "zh-CN"):
+                before_site, before_resources = sites[(locale, "baseline")]
+                after_site, after_resources = sites[(locale, "after")]
+                qualification = qualify_api_routes(registration, locale, before_site, after_site,
+                                                   before_resources, after_resources, REPO_SCHEMA,
+                                                   doc_ir_transition=True)
+                qualification.check_trees(self._observation(registration, locale, "baseline"),
+                                          self._observation(registration, locale, "after"))
+                qualification.check_search_payload(paired_snapshot=True)
+                # The old opaque file and the readable directory are the same
+                # declaration; only their address spelling differs.
+                self.assertEqual(
+                    qualification.normalize_hrefs("baseline", [HISTORICAL_ADDRESSES["cjdoc:v2:first"]]),
+                    qualification.normalize_hrefs("after", [READABLE_ADDRESSES["cjdoc:v2:first"]]))
+                self.assertEqual(qualification.page_href("after"),
+                                 READABLE_ADDRESSES["cjdoc:v2:type"])
+
+    def test_route_observation_allows_only_the_registered_observer_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registration, _, _ = self.route_pair(directory)
+            profile = validate_api_route_registration(registration)
+        before = {"reader-scale-tasks.mjs": "a" * 64, "metrics": "pinned"}
+        after = {"reader-scale-tasks.mjs": "b" * 64, "metrics": "pinned"}
+        check_route_observer(profile, before, after)
+        check_route_observer(profile, after, after)
+        with self.assertRaisesRegex(ValueError, "unexpected route observer"):
+            check_route_observer(profile, before, before)
+        with self.assertRaisesRegex(ValueError, "other browser instrumentation changed"):
+            check_route_observer(profile, before, {**after, "metrics": "changed"})
+
+    def test_route_transition_rejects_unproven_targets_and_ranking_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registration, sites, _ = self.route_pair(directory)
+            before_site, before_resources = sites[("en", "baseline")]
+            after_site, after_resources = sites[("en", "after")]
+            qualification = qualify_api_routes(registration, "en", before_site, after_site,
+                                               before_resources, after_resources, REPO_SCHEMA,
+                                               doc_ir_transition=True)
+            tree = self._observation(registration, "en", "after")
+            altered = deepcopy(tree)
+            altered["accessibility"]["noScript"]["accessibleTree"] = altered["accessibility"][
+                "noScript"]["accessibleTree"].replace("~0123456789ab", "~ffffffffffff")
+            with self.assertRaises(ValueError):
+                qualification.check_trees(self._observation(registration, "en", "baseline"), altered)
+            # The same declarations in the same order pair across the mapping.
+            baseline_hrefs = [HISTORICAL_ADDRESSES["cjdoc:v2:first"],
+                              HISTORICAL_ADDRESSES["cjdoc:v2:second"]]
+            after_hrefs = [READABLE_ADDRESSES["cjdoc:v2:first"],
+                           READABLE_ADDRESSES["cjdoc:v2:second"]]
+            self.assertEqual(qualification.normalize_hrefs("baseline", baseline_hrefs),
+                             qualification.normalize_hrefs("after", after_hrefs))
+            # A reordered first-20 list is still a ranking change.
+            self.assertNotEqual(qualification.normalize_hrefs("baseline", baseline_hrefs),
+                                qualification.normalize_hrefs("after", list(reversed(after_hrefs))))
+            # HTTP directory form and offline index.html form are the same declaration.
+            self.assertEqual(qualification.normalize_hrefs(
+                "after", [READABLE_ADDRESSES["cjdoc:v2:first"].replace("/index.html", "/")]),
+                qualification.normalize_hrefs("after", [READABLE_ADDRESSES["cjdoc:v2:first"]]))
+            # An address that is not the other side's spelling stays literal.
+            self.assertEqual(qualification.normalize_hrefs("after", ["elsewhere/value.html"]),
+                             ["site:elsewhere/value.html"])
+            external = "https://example.test/" + READABLE_ADDRESSES["cjdoc:v2:first"]
+            self.assertEqual(qualification.normalize_hrefs("after", [external]),
+                             ["literal:" + external])
+
+    def test_route_registration_rejects_forged_bijection_and_ordered_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registration, _, _ = self.route_pair(directory)
+            altered = deepcopy(registration)
+            altered["baseline"]["en"]["symbols"][0]["href"] = "elsewhere/index.html"
+            with self.assertRaises(ValueError):
+                validate_api_route_registration(altered)
+            altered = deepcopy(registration)
+            altered["baseline"]["en"]["linkTargets"] = altered["baseline"]["en"]["linkTargets"][:-1]
+            with self.assertRaises(ValueError):
+                validate_api_route_registration(altered)
+            duplicate = deepcopy(registration)
+            rows = duplicate["baseline"]["en"]["symbols"]
+            rows[1]["href"] = rows[0]["href"]
+            with self.assertRaises(ValueError):
+                validate_api_route_registration(duplicate)
+            changed_snapshot = deepcopy(registration)
+            changed_snapshot["snapshots"]["en"]["after"] += "unregistered"
+            with self.assertRaises(ValueError):
+                validate_api_route_registration(changed_snapshot)
+
+    def test_route_transition_rejects_baseline_without_inventory_evidence(self):
+        """The route transition requires both independent publisher inventories."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registration, sites, native = self.route_pair(root)
+            for locale in ("en", "zh-CN"):
+                site = sites[(locale, "baseline")][0]
+                manifest = json.loads((site / "agent/manifest.json").read_text(encoding="utf-8"))
+                manifest.pop("symbolIndex")
+                manifest["resources"] = [row for row in manifest["resources"]
+                                         if row["path"] != "symbol-index.json"]
+                (site / "agent/manifest.json").write_text(
+                    json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                    encoding="utf-8")
+                (site / "symbol-index.json").unlink()
+                sites[(locale, "baseline")] = (site, search_resource_receipts(site))
+            with self.assertRaisesRegex(ValueError, "machine symbol inventory is required"):
+                register_api_route_transition(
+                    root / "profile/api-routes-profile.json", root / "profile/baseline", native,
+                    {locale: sites[(locale, "baseline")][0] for locale in ("en", "zh-CN")},
+                    REPO_SCHEMA, root / "profile")
+
+    def test_route_transition_requires_identical_declaration_sets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registration, sites, _ = self.route_pair(root)
+            before_site, before_resources = sites[("en", "baseline")]
+            after_site, _ = sites[("en", "after")]
+            altered = root / "altered"
+            shutil.copytree(after_site, altered)
+            inventory = json.loads((altered / "symbol-index.json").read_text(encoding="utf-8"))
+            inventory["entries"] = [row for row in inventory["entries"]
+                                    if row["id"] != "cjdoc:v2:second"]
+            payload = json.dumps(inventory, ensure_ascii=False, sort_keys=True,
+                                 separators=(",", ":")).encode("utf-8")
+            (altered / "symbol-index.json").write_bytes(payload)
+            manifest = json.loads((altered / "agent/manifest.json").read_text(encoding="utf-8"))
+            manifest["symbolIndex"]["sha256"] = hashlib.sha256(payload).hexdigest()
+            for row in manifest["resources"]:
+                if row["path"] == "symbol-index.json":
+                    row["sha256"] = hashlib.sha256(payload).hexdigest()
+                    row["bytes"] = len(payload)
+            (altered / "agent/manifest.json").write_text(
+                json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8")
+            with self.assertRaises(ValueError):
+                qualify_api_routes(registration, "en", before_site, altered, before_resources,
+                                   search_resource_receipts(altered), REPO_SCHEMA,
+                                   doc_ir_transition=True)
+
+
+REPO_SCHEMA = Path(__file__).resolve().parent.parent / "docs/schema"
 
 
 @unittest.skipUnless(os.name == "posix" and hasattr(os, "wait4"), "POSIX process-tree evidence only")

@@ -135,7 +135,8 @@ class AdmonitionRenderTest {
         let documentation = admonitionTestDocumentation(ownerComment, memberComment)
         let artifacts = renderDocumentationFormatsWithOptions(documentation, ["html", "markdown"],
             locale: "en")
-        let ownerHtml = admonitionArtifact(artifacts, "html/" + symbolPagePath(documentation.declarations[0]))
+        let ownerHtml = admonitionArtifact(artifacts, "html/" + RenderProjection(documentation,
+            buildApiRoutes: true).symbolFileHref(documentation.declarations[0].id))
         @Expect(ownerHtml.contains("data-admonition-level=\"note\" aria-label=\"Note\""), true)
         let summary = admonitionMemberSummary(ownerHtml, ADMONITION_RENDER_MEMBER)
         @Expect(summary.contains("<span class=\"cj-risks\">"), true)

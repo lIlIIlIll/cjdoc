@@ -50,10 +50,15 @@ def _script_literal(path: Path, name: str, prefix: str = "") -> str:
     return _decode_script_text(source.split(marker, 1)[1].split('\n"""', 1)[0]) + "\n"
 
 
+def canonical_api_route_script() -> str:
+    return _script_literal(SCRIPT.parent.parent / "src/render/html_scripts.cj", "HTML_API_LINK_SCRIPT")
+
+
 def canonical_search_script() -> str:
     """search.js bytes, in the order renderers_output.cj concatenates them."""
     render = SCRIPT.parent.parent / "src/render"
-    return (_script_literal(render / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
+    return (canonical_api_route_script()
+            + _script_literal(render / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
             + _script_literal(render / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_SCRIPT")
             + _script_literal(render / "html_scripts.cj", "HTML_SEARCH_CONTROLLER_SCRIPT")
             + _script_literal(render / "html_script_reading.cj", "HTML_READING_SCRIPT")
@@ -99,6 +104,14 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             canonical_symbol_alias_script(), encoding="utf-8", newline="\n"
         )
         canonical_id = "cjdoc:v2:fixture:example"
+        declaration_path = "Fixture/example/index.html"
+        declaration = root / declaration_path
+        declaration.parent.mkdir(parents=True)
+        body = index.replace('data-cjdoc-route="overview" data-cjdoc-page="home"',
+                             f'data-cjdoc-route="api" data-cjdoc-page="symbol" data-cjdoc-symbol-id="{canonical_id}"')
+        body = body.replace('src="', 'src="../../').replace(
+            'data-cjdoc-root-prefix=""', 'data-cjdoc-root-prefix="../../"')
+        declaration.write_text(body, encoding="utf-8")
         entry = {
             "id": canonical_id,
             "canonicalId": canonical_id,
@@ -121,7 +134,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             "summaryDisplay": "A fixture summary.",
             "body": "A fixture summary.",
             "bodyTruncated": False,
-            "href": "index.html#top",
+            "href": declaration_path,
             "exposures": [],
             "sections": [],
             "externalDocs": [],
@@ -180,7 +193,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             }],
             "types": {canonical_id: {
                 "label": "example", "kind": "function", "kindLabel": "function",
-                "href": "index.html", "members": [canonical_id + ":member"],
+                "href": declaration_path, "members": [canonical_id + ":member"],
             }},
             "members": {canonical_id + ":member": {
                 "label": "example()", "kind": "function", "kindLabel": "function",
@@ -274,10 +287,12 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             alias = root / "api.html"
             alias.write_text(
                 f'<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="{CSP}">'
-                '</head><body data-cjdoc-route="symbol-alias"><a data-cjdoc-alias-target href="index.html">API</a>'
+                '</head><body data-cjdoc-route="symbol-alias">'
+                '<a data-cjdoc-alias-target href="Fixture/example/index.html">API</a>'
                 '<script src="symbol-alias.js" defer></script></body></html>', encoding="utf-8")
             self.assertEqual(self.validate(root).returncode, 0)
-            alias.write_text(alias.read_text(encoding="utf-8").replace('href="index.html"', 'href="missing.html"'), encoding="utf-8")
+            alias.write_text(alias.read_text(encoding="utf-8").replace(
+                'href="Fixture/example/index.html"', 'href="missing.html"'), encoding="utf-8")
             self.assertIn("broken local link", self.validate(root).stderr)
             (root / "symbol-alias.js").write_text("location.replace('https://evil.test')", encoding="utf-8")
             alias.unlink()

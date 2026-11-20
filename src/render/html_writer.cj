@@ -123,8 +123,9 @@ internal struct TrustedHtml {
 
     private init(value: String) { this.value = value }
 
-    static func capture(body: (HtmlWriter) -> Unit): TrustedHtml {
-        let writer = HtmlWriter()
+    static func capture(body: (HtmlWriter) -> Unit, apiRoutes!: ?ApiHtmlRoutes = None,
+        unprefixedApiLocale!: String = ""): TrustedHtml {
+        let writer = HtmlWriter(apiRoutes: apiRoutes, unprefixedApiLocale: unprefixedApiLocale)
         body(writer)
         TrustedHtml(writer.toString())
     }
@@ -174,9 +175,14 @@ private func validHtmlAttributeName(name: String): Bool {
 internal class HtmlWriter {
     private let out: RenderTextBuffer
     private let openElements = ArrayList<String>()
+    let apiRoutes: ?ApiHtmlRoutes
+    let unprefixedApiLocale: String
 
-    init(limit!: Int64 = RENDER_ARTIFACT_LIMIT) {
+    init(limit!: Int64 = RENDER_ARTIFACT_LIMIT, apiRoutes!: ?ApiHtmlRoutes = None,
+        unprefixedApiLocale!: String = "") {
         out = RenderTextBuffer(limit: limit)
+        this.apiRoutes = apiRoutes
+        this.unprefixedApiLocale = unprefixedApiLocale
     }
 
     func doctype(): Unit {

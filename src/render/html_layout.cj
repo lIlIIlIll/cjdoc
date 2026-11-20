@@ -119,15 +119,17 @@ private func appendTreeToggle(w: HtmlWriter, controlsId: String, name: String,
     w.close("button")
 }
 
-private func appendSidebarMember(w: HtmlWriter, owner: SymbolDoc, member: SymbolDoc,
-    rootPrefix: String): Unit {
+private func appendSidebarMember(w: HtmlWriter, ownerHref: String, member: SymbolDoc): Unit {
     // A member row is never a branch, so it carries no key the scripts resolve;
     // the full identity stays in its link, which is what navigation copies.
+    let anchor = symbolAnchor(member)
+    let destination = if (ownerHref.isEmpty()) { SafeUrl.fragment(anchor) }
+        else { SafeUrl.siteRoute(ownerHref + "#" + anchor) }
     w.open("li", attrs: [htmlClass("cj-tree__item"),
         htmlAttr("data-cjdoc-tree-item", "member")])
     w.element("div", [htmlClass("cj-tree__row")], { row =>
-        row.open("a", attrs: [htmlClass("cj-tree__link"), htmlHref(SafeUrl.siteRoute(
-            rootPrefix + symbolPagePath(owner) + "#" + symbolAnchor(member)))])
+        row.open("a", attrs: [htmlClass("cj-tree__link"), htmlHref(destination),
+            htmlFlag("data-cjdoc-api-link")])
         appendTreeKind(row, member.kind)
         row.textElement("span", htmlContextLabel(member),
             attrs: [htmlClass("cj-tree__label")])
@@ -142,19 +144,23 @@ private func appendSidebarMembers(w: HtmlWriter, projection: RenderProjection,
     if (entries.isEmpty()) { return }
     var active: Int64 = -1
     for (index in 0..entries.size) {
-        if (sidebarPageIsCurrent(symbolPagePath(entries[index].symbol), currentPagePath)) {
+        if (sidebarPageIsCurrent(projection.symbolFileHref(entries[index].symbol.id), currentPagePath)) {
             active = index
             break
         }
     }
     let (start, end) = sidebarWindow(entries.size, active)
     let partial = end - start < entries.size
+    let ownerHref = projection.publicSymbolHref(rootPrefix, owner.id)
+    let memberHref = if (sidebarPageIsCurrent(projection.symbolFileHref(owner.id), currentPagePath)) {
+        ""
+    } else { ownerHref }
     w.open("ul", attrs: sidebarChildrenAttrs(treeChildrenId(owner.id), partial))
     for (index in start..end) {
-        appendSidebarMember(w, owner, entries[index].symbol, rootPrefix)
+        appendSidebarMember(w, memberHref, entries[index].symbol)
     }
     if (partial) {
-        appendSidebarMore(w, rootPrefix + symbolPagePath(owner),
+        appendSidebarMore(w, ownerHref,
             label(locale, "All members", "全部成员"))
     }
     w.close("ul")
@@ -163,7 +169,7 @@ private func appendSidebarMembers(w: HtmlWriter, projection: RenderProjection,
 private func appendSidebarType(w: HtmlWriter, projection: RenderProjection,
     symbol: SymbolDoc, labels: HashMap<String, String>, rootPrefix: String,
     currentId: String, currentPagePath: ?String, locale: String): Unit {
-    let path = symbolPagePath(symbol)
+    let path = projection.symbolFileHref(symbol.id)
     let isCurrent = sidebarPageIsCurrent(path, currentPagePath)
     let isAncestor = !isCurrent && !currentId.isEmpty() && symbol.id == currentId
     let labelText = labels.get(symbol.id).getOrDefault({ => htmlContextLabel(symbol) })
@@ -179,7 +185,7 @@ private func appendSidebarType(w: HtmlWriter, projection: RenderProjection,
                 locale)
         }
         row.open("a", attrs: treeLinkAttrs(treeLinkClass(isAncestor), isCurrent,
-            rootPrefix + path))
+            projection.publicApiPrefix(rootPrefix) + path))
         appendTreeKind(row, symbol.kind)
         row.textElement("span", labelText, attrs: [htmlClass("cj-tree__label")])
         row.close("a")
@@ -295,6 +301,7 @@ internal func appendHtmlSidebar(w: HtmlWriter, projection: RenderProjection,
         htmlAttr("aria-label", label(locale, "Documentation navigation", "文档导航")),
         htmlAttr("tabindex", "-1"),
         htmlAttr("data-cjdoc-root-prefix", rootPrefix),
+        htmlAttr("data-cjdoc-api-prefix", projection.publicApiPrefix(rootPrefix)),
         htmlAttr("data-cjdoc-current-symbol", currentId),
         htmlAttr("data-cjdoc-current-page", currentPagePath.getOrDefault({ => "" }))])
     w.element("div", [htmlClass("cj-sidebar__head")], { head =>
@@ -340,7 +347,7 @@ internal func appendHtmlSidebar(w: HtmlWriter, projection: RenderProjection,
 }
 
 private func appendShellHeader(w: HtmlWriter, documentation: DocumentationSet,
-    rootPrefix: String, locale: String, docVersion: ?String): Unit {
+    rootPrefix: String, apiPrefix: String, locale: String, docVersion: ?String): Unit {
     w.open("header", attrs: [htmlClass("cj-header")])
     w.open("div", attrs: [htmlClass("cj-header__inner")])
     w.open("button", attrs: [htmlClass("cj-button cj-button--icon cj-header__menu"),
@@ -356,6 +363,7 @@ private func appendShellHeader(w: HtmlWriter, documentation: DocumentationSet,
     })
     w.open("button", attrs: [htmlClass("cj-search-trigger"), htmlAttr("type", "button"),
         htmlFlag("data-cjdoc-search-trigger"), htmlAttr("data-cjdoc-root-prefix", rootPrefix),
+        htmlAttr("data-cjdoc-api-prefix", apiPrefix),
         htmlAttr("aria-haspopup", "dialog"), htmlAttr("aria-expanded", "false"),
         htmlFlag("hidden")])
     w.icon("search")
@@ -431,11 +439,15 @@ internal func appendPageStart(w: HtmlWriter, title: String, rootPrefix: String,
     locale!: String = "en", currentPackagePath!: ?String = None,
     currentRoute!: String = "overview", docVersion!: ?String = None,
     currentSymbol!: ?SymbolDoc = None, agentReadable!: Bool = false,
-    alternateMarkdown!: ?String = None, currentPagePath!: ?String = None): Unit {
+    alternateMarkdown!: ?String = None, currentPagePath!: ?String = None,
+    canonical!: ?String = None, generatedPageId!: ?String = None): Unit {
     w.doctype()
     w.open("html", attrs: [htmlAttr("lang", locale)])
     w.open("head")
     appendHeadLinks(w, rootPrefix, title, agentReadable, alternateMarkdown)
+    if (let Some(path) <- canonical) {
+        w.void("link", attrs: [htmlAttr("rel", "canonical"), htmlHref(SafeUrl.siteRoute(path))])
+    }
     appendScriptElement(w, rootPrefix + "search-index.js", deferred: true)
     appendScriptElement(w, rootPrefix + "sidebar-index.js", deferred: true)
     appendScriptElement(w, rootPrefix + "search.js", deferred: true)
@@ -446,11 +458,13 @@ internal func appendPageStart(w: HtmlWriter, title: String, rootPrefix: String,
         case Some(value) => bodyAttrs.add(htmlAttr("data-cjdoc-doc-version", value))
         case None => ()
     }
+    if (let Some(id) <- generatedPageId) { bodyAttrs.add(htmlAttr("data-cjdoc-page-id", id)) }
+    if (let Some(symbol) <- currentSymbol) { bodyAttrs.add(htmlAttr("data-cjdoc-symbol-id", symbol.id)) }
     bodyAttrs.add(htmlAttr("data-cjdoc-page", pageRole(currentRoute, currentSymbol)))
     w.open("body", attrs: bodyAttrs.toArray())
     w.element("a", [htmlClass("cj-skip-link"), htmlHref(SafeUrl.fragment("cjdoc-main"))],
         { skip => skip.text(label(locale, "Skip to content", "跳到正文")) })
-    appendShellHeader(w, documentation, rootPrefix, locale, docVersion)
+    appendShellHeader(w, documentation, rootPrefix, projection.publicApiPrefix(rootPrefix), locale, docVersion)
     w.open("div", attrs: [htmlClass("cj-layout")])
     w.open("button", attrs: [htmlClass("cj-drawer-backdrop"), htmlAttr("type", "button"),
         htmlFlag("data-cjdoc-menu-backdrop"), htmlFlag("hidden"),

@@ -9,7 +9,9 @@ internal func loadVersionLanguageRoutes(site: VersionSite, files: ArrayList<Vers
     let anchors = HashMap<String, HashSet<String>>()
     for (file in files where file.path.endsWith(".html")) {
         let ids = HashSet<String>()
-        for (id in public_render.documentationHtmlAnchors(String.fromUtf8(file.bytes))) { let _ = ids.add(id) }
+        let html = String.fromUtf8(file.bytes)
+        for (id in public_render.documentationHtmlAnchors(html)) { let _ = ids.add(id) }
+        registerVersionApiDirectory(site, file.path, html)
         anchors[file.path] = ids
     }
     for (file in files where file.path == "site-manifest.json") {
@@ -49,6 +51,61 @@ internal func loadVersionLanguageRoutes(site: VersionSite, files: ArrayList<Vers
                 }
                 site.sectionIdsByPage[parts[0]][parts[1]] = identity
             }
+        }
+    }
+    // The explicit default-language body remains a package resource, not a
+    // second destination. Only match the generated counterpart of a manifest entry.
+    let prefix = "html/" + site.defaultLanguage + "/"
+    for (file in files where file.path.startsWith(prefix) && file.path.endsWith("/index.html")) {
+        let canonical = "html/" + file.path.removePrefix(prefix)
+        if (let Some(identity) <- site.logicalIdentityByHref.get(canonical)) {
+            let html = String.fromUtf8(file.bytes)
+            let id = public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-symbol-id")
+            let pageId = public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-page-id")
+            if (identity.language != site.defaultLanguage || identity.symbolId != id ||
+                identity.pageId != pageId || (id.isNone() && pageId.isNone())) { continue }
+            site.logicalIdentityByHref[file.path] = identity
+            if (let Some(sections) <- site.sectionIdsByPage.get(canonical)) {
+                let verified = HashMap<String, VersionLogicalIdentity>()
+                for ((anchor, section) in sections where anchors[file.path].contains(anchor)) {
+                    verified[anchor] = section
+                }
+                site.sectionIdsByPage[file.path] = verified
+            }
+        }
+    }
+}
+
+private func registerVersionApiDirectory(site: VersionSite, file: String, html: String): Unit {
+    if (file.endsWith("/index.html") &&
+        (public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-symbol-id").isSome() ||
+            public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-page-id").isSome())) {
+        let _ = site.apiDirectoryFiles.add(file)
+    }
+}
+
+internal func loadMonolingualVersionRoutes(site: VersionSite, files: ArrayList<VersionSourceFile>): Unit {
+    for (file in files where file.path == "index.html") {
+        let html = String.fromUtf8(file.bytes)
+        site.defaultLanguage = if (html.contains("<html lang=\"zh-CN\"")) { "zh-CN" } else { "en" }
+    }
+    for (file in files where file.path.endsWith("/index.html") || site.symbols.idByHref.contains(file.path)) {
+        let html = String.fromUtf8(file.bytes)
+        registerVersionApiDirectory(site, file.path, html)
+        if (let Some(pageId) <- public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-page-id")) {
+            let identity = VersionLogicalIdentity(site.defaultLanguage, pageId: Some(pageId))
+            site.logicalRoutes[identity.key()] = file.path
+            site.logicalIdentityByHref[file.path] = identity
+        }
+        if (let Some(id) <- site.symbols.idByHref.get(file.path)) {
+            let identity = VersionLogicalIdentity(site.defaultLanguage, symbolId: Some(id))
+            site.logicalRoutes[identity.key()] = file.path
+            if (let Some(owner) <- site.symbols.ownerById.get(id)) {
+                site.parentsByIdentity[identity.key()] = VersionLogicalIdentity(site.defaultLanguage, symbolId: Some(owner))
+            }
+            let ids = HashSet<String>()
+            for (anchor in public_render.documentationHtmlAnchors(html)) { let _ = ids.add(anchor) }
+            site.monoAnchors[file.path] = ids
         }
     }
 }
@@ -102,6 +159,19 @@ internal func versionLanguageTarget(current: VersionSite, identity: VersionLogic
     }
     if (let Some(href) <- versionIdentityRouteInDefaultLanguage(target, identity)) {
         return VersionNavigationTarget(href, VersionNavigationState.MissingLanguage)
+    }
+    if (identity.symbolId.isSome() && (identity.sectionId.isSome() || identity.pageId.isSome())) {
+        let canonical = identity.canonicalSymbolIdentity()
+        if (let Some(page) <- versionIdentityRouteInDefaultLanguage(target, canonical)) {
+            if (let Some(source) <- versionIdentityRoute(current, identity)) {
+                let parts = source.split("#", 2)
+                if (parts.size == 2 && target.monoAnchors.get(page).map({ ids => ids.contains(parts[1]) }).getOrDefault({ => false })) {
+                    let state = if (target.defaultLanguage == identity.language) { VersionNavigationState.Exact }
+                        else { VersionNavigationState.MissingLanguage }
+                    return VersionNavigationTarget(page + "#" + parts[1], state)
+                }
+            }
+        }
     }
     let state = versionLanguageFallbackState(identity, target)
     var parent = current.parentsByIdentity.get(identity.key())

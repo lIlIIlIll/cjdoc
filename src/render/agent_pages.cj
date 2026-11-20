@@ -10,12 +10,12 @@ internal class AgentPageMarkdownProjection {
     private let assets: ArrayList<AssetDoc>
     private let rootAssets: HashMap<String, String>
     private let nestedAssets: HashMap<String, String>
-    private let symbolIndex: HashMap<String, SymbolDoc>
+    private let projection: RenderProjection
 
     init(documentation: DocumentationSet, projection: RenderProjection, locale: String) {
         this.documentation = documentation
         this.locale = locale
-        symbolIndex = projection.visibleIndex
+        this.projection = projection
         pages = selectedDocumentationPages(documentation, locale)
         assets = projectAssets(documentation, projection, pages: pages)
         rootAssets = buildAssetLookup(assets)
@@ -30,9 +30,9 @@ internal class AgentPageMarkdownProjection {
         let (tree, _) = capturedPageMarkdownWithoutMarkers(page.markdown, page)
         let out = RenderTextBuffer()
         appendMarkdownNodeMarkdown(out, tree.getOrThrow(), lookup, 1, pagePath: outputPath,
-            symbolIndex: Some(symbolIndex), canonicalHtml: true, capturedLinks: Some(links))
-        appendCapturedPageBindingsMarkdown(out, page, documentation, locale,
-            pagePath: Some(outputPath), canonicalHtml: true)
+            symbolIndex: Some(projection.visibleIndex), canonicalHtml: projection.apiRoutes, capturedLinks: Some(links))
+        appendCapturedPageBindingsMarkdown(out, page, projection, locale,
+            canonicalPagePath: Some(outputPath))
         out.append("\n\n" + label(locale, "Content language: ", "内容语言：") +
             page.language.getOrDefault({ => "unknown" }) + "\n")
         out.toString()
@@ -68,7 +68,7 @@ private func agentPackageMarkdown(context: DocumentationReadSnapshot, pkg: Packa
         for (symbol in group.symbols) {
         out.append("- [")
         appendEscapedMarkdownText(out, symbol.qualifiedName)
-        out.append("](" + encodeMarkdownDestination("../../" + symbolPagePath(symbol)) + ") — [Markdown](" +
+        out.append("](" + encodeMarkdownDestination("../../" + context.projection.symbolFileHref(symbol.id)) + ") — [Markdown](" +
             encodeMarkdownDestination("../../" + agentDeclarationMarkdownPath(symbol)) + ")\n")
     }
     }

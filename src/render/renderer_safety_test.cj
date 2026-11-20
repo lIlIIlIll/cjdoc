@@ -30,6 +30,18 @@ private func rendererSafetyContent(artifacts: Array<RenderArtifact>, path: Strin
     throw IllegalArgumentException("missing renderer safety artifact '${path}'")
 }
 
+// The published declaration body lives at its canonical directory index. The
+// historical `symbols/symbol-*.html` files are redirect aliases, never bodies.
+private func rendererSafetyRoutes(documentation: DocumentationSet): RenderProjection {
+    RenderProjection(documentation, buildApiRoutes: true)
+}
+
+private func rendererSafetyPage(artifacts: Array<RenderArtifact>,
+    documentation: DocumentationSet, symbolId: String): String {
+    let path = rendererSafetyRoutes(documentation).symbolFileHref(symbolId)
+    rendererSafetyContent(artifacts, "html/" + path)
+}
+
 private func rendererSafetyText(artifacts: Array<RenderArtifact>): String {
     let out = StringBuilder()
     for (artifact in artifacts) {
@@ -162,23 +174,23 @@ class RendererSafetyTest {
             "fixture.api", "resolved", targetSymbolId: Some(targetId),
             externalUrl: Some("symbols/target-id.html")),
             literal: "fixture.api", children: [MarkdownNode("text", literal: "API")])
-        let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
-            rendererSafetyDocumentation(MarkdownNode("document", children: [
-                MarkdownNode("paragraph", children: [target])
-            ]))), RENDERER_SAFETY_MARKDOWN_PAGE)
-        let htmlPages = rendererSafetyText(HtmlDocumentationRenderer().render(
-            rendererSafetyDocumentation(MarkdownNode("document", children: [
-                MarkdownNode("paragraph", children: [target])
-            ]))))
-        let html = rendererSafetyContent(HtmlDocumentationRenderer().render(
-            rendererSafetyDocumentation(MarkdownNode("document", children: [
-                MarkdownNode("paragraph", children: [target])
-            ]))), "html/symbol-index.json")
-        @Expect(htmlPages.contains("<a class=\"cj-type-link\" href=\"../symbols/target-id.html\">API</a>"), true)
+        let document = rendererSafetyDocumentation(MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [target])
+        ]))
+        let pagePath = rendererSafetyRoutes(document).symbolFileHref(
+            document.declarations[0].id)
+        let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(document),
+            RENDERER_SAFETY_MARKDOWN_PAGE)
+        let htmlPages = rendererSafetyText(HtmlDocumentationRenderer().render(document))
+        let html = rendererSafetyContent(HtmlDocumentationRenderer().render(document),
+            "html/symbol-index.json")
+        // The author-supplied external URL is rebased from the body's real depth.
+        @Expect(htmlPages.contains("<a class=\"cj-type-link\" href=\"" +
+            pageRootPrefix(pagePath) + "symbols/target-id.html\">API</a>"), true)
         @Expect(!htmlPages.contains("data-reference-state"), true)
         @Expect(markdown.contains("<a id=\"symbol-${htmlStableSlug(targetId)}\"></a>"), true)
         @Expect(markdown.contains("[API](#symbol-${htmlStableSlug(targetId)})"), true)
-        @Expect(html.contains("\"href\":\"symbols/"), true)
+        @Expect(html.contains("\"href\":\"" + pagePath + "\""), true)
         @Expect(rendererSafetyContent(HtmlDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document"))),
             "html/search-index.json").contains("cjdoc"), true)
@@ -434,9 +446,10 @@ class RendererSafetyTest {
             ]),
             MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Additional details.")])
         ])
-        let artifacts = HtmlDocumentationRenderer().render(rendererSafetyDocumentation(markdown))
-        let symbol = rendererSafetyDocumentation(markdown).declarations[0]
-        let html = rendererSafetyContent(artifacts, "html/${symbolPagePath(symbol)}")
+        let documentation = rendererSafetyDocumentation(markdown)
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let symbol = documentation.declarations[0]
+        let html = rendererSafetyPage(artifacts, documentation, symbol.id)
 
         @Expect(html.split("Unique summary text.").size, 2)
         @Expect(html.contains("<p>Additional details.</p>"), true)
@@ -458,13 +471,14 @@ class RendererSafetyTest {
             "aria-current=\"page\" href=\"../packages/"), true)
         @Expect(packageHtml.contains("data-cjdoc-sidebar-tree"), true)
         let symbol = documentation.declarations[0]
-        let functionPage = rendererSafetyContent(artifacts, "html/${symbolPagePath(symbol)}")
+        let symbolPath = rendererSafetyRoutes(documentation).symbolFileHref(symbol.id)
+        let functionPage = rendererSafetyContent(artifacts, "html/" + symbolPath)
         // Only the current package's types are server-rendered; the function page
         // keeps the package branch and its own symbol link in that branch.
         @Expect(functionPage.contains("<a class=\"cj-tree__link cj-tree__link--ancestor\" " +
-            "data-cjdoc-nav-link href=\"../packages/"), true)
+            "data-cjdoc-nav-link href=\"" + pageRootPrefix(symbolPath) + "packages/"), true)
         @Expect(functionPage.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
-            "aria-current=\"page\" href=\"../symbols/"), true)
+            "aria-current=\"page\" href=\"" + pageRootPrefix(symbolPath) + symbolPath + "\""), true)
         @Expect(functionPage.contains("data-cjdoc-tree-item=\"package\""), true)
         @Expect(functionPage.contains("data-cjdoc-tree-item=\"type\""), true)
         // The old "In this package" context rail is gone; the tree replaces it.
@@ -489,8 +503,8 @@ class RendererSafetyTest {
 
         let containerDocumentation = rendererOwnerDocumentation("class")
         let containerArtifacts = HtmlDocumentationRenderer().render(containerDocumentation)
-        let symbolHtml = rendererSafetyContent(containerArtifacts,
-            "html/${symbolPagePath(containerDocumentation.declarations[0])}")
+        let symbolHtml = rendererSafetyPage(containerArtifacts, containerDocumentation,
+            containerDocumentation.declarations[0].id)
         @Expect(symbolHtml.contains("<span class=\"cj-kind\" data-kind=\"class\">"), true)
         // The API reference layout must use real projected symbols, never a
         // hardcoded demonstration or repeated public badges.
@@ -545,10 +559,18 @@ class RendererSafetyTest {
         let documentation = rendererOwnerDocumentation("class",
             memberDocumentation: Some(comment))
         let artifacts = HtmlDocumentationRenderer().render(documentation)
-        let html = rendererSafetyContent(artifacts,
-            "html/${symbolPagePath(documentation.declarations[0])}")
+        let owner = documentation.declarations[0]
+        let member = documentation.declarations[1]
+        let html = rendererSafetyPage(artifacts, documentation, owner.id)
+        let routes = rendererSafetyRoutes(documentation)
+        let canonical = routes.symbolFileHref(owner.id)
         @Expect(html.contains("<img src=x onerror=alert(1)>"), false)
         @Expect(html.contains("&lt;img src=x onerror=alert(1)&gt;"), true)
+        // A type page's inline member action names that member's own body,
+        // resolved from the type page's real depth rather than its own page.
+        let memberDestination = pageRootPrefix(canonical) + routes.symbolFileHref(member.id)
+        @Expect(memberDestination != pageRootPrefix(canonical) + canonical, true)
+        @Expect(html.contains("data-cjdoc-copy-link=\"" + memberDestination + "\""), true)
     }
 
     @TestCase
@@ -556,11 +578,18 @@ class RendererSafetyTest {
         let documentation = rendererOwnerDocumentation("class")
         let artifacts = HtmlDocumentationRenderer().render(documentation)
         let owner = documentation.declarations[0]
+        let routes = rendererSafetyRoutes(documentation)
+        let canonical = routes.symbolFileHref(owner.id)
         let alias = symbolReadablePagePath(owner)
         @Expect(alias.startsWith("symbols/fixture-Owner-"), true)
-        @Expect(!rendererSafetyContent(artifacts, "html/${symbolPagePath(owner)}").isEmpty(), true)
-        @Expect(rendererSafetyContent(artifacts, "html/${alias}").contains(
-            "href=\"${symbolPagePath(owner)["symbols/".size..]}\""), true)
+        @Expect(!rendererSafetyContent(artifacts, "html/" + canonical).isEmpty(), true)
+        // Both historical links are redirects to the canonical body, never bodies.
+        for (historical in [alias, symbolPagePath(owner)]) {
+            let aliasHtml = rendererSafetyContent(artifacts, "html/" + historical)
+            @Expect(aliasHtml.contains("data-cjdoc-route=\"symbol-alias\""), true)
+            @Expect(!aliasHtml.contains("cj-signature"), true)
+            @Expect(aliasHtml.contains(pageRootPrefix(historical) + canonical), true)
+        }
         let unsafeName = "中文.<script>\"&Owner"
         let first = SymbolDoc("alias-one", "function", "api", unsafeName, "fixture", owner.moduleId,
             "public", owner.source, "public func api(): Unit", SemanticInfo("partial", "ast"))
@@ -568,7 +597,8 @@ class RendererSafetyTest {
             "public", owner.source, "public func api(value: Int64): Unit", SemanticInfo("partial", "ast"))
         @Expect(symbolReadablePagePath(first) != symbolReadablePagePath(overload), true)
         for (byte in symbolReadablePagePath(first).toArray()) { @Expect(byte < 0x80, true) }
-        let unsafeAlias = renderSymbolAlias(first, "zh-CN")
+        let unsafeAlias = renderSymbolAlias(first, "zh-CN", symbolReadablePagePath(first),
+            "fixture/api/index.html", "")
         @Expect(unsafeAlias.contains("<script>\"&Owner"), false)
         @Expect(unsafeAlias.contains("&lt;script&gt;&quot;&amp;Owner"), true)
         let longName = rendererSafetyFenceMarks(marker: "a", count: 47) + ".b"
@@ -588,8 +618,8 @@ class RendererSafetyTest {
             DocTag("example", "", "Example after members.")])
         let documentation = rendererOwnerDocumentation("class", ownerDocumentation: Some(introduction))
         let artifacts = HtmlDocumentationRenderer().render(documentation)
-        let html = rendererSafetyContent(artifacts,
-            "html/${symbolPagePath(documentation.declarations[0])}")
+        let html = rendererSafetyPage(artifacts, documentation,
+            documentation.declarations[0].id)
         let mainHtml = html[html.indexOf("<main ").getOrThrow()..]
         let memberBrowserAt = mainHtml.indexOf("<section class=\"cj-members\" " +
             "data-cjdoc-member-browser").getOrThrow()
@@ -666,7 +696,7 @@ class RendererSafetyTest {
             declarations: [contract, reader, privateReader])
         // The full index has the private target even though the published
         // projection must not. Identity comparison cannot depend on href.
-        let projection = RenderProjection(document)
+        let projection = RenderProjection(document, buildApiRoutes: true)
         @Expect(projection.allIndex.contains(secretId), true)
         @Expect(projection.visibleIndex.contains(secretId), false)
         let links = HtmlTypeLinkIndex(document, projection)
@@ -674,8 +704,8 @@ class RendererSafetyTest {
         @Expect(links.sameUnfilteredTarget(reader.typeRelationships[2].target, secretId), true)
         @Expect(links.sameUnfilteredTarget(reader.typeRelationships[3].target, secretId), true)
         @Expect(links.sameUnfilteredTarget(reader.typeRelationships[2].target, contractId), false)
-        let page = rendererSafetyContent(HtmlDocumentationRenderer().render(document),
-            "html/${symbolPagePath(reader)}")
+        let page = rendererSafetyPage(HtmlDocumentationRenderer().render(document), document,
+            reader.id)
         @Expect(page.contains("<section class=\"cj-relations\" " +
             "aria-label=\"Type and member relationships\">"), true)
         @Expect(page.contains("Relationships</h2>"), true)
@@ -731,8 +761,7 @@ class RendererSafetyTest {
                 symbolIds: [symbol.id])],
             files: [FileDoc("src/generic.cj", moduleId, "fixture")],
             declarations: [symbol])
-        let page = rendererSafetyContent(HtmlDocumentationRenderer().render(doc),
-            "html/${symbolPagePath(symbol)}")
+        let page = rendererSafetyPage(HtmlDocumentationRenderer().render(doc), doc, symbol.id)
         @Expect(page.contains("Array&lt;String&gt;"), true)
         @Expect(page.contains("Array &lt; String &gt;"), false)
         @Expect(page.contains("<pre class=\"cj-signature\" aria-label=\"Signature\"><code"), true)
@@ -931,8 +960,8 @@ class RendererSafetyTest {
                 modules: [ModuleDoc(moduleId, "renderer-safety", "root", "", packageNames: ["fixture"])],
                 packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [symbolId])],
                 files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [symbol])
-            let html = rendererSafetyContent(HtmlDocumentationRenderer().render(documentation),
-                "html/" + symbolPagePath(symbol))
+            let html = rendererSafetyPage(HtmlDocumentationRenderer().render(documentation),
+                documentation, symbol.id)
             let projection = buildDocumentationSearchProjection(DocumentationReadSnapshot(documentation),
                 searchStaticProfileName())
             var hasReturnChapter = false

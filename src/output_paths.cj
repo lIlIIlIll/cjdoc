@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.render.portableFileNameKey
 import std.collection.*
 import std.env.*
 import std.fs.*

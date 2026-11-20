@@ -364,9 +364,9 @@ def publisher_doc_ir_text(encoded: str) -> str:
     return output.getvalue()
 
 
-def publisher_snapshot_id(encoded: str, revision: str) -> str:
+def publisher_snapshot_id(encoded: str, revision: str, projection: str = "cjdoc.read/1") -> str:
     """Recompute logical identity independently of compact/indented storage."""
-    configuration = '\n{"projection":"cjdoc.read/1","publicationRevision":' + json.dumps(
+    configuration = '\n{"projection":' + json.dumps(projection) + ',"publicationRevision":' + json.dumps(
         revision, ensure_ascii=False) + "}"
     fingerprint = hashlib.sha256(publisher_doc_ir_text(encoded).encode("utf-8"))
     fingerprint.update(configuration.encode("utf-8"))
@@ -529,7 +529,8 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
     navigation_root = navigation["root"]
     manifest = load_json(document(root, "agent/manifest.json"))
     check_schema(manifest, schema, "agent/manifest.json")
-    if manifest["pathBase"] != "document-root" or manifest["projection"] != "cjdoc.read/1":
+    if (manifest["pathBase"] != "document-root" or
+            (manifest["schemaVersion"], manifest["projection"]) != ("cjdoc.machine-manifest/2", "cjdoc.read/2")):
         raise ContractError("manifest projection or path base is not the reading contract")
     if manifest["snapshotId"] != navigation_root["scope"]["snapshotId"]:
         raise ContractError("manifest and navigation name different snapshots")
@@ -543,7 +544,7 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
         raise ContractError("manifest and navigation name different API collection states")
 
     encoded = read_text(root, manifest["docIr"]["path"])
-    recomputed = publisher_snapshot_id(encoded, manifest["publicationRevision"])
+    recomputed = publisher_snapshot_id(encoded, manifest["publicationRevision"], manifest["projection"])
     if recomputed != manifest["snapshotId"]:
         raise ContractError(
             f"packaged Doc IR and publication revision produce {recomputed}, "

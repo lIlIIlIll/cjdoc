@@ -1,8 +1,9 @@
 import { test, expect, chromium } from '@playwright/test';
 import { createServer } from 'node:http';
-import { readFile, readdir, writeFile, mkdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {declarationUrl} from './generated-route.mjs';
 
 const root = path.resolve(process.env.CJDOC_HIGHLIGHT_FIXTURE || '');
 if (!process.env.CJDOC_HIGHLIGHT_FIXTURE) throw new Error('CJDOC_HIGHLIGHT_FIXTURE is required');
@@ -14,11 +15,11 @@ let server, origin, sample;
 const themes = ['light', 'dark', 'paper', 'ocean', 'forest', 'terminal', 'violet', 'system'];
 
 test.beforeAll(async () => {
-  for (const name of await readdir(path.join(root, 'symbols'))) {
-    if (!name.endsWith('.html')) continue;
-    const html = await readFile(path.join(root, 'symbols', name), 'utf8');
+  const searchIndex = JSON.parse(await readFile(path.join(root, 'search-index.json'), 'utf8'));
+  for (const entry of searchIndex.entries.filter(item => !item.concept)) {
+    const html = await readFile(path.join(root, entry.href), 'utf8');
     if (html.includes('data-language="python"') && html.includes('cj-page-header--api')) {
-      sample = 'symbols/' + name; break;
+      sample = entry.href; break;
     }
   }
   if (!sample) throw new Error('generated multi-language symbol page missing');
@@ -26,7 +27,8 @@ test.beforeAll(async () => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
       if (!pathname.startsWith('/reference/')) throw new Error('bad prefix');
-      const file = path.resolve(root, '.' + pathname.slice('/reference'.length));
+      const file = path.resolve(root, '.' + pathname.slice('/reference'.length) +
+        (pathname.endsWith('/') ? 'index.html' : ''));
       if (!file.startsWith(root + path.sep)) throw new Error('bad path');
       const body = await readFile(file);
       const extension = path.extname(file);
@@ -257,7 +259,7 @@ test('native browser 200% zoom retains layout, source text and link identity', a
     if (expectedTypeLinks) {
       const target = search.entries.find(entry => entry.name === 'Token' && entry.kind === 'class');
       await linkedPage.locator('.cj-signature code .cj-type-link[data-doc-match="exact"]').first().click();
-      await expect(linkedPage).toHaveURL(origin + '/reference/' + target.href);
+      await expect(linkedPage).toHaveURL(declarationUrl(origin + '/reference/' + target.href));
       await expect(linkedPage.locator('.cj-page-header--api h1')).toHaveText('Token');
       exactTypeClickedAt200Percent = true;
     }

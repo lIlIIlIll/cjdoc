@@ -31,7 +31,8 @@ private func subjectReferenceDocumentation(language: ?String, defaultLanguage: ?
 }
 
 private func subjectReferenceHtmlPage(artifacts: Array<RenderArtifact>): RenderArtifact {
-    for (artifact in artifacts where artifact.path.startsWith("html/symbols/") &&
+    for (artifact in artifacts where artifact.path.startsWith("html/") &&
+        artifact.path.endsWith("/index.html") &&
         artifact.content.contains("cj-see-also__title\">See also</h3>")) { return artifact }
     throw IllegalArgumentException("missing subject-only HTML reference")
 }
@@ -59,8 +60,9 @@ private func verifySubjectReferenceProvenance(documentation: DocumentationSet, s
     let site = renderDocumentationFormatsWithOptions(selected, ["html", "markdown"], locale: "en")
     for (values in [site, HtmlDocumentationRenderer().render(selected)]) {
         let page = subjectReferenceHtmlPage(values)
+        let pagePath = page.path.removePrefix("html/")
         let row = page.content.split("cj-see-also__title\">See also</h3>", 2)[1].split("</ul>", 2)[0]
-        @Expect(row.contains("href=\"../" + page.path.removePrefix("html/") + "\""))
+        @Expect(row.contains("href=\"" + pageRootPrefix(pagePath) + pagePath + "\""))
         @Expect(row.contains("<code>fixture.api</code>"))
         if (!state.isEmpty()) {
             @Expect(row.contains("data-translation-state=\"" + state + "\""))

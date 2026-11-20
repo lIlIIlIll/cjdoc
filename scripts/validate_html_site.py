@@ -20,9 +20,9 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "5e080bebd6ceb96c6fdf44cf4641893b956d90b75640356648eb6f033dd10d75"
+CANONICAL_SEARCH_JS_SHA256 = "52adb81d677db9d4472c8aae3da6097604cacad76c0061dac53252aca41945f0"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "3dc968472190aab99c8a0db38a612cf95640e5a45b88f759d67480aa9fd115fd"
-CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
+CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "601425eaed9db6165c2097148280088c6df3c85a001618e27926e90c54c3e2a4"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 # Every ARIA/form attribute whose value names another element by ID. The reader
 # creates its dialogs on first request, so these references are checked in the
@@ -57,6 +57,9 @@ class PageParser(HTMLParser):
         self.csp_policies: list[str] = []
         self.script_sources: list[str] = []
         self.is_alias = False
+        self.api_identity: str | None = None
+        self.language: str | None = None
+        self.canonical: str | None = None
         self.has_shell = False
         self.idrefs: list[tuple[str, str]] = []
         self.root_prefixes: list[str] = []
@@ -73,8 +76,15 @@ class PageParser(HTMLParser):
                 self.errors.append(f"duplicate attribute {name!r} on <{tag}>")
             seen_attributes.add(name)
         values = {name.lower(): value for name, value in attrs}
+        if lowered_tag == "html":
+            self.language = values.get("lang")
+        if lowered_tag == "link" and values.get("rel") == "canonical":
+            if self.canonical is not None:
+                self.errors.append("duplicate canonical link")
+            self.canonical = values.get("href")
         if lowered_tag == "body":
             self.is_alias = values.get("data-cjdoc-route") == "symbol-alias"
+            self.api_identity = values.get("data-cjdoc-symbol-id") or values.get("data-cjdoc-page-id")
             self.has_shell = "data-cjdoc-page" in values
         if lowered_tag == "style":
             self.errors.append("inline style element is forbidden")
@@ -214,14 +224,13 @@ LAZY_DIALOG_REFERENCES = {
 }
 
 
-def validate_shell_contract(root: Path, pages: dict[Path, PageParser]) -> None:
+def validate_shell_contract(root: Path, pages: dict[Path, PageParser],
+                            prefixes: dict[Path, str] | None = None) -> None:
     """Check the lazy dialog triggers, their root prefix, and ID references."""
     for page, parser in pages.items():
-        if not page.is_relative_to(root):
-            # Linked pages of another language are validated by their own run.
+        if prefixes is None and not page.is_relative_to(root):
             continue
-        relative = page.relative_to(root)
-        name = relative.as_posix()
+        name = page.relative_to(root).as_posix()
         if parser.is_alias:
             continue
         for attribute, target in parser.idrefs:
@@ -236,7 +245,8 @@ def validate_shell_contract(root: Path, pages: dict[Path, PageParser]) -> None:
                 raise ValueError(
                     f"{name}: lazy dialog triggers must only appear on a shell page")
             continue
-        expected_prefix = "../" * len(relative.parent.parts)
+        expected_prefix = (prefixes[page] if prefixes is not None else
+                           "../" * len(page.relative_to(root).parent.parts))
         if len(set(parser.root_prefixes)) != 1:
             raise ValueError(
                 f"{name}: shell controls must share one data-cjdoc-root-prefix")
@@ -345,22 +355,45 @@ def main() -> int:
     if not index.is_file():
         raise ValueError("site must contain index.html")
 
+    # Independent dependency docs keep their own resource root and language.
+    dependency_roots = {path.parent.parent for pattern in ("dependencies/*", "*/dependencies/*")
+                        for path in publication_root.glob(pattern + "/agent/manifest.json")
+                        if (path.parent.parent / "index.html").is_file()}
+    scoped_dependencies = {mount.relative_to(publication_root).parts: mount for mount in dependency_roots}
+
+    def dependency_scope(path: Path) -> Path | None:
+        parts = path.relative_to(publication_root).parts
+        return scoped_dependencies.get(parts[:2]) or scoped_dependencies.get(parts[:3])
+
     pages: dict[Path, PageParser] = {}
-    for page in sorted(root.rglob("*.html")):
+    prefixes: dict[Path, str] = {}
+    for page in sorted(publication_root.rglob("*.html")):
         page_text = page.read_text(encoding="utf-8")
         if any(marker in page_text for marker in ("/home/", "/tmp/", "/Users/")):
-            raise ValueError(f"absolute filesystem path leaked into {page.relative_to(root)}")
+            raise ValueError(f"absolute filesystem path leaked into {page.relative_to(publication_root)}")
         parser = PageParser()
         parser.feed(page_text)
         parser.close()
         if parser.errors:
-            raise ValueError(f"{page.relative_to(root)}: {'; '.join(parser.errors)}")
+            raise ValueError(f"{page.relative_to(publication_root)}: {'; '.join(parser.errors)}")
         if parser.csp_policies != [EXPECTED_CSP]:
             raise ValueError(
-                f"{page.relative_to(root)}: expected one exact CSP meta policy"
+                f"{page.relative_to(publication_root)}: expected one exact CSP meta policy"
             )
-        relative = page.relative_to(root)
+        relative = page.relative_to(publication_root)
         prefix = "../" * len(relative.parent.parts)
+        dependency = dependency_scope(page)
+        if dependency is not None:
+            prefix = "../" * len(page.relative_to(dependency).parent.parts)
+        elif root != publication_root:
+            if parser.language not in {"en", "zh-CN"}:
+                raise ValueError(f"{relative}: missing publication language")
+            if relative.parts[0] == parser.language:
+                prefix = "../" * (len(relative.parent.parts) - 1)
+            else:
+                if not parser.api_identity or relative.name != "index.html":
+                    raise ValueError(f"{relative}: only generated API bodies may be mounted without a language")
+                prefix += parser.language + "/"
         expected_scripts = [
             prefix + "theme-bootstrap.js",
             prefix + "search-index.js",
@@ -374,6 +407,7 @@ def main() -> int:
                 f"{relative}: expected exact canonical script references"
             )
         pages[page.resolve()] = parser
+        prefixes[page.resolve()] = prefix
 
     if not pages:
         raise ValueError("site must contain at least one HTML page")
@@ -382,45 +416,44 @@ def main() -> int:
             target, fragment = resolve_local(publication_root, page, link)
             if target is None:
                 continue
+            if target.is_dir() and link == parser.canonical and urlsplit(link).path.endswith("/"):
+                target = target / "index.html"
+                destination = pages.get(target)
+                if (destination is None or not destination.api_identity or
+                        destination.language != parser.language or
+                        (parser.api_identity and destination.api_identity != parser.api_identity)):
+                    raise ValueError(f"invalid canonical API destination in {page.relative_to(publication_root)}: {link}")
             if not target.is_file():
-                raise ValueError(f"broken local link in {page.relative_to(root)}: {link}")
+                raise ValueError(f"broken local link in {page.relative_to(publication_root)}: {link}")
             if fragment:
                 target_parser = pages.get(target.resolve())
-                if target_parser is None and target.suffix == ".html" and not target.is_relative_to(root):
-                    target_parser = PageParser()
-                    target_parser.feed(target.read_text(encoding="utf-8"))
-                    target_parser.close()
-                    if target_parser.errors:
-                        raise ValueError(f"invalid linked language page: {target.relative_to(publication_root)}")
-                    pages[target.resolve()] = target_parser
+                if target_parser is None and target.suffix == ".html":
+                    raise ValueError(f"linked HTML not in publication: {target.relative_to(publication_root)}")
                 if target_parser is None or fragment not in target_parser.ids:
-                    raise ValueError(f"broken local anchor in {page.relative_to(root)}: {link}")
+                    raise ValueError(f"broken local anchor in {page.relative_to(publication_root)}: {link}")
 
-    script_paths = {
-        path.relative_to(root).as_posix() for path in root.rglob("*.js")
-    }
-    if script_paths != {"search.js", "search-index.js", "sidebar-index.js",
-                        "theme-bootstrap.js", "symbol-alias.js"}:
-        raise ValueError("site must contain only the canonical script set")
-    theme_bootstrap_bytes = (root / "theme-bootstrap.js").read_bytes()
-    if hashlib.sha256(theme_bootstrap_bytes).hexdigest() != CANONICAL_THEME_BOOTSTRAP_JS_SHA256:
-        raise ValueError("theme-bootstrap.js differs from the canonical renderer script")
-    theme_bootstrap = theme_bootstrap_bytes.decode("utf-8")
-    script_bytes = (root / "search.js").read_bytes()
-    if hashlib.sha256(script_bytes).hexdigest() != CANONICAL_SEARCH_JS_SHA256:
-        raise ValueError("search.js differs from the canonical renderer script")
-    script = script_bytes.decode("utf-8")
-    alias_bytes = (root / "symbol-alias.js").read_bytes()
-    if hashlib.sha256(alias_bytes).hexdigest() != CANONICAL_SYMBOL_ALIAS_JS_SHA256:
-        raise ValueError("symbol-alias.js differs from the canonical renderer script")
-    for script_name, script_text in (
-        ("theme bootstrap", theme_bootstrap),
-        ("browser search", script),
-        ("symbol alias", alias_bytes.decode("utf-8")),
-    ):
-        for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
-            if sink in script_text:
-                raise ValueError(f"unsafe {script_name} sink: {sink}")
+    script_roots = {root, *dependency_roots}
+    if root != publication_root:
+        script_roots.update(publication_root / lang for lang in ("en", "zh-CN")
+                            if (publication_root / lang / "index.html").is_file())
+    for scope in sorted(script_roots):
+        script_paths = {
+            path.relative_to(scope).as_posix() for path in scope.rglob("*.js")
+            if dependency_scope(path) in {None, scope}
+        }
+        if script_paths != {"search.js", "search-index.js", "sidebar-index.js",
+                            "theme-bootstrap.js", "symbol-alias.js"}:
+            raise ValueError(f"{scope.relative_to(publication_root)} must contain only the canonical script set")
+        for name, digest in (("theme-bootstrap.js", CANONICAL_THEME_BOOTSTRAP_JS_SHA256),
+                             ("search.js", CANONICAL_SEARCH_JS_SHA256),
+                             ("symbol-alias.js", CANONICAL_SYMBOL_ALIAS_JS_SHA256)):
+            content = (scope / name).read_bytes()
+            if hashlib.sha256(content).hexdigest() != digest:
+                raise ValueError(f"{name} differs from the canonical renderer script")
+            text = content.decode("utf-8")
+            for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+                if sink in text:
+                    raise ValueError(f"unsafe {name} sink: {sink}")
 
     search_text = (root / "search-index.json").read_text(encoding="utf-8")
     search = strict_loads(search_text, description="HTML search index")
@@ -569,6 +602,8 @@ def main() -> int:
         target_parser = pages.get(target.resolve()) if target is not None else None
         if target_parser is None or (fragment and fragment not in target_parser.ids):
             raise ValueError(f"broken search target: {entry['href']}")
+        if not entry["concept"] and target_parser.api_identity != entry["id"]:
+            raise ValueError(f"search target is not the declaration body: {entry['href']}")
     if coverage.get("truncatedEntries") != sum(entry["bodyTruncated"] for entry in entries):
         raise ValueError("search coverage must count the actual truncated entries")
 
@@ -584,7 +619,7 @@ def main() -> int:
     expected_signature_ids = api_canonical_ids | exposure_ids
     if set(signatures) != expected_signature_ids:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")
-    validate_shell_contract(root, pages)
+    validate_shell_contract(publication_root, pages, prefixes)
     validate_sidebar_index(root, pages)
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0

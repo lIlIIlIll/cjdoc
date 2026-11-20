@@ -119,8 +119,11 @@ internal func appendDocumentationIntroductionHtml(w: HtmlWriter, symbol: SymbolD
         case Some(value) => value
         case None => markdownHtmlContext(comment, symbol, headingBase, locale: locale)
     }
+    let hasNotices = hasIntroductionAdmonitions(comment)
+    if (hasNotices) { w.open("div", attrs: [htmlFlag("data-cjdoc-api-intro")]) }
     appendDocumentationIntroductionBodyHtml(w, comment, rootPrefix, assetLookup, locale, markdownContext)
     appendDocumentationAdmonitionsHtml(w, comment, locale, assetLookup, rootPrefix, markdownContext)
+    if (hasNotices) { w.close("div") }
 }
 
 private func appendDocumentationIntroductionBodyHtml(w: HtmlWriter, comment: DocComment,
@@ -244,15 +247,14 @@ private func appendParameterDocumentationHtml(w: HtmlWriter, symbol: SymbolDoc,
         w.text(" ")
         w.open("span", attrs: [htmlClass("cj-params__type")])
         appendTypeRefCodeHtml(w, parameter.typeRef, typeLinkIndex, rootPrefix, locale)
-        match (parameter.defaultExpression) {
-            case Some(defaultExpression) =>
-                w.open("span", attrs: [htmlClass("cj-params__default")])
-                w.text("= ")
-                w.textElement("code", defaultExpression)
-                w.close("span")
-            case None => ()
-        }
         w.close("span")
+        if (let Some(defaultExpression) <- parameter.defaultExpression) {
+            w.text(" ")
+            w.open("span", attrs: [htmlClass("cj-params__default")])
+            w.text("= ")
+            w.textElement("code", defaultExpression)
+            w.close("span")
+        }
         w.close("code")
         w.close("dt")
         appendParameterDescriptionHtml(w, parameter, comment, locale, assets, rootPrefix,
@@ -456,13 +458,14 @@ private func appendTagSubjectHtml(w: HtmlWriter, tag: DocTag,
     var destination: ?String = None
     var title = ""
     if (let Some(navigation) <- tag.navigation) {
-        if (navigation.state == "resolved" &&
-            (!navigation.symbolKey.startsWith("cjdoc:v2:") || index.contains(navigation.symbolKey))) {
-            destination = navigationHref(rootPrefix, navigation.url)
-        }
+        destination = projectedNavigationHref(rootPrefix, navigation, w.apiRoutes,
+            unprefixedLocale: w.unprefixedApiLocale)
         if (destination.isNone()) { title = navigation.reason }
     } else if (let Some(targetId) <- tag.targetSymbolId) {
-        if (let Some(target) <- index.get(targetId)) { destination = navigationHref(rootPrefix, symbolUrl(index, target)) }
+        if (index.contains(targetId)) {
+            destination = w.apiRoutes.flatMap({ routes => routes.filePath(targetId) })
+                .map({ path => publicApiRootPrefix(rootPrefix, w.unprefixedApiLocale) + apiHtmlFileHref(path) })
+        }
     }
     if (let Some(url) <- destination) {
         w.open("a", attrs: documentationHrefAttrs(url, navigation: tag.navigation,
@@ -488,7 +491,7 @@ internal func appendSymbolArticle(w: HtmlWriter,
         htmlAttr("data-cjdoc-toc-role", tocRole),
         htmlAttr("data-cjdoc-toc-label", htmlTocLabel(symbol))])
     if (linkTitle) {
-        w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(rootPrefix + symbolUrl(index, symbol)))])
+        w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(typeLinkIndex.projection.publicSymbolHref(rootPrefix, symbol.id)))])
         w.textElement("code", readerQualifiedName(symbol))
         w.close("a")
     } else {
@@ -501,7 +504,7 @@ internal func appendSymbolArticle(w: HtmlWriter,
         typeLinkIndex, headingBase: 2, locale: locale)
     appendReaderRelationships(w, index, symbol, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
-    appendReverseTypeUsages(w, index, typeLinkIndex, symbol, rootPrefix, locale)
+    appendReverseTypeUsages(w, typeLinkIndex, symbol, rootPrefix, locale)
     w.close("article")
     w.newline()
 }
