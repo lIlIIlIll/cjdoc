@@ -9,7 +9,7 @@
 - 只有声明前紧邻的 `/** ... */` 绑定到该声明；`//` 与 `/* ... */` 不生成文档。
 - 正文按 Markdown 解析。第一段顶层普通段落是摘要，其余顶层普通段落是详细说明；只有标题、列表、引用、代码块等非段落块时，它们全部留在详细说明里，不会提升为摘要。
 - 结构化 `@...` 标签必须位于顶层 Markdown 段落。代码围栏、缩进代码、列表或引用里的同样文字只是正文。
-- 单段标签的说明可以换行续写，空行结束该段并回到正文。`@group`、`@tag` 是单行元数据，示例与语言限定字段各有自己的连续内容规则。
+- 单段标签的说明可以换行续写，空行结束该段并回到正文。`@group`、`@tag`、`@replacement` 是单行元数据；`@deprecated` 可以包含段落和列表。
 - 不认识的 `@...` 保留为普通正文，不要依赖拼错的标签被解释。
 - 默认只展示 `public`、`protected` 声明；`internal`、`private` 由 `--audience` 选择，见[状态与限制](states-and-limits.md#可见范围与快照身份)。
 
@@ -23,6 +23,7 @@
 | `@see 目标 说明` | 相关声明引用 | 目标无法唯一解析时报 `CJDOC3008` 或 lint 规则 |
 | `@since 版本` | 引入版本 | 2–4 段数字，如 `0.1.0`；其他形式报 lint `invalid-since-version` |
 | `@deprecated 说明` | 弃用标记与原因 | 无说明仍保留弃用状态，但报 lint `deprecated-without-message` |
+| `@replacement 限定名` | 可点击的替代 API | 每个声明最多一条，不加语言限定，见[弃用与迁移](#弃用与迁移) |
 | `@author 名称` | 作者 | 可重复 |
 | `@version 版本` | 版本元数据 | 不参与多语言配对 |
 | `@example [标题] {指令}` | 示例标题、指令与随后的代码围栏 | 见[示例](#示例) |
@@ -35,7 +36,28 @@
 | `@summary 摘要` | 显式摘要 | 配置默认语言后，每种语言一项；覆盖首段自动提取，见[多语言注释](#多语言注释) |
 | `@description 说明` | 显式详细说明 | 配置默认语言后，每种语言一项，可含多段或列表，见[多语言注释](#多语言注释) |
 
-行为契约描述作者记录的内容，不是编译器证明、测试回执或兼容性保证。`@since`、`@version`、`@author`、`@group`、`@tag` 是共享元数据，不能加语言限定。
+行为契约描述作者记录的内容，不是编译器证明、测试回执或兼容性保证。`@since`、`@version`、`@author`、`@group`、`@tag`、`@replacement` 是共享元数据，不能加语言限定。
+
+### 弃用与迁移
+
+在声明上写源码 `@Deprecated` 或文档标签 `@deprecated`，HTML 就会在 API 名称或签名旁显示「已弃用」。两者都有时只标一次。未写说明或某种语言没有译文时，弃用状态仍可见；当只有一种语言写了说明时，其他语言的详情可显示带回退标记的原文。
+
+要提供独立的「改用」链接，在同一个注释里写一条 `@replacement`，使用替代 API 的限定名。目标有重载时，加上参数类型列表，如 `pocketkit.TextCatalog.add(String)`。把迁移原因和需要区别处理的返回值写在可翻译的 `@deprecated` 里：
+
+```text
+@replacement pocketkit.TextCatalog.first
+@deprecated 调用 `catalog.first()` 后分别处理三种结果：
+
+- `None`：目录没有条目。
+- `Some("")`：首项存在，但内容为空。
+- `Some(text)`：首项非空，取出 `text`。
+
+@see pocketkit.TextCatalog.isEmpty
+```
+
+把 `@replacement` 放在顶层，和列表、代码围栏等 Markdown 块用空行隔开。它不标记弃用；`@see`、行内代码和源码注解的消息也不生成迁移链接。目标为空、不唯一、指向自己、对当前读者不可见或无法验证时，`CJDOC3138` 指向注释位置，页面仍保留弃用状态与说明。
+
+在 [PocketKit 弃用示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)对照两种结果：`firstTextOrEmpty` 只有徽标，`requireFirstText` 同时提供「改用 `TextCatalog.first()`」。点击旧名称仍打开旧 API。
 
 ### 行为契约
 

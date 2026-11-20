@@ -219,7 +219,7 @@ class HtmlSidebarNavigationTest {
 @Test
 class HtmlSidebarIndexTest {
     @TestCase
-    func publishesVersionTwoNavigationWithSortedKeysAndResolvableTargets(): Unit {
+    func publishesVersionThreeNavigationWithSortedKeysAndResolvableTargets(): Unit {
         let moduleId = "cjdoc:module:v1:sidebar-index"
         let source = sidebarFixtureSource()
         let owner = SymbolDoc("type-b", "class", "Box", "fixture.Box",
@@ -240,7 +240,7 @@ class HtmlSidebarIndexTest {
         let script = renderSidebarIndexScript(projection, "en")
         let packagePath = packagePagePath(moduleId, "fixture")
 
-        @Expect(script.startsWith("globalThis.__CJDOC_SIDEBAR_INDEX__={\"version\":2,"))
+        @Expect(script.startsWith("globalThis.__CJDOC_SIDEBAR_INDEX__={\"version\":3,"))
         @Expect(script.endsWith("}};\n"))
         @Expect(script.contains("\"packages\":[{\"id\":\"${packagePath}\""))
         @Expect(script.contains("\"href\":\"${packagePath}\""))
@@ -263,6 +263,26 @@ class HtmlSidebarIndexTest {
         @Expect(firstMember.getOrThrow() < lastMember.getOrThrow())
         // Hrefs stay root-relative; the browser adds the per-page prefix.
         @Expect(!script.contains("\"href\":\"../"))
+        @Expect(!script.contains("\"deprecated\":"))
+    }
+
+    @TestCase
+    func sidebarIndexOnlyListsVisibleCanonicalDeprecatedDeclarations(): Unit {
+        let moduleId = "cjdoc:module:v1:sidebar-deprecation"
+        let declarations = ArrayList<SymbolDoc>()
+        for ((name, visibility, deprecated) in [
+            ("zed", "public", true), ("normal", "public", false),
+            ("alpha", "public", true), ("hidden", "private", true)
+        ]) {
+            let annotation: Array<AnnotationDoc> = if (deprecated) { [AnnotationDoc("@Deprecated")] } else { [] }
+            declarations.add(SymbolDoc("cjdoc:v2:sidebar:" + name, "function", name, "fixture." + name,
+                "fixture", moduleId, visibility, sidebarFixtureSource(),
+                "${visibility} func ${name}(): Unit", SemanticInfo("partial", "ast"), annotations: annotation))
+        }
+        let documentation = sidebarFixtureDocumentation(moduleId, "fixture", declarations.toArray())
+        let script = renderSidebarIndexScript(RenderProjection(documentation, buildApiRoutes: true), "en")
+        @Expect(script.endsWith("\"deprecated\":{\"cjdoc:v2:sidebar:alpha\":null,\"cjdoc:v2:sidebar:zed\":null}};\n"))
+        @Expect(!script.contains("cjdoc:v2:sidebar:hidden"))
     }
 
     @TestCase

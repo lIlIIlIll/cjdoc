@@ -5,7 +5,7 @@ import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
-private func overloadLayoutDocumentation(): DocumentationSet {
+private func overloadLayoutDocumentation(replacement!: ?String = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:overload-layout"
     let ownerId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aoverload-layout::fixture::class:Catalog#g0()"
     let intId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aoverload-layout::fixture::Catalog::function:add#g0(Int64,Int64)"
@@ -19,6 +19,16 @@ private func overloadLayoutDocumentation(): DocumentationSet {
         arguments: [stringType])
     let owner = SymbolDoc(ownerId, "class", "Catalog", "fixture.Catalog", "fixture",
         moduleId, "public", source, "public class Catalog", SemanticInfo("partial", "ast"))
+    let intTags = ArrayList<DocTag>([
+        DocTag("throws", "IllegalArgumentException", "radix must equal 10"),
+        DocTag("postcondition", "", "new entry matches value.toString()")
+    ])
+    if (let Some(subject) <- replacement) {
+        intTags.add(DocTag("deprecated", "", ""))
+        intTags.add(DocTag("replacement", subject, "", referenceState: "resolved",
+            targetSymbolId: Some(stringId), navigation: Some(TypeNavigation("resolved", "exact", "captured target",
+                symbolKey: stringId, url: historicalSymbolPagePath(stringId)))))
+    }
     let intAdd = SymbolDoc(intId, "function", "add", "fixture.Catalog.add", "fixture",
         moduleId, "public", source, "public func add(value: Int64, radix!: Int64 = 10): Unit",
         SemanticInfo("partial", "ast"), ownerId: Some(ownerId),
@@ -27,10 +37,7 @@ private func overloadLayoutDocumentation(): DocumentationSet {
             ParameterDoc("radix", intType, documentation: Some("Only base ten is supported"),
                 defaultExpression: Some("10"))
         ], documentation: Some(DocComment("raw", "Append an integer", "",
-            MarkdownNode("document"), tags: [
-                DocTag("throws", "IllegalArgumentException", "radix must equal 10"),
-                DocTag("postcondition", "", "new entry matches value.toString()")
-            ])))
+            MarkdownNode("document"), tags: intTags.toArray())))
     let stringAdd = SymbolDoc(stringId, "function", "add", "fixture.Catalog.add", "fixture",
         moduleId, "public", source, "public func add(value!: String = \"<b>\"): Unit",
         SemanticInfo("partial", "ast"), ownerId: Some(ownerId),
@@ -87,6 +94,27 @@ private func routeAllocationProjection(declarations: Array<SymbolDoc>,
 
 @Test
 class HtmlOverloadContractLayoutTest {
+    @TestCase
+    func replayRequiresTheAuthorSelectorToProveTheSameOverload(): Unit {
+        for ((subject, allowed) in [("fixture.Catalog.add(String)", true),
+            ("fixture.Catalog.add", false), ("fixture.Catalog.addAll", false),
+            ("fixture.Catalog.add(Int64, Int64)", false)]) {
+            let documentation = decodeDocIr(encodeDocIr(overloadLayoutDocumentation(
+                replacement: Some(subject))))
+            let projection = RenderProjection(documentation, buildApiRoutes: true)
+            let owner = documentation.declarations[0]
+            let expected = documentation.declarations[2]
+            let ownerPath = projection.symbolFileHref(owner.id)
+            let targetPath = pageRootPrefix(ownerPath) + projection.symbolFileHref(expected.id)
+            let rendered = overloadLayoutContent(HtmlDocumentationRenderer().render(documentation), "html/" + ownerPath)
+            @Expect(rendered.contains(">Some overloads deprecated</span>"))
+            @Expect(rendered.split(">Deprecated</span>").size - 1, 2) // member and sidebar
+            @Expect(rendered.contains("class=\"cj-replacement\" href=\"" + targetPath + "\""), allowed)
+            let firstSummary = rendered.split("cj-member__summary", 2)[1].split("</summary>", 2)[0]
+            @Expect(!firstSummary.contains("cj-replacement"))
+        }
+    }
+
     @TestCase
     func overloadBoundaryDoesNotAbsorbOtherMemberNames(): Unit {
         let documentation = overloadLayoutDocumentation()

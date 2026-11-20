@@ -19,8 +19,9 @@ internal let HTML_SIDEBAR_SCRIPT = """
   const packages = [];
 
   const folded = value => String(value || "").toLowerCase();
-  const typeRecord = typeId => data && data.types ? data.types[typeId] : null;
-  const memberRecord = memberId => data && data.members ? data.members[memberId] : null;
+  const ownRecord = (table, id) => table && Object.hasOwn(table, id) ? table[id] : null;
+  const typeRecord = typeId => ownRecord(data?.types, typeId);
+  const memberRecord = memberId => ownRecord(data?.members, memberId);
   const packageData = id => {
     if (!data || !Array.isArray(data.packages)) return null;
     return data.packages.find(pkg => pkg.id === id) || null;
@@ -36,7 +37,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     item.setAttribute("data-cjdoc-tree-key", key);
     return item;
   };
-  const treeLink = (href, text, kind, ancestor) => {
+  const treeLink = (href, text, kind, ancestor, id) => {
     const isPage = href === currentPage && href.indexOf("#") < 0;
     const link = element("a", ancestor && !isPage ? "cj-tree__link cj-tree__link--ancestor"
       : "cj-tree__link");
@@ -52,6 +53,11 @@ internal let HTML_SIDEBAR_SCRIPT = """
     const name = element("span", "cj-tree__label");
     name.textContent = text;
     link.append(name);
+    if (globalThis.__CJDOC_DEPRECATION__(id) !== undefined) {
+      const status = element("span", "cj-deprecation");
+      status.textContent = isChinese ? "已弃用" : "Deprecated";
+      link.append(status);
+    }
     return link;
   };
   const addChildList = (owner, id) => {
@@ -101,7 +107,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     if (!member) return item;
     const row = element("div", "cj-tree__row");
     row.append(treeLink(type.href + "#" + member.anchor, member.label, member.kind,
-      memberId === currentId));
+      memberId === currentId, memberId));
     item.append(row);
     return item;
   };
@@ -119,7 +125,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
     const item = treeItem("type", typeId);
     const row = element("div", "cj-tree__row");
     item.append(row);
-    row.append(treeLink(type.href, type.label, type.kind, typeId === currentId));
+    row.append(treeLink(type.href, type.label, type.kind, typeId === currentId, typeId));
     if (!Array.isArray(type.members) || !type.members.length) return item;
     const list = addChildList(item, typeId);
     const toggle = addToggle(list, type.label);

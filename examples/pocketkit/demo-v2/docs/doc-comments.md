@@ -209,11 +209,11 @@ a / b
 
 ## 弃用与版本
 
-`requireFirstText` 是教学用的弃用例，不要把弃用标记贴到它推荐的 `first()` 上。用显式摘要控制简述，用详细说明写两个段落和一份列表：
+`requireFirstText` 和 `firstTextOrEmpty` 都会显示「已弃用」。前者用一条 `@replacement` 提供可点击的迁移入口；后者只有源码 `@Deprecated`，因此只显示状态，没有替代链接：
 
 ```text
 @summary 读取第一条非空文本；仅用于演示文档注释。
-@description 这个旧式入口把两种缺失情况转换为异常。新代码应直接调用 `catalog.first()`。
+@description 这个旧式入口把两种缺失情况转换为异常。
 
 它只读取第一项，不会跳过空条目去找下一项。
 
@@ -224,7 +224,13 @@ a / b
 @return 第一条文本，原样返回且不为空。
 @throws[id=empty-catalogue] IllegalStateException 目录中没有条目。
 @throws[id=blank-entry] IllegalArgumentException 第一条文本是空字符串。
-@deprecated 改用 `catalog.first()`：`None` 表示空目录，`Some("")` 表示首项为空；按调用方需要分别处理，其他 `Some(text)` 直接取出 `text`。
+@replacement pocketkit.TextCatalog.first
+@deprecated 调用 `catalog.first()` 后分别处理三种结果：
+
+- `None`：目录没有条目。
+- `Some("")`：首项存在，但内容为空。
+- `Some(text)`：首项非空，取出 `text`。
+
 @see pocketkit.TextCatalog.first
 @see pocketkit.TextCatalog.isEmpty
 @since 0.2.0
@@ -233,9 +239,11 @@ a / b
 @version example-1
 ```
 
-页面上有两行异常、两个作者、两条「另请参阅」链接及可执行的弃用替代建议。`@since` 是引入该 API 的版本；`@version` 是作者给此声明写的版本元数据，不控制站点的版本切换。引入版本和作者版本各写一项，作者可写多项。
+在包的声明表和 `requireFirstText` 详情里，用「改用 `TextCatalog.first()`」打开替代 API。`@see` 中的 `first` 和 `isEmpty` 仍各自出现在「另请参阅」，`isEmpty` 不是迁移建议。`@since` 记录 API 的引入版本；`@version` 记录作者给该声明写的版本，二者都不控制站点版本切换。
 
 <!-- cjdoc-bind target="pocketkit.authoring.requireFirstText" -->
+
+<!-- cjdoc-bind target="pocketkit.authoring.firstTextOrEmpty" -->
 
 ## 分组与分类
 

@@ -186,7 +186,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             encoding="utf-8", newline="\n",
         )
         sidebar = {
-            "version": 2,
+            "version": 3,
             "packages": [{
                 "id": "index.html", "label": "Fixture", "href": "index.html",
                 "types": [canonical_id],
@@ -568,6 +568,32 @@ class ValidateHtmlSiteTest(unittest.TestCase):
                 result = self.validate(root)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("sidebar-index.js", result.stderr)
+
+    def test_deprecation_table_only_reaches_safe_visible_targets(self) -> None:
+        canonical = "cjdoc:v2:fixture:example"
+        good = {canonical: {"label": "Library.modern()", "kind": "exact",
+                           "href": "https://docs.example.test/Library/modern/index.html"}}
+        for records, expected in [
+            ({canonical: None}, True),
+            (good, True),
+            ({"__proto__": None}, False),
+            ({"cjdoc:v2:hidden": None}, False),
+            ({canonical: {"label": "self", "kind": "api", "href": "Fixture/example/index.html"}}, False),
+            ({canonical: {"label": "bad", "kind": "compatible", "href": "javascript:void(0)"}}, False),
+            ({canonical: {"label": "escape", "kind": "api", "href": "%2e%2e/outside.html"}}, False),
+        ]:
+            with self.subTest(records=records), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.write_site(root)
+                source = root / "sidebar-index.js"
+                prefix = "globalThis.__CJDOC_SIDEBAR_INDEX__="
+                sidebar = json.loads(source.read_text(encoding="utf-8")[len(prefix):-2])
+                sidebar["deprecated"] = records
+                source.write_text(prefix + json.dumps(sidebar) + ";\n", encoding="utf-8")
+                result = self.validate(root)
+                self.assertEqual(result.returncode == 0, expected, result.stderr)
+                if not expected:
+                    self.assertIn("sidebar-index.js", result.stderr)
 
     def test_rejects_noncanonical_script_set_and_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

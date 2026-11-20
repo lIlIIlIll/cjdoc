@@ -202,6 +202,7 @@ private func localizedDefaultView(value: DocComment): DocComment {
     result.admonitions.add(all: value.admonitions)
     result.returns = value.returns; result.returnTagCount = value.returnTagCount
     result.throwsTags.add(all: value.throwsTags); result.see.add(all: value.see)
+    result.replacements.add(all: value.replacements)
     result.contracts.add(all: value.contracts)
     result.since = value.since; result.version = value.version; result.deprecated = value.deprecated
     result.authors.add(all: value.authors)

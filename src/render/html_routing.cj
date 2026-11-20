@@ -183,6 +183,15 @@ internal class RenderProjection {
     let topLevelByPackage = HashMap<String, ArrayList<SymbolDoc>>()
     let sidebarLabelsByPackage = HashMap<String, HashMap<String, String>>()
     private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
+    private let documentation: DocumentationSet
+    private var deprecationIndex: ?DeprecationProjection = None
+
+    func deprecations(): DeprecationProjection {
+        if (let Some(index) <- deprecationIndex) { return index }
+        let index = DeprecationProjection(documentation, this)
+        deprecationIndex = Some(index)
+        index
+    }
 
     private let apiGuideIndexes = HashMap<String, CapturedApiGuideIndex>()
 
@@ -227,6 +236,7 @@ internal class RenderProjection {
     init(documentation: DocumentationSet, snapshotId!: String = "",
         buildApiRoutes!: Bool = false, legacyApiRoutes!: Bool = false, apiRoutes!: ?ApiHtmlRoutes = None,
         unprefixedApiLocale!: String = "") {
+        this.documentation = documentation
         this.snapshotId = snapshotId
         this.unprefixedApiLocale = unprefixedApiLocale
         this.sourceReferences = SourceReferenceProjection(documentation)

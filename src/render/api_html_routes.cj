@@ -17,11 +17,13 @@ internal class ApiHtmlChoice {
     let id: String
     let file: String
     let symbols: Array<SymbolDoc>
+    let overloads: Bool
 
-    init(identity: String, directory: String, symbols: Array<SymbolDoc>) {
+    init(identity: String, directory: String, symbols: Array<SymbolDoc>, overloads: Bool) {
         id = "api-choice:" + contractFingerprint(identity)
         file = directory + API_HTML_INDEX
         this.symbols = symbols
+        this.overloads = overloads
     }
 }
 
@@ -288,7 +290,7 @@ private class ApiRouteAllocator {
         if (modules.size < 2 || !claim(candidate)) { return }
         let symbols = ArrayList<SymbolDoc>()
         for (family in group) { symbols.add(all: family.symbols) }
-        choices.add(ApiHtmlChoice("modules:" + candidate, candidate, symbols.toArray()))
+        choices.add(ApiHtmlChoice("modules:" + candidate, candidate, symbols.toArray(), false))
     }
 
     private func claimFamily(directory: String, family: ApiRouteFamily): Bool {
@@ -308,7 +310,7 @@ private class ApiRouteAllocator {
                 claims.reserve(assigned[i])
                 files[family.symbols[i].id] = assigned[i]
             }
-            choices.add(ApiHtmlChoice("overloads:" + family.key, directory, family.symbols.toArray()))
+            choices.add(ApiHtmlChoice("overloads:" + family.key, directory, family.symbols.toArray(), true))
         } else { files[family.symbols[0].id] = file }
         claims.reserve(file)
         family.directory = directory

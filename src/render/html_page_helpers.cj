@@ -129,16 +129,6 @@ internal func appendDocumentationIntroductionHtml(w: HtmlWriter, symbol: SymbolD
 private func appendDocumentationIntroductionBodyHtml(w: HtmlWriter, comment: DocComment,
     rootPrefix: String, assetLookup: HashMap<String, String>, locale: String,
     context: HtmlMarkdownContext): Unit {
-    match (findTag(comment, "deprecated")) {
-        case Some(tag) =>
-            w.open("aside", attrs: [htmlClass("cj-note cj-note--callout")])
-            w.textElement("strong", label(locale, "Deprecated.", "已弃用。"))
-            w.text(" ")
-            appendDocumentationTagHtml(w, tag, locale, assetLookup, rootPrefix, context)
-            w.close("aside")
-            w.newline()
-        case None => ()
-    }
     if (comment.localizationScope != "admonitions" && !comment.localizedTexts.isEmpty()) {
         if (let Some(tag) <- findTag(comment, "description")) {
             w.open("div", attrs: [htmlClass("cj-description")])

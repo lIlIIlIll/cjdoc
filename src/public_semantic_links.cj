@@ -1,22 +1,8 @@
 package cjdoc
 
 import cjdoc.model as public_model
+import cjdoc.model.scopedGenericReference
 import std.collection.*
-
-internal func scopedGenericParameter(owner: public_model.SymbolDoc, name: String,
-    index: HashMap<String, public_model.SymbolDoc>): Bool {
-    var current: ?public_model.SymbolDoc = Some(owner)
-    while (let Some(value) <- current) {
-        for (parameter in value.genericParameters) { if (parameter == name) { return true } }
-        current = match (value.ownerId) { case Some(id) => index.get(id); case None => None }
-    }
-    false
-}
-
-internal func scopedGenericReference(owner: public_model.SymbolDoc, target: String,
-    index: HashMap<String, public_model.SymbolDoc>): Bool {
-    scopedGenericParameter(owner, docReferenceScopeHead(target), index)
-}
 
 private func semanticLinkVisible(symbol: public_model.SymbolDoc, audience: String,
     index: HashMap<String, public_model.SymbolDoc>): Bool {

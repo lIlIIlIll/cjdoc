@@ -1,107 +1,10 @@
 package cjdoc
 
+import cjdoc.model.{docReferenceScopeHead, normalizeTypeSpelling, parseDocReference, referenceKindTakesSignature}
 import std.collection.*
 
-private class ParsedDocReference {
-    let name: String
-    let hasSignature: Bool
-    let parameterTypes: ArrayList<String>
-
-    init(name: String, hasSignature: Bool) {
-        this.name = name
-        this.hasSignature = hasSignature
-        this.parameterTypes = ArrayList<String>()
-    }
-}
-
-func normalizeTypeSpelling(value: String): String {
-    value.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "")
-}
-
-// A reference's leading lexical name is shared by local and dependency binding.
-// Dotted references retain their own leading component; an import alias must
-// not be expanded through a name occupied by a declaration's generic parameter.
-internal func docReferenceScopeHead(reference: String): String {
-    let value = reference.trimAscii()
-    var end = value.size
-    if (let Some(position) <- value.indexOf(".")) { if (position < end) { end = position } }
-    if (let Some(position) <- value.indexOf("(")) { if (position < end) { end = position } }
-    if (let Some(position) <- value.indexOf("<")) { if (position < end) { end = position } }
-    value[..end]
-}
-
-private func splitReferenceParameters(value: String): ?ArrayList<String> {
-    let parameters = ArrayList<String>()
-    if (value.trimAscii().isEmpty()) { return Some(parameters) }
-    let bytes = value.toArray()
-    var start: Int64 = 0
-    var roundDepth: Int64 = 0
-    var squareDepth: Int64 = 0
-    var angleDepth: Int64 = 0
-    var index: Int64 = 0
-    while (index < bytes.size) {
-        match (bytes[index]) {
-            case b'(' => roundDepth++
-            case b')' =>
-                roundDepth--
-                if (roundDepth < 0) { return None }
-            case b'[' => squareDepth++
-            case b']' =>
-                squareDepth--
-                if (squareDepth < 0) { return None }
-            case b'<' => angleDepth++
-            case b'>' =>
-                if (index == 0 || bytes[index - 1] != b'-') {
-                    angleDepth--
-                    if (angleDepth < 0) { return None }
-                }
-            case b',' =>
-                if (roundDepth == 0 && squareDepth == 0 && angleDepth == 0) {
-                    let parameter = value[start..index].trimAscii()
-                    if (parameter.isEmpty()) { return None }
-                    parameters.add(normalizeTypeSpelling(parameter))
-                    start = index + 1
-                }
-            case _ => ()
-        }
-        index++
-    }
-    if (roundDepth != 0 || squareDepth != 0 || angleDepth != 0) { return None }
-    let parameter = value[start..value.size].trimAscii()
-    if (parameter.isEmpty()) { return None }
-    parameters.add(normalizeTypeSpelling(parameter))
-    Some(parameters)
-}
-
-private func parseDocReference(reference: String): ParsedDocReference {
-    let trimmed = reference.trimAscii()
-    let bytes = trimmed.toArray()
-    if (bytes.size < 3 || bytes[bytes.size - 1] != b')') { return ParsedDocReference(trimmed, false) }
-    var open: Int64 = -1
-    var index: Int64 = 0
-    while (index < bytes.size) {
-        if (bytes[index] == b'(') { open = index; break }
-        index++
-    }
-    if (open <= 0) { return ParsedDocReference(trimmed, false) }
-    let name = trimmed[..open].trimAscii()
-    if (name.isEmpty()) { return ParsedDocReference(trimmed, false) }
-    match (splitReferenceParameters(trimmed[open + 1..trimmed.size - 1])) {
-        case Some(parameters) =>
-            let parsed = ParsedDocReference(name, true)
-            parsed.parameterTypes.add(all: parameters)
-            parsed
-        case None => ParsedDocReference(trimmed, false)
-    }
-}
-
-private func supportsSignatureReference(symbol: SymbolDoc): Bool {
-    symbol.kind == "function" || symbol.kind == "constructor" || symbol.kind == "macro" ||
-        symbol.kind == "enumCase"
-}
-
 private func referenceSignatureMatches(symbol: SymbolDoc, parameterTypes: ArrayList<String>): Bool {
-    if (!supportsSignatureReference(symbol) || symbol.parameters.size != parameterTypes.size) { return false }
+    if (!referenceKindTakesSignature(symbol.kind) || symbol.parameters.size != parameterTypes.size) { return false }
     var index: Int64 = 0
     while (index < parameterTypes.size) {
         let typeRef = symbol.parameters[index].typeRef
@@ -215,10 +118,22 @@ private func resolveDocTagReferences(tags: ArrayList<DocTag>, owner: SymbolDoc, 
     }
 }
 
+private func resolveReplacementReference(comment: DocComment, owner: SymbolDoc, index: DeclarationIndex): Unit {
+    if (comment.replacements.size != 1) { return }
+    let tag = comment.replacements[0]
+    if (tag.subject.isEmpty() || !tag.description.isEmpty()) { return }
+    resolveDocTagReferences(comment.replacements, owner, index)
+    if (tag.targetSymbolId == Some(owner.id)) {
+        tag.referenceState = "broken"
+        tag.targetSymbolId = None
+    }
+}
+
 func resolveDocumentationReferences(documentation: DocumentationSet): Unit {
     let index = DeclarationIndex(documentation)
     for (symbol in documentation.symbols) {
         if (let Some(comment) <- symbol.documentation) {
+            resolveReplacementReference(comment, symbol, index)
             if (comment.languageItems.isEmpty()) {
                 resolveDocTagReferences(comment.see, symbol, index)
                 resolveDocTagReferences(comment.throwsTags, symbol, index)

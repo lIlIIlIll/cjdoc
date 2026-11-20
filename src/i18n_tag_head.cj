@@ -6,11 +6,11 @@ import std.collection.*
 internal let LOCALIZED_TAG_NAMES = ["summary", "description", "param", "return", "throws", "see",
     "deprecated", "example", "precondition", "postcondition", "invariant", "performance", "state",
     "concurrency", "platform", "compatibility", "error", "since", "version", "author", "group",
-    "tag"]
+    "tag", "replacement"]
 
 // Tags whose meaning belongs to the declaration, not to one documentation
 // language, so a language qualifier is rejected with CJDOC3112.
-internal let SHARED_METADATA_TAGS = ["since", "version", "author", "group", "tag"]
+internal let SHARED_METADATA_TAGS = ["since", "version", "author", "group", "tag", "replacement"]
 
 internal class LocalizedTagHead {
     let name: String

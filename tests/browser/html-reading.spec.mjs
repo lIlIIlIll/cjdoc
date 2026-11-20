@@ -346,7 +346,11 @@ test('authoring guide exposes classification and deprecation on real API pages',
 
   await page.goBack();
   await authoringBinding(page, 'requireFirstText(TextCatalog)').click();
-  await expect(page.locator('.cj-note--callout').filter({hasText: '已弃用'})).toContainText(/catalog\.first\(\).*None.*Some\(""\)/);
+  const deprecation = page.locator('main .cj-deprecation-note');
+  await expect(deprecation.locator('.cj-deprecation')).toHaveText('已弃用');
+  await expect(deprecation.getByRole('link')).toHaveText('改用 TextCatalog.first()');
+  await expect(deprecation.getByRole('link')).toHaveAttribute('href', /\/TextCatalog\/first\/index\.html$/);
+  await expect(deprecation.locator('li code')).toHaveText(['None', 'Some("")', 'Some(text)', 'text']);
   await expect(page.locator('.cj-throws__row dt')).toHaveText(['IllegalStateException', 'IllegalArgumentException']);
   const authors = page.getByRole('heading', {name: '作者', exact: true});
   await expect(authors.locator('+ ul > li')).toHaveText(['PocketKit', 'Documentation team']);
@@ -363,6 +367,59 @@ test('authoring guide exposes classification and deprecation on real API pages',
   await expect(quiet.locator('.cj-example-pair__output pre')).toHaveCount(0);
   await expect(page.locator('.cj-example').filter({hasText: '只编译，不运行'}).locator('.cj-example-pair__output')).toHaveCount(0);
 });
+
+for (const [locale, transport] of [['en', 'file'], ['zh-CN', 'subpath']]) {
+  test(`deprecation keeps the old destination and a separate migration in ${locale}/${transport}`, async ({page}) => {
+    const {home} = await routes(page, locale, transport);
+    await page.goto(home);
+    const pkg = page.locator('.cj-package-index a').filter({hasText: 'pocketkit.authoring'}).first();
+    await pkg.click();
+    const label = locale === 'en' ? 'Deprecated' : '已弃用';
+    const row = page.locator('[data-member-name="requireFirstText"]');
+    await expect(row.locator('.cj-deprecation')).toHaveText(label);
+    await expect(row.locator('.cj-decl-table__link')).toHaveAttribute('href', /\/requireFirstText\/index\.html$/);
+    await expect(row.locator('a.cj-replacement')).toHaveAttribute('href', /\/TextCatalog\/first\/index\.html$/);
+    const statusOnly = page.locator('[data-member-name="firstTextOrEmpty"]');
+    await expect(statusOnly.locator('.cj-deprecation')).toHaveText(label);
+    await expect(statusOnly.locator('a.cj-replacement')).toHaveCount(0);
+    await expect(page.locator('.cj-tree__link').filter({hasText: 'requireFirstText'}).locator('.cj-deprecation'))
+      .toHaveText(label);
+
+    const trigger = page.locator('[data-cjdoc-search-trigger]');
+    const dialog = page.locator('[data-cjdoc-search-dialog]');
+    const input = dialog.getByRole('combobox');
+    const list = dialog.getByRole('listbox');
+    const old = list.getByRole('option').filter({has: page.locator('.cj-search__hit-name', {hasText:'requireFirstText'})});
+    const action = dialog.locator('a.cj-replacement');
+    const selectOld = async () => {
+      await input.fill('firstText');
+      await expect(old.locator('.cj-deprecation')).toHaveText(label);
+      const position = await old.evaluate(node => [...node.parentElement.children].indexOf(node));
+      for (let i = 0; i <= position; ++i) await input.press('ArrowDown');
+      await expect(action).toBeVisible();
+    };
+    await trigger.click();
+    await selectOld();
+    await expect(list.locator('a.cj-replacement')).toHaveCount(0);
+    await input.press('ArrowDown');
+    await expect(action).toHaveCount(0);
+    await input.press('Escape');
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await selectOld();
+    await input.press('Enter');
+    await expect(page).toHaveURL(/\/requireFirstText\/(?:index\.html)?$/);
+    await trigger.click();
+    await selectOld();
+    for (let i = 0; i < 5 && !await action.evaluate(node => node === document.activeElement); ++i) {
+      await page.keyboard.press('Tab');
+    }
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/TextCatalog\/first\/(?:index\.html)?$/);
+  });
+}
 
 test('authoring guide keeps the same alerts section readable in a narrow offline file', async ({page}) => {
   await page.setViewportSize({width: 390, height: 844});

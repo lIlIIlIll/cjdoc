@@ -45,6 +45,7 @@ private func appendReExportTargetLink(w: HtmlWriter, projection: RenderProjectio
             w.element("a", [htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref("../", target.id)))]) { link =>
                 link.textElement("code", target.qualifiedName)
             }
+            appendDeprecationBadgeFor(w, projection, target, locale)
         case None => w.text(label(locale, "Target not present in this documentation",
             "目标未包含在当前文档中"))
     }

@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.model.normalizeTypeSpelling
 import std.collection.*
 import std.sort.*
 

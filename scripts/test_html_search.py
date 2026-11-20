@@ -535,6 +535,8 @@ const createWorld = (options = {}) => {
     requestAnimationFrame: callback => callback(),
     performance: {getEntriesByType: () => []},
     __CJDOC_SEARCH_INDEX__: domIndex};
+  if (options.deprecated) context.__CJDOC_SIDEBAR_INDEX__ =
+    {version: 3, deprecated: options.deprecated};
   context.__CJDOC_SEARCH_SIGNATURES__ = {"module-a":"func overloaded(String)",
     "module-b":"func overloaded(Int64)"};
   return {document, window, location, trigger, pageInput, languageLink,
@@ -869,6 +871,46 @@ input.value = "";
 pkg.dispatch("change", {target: pkg});
 assert.deepEqual(results.children.map(x =>
   x.children[0].children[0].children[0].textContent), ["HttpClientBuilder"]);
+
+// Migration belongs to the selected canonical hit, not to the listbox or its
+// search order. An inherited key cannot decorate or navigate another hit.
+const deprecationWorld = loadWorld({deprecated:Object.assign(Object.create({
+  "cjdoc:v2:module-b": {label:"Not owned", kind:"api", href:"net/wrong/index.html"}
+}), {
+  "cjdoc:v2:module-a": {label:"Client.modern(String)", kind:"api", href:"net/modern/index.html"},
+  "cjdoc:v2:net%3Asend": null
+})});
+deprecationWorld.trigger.dispatch("click", {button:0});
+const deprecationDialog = searchDialogIn(deprecationWorld);
+const deprecationInput = deprecationDialog.querySelector("[data-cjdoc-search]");
+const deprecationResults = deprecationDialog.querySelector("[data-cjdoc-results]");
+const migration = () => deprecationDialog.querySelector(".cj-replacement");
+const deprecatedKeys = key => deprecationInput.dispatch("keydown", {key,target:deprecationInput});
+const deprecatedQuery = value => {
+  deprecationInput.value = value;
+  deprecationInput.dispatch("input", {target:deprecationInput});
+};
+deprecatedQuery("overloaded");
+assert.equal(deprecationResults.querySelectorAll(".cj-deprecation").length,1);
+assert.equal(deprecationResults.querySelector(".cj-replacement"),null);
+assert.equal(migration(),null);
+deprecatedKeys("ArrowDown");
+if (!migration()) deprecatedKeys("ArrowDown");
+assert.equal(migration().getAttribute("href"),"/fixture/net/modern/index.html");
+assert.equal(migration().querySelector("code").textContent,"Client.modern(String)");
+deprecatedKeys("ArrowDown");
+assert.equal(migration(),null);
+deprecatedQuery("send");
+assert.equal(deprecationResults.querySelectorAll(".cj-deprecation").length,1);
+deprecatedKeys("ArrowDown");
+assert.equal(migration(),null);
+deprecatedQuery("overloaded");
+deprecatedKeys("ArrowDown");
+if (!migration()) deprecatedKeys("ArrowDown");
+assert(migration());
+deprecatedKeys("Escape");
+assert.equal(migration(),null);
+assert.equal(deprecationWorld.trigger.focused,true);
 
 // ---- keyboard selection, IME and dismissal ------------------------------
 keydown({key: "ArrowDown"});

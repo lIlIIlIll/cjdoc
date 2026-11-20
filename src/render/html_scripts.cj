@@ -70,6 +70,11 @@ internal let HTML_THEME_BOOTSTRAP_SCRIPT = """
 // instead of mutating every collapsed member link during page initialization.
 internal let HTML_API_LINK_SCRIPT = #"
 (() => {
+  const sidebar = globalThis.__CJDOC_SIDEBAR_INDEX__;
+  const deprecated = sidebar?.version === 3 ? sidebar.deprecated : null;
+  globalThis.__CJDOC_DEPRECATION__ = id =>
+    deprecated && typeof id === 'string' && id.startsWith('cjdoc:v2:') &&
+    Object.hasOwn(deprecated, id) ? deprecated[id] : undefined;
   const web = /^https?:$/.test(location.protocol);
   const route = globalThis.__CJDOC_API_ROUTE__ = web
     ? file => file.replace(/\/index\.html([?#].*)?$/, '/$1') : file => file;
@@ -183,6 +188,9 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     facets.setAttribute("aria-label", text("Tag filters", "标签筛选"));
     facets.hidden = true;
     node.append(facets);
+    const replacement = createElement("div", "cj-search__replacement");
+    replacement.hidden = true;
+    node.append(replacement);
     const list = createElement("ul", "cj-search__results");
     list.id = "cjdoc-search-results";
     list.setAttribute("role", "listbox");
@@ -209,7 +217,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       "Search covers names, structured fields and up to 2,000 characters of body text " +
         "per entry. No match does not prove absence from the full documentation.",
       "检索覆盖名称、结构化字段及每项最多 2,000 字符的正文摘录；没有命中不代表完整文档中不存在。")));
-    return {node, field, close, list, status, pages, previous, next, facets, kind, pack};
+    return {node, field, close, list, status, pages, previous, next, facets, kind, pack, replacement};
   };
   let dialog = null;
   let input = null;
@@ -222,6 +230,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
   let previousPage = null;
   let nextPage = null;
   let searchFacets = null;
+  let searchReplacement = null;
   let controller = null;
   const readUrlSearchState = () => {
     const state = {tags: [], moduleId: null, snapshotId: null, hasScope: false,
@@ -397,6 +406,46 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       return entry.sections.find(section => section.anchor === item.anchor) || null;
     };
 
+    const deprecationOf = match => match?.snapshotId === index.scope.snapshotId
+      ? globalThis.__CJDOC_DEPRECATION__(match.canonicalId) : undefined;
+    const replacementHref = (href, kind) => {
+      if (typeof href !== "string" || !href || /[\\u0000-\\u0020\\u007f<>"\\\\]/u.test(href)) return null;
+      if (kind !== "api" && /^https?:\\/\\//u.test(href)) {
+        try {
+          const url = new URL(href);
+          return url.hostname && !url.username && !url.password ? href : null;
+        } catch (_) { return null; }
+      }
+      const relative = href.startsWith("./") ? href.slice(2) : href;
+      const file = relative.split(/[?#]/u, 1)[0];
+      try {
+        const decoded = decodeURIComponent(file);
+        if (/[\\u0000-\\u0020\\u007f<>"\\\\:]/u.test(decoded) ||
+            decoded.split("/").some(part => !part || part === "." || part === "..")) return null;
+      } catch (_) { return null; }
+      if (kind === "api") {
+        return file === relative && file.endsWith(".html")
+          ? globalThis.__CJDOC_API_ROUTE__(apiRoot + file) : null;
+      }
+      return root + relative;
+    };
+    const showReplacement = match => {
+      searchReplacement.replaceChildren();
+      searchReplacement.hidden = true;
+      const action = match ? deprecationOf(match) : undefined;
+      if (!action || !["kind", "href", "label"].every(key => Object.hasOwn(action, key)) ||
+          typeof action.label !== "string" || !action.label ||
+          !["api", "exact", "compatible"].includes(action.kind)) return;
+      const href = replacementHref(action.href, action.kind);
+      if (!href) return;
+      const link = createElement("a", "cj-replacement", text("Use ", "改用 "));
+      link.setAttribute("href", href);
+      if (action.kind !== "api") link.setAttribute("data-doc-match", action.kind);
+      link.append(createElement("code", undefined, action.label));
+      searchReplacement.append(link);
+      searchReplacement.hidden = false;
+    };
+
     const select = next => {
       if (!visible.length) return;
       selected = (next + visible.length) % visible.length;
@@ -405,6 +454,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
           position === selected ? "true" : "false");
       }
       const active = results.children[selected];
+      showReplacement(visible[selected]);
       if (!active) { input.removeAttribute("aria-activedescendant"); return; }
       input.setAttribute("aria-activedescendant", active.id);
       if (typeof active.scrollIntoView === "function") active.scrollIntoView({block: "nearest"});
@@ -435,7 +485,11 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       kind.className = "cj-kind";
       kind.setAttribute("data-kind", String(entry.kind));
       kind.textContent = kindLabel(entry.kind);
-      head.append(name, kind);
+      head.append(name);
+      if (!entry.concept && deprecationOf(match) !== undefined) {
+        head.append(createElement("span", "cj-deprecation", text("Deprecated", "已弃用")));
+      }
+      head.append(kind);
       link.append(head);
       const module = entry.scope >= 0 ? index.modules[entry.scope] : null;
       const moduleName = module ? module.moduleName : "";
@@ -479,6 +533,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       selected = -1;
       visible = [];
       input.removeAttribute("aria-activedescendant");
+      showReplacement(null);
       if (searchFacets) { searchFacets.replaceChildren(); searchFacets.hidden = true; }
     };
     const renderPage = () => {
@@ -703,7 +758,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
       // A same-document result only changes the fragment, so the modal would
       // otherwise stay over its own destination. Modified clicks open elsewhere.
       const link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
-      if (!link || !results.contains(link)) return;
+      if (!link || (!results.contains(link) && !searchReplacement.contains(link))) return;
       if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       closeDialog(false);
     });
@@ -746,6 +801,7 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
     previousPage = parts.previous;
     nextPage = parts.next;
     searchFacets = parts.facets;
+    searchReplacement = parts.replacement;
     kindFilter = parts.kind;
     packageFilter = parts.pack;
     const created = createController();

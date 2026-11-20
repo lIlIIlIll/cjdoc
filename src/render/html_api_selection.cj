@@ -12,7 +12,18 @@ internal func renderApiSelectionPage(documentation: DocumentationSet, projection
     appendPageStart(w, title, prefix, documentation, projection, locale: locale,
         currentRoute: "api-choice", docVersion: docVersion, currentPagePath: Some(apiHtmlFileHref(choice.file)),
         canonical: Some(apiPrefix + apiHtmlWebPath(choice.file)), generatedPageId: Some(choice.id))
-    appendPageTitleHeader(w, "api") { heading => heading.textElement("code", title) }
+    let deprecations = projection.deprecations()
+    var deprecatedCount: Int64 = 0
+    if (choice.overloads) {
+        for (symbol in choice.symbols where deprecations.contains(symbol.id)) { deprecatedCount++ }
+    }
+    let statusCount = deprecatedCount
+    appendPageTitleHeader(w, "api") { heading =>
+        heading.textElement("code", title)
+        if (statusCount > 0) {
+            appendDeprecationBadge(heading, locale, partial: statusCount < choice.symbols.size)
+        }
+    }
     w.element("section", [htmlClass("cj-prose"), htmlAttr("aria-labelledby", "api-options")]) { section =>
         section.textElement("h2", label(locale, "Choose a declaration", "选择一个声明"),
             attrs: [htmlAttr("id", "api-options")])
@@ -24,9 +35,14 @@ internal func renderApiSelectionPage(documentation: DocumentationSet, projection
                         let signature = symbol.headerSpelling
                         link.textElement("code", if (signature.isEmpty()) { htmlContextLabel(symbol) } else { signature })
                     }
+                    appendDeprecationBadgeFor(item, projection, symbol, locale)
                     let moduleName = findProjectedModule(projection, symbol.moduleId).map({ module => module.name })
                         .getOrDefault({ => symbol.moduleId })
                     item.text(" · " + moduleName + " · " + htmlKindLabel(symbol.kind, locale))
+                    if (let Some(action) <- deprecations.action(symbol.id)) {
+                        item.text(" · ")
+                        appendReplacementLink(item, action, projection, prefix, locale)
+                    }
                 }
             }
         }

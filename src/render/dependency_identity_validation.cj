@@ -50,7 +50,7 @@ internal class NavigationEvidence {
 
     init(audience: String) { this.audience = audience }
 
-    private func dependencyFor(moduleId: String, name: String): ?DependencyInstance {
+    func dependencyFor(moduleId: String, name: String): ?DependencyInstance {
         let values = match (dependenciesByName.get(moduleId + "|" + name)) {
             case Some(records) => records
             case None => return None
