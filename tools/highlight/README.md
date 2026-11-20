@@ -1,46 +1,42 @@
 # Install and run the optional highlighting adapter
 
-This generation-time worker converts explicitly selected Highlight.js languages
-into theme-independent UTF-8 byte ranges. Default Cangjie highlighting does not
-need Node.js. Neither ordinary generation nor this worker installs packages,
-reads project files, or accesses the network. Do not copy this directory or its
-node_modules into the generated website.
+Add static highlighting to JSON, Bash, Python, TOML and YAML fences. Cangjie fences use the built-in highlighter and do not need this adapter. Node.js is needed when generating the site, not when reading it.
 
-## Reproducible installation
+## Install the adapter
 
-Use Node.js **26.11.1** (also recorded in .node-version and exercised by the
-worker acceptance harness). The declared engine range is **>=26.10.0 <27.0.0**;
-26.10.0 is the previous verified release. Other versions in that range are not
-claimed as individually tested.
-Highlight.js is pinned to **11.11.1** and the mapping revision is **cjdoc-map-1**.
-An update requires reviewing source preservation, scope mapping and licenses,
-then updating the lockfile and revision together. No floating latest is used:
-exact versions and archive integrity allow reproducible offline provisioning.
-The lockfile binds the archive to this SHA-512 checksum:
+Use Node.js 26.11.1, or another version in the declared `>=26.10.0 <27.0.0` range. Install the lockfile-pinned Highlight.js 11.11.1 in a checkout that matches your cjdoc build:
 
-
-data-integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==
-
-Provision once, outside document generation, from a populated npm cache:
-
-~~~sh
+```sh
 cd tools/highlight
-npm ci --ignore-scripts --offline
-node --test
-~~~
+npm ci --ignore-scripts
+```
 
-If the archive is not cached, explicitly provision it with npm ci --ignore-scripts
-using the registry URL recorded in package-lock.json, then repeat the offline
-command. There are no installation lifecycle scripts. Distribute adapter.mjs,
-package.json, package-lock.json, .node-version, NOTICE, highlight.js-LICENSE and
-the lockfile-installed node_modules together when shipping a ready-to-run worker.
-The package needs no other npm dependency. node_modules is not version-controlled.
+If the dependency is already cached, add `--offline`. Keep `adapter.mjs`, the package files, `node_modules/`, and the license and notices together on the machine that generates the site. Do not upload them with the site.
+
+## Enable highlighting in a project
+
+Add or update `[highlight]` in the project's `cjdoc.toml`:
+
+```toml
+[highlight]
+mode = "static"
+languages = ["cangjie", "python"]
+on-error = "warn"
+```
+
+Set `CJDOC_SOURCE` to the absolute path of the checkout where you installed the adapter. In Bash, from the project root, run:
+
+```sh
+cjdoc generate --project . --format html \
+  --highlight-adapter "$CJDOC_SOURCE/tools/highlight/adapter.mjs" \
+  --highlight-node "$(command -v node)"
+```
+
+Open `target/doc/html/index.html` (or the configured output directory) and find a `python` code block with recognized tokens, such as a string or keyword. Those tokens should be colored; copying still copies the original text. If the block stays plain, check the fence language and both executable paths. See the [highlighting guide](../../docs/how-to/highlighting.md) for diagnostics and fallback options.
 
 ## Languages and licensing
 
-Only the following modules from the fixed Highlight.js archive are imported and
-registered; requests cannot provide modules or paths. All five grammars and core
-use **BSD-3-Clause**, reproduced in highlight.js-LICENSE and NOTICE:
+The adapter accepts five wire names. Highlight.js core and all five grammars are BSD-3-Clause; see the [license](highlight.js-LICENSE) and [notice](NOTICE).
 
 | Wire language | Upstream module |
 | --- | --- |
@@ -98,7 +94,7 @@ and empty-source length/hash, mark exit status 2, and permit subsequent lines to
 be handled before shutdown. Oversized wire lines likewise mark exit status 2.
 Normal EOF exits 0. I/O failure exits 2 with a bounded static stderr diagnostic.
 
-## Cangjie integration boundary
+## Maintainer notes: Cangjie integration
 
 src/code_highlight_external.cj must start this optional worker only when explicitly
 configured. It must never install npm packages or make generation depend on Node

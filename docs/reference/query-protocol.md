@@ -4,6 +4,17 @@
 
 请求字段定义见 `cjdoc schema query-request`（`cjdoc.query-request/3`），结果字段定义见 `cjdoc schema query-result`（`cjdoc.query-result/4`）。产物与 wire 版本见[产物参考](artifacts.md)，域状态分层见[状态与限制](states-and-limits.md#查询完整性与状态)。
 
+## 快速索引
+
+| 你要查 | 字段或操作 | 详见 |
+|---|---|---|
+| 某个库、模块、包是否在快照里 | `resolve_docs` | [各操作的可用字段](#各操作的可用字段) |
+| 某个符号或文字 | `search` + `query`、`mode`、`filters`、`tags` | [搜索、筛选与分页](#搜索筛选与分页) |
+| 声明的签名、参数、示例、关系 | `get_symbol` + `preset`、`sections`、`maxBytes` | [`get_symbol` 的章节与预算](#get_symbol-的章节与预算) |
+| 下一批结果 | `cursor` 与 `completeness.query.next` | [游标与继续读取](#游标与继续读取) |
+| 编辑器里的工具调用 | `mcp` 的 `tools/list`、`tools/call` | [本地 stdio MCP](#本地-stdio-mcp) |
+| 结果为什么是这个状态 | `status` 与 `error.code` | [状态与退出码](#状态与退出码) |
+
 ## CLI 与输入快照
 
 ```bash

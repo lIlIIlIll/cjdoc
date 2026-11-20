@@ -2,6 +2,21 @@
 
 文档、快照和查询结果里出现的状态词、可见范围的含义，以及当前实现的固定资源上限。状态词属于不同字段，同一个英文词在不同对象上含义不同，不要互相替代。命令与退出码见 [CLI 参考](cli.md)，配置级限制见[配置参考](configuration.md)，注释与示例限制见[文档注释参考](doc-comments.md)，查询域的完整状态与预算见[查询协议](query-protocol.md)。
 
+## 快速索引
+
+| 你看到 | 它在哪个字段 | 去看 |
+|---|---|---|
+| `status` 为 `complete`／`partial` | 生成快照整体完整性 | [结果完整性状态](#结果完整性状态) |
+| `apiCollectionState` | API 收集范围 | [结果完整性状态](#结果完整性状态) |
+| `ok`／`ambiguous`／`not_found`／`source_incomplete` | 查询域状态 | [查询完整性与状态](#查询完整性与状态) |
+| `resolved`／`unresolved`／`unavailable` | 解析与链接状态 | [解析、匹配与语义状态](#解析匹配与语义状态) |
+| `matchLevel` 为 `exact`／`compatible`／`manual`／`none` | 依赖文档导航 | [解析、匹配与语义状态](#解析匹配与语义状态) |
+| `provenance` 为 `verified`／`declared`／`unavailable`／`ambiguous` | 源码来源 | [源码来源 provenance](#源码来源-provenance) |
+| `translationState` | 字段级翻译状态 | [多语言与诊断状态](#多语言与诊断状态) |
+| 某条声明没出现在页面上 | 受众与可见范围 | [可见范围与快照身份](#可见范围与快照身份) |
+| 报资源错误或输出被截断 | 固定资源上限 | [主要资源上限](#主要资源上限) |
+| 覆盖率百分比与实际感觉不符 | 报告口径 | [覆盖率与质量统计](#覆盖率与质量统计) |
+
 ## 结果完整性状态
 
 生成快照至少有两个独立字段：

@@ -1,31 +1,24 @@
 # 编译并运行文档注释里的示例
 
-用 `cjdoc check --check-examples` 编译 `@example` 中的仓颉片段，并在示例声明了 `run` 时执行程序、核对预期标准输出，让注释里的说明变成可验证的约定。
+用 `cjdoc check --check-examples` 检查 API 注释里的仓颉代码。写了 `run` 的用例还会执行，并在提供 `output` 时比较标准输出。普通 `check` 和 `generate` 默认不检查示例。
 
 ## 前提条件
 
-- 已完成[生成第一个站点](../tutorials/first-site.md)，`docdemo/` 中有 `src/api.cj` 和带 `@example` 的公开 `greet`。
-- 当前终端能运行 `cjdoc` 和仓颉 SDK 的 `cjc`。
-- 带 `run` 的示例需要当前平台能构建可执行文件并施加内存限制；无法建立限制时会拒绝运行并报告 `CJDOC3074`，示例不会被静默跳过。
-- 命令都在 `docdemo/` 项目根执行。
-
-示例代码只能写函数体内的语句，不是完整程序：变量、调用和 `println` 直接写在片段里，需要 `import` 时把它放在所属源码文件顶部。
+- 在已加载仓颉 SDK 的终端里进入项目根，`cjdoc` 和 `cjc` 都能运行。
+- 项目已有 `@example`；没有时可先完成[第一个站点](../tutorials/first-site.md)。
+- 只能检查可信源码里的示例。`run` 会运行实际程序，且当前环境必须能为它施加内存限制，否则报告 `CJDOC3074`。
 
 ## 1. 检查已有示例
-
-首站教程的 `greet` 注释带有一个 `{must-pass run}` 示例和 `Hello, Cangjie!` 的 `output` 围栏。直接检查：
 
 ```bash
 cjdoc check --project . --check-examples
 ```
 
-**预期结果**：没有示例相关的 error，退出码 `0`。源码模式下可能仍有 `CJDOC3041` 类型链接 warning，它不表示示例失败。
-
-退出码 `0` 只说明这次检查覆盖的示例成立，不表示 HTML 已经生成。
+首站教程中的 `greet` 应编译并运行通过，条件是 stdout 与两行预期输出一致。检查成功时退出码为 `0`；类型链接告警不等于示例失败。`check` 不写站点。
 
 ## 2. 加入一个预期失败示例
 
-在同一个 `src/api.cj` 末尾追加下面这个函数，演示两种相反的约定：`must-pass run` 要求代码编译并运行成功，`must-fail` 要求编译器在示例片段中报错。文件中已有的 `greet` 和 `internalGreeting` 保持不变：
+在教程项目 `src/api.cj` 末尾追加 `add`。第一条用例会运行，第二条展示编译器应拒绝的调用：
 
 ~~~cangjie
 /**
@@ -53,20 +46,15 @@ public func add(left: Int64, right: Int64): Int64 {
 }
 ~~~
 
-这里两个 `@example` 分别检查，可以使用不同的指令。若要把同一个用例的准备步骤和调用分开展示，把两个 `cangjie` 围栏写在同一个 `@example` 下，见[多用例写法](../reference/doc-comments.md#示例)。
+示例只写函数体内的语句；片段所需 `import` 写在所属源码文件顶部。同一个 `@example` 下的多个 `cangjie` 围栏可以共享变量，不同 `@example`（包括不同语言）分别检查。
 
-围栏语言必须是小写 `cangjie`，可以用反引号或波浪线；`cj` 只高亮，不供检查。空的 `cangjie` 围栏也不算代码。
+围栏语言必须是小写 `cangjie`，可以用反引号或波浪线；`cj` 只高亮，不供检查。空的 `cangjie` 围栏也不算代码。若要把同一个用例的准备步骤和调用分开展示，把两个 `cangjie` 围栏写在同一个 `@example` 下，见[多用例写法](../reference/doc-comments.md#示例)。
+
 配置 `[i18n]` 时，无语言限定的示例属于默认语言；`@example[lang=en]` 是独立用例，即使同标题也不和默认语言配对。`--check-examples` 检查两条，变量不能跨用例使用。
 
-保存后再次检查：
+保存后重新执行 `cjdoc check --project . --check-examples`。第一条应输出 `3`，第二条应在 `missingApi()` 处编译失败；两种结果都符合预期，命令应退出 `0`。如果第二条反而能编译，报告 `CJDOC3070`；若错误发生在源码或依赖而不能归因于该片段，报告 `CJDOC3031`，也不能算通过。
 
-```bash
-cjdoc check --project . --check-examples
-```
-
-**预期结果**：仍然没有示例相关的 error，退出码 `0`。`add` 的第二个示例写成 `must-fail`，检查要求编译器在示例代码上报错；这个报错是预期的，示例不会运行，也不会让整个检查失败。若该片段反而编译成功，会报告 `CJDOC3070` 说明预期失败没有发生。
-
-`must-fail` 只接受归属于示例自身的编译错误。失败若发生在所属源码或依赖上，检查报告 `CJDOC3031`，不把上下文错误算作示例已验证。
+用例只要求编译时写 `{must-pass}`。`{run}` 不带 `output` 只要求运行成功；有空的 `output` 则要求没有 stdout。纯编译用例不要写 `output`。完整指令见[示例参考](../reference/doc-comments.md#示例)。
 
 ## 3. 生成站点时同时检查示例
 
@@ -76,13 +64,9 @@ cjdoc check --project . --check-examples
 cjdoc generate --project . --format html --check-examples --output target/doc-checked
 ```
 
-**预期结果**：生成的文件照常写出（`target/doc-checked/html/index.html` 存在）；示例检查全部通过时退出码 `0`，有失败时仍写出文件但退出码为 `1`。发布前先确认退出码为 `0`。
+成功后打开 `target/doc-checked/html/index.html`。如果示例失败，命令仍可能写出文件，但退出为 `1`；发布前先修复并重新运行。
 
-`check` 只做检查，不写 HTML、Markdown 或 JSON。HTML 页面显示作者写下的示例代码和预期输出，不显示逐例通过标记，也没有执行徽章；示例是否真的编译、运行过，只能看这两条命令的诊断和退出码。
-
-同一个 `{run}` 用例省略 `output` 时只要求正常退出，不比较 stdout；写一个空的 `output` 围栏则要求没有 stdout。只编译的用例不要写 `output`。
-
-HTML 将代码和预期输出放在同一个单元里。你可以独立复制两部分；即使长输出已折叠，「复制输出」也会复制全文。教程和短例对照可选[其他布局](../reference/doc-comments.md#html-示例布局)，不影响检查。
+页面展示示例及作者写的**预期输出**，不会显示逐例通过标记。代码和输出放在同一个单元里，可分别复制；长输出折叠时，「复制输出」仍会复制全文。教程和短例对照可选[示例布局](../reference/doc-comments.md#html-示例布局)，不影响检查。
 
 ## 4. 按诊断码处理失败
 
@@ -113,9 +97,7 @@ error[CJDOC3033]: @example '指令冲突' has invalid directives: 'must-pass' an
 error[CJDOC3072]: @example '计算两个整数之和' output mismatch: expected 4, got 3
 ```
 
-命令以 `1` 结束。比较时统一换行符并忽略首尾空行，中间的空格、标点和行数必须完全一致。先比较两段文本，然后修改函数让行为符合说明，或修改围栏让预期符合真实输出，再重新检查。不要删除示例来让检查通过。
-
-诊断优先显示示例标题；无标题时显示声明限定名。若希望仅有 warning 时也返回失败，使用 `--deny-warnings`。
+命令以 `1` 退出。比较会统一换行符并忽略首尾空行；中间空格、标点和换行仍要一致。先根据诊断确定哪一边不符合 API 的约定，再改实现或预期输出。诊断优先显示用例标题；没有标题时按声明限定名查找。若希望仅有 warning 时也返回失败，使用 `--deny-warnings`。
 
 ## 资源上限
 
@@ -131,6 +113,6 @@ error[CJDOC3072]: @example '计算两个整数之和' output mismatch: expected 
 
 ## 下一步
 
-- [PocketKit 的文档注释示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#示例与输出)：对照四种检查方式与生成页面。
+- [PocketKit 的文档注释示例](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md#示例与输出)：对照四种检查方式与生成页面。
 - [检查文档质量](check-quality.md)：读取覆盖率报告并设置发布门槛。
 - [生成并发布文档](generate-and-publish.md)：输出六种格式并发布站点。

@@ -1,13 +1,17 @@
 # cjdoc 发布记录
 
-每个版本对使用者的变化和升级步骤。可下载的资产与校验值见 [Releases](https://github.com/lIlIIlIll/cjdoc/releases)。
+查版本变化和升级注意事项。下载及校验值见 [Releases](https://github.com/lIlIIlIll/cjdoc/releases)。
 
-## 未发布
+## 当前源码（尚未发布）
 
-- 从首页的「API 参考」展开包和类型，浏览当前版本公开给你的每条声明；关闭 JavaScript 仍可打开各声明详情。左栏可直接显示当前分支的全部条目，包页的「本页目录」可跳到单条声明。
-- 已弃用声明的详情显示作者说明，或可读取的源码注解消息。只有作者明确指定且可用的替代项才显示为独立的「改用」链接；原名称仍打开原声明。
-- 包使用可读地址，例如 `packages/pocketkit/authoring/`。双语站的包页留在当前语言目录中，默认语言的声明地址不变。旧包链接及其片段仍可打开；发布时复制完整 `html/` 目录。
-- 新 HTML 机器包使用 `cjdoc.machine-manifest/3` + `cjdoc.read/3`。CLI 仍按原地址验证和查询已发布的 `/1` 和 `/2` 包；Doc IR v18 不变。
+- **集中读提示：** 同一个 API 的提示默认逐条显示；可在「API 提示」选择按类型合并。
+- **阅读示例：** 代码与预期输出同框并可分别复制。支持[正文式和宽屏并排布局](reference/doc-comments.md#html-示例布局)，窄屏始终上下排列。「显示设置」可设置示例折叠、长行换行和长输出展开，也可恢复默认设置。显示方式不改变复制内容。
+- **阅读签名：** 参数默认值用 ` = ` 分隔。宽屏将参数和异常的说明与声明对齐，窄屏将说明放到声明下方。
+- **浏览完整 API：** 从首页「API 参考」展开包和类型；左栏可以显示当前分支的全部条目，包页的「本页目录」可跳到声明行。关闭 JavaScript 后仍可打开各声明的详情。
+- **分享 API：** 包、类型和成员有可读目录地址，例如 `packages/pocketkit/authoring/` 和 `pocketkit/TextCatalog/join/`。默认语言的声明地址不加语言前缀；包页保留当前语言目录。离线链接保留 `index.html`，旧包链接及其片段和旧 `symbols/` 链接仍可打开。详见[生成与发布](how-to/generate-and-publish.md)。
+- **迁移弃用 API：** 包表、成员、侧栏和搜索标明已弃用声明；详情显示作者说明或可读取的源码注解消息。能确认的 [`@replacement`](reference/doc-comments.md#弃用与迁移) 另有「改用」链接，原名称仍打开原声明。
+- **读取机器文档：** 新 HTML 文档包使用 `cjdoc.machine-manifest/3` 和 `cjdoc.read/3`。CLI 仍可验证和查询 `/1` 和 `/2` 包并沿用其原地址；Doc IR v18 不变。
+- **学写注释：** PocketKit demo-v2 新增[双语注释指南](../examples/pocketkit/demo-v2/docs/doc-comments.md)，可对照源码与生成的 API 页面。
 
 ## 0.7.9
 
@@ -22,21 +26,6 @@
 - 子命令支持独立帮助，例如 `cjdoc generate --help`。离线 `render` 不读取项目配置，不启动 worker。
 
 从 0.7.8 升级时，把 `cjdoc` 与配套 `chir-worker-main`（Windows 为 `.exe`）安装到同一目录。推荐下载归档包，它同时包含两个文件；单独下载主程序不包含 worker。现有 Doc IR v18 快照仍可离线重放，无需迁移。大型项目在 STS 1.2.0 上仍可能遇到 [Linux GC 崩溃](https://github.com/lIlIIlIll/cjdoc/issues/184)，此版本未修复该崩溃。
-
-### HTML 参考页
-
-- 参数列表在类型和默认值之间显示 ` = `。宽屏时参数和异常的声明与说明对齐，窄屏时说明显示在声明下方。返回值类型与说明之间不再留出多余空白。
-- 带预期输出的示例默认在同一框内显示代码和输出，分别复制。长输出可展开；支持[正文式和宽屏并排布局](reference/doc-comments.md#html-示例布局)，窄屏始终上下排列。
-- 示例可整体折叠；在「显示设置 → 示例默认状态」选择默认展开或折叠。
-- 「显示设置」新增代码长行软换行、长输出默认展开和「恢复默认设置」。预期输出和复制内容保留原样。
-- 类型和成员改用可读的目录地址，例如 `pocketkit/TextCatalog/` 与 `pocketkit/TextCatalog/join/`。`pocketkit/TextCatalog/find/` 列出重载，具体签名各有可分享的链接。页首和成员操作区的**复制链接**指向相应声明；离线复制保留 `index.html`。
-- 在包表、成员、侧栏和搜索结果里可直接辨认已弃用 API。[`@replacement`](reference/doc-comments.md#弃用与迁移) 指定的有效目标显示为独立的「改用」链接；点击原名称或在搜索中按 Enter 仍打开原声明。
-- 双语站的默认语言 API 不加前缀；若默认语言是中文，英文使用 `en/`。静态托管需发布完整 `html/`，并让目录地址读取其中的 `index.html`。旧的两种 `symbols/` 链接继续指向原声明。
-- 新 HTML 机器包使用 `cjdoc.machine-manifest/2` + `cjdoc.read/2`。CLI 仍能验证和查询既有的 v1 包，Doc IR v18 不变。
-
-### PocketKit 示例
-
-- demo-v2 首页加入[双语文档注释指南](../examples/pocketkit/demo-v2/docs/doc-comments.md)，可从可复制的注释、示例与排错写法跳到实际生成的 API。
 
 ## 0.7.8（2026-11-16 发布）
 
@@ -135,10 +124,10 @@ cjdoc generate --project . --format json --format html --output target/doc-0.7.8
 
 ### 环境要求与已知限制
 
-- 运行 cjdoc 需要仓颉 1.2.0 STS SDK 的运行时环境，发行包也一样。从源码构建另需匹配的静态 stdx 1.2.0。见[安装 cjdoc](getting-started/install.md)。
+- 运行 cjdoc 需要仓颉 1.2.0 STS SDK。只有从源码构建时另需匹配的静态 stdx。见 [0.7.8 安装指南](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/getting-started/install.md)。
 - Windows 当前不提供安全捕获站点本地图片的读取实现：图片被省略、报告 `CJDOC4026`、文档可为 `partial`，Markdown 替代文本仍保留。Linux 和 macOS 支持该路径。
 - macOS 上不能运行带 `run` 的注释示例，会报告 `CJDOC3074`。HTML 仍然正常生成，但示例没有实际执行。
-- CHIR 语义补充是可选能力，不随发行包提供：需要用同一版本的源码自行构建 worker，并提供匹配的编译器和静态 stdx。启用后结果仍可能是 `partial` 或 `unavailable`，`CJDOC2101`–`CJDOC2106` 表示语义信息没有补上；注释内容和源码声明不受影响。步骤见[使用 CHIR](how-to/chir.md)。
+- 0.7.8 的归档包不含 CHIR worker。需要补充语义时，请用同版本源码和匹配的编译器、静态 stdx [构建 0.7.8 的 worker](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/how-to/chir.md)。`CJDOC2101`–`CJDOC2106` 表示语义信息未完全补上；源码声明和注释仍保留。自 0.7.9 开始，归档包附带 worker。
 - 资源上限是固定的。超限时会报告诊断、跳过输入或返回资源错误，这时的输出不是完整结果。见[状态与限制](reference/states-and-limits.md#主要资源上限)。
 
 ## 更早的版本

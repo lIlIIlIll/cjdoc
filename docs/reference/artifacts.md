@@ -51,7 +51,7 @@ cjdoc generate --project . \
 }
 ```
 
-它决定后续写入可以替换哪些文件。目录已存在但不属于 cjdoc 管理时，写入被拒绝；`--force-owned` 只在所有权契约允许时替换，不是任意覆盖。处理方法见[管理输出](../how-to/manage-outputs.md)。
+`directories` 只列确实创建的子目录；没有 `html/` 时它是空数组。这份清单决定后续写入可以替换哪些文件。目录已存在但不属于 cjdoc 管理时，写入被拒绝；`--force-owned` 只在所有权契约允许时替换，不是任意覆盖。处理方法见[管理输出](../how-to/manage-outputs.md)。
 
 ## 各格式的文件树
 
@@ -72,11 +72,13 @@ target/doc/
 ├── .cjdoc-output.json
 └── markdown/
     ├── index.md
-    └── packages/
-        └── package-<id>.md
+    ├── packages/
+    │   └── package-<id>.md
+    └── symbols/
+        └── symbol-<id>.md
 ```
 
-`index.md` 是包清单，每项链接同目录内的包文件。包文件按声明列出签名、参数、返回值、说明与源码位置，块内的相对链接按该文件自身位置生成。
+`index.md` 是包清单，每项链接同目录内的包文件。包文件按声明列出签名、参数、返回值、说明与源码位置，容器声明另有独立的 `symbols/symbol-<id>.md`；块内的相对链接按该文件自身位置生成。启用概念文档后还有 `markdown/concepts/…`。
 
 `--format api-surface`、`--format coverage`、`--format symbol-index`：
 
@@ -126,7 +128,7 @@ target/doc/
         └── symbols/…
 ```
 
-类型和独立成员的 HTML 正文写入 `<包>/<类型>/<成员>/index.html` 等实际文件。重载共用一个选择页，每条签名另有独立文件。两种旧 `symbols/*.html` 文件都直接链接到对应正文；它们不是正文或机器表示。存在概念文档时，`concepts/` 下还有首页、模块页、包页与配置的指南路由。
+类型和独立成员的 HTML 正文写入 `<包>/<类型>/<成员>/index.html` 等实际文件。重载共用一个选择页，每条签名另有独立文件。两种旧 `symbols/*.html` 文件都直接链接到对应正文；它们不是正文或机器表示。存在概念文档时，`concepts/` 下还有首页、模块页、包页与配置的指南路由。分页的导航与全文产物按需追加 `navigation-index-part-<n>.json`、`llms-full-part-<n>.txt`。
 
 包参考页写入 `packages/<包名分段>/index.html`，例如 `packages/pocketkit/authoring/index.html`。HTTP 站点链接使用以 `/` 结尾的目录地址；通过 `file://` 打开时链接到实际文件。以前分享的 `packages/package-….html` 仍能打开同一个包并保留查询参数和片段；关闭 JavaScript 时，旧页面也可以直接阅读。
 
@@ -138,17 +140,17 @@ target/doc/
 
 | 路径 | schema | 说明 |
 |---|---|---|
-| `navigation-index.json` | `cjdoc.navigation-index/2` | 导航索引首片，含 `pagination`（`offset`、`returned`、`total`、`part`、`parts`、`next`、`pathBase`）；必须沿 `next` 读到结束，首片不是完整枚举 |
+| `navigation-index.json` | `cjdoc.navigation-index/2` | 导航索引首片，含 `completeness` 与 `pagination`（`offset`、`returned`、`total`、`part`、`parts`、`next`、`pathBase`）；必须沿 `next` 读到结束，首片不是完整枚举 |
 | `search-index.json`、`search-index.js` | `cjdoc.search-index/11`，内嵌 `cjdoc.search-contract/2` | 静态站搜索用 `discovery` + `bounded-static`，只支持 `search` |
 | `symbol-index.json` | `cjdoc.symbol-index/2` | 符号库存，与 `--format symbol-index` 内容同类 |
 | `agent/manifest.json` | `cjdoc.machine-manifest/3` | 绑定快照、发布修订、作用域、资源哈希，以及每个 HTML/Markdown/JSON 表示的相对路径 |
 | `agent/docs.json` | `cjdoc.doc-ir/18` | 与 manifest 对应的自包含 Doc IR |
 | `agent/symbols/*.json` | `cjdoc.declaration/3` | 单条声明的独立表示，含分类与源码投影 |
-| `agent/pages/*.json` | `cjdoc.page/2` | 概念页、包页或项目页的独立表示 |
+| `agent/pages/*.json`、`agent/pages/*.md` | `cjdoc.page/2` | 概念页、包页或项目页的独立表示 |
 | `agent/packages/*` | `cjdoc.page/2`、`cjdoc.declaration/3` | 包页与包内声明的 Markdown/JSON 表示 |
 | `agent-full-index.json` | `cjdoc.agent-full-index/1` | 全文分片描述：顺序、`unitCount`、`partByteLimit`、各分片范围与摘要 |
 | `llms.txt` | 无 schema | 精简发现入口，链接目录、表示 manifest 与全文入口；不是全站枚举 |
-| `validation.html` | — | 附加了验证报告时的人类可读视图 |
+| `validation.html` | — | HTML 站点的验证结果页；可附加验证或 API 差异报告 |
 
 `agent/manifest.json` 是路径映射的事实来源；不要由标题、签名或 slug 推算路径。读取 `agent-full-index.json` 时要对照 manifest 的 `snapshotId` 与 `publicationRevision`，并校验分片 SHA-256、范围与续取信息。
 
@@ -189,7 +191,7 @@ target/doc/
 }
 ```
 
-`--all-languages` 只支持目录输出，不能与 `--locale` 或 `--stdout` 同用。页面语言切换使用相对链接；目标语言缺页时转到该语言首页，章节尽量映射到配对页的对应标题，否则回到页首。
+`--all-languages` 只支持 generate/render 的目录输出，不能与 `--locale` 或 `--stdout` 同用。页面语言切换使用相对链接；目标语言缺页时转到该语言首页，章节尽量映射到配对页的对应标题，否则回到页首。
 
 ## 版本站点
 
@@ -221,7 +223,7 @@ versions/
 }
 ```
 
-组合只复制既有站点并注入选择器，不重新生成正文，也不校验各版本内容是否一致。最多 64 个站点、合计 256 MiB、65532 个文件；单份 diff 输入最多 32 MiB。
+站点自带 `symbol-index.json` 时 `symbolIndex` 才有路径，否则为 `null`；只有附加了 diff 文件时 `apiDiff` 才指向 `<base-path>/api-diff.json`。组合只复制既有站点并注入选择器，不重新生成正文，也不校验各版本内容是否一致。最多 64 个站点、合计 256 MiB、65532 个文件；单份 diff 输入最多 32 MiB。
 
 ## Schema 与 wire 版本
 
@@ -252,7 +254,7 @@ versions/
 | `search-contract` | `cjdoc.search-contract/2` | 不是 JSON Schema，是搜索行为契约数据 |
 | `source-provenance` | `cjdoc.source-provenance/1` | 调用方 source receipt 的输入契约，不是默认输出文件 |
 
-别名不是不同 wire 版本：`navigation-index` 与 `navigation-index-v2` 都是 v2，只有显式写 `navigation-index-v1` 才拿到 v1。仓库里的 `docs/schema/` 保留同名静态 JSON Schema 文件，运行时以 `cjdoc schema <name>` 的输出为准。
+别名不是不同 wire 版本：`navigation-index` 与 `navigation-index-v2` 都是 v2，只有显式写 `navigation-index-v1` 才拿到 v1。`cjdoc.version/1`（`html/version.json`）与 `cjdoc.serve-status/1`（serve 状态接口）不在 `schema list` 里，它们是产物字段的契约。仓库里的 `docs/schema/` 保留同名静态 JSON Schema 文件，运行时以 `cjdoc schema <name>` 的输出为准。
 
 ### current-only 的适用范围
 
