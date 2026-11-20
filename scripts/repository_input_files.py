@@ -364,7 +364,8 @@ def validate_schema_document(name: str, value: object,
         if isinstance(properties.get("schemaVersion"), dict) else None
     if name == "machine-manifest":
         pairs = [("cjdoc.machine-manifest/1", "cjdoc.read/1"),
-                 (expected_version, "cjdoc.read/2")]
+                 ("cjdoc.machine-manifest/2", "cjdoc.read/2"),
+                 (expected_version, "cjdoc.read/3")]
         if properties["schemaVersion"] != {"enum": [version for version, _ in pairs]} or \
                 properties["projection"] != {"enum": [projection for _, projection in pairs]} or \
                 value.get("oneOf") != [{"properties": {"schemaVersion": {"const": version},

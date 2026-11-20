@@ -5,14 +5,83 @@ import cjdoc.render as public_render
 import std.collection.*
 import yjson.*
 
+// A package compatibility body keeps the full package content but carries no
+// generated page identity: it is one physical address of the package, not a
+// second package page. A version never registers it as a destination.
+private func versionCompatibilityPackageBody(html: String): Bool {
+    if (public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-route") == Some("package-alias")) {
+        return true
+    }
+    public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-package-alias-for").isSome()
+}
+
+private func registerVersionApiDirectory(site: VersionSite, file: String, html: String): Unit {
+    if (!file.endsWith("/index.html")) { return }
+    if (public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-symbol-id").isSome() ||
+        public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-page-id").isSome()) {
+        let _ = site.apiDirectoryFiles.add(file)
+    }
+}
+
+private func versionPageAnchors(html: String): HashSet<String> {
+    let anchors = HashSet<String>()
+    for (anchor in public_render.documentationHtmlAnchors(html)) { let _ = anchors.add(anchor) }
+    anchors
+}
+
+/**
+ * Register the declaration rows a package body really contains. The row id is
+ * the stable anchor shared by every representation of that package, so the
+ * logical position is the generated page identity plus the row anchor and
+ * never the physical path. Rows the body lacks are not registered: a version
+ * link may claim the fragment only where it actually exists.
+ */
+private func versionIsRowAnchor(anchor: String): Bool {
+    let prefix = "symbol-"
+    if (!anchor.startsWith(prefix) || anchor.size <= prefix.size) { return false }
+    if ((anchor.size - prefix.size) % 2 != 0) { return false }
+    for (index in prefix.size..anchor.size) {
+        let byte = anchor[index]
+        let hex = (byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'f') ||
+            (byte >= b'A' && byte <= b'F')
+        if (!hex) { return false }
+    }
+    true
+}
+
+private func registerVersionPackageRows(site: VersionSite, file: String,
+    identity: VersionLogicalIdentity, anchors: HashSet<String>): Unit {
+    if (identity.pageId.isNone()) { return }
+    let packagePage = identity.pageId.getOrThrow().startsWith("package:")
+    if (!packagePage) { return }
+    let sections = HashMap<String, VersionLogicalIdentity>()
+    for (anchor in anchors) {
+        if (!versionIsRowAnchor(anchor)) { continue }
+        let section = VersionLogicalIdentity(identity.language, pageId: identity.pageId,
+            sectionId: Some(anchor))
+        sections[anchor] = section
+        site.logicalRoutes[section.key()] = file + "#" + anchor
+    }
+    if (!sections.isEmpty()) { site.sectionIdsByPage[file] = sections }
+}
+
+private func versionPackageJsonField(object: JsonObject, key: String): ?String {
+    match (object.get(key)) {
+        case Some(value) => try { Some(value.asString()) } catch (_: Exception) { None }
+        case None => None
+    }
+}
+
 internal func loadVersionLanguageRoutes(site: VersionSite, files: ArrayList<VersionSourceFile>, paths: HashSet<String>): Unit {
     let anchors = HashMap<String, HashSet<String>>()
     for (file in files where file.path.endsWith(".html")) {
-        let ids = HashSet<String>()
         let html = String.fromUtf8(file.bytes)
-        for (id in public_render.documentationHtmlAnchors(html)) { let _ = ids.add(id) }
-        registerVersionApiDirectory(site, file.path, html)
-        anchors[file.path] = ids
+        anchors[file.path] = versionPageAnchors(html)
+        if (versionCompatibilityPackageBody(html)) {
+            let _ = site.compatibilityPages.add(file.path)
+        } else {
+            registerVersionApiDirectory(site, file.path, html)
+        }
     }
     for (file in files where file.path == "site-manifest.json") {
         let object = JsonNode.parse(String.fromUtf8(file.bytes), config: JsonReadOptions(
@@ -29,6 +98,10 @@ internal func loadVersionLanguageRoutes(site: VersionSite, files: ArrayList<Vers
             if (!isSafeOutputPath(parts[0]) || !paths.contains(parts[0])) { throw IllegalArgumentException("site manifest points outside emitted files") }
             if (parts.size == 2 && (!anchors.contains(parts[0]) || !anchors[parts[0]].contains(parts[1]))) {
                 throw IllegalArgumentException("site manifest points to a nonexistent emitted fragment")
+            }
+            // Identity follows the canonical page, not a compatibility carrier.
+            if (site.compatibilityPages.contains(parts[0])) {
+                throw IllegalArgumentException("site manifest names a compatibility page as a destination")
             }
             let pageId = if (route["pageId"].isNull) { None<String> } else { Some(route["pageId"].asString()) }
             let symbolId = if (route["symbolId"].isNull) { None<String> } else { Some(route["symbolId"].asString()) }
@@ -57,6 +130,7 @@ internal func loadVersionLanguageRoutes(site: VersionSite, files: ArrayList<Vers
     // second destination. Only match the generated counterpart of a manifest entry.
     let prefix = "html/" + site.defaultLanguage + "/"
     for (file in files where file.path.startsWith(prefix) && file.path.endsWith("/index.html")) {
+        if (site.compatibilityPages.contains(file.path)) { continue }
         let canonical = "html/" + file.path.removePrefix(prefix)
         if (let Some(identity) <- site.logicalIdentityByHref.get(canonical)) {
             let html = String.fromUtf8(file.bytes)
@@ -76,11 +150,69 @@ internal func loadVersionLanguageRoutes(site: VersionSite, files: ArrayList<Vers
     }
 }
 
-private func registerVersionApiDirectory(site: VersionSite, file: String, html: String): Unit {
-    if (file.endsWith("/index.html") &&
-        (public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-symbol-id").isSome() ||
-            public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-page-id").isSome())) {
-        let _ = site.apiDirectoryFiles.add(file)
+/**
+ * Old monolingual publications had no generated page identity on package
+ * bodies. Their only genuine package evidence is the machine manifest's
+ * `kind:"package"` representation, which names the one real package page of
+ * that generation. A new compatibility alias never qualifies: it redirects to
+ * the canonical page instead of being a second package address.
+ */
+private func loadMonolingualPackageRepresentations(site: VersionSite,
+    files: ArrayList<VersionSourceFile>, compatibility: HashSet<String>): Unit {
+    let paths = HashSet<String>()
+    for (file in files) { let _ = paths.add(file.path) }
+    for (file in files where file.path == "agent/manifest.json") {
+        let object = JsonNode.parse(String.fromUtf8(file.bytes), config: JsonReadOptions(
+            duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 24,
+            maxInputBytes: VERSION_FILE_MAX_BYTES, maxBufferedValueBytes: VERSION_FILE_MAX_BYTES)).asObject()
+        match (versionPackageJsonField(object, "schemaVersion")) {
+            case Some(value) => if (value != "cjdoc.machine-manifest/1" &&
+                value != "cjdoc.machine-manifest/2" && value != "cjdoc.machine-manifest/3") {
+                throw IllegalArgumentException("unsupported machine manifest")
+            }
+            case None => throw IllegalArgumentException("machine manifest has no schemaVersion")
+        }
+        let representations = match (object.get("representations")) {
+            case Some(value) => try { value.asArray() } catch (_: Exception) {
+                throw IllegalArgumentException("machine manifest representations are invalid")
+            }
+            case None => throw IllegalArgumentException("machine manifest has no representations")
+        }
+        for (node in versionJsonArrayValues(representations)) {
+            let representation = try { node.asObject() } catch (_: Exception) {
+                throw IllegalArgumentException("machine manifest representation is invalid")
+            }
+            if (versionPackageJsonField(representation, "kind") != Some("package")) { continue }
+            let id = match (versionPackageJsonField(representation, "id")) {
+                case Some(value) => value
+                case None => throw IllegalArgumentException("package representation has no id")
+            }
+            if (!id.startsWith("cjdoc:package:") || id == "cjdoc:package:") {
+                throw IllegalArgumentException("package representation id is malformed")
+            }
+            let pageId = "package:" + id.removePrefix("cjdoc:package:")
+            let href = match (versionPackageJsonField(representation, "html")) {
+                case Some(value) => value
+                case None => throw IllegalArgumentException("package representation has no HTML page")
+            }
+            if (!isSafeOutputPath(href) || !paths.contains(href)) {
+                throw IllegalArgumentException("package representation points outside emitted files")
+            }
+            if (compatibility.contains(href)) {
+                throw IllegalArgumentException(
+                    "machine manifest names a package compatibility page as the package page")
+            }
+            let identity = VersionLogicalIdentity(site.defaultLanguage, pageId: Some(pageId))
+            match (site.logicalRoutes.get(identity.key())) {
+                case Some(existing) => if (existing != href) {
+                    throw IllegalArgumentException(
+                        "package '${pageId}' has conflicting canonical addresses")
+                }
+                case None =>
+                    site.logicalRoutes[identity.key()] = href
+                    site.logicalIdentityByHref[href] = identity
+            }
+        }
     }
 }
 
@@ -89,28 +221,63 @@ internal func loadMonolingualVersionRoutes(site: VersionSite, files: ArrayList<V
         let html = String.fromUtf8(file.bytes)
         site.defaultLanguage = if (html.contains("<html lang=\"zh-CN\"")) { "zh-CN" } else { "en" }
     }
-    for (file in files where file.path.endsWith("/index.html") || site.symbols.idByHref.contains(file.path)) {
+    let compatibility = HashSet<String>()
+    // Only pages that can carry an identity: generated directories, the
+    // package subtree (historical flat files and canonical directories), and
+    // symbol pages listed by the inventory. Compatibility stubs elsewhere are
+    // never destinations, so they are not decoded here.
+    for (file in files where file.path.endsWith("/index.html") ||
+        file.path.startsWith("packages/") || site.symbols.idByHref.contains(file.path)) {
         let html = String.fromUtf8(file.bytes)
+        // A compatibility body is neither a page nor a symbol destination, so
+        // its content and anchors are never decoded on this path.
+        if (versionCompatibilityPackageBody(html)) {
+            let _ = compatibility.add(file.path)
+            continue
+        }
+        let anchors = versionPageAnchors(html)
         registerVersionApiDirectory(site, file.path, html)
         if (let Some(pageId) <- public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-page-id")) {
             let identity = VersionLogicalIdentity(site.defaultLanguage, pageId: Some(pageId))
             site.logicalRoutes[identity.key()] = file.path
             site.logicalIdentityByHref[file.path] = identity
+            if (pageId.startsWith("package:")) {
+                registerVersionPackageRows(site, file.path, identity, anchors)
+            }
         }
         if (let Some(id) <- site.symbols.idByHref.get(file.path)) {
             let identity = VersionLogicalIdentity(site.defaultLanguage, symbolId: Some(id))
-            site.logicalRoutes[identity.key()] = file.path
+            let key = identity.key()
+            match (site.logicalRoutes.get(key)) {
+                case Some(existing) => if (existing != file.path) {
+                    throw IllegalArgumentException("symbol '${id}' has conflicting page addresses")
+                }
+                case None => site.logicalRoutes[key] = file.path
+            }
             if (let Some(owner) <- site.symbols.ownerById.get(id)) {
                 site.parentsByIdentity[identity.key()] = VersionLogicalIdentity(site.defaultLanguage, symbolId: Some(owner))
             }
-            let ids = HashSet<String>()
-            for (anchor in public_render.documentationHtmlAnchors(html)) { let _ = ids.add(anchor) }
-            site.monoAnchors[file.path] = ids
+            site.monoAnchors[file.path] = anchors
         }
+    }
+    loadMonolingualPackageRepresentations(site, files, compatibility)
+    // A package page proven by the machine manifest also owns the scoped row
+    // anchors that appear in its own body; anchors it lacks stay absent. This
+    // applies to both the historical flat file and the canonical directory.
+    for (file in files where file.path.endsWith("/index.html") || file.path.startsWith("packages/")) {
+        let identity = match (site.logicalIdentityByHref.get(file.path)) {
+            case Some(value) => value
+            case None => continue
+        }
+        if (identity.symbolId.isSome() || identity.pageId.isNone()) { continue }
+        if (!identity.pageId.getOrThrow().startsWith("package:")) { continue }
+        if (site.sectionIdsByPage.contains(file.path)) { continue }
+        registerVersionPackageRows(site, file.path, identity,
+            versionPageAnchors(String.fromUtf8(file.bytes)))
     }
 }
 
-private func versionIdentityRoute(site: VersionSite, identity: VersionLogicalIdentity): ?String {
+internal func versionIdentityRoute(site: VersionSite, identity: VersionLogicalIdentity): ?String {
     site.logicalRoutes.get(identity.key())
 }
 
@@ -156,6 +323,17 @@ internal func versionLanguageTarget(current: VersionSite, identity: VersionLogic
     target: VersionSite): VersionNavigationTarget {
     if (let Some(href) <- versionIdentityRoute(target, identity)) {
         return VersionNavigationTarget(href, VersionNavigationState.Exact)
+    }
+    // A package page can exist in the requested language while the requested
+    // declaration row cannot. Open that page and report the missing section
+    // instead of borrowing the row from the default language. Symbol, concept
+    // and every other fallback keep their existing precedence.
+    if (identity.symbolId.isNone() && identity.sectionId.isSome()) {
+        if (identity.pageId.map({ id => id.startsWith("package:") }).getOrDefault({ => false })) {
+            if (let Some(page) <- versionIdentityRoute(target, identity.withoutSection())) {
+                return VersionNavigationTarget(page, VersionNavigationState.MissingSection)
+            }
+        }
     }
     if (let Some(href) <- versionIdentityRouteInDefaultLanguage(target, identity)) {
         return VersionNavigationTarget(href, VersionNavigationState.MissingLanguage)

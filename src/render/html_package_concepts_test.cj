@@ -57,23 +57,23 @@ class HtmlPackageConceptsTest {
         let pages = [overviewPage("English purpose <script>"), overviewPage(long, language: "zh-CN")]
         let value = overviewFixture(pages)
         let artifacts = renderDocumentationFormatsWithOptions(value, ["html", "markdown"], locale: "zh-CN", docVersion: Some("1.0.0"))
-        let pkg = overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture"))
+        let pkg = overviewContent(artifacts, "html/packages/fixture/index.html")
         @Expect(pkg.contains(String(Array<Rune>(240, repeat: r'中')) + "…"))
         @Expect(!pkg.contains("English purpose"))
         @Expect(!pkg.contains("import fixture.*"))
-        @Expect(pkg.contains("href=\"../concepts/deep/overview.html\""))
+        @Expect(pkg.contains("href=\"../../concepts/deep/overview.html\""))
         let guide = overviewContent(artifacts, "html/concepts/deep/overview.html")
-        @Expect(guide.contains("href=\"../../" + packagePagePath(value.packages[0].moduleId, "fixture") + "#declarations\""))
+        @Expect(guide.contains("href=\"../../packages/fixture/index.html#declarations\""))
         @Expect(guide.contains("import fixture.*"))
         let english = renderDocumentationFormatsWithOptions(value, ["html"], locale: "en")
-        @Expect(overviewContent(english, "html/" + packagePagePath(value.packages[0].moduleId, "fixture")).contains("English purpose &lt;script&gt;"))
+        @Expect(overviewContent(english, "html/packages/fixture/index.html").contains("English purpose &lt;script&gt;"))
     }
 
     @TestCase
     func fallbackExcerptKeepsAuthoredLanguageOnAnotherLanguageSite(): Unit {
         let value = overviewFixture([overviewPage("English package purpose")])
         let artifacts = renderDocumentationFormatsWithOptions(value, ["html"], locale: "zh-CN")
-        let pkg = overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture"))
+        let pkg = overviewContent(artifacts, "html/packages/fixture/index.html")
         @Expect(pkg.contains("<html lang=\"zh-CN\""))
         @Expect(pkg.contains("<p lang=\"en\">English package purpose</p>"))
         @Expect(pkg.contains("data-translation-state=\"fallback\""))
@@ -83,14 +83,19 @@ class HtmlPackageConceptsTest {
     func sameNamedModulesRequireVisibleExplicitBinding(): Unit {
         let ambiguous = overviewFixture([overviewPage("Ambiguous purpose")], duplicate: true)
         let values = HtmlDocumentationRenderer().render(ambiguous)
+        let ambiguousRoutes = RenderProjection(ambiguous, buildApiRoutes: true)
         for (pkg in ambiguous.packages) {
-            @Expect(!overviewContent(values, "html/" + packagePagePath(pkg.moduleId, pkg.name)).contains("class=\"cj-package-overview\""))
+            @Expect(!overviewContent(values, "html/" + ambiguousRoutes.packageFile(pkg.moduleId, pkg.name))
+                .contains("class=\"cj-package-overview\""))
         }
         let id = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Atwo::fixture::entry"
         let exact = overviewFixture([overviewPage("Module two purpose", targets: [id])], duplicate: true)
         let rendered = HtmlDocumentationRenderer().render(exact)
-        @Expect(!overviewContent(rendered, "html/" + packagePagePath(exact.packages[0].moduleId, "fixture")).contains("Module two purpose"))
-        @Expect(overviewContent(rendered, "html/" + packagePagePath(exact.packages[1].moduleId, "fixture")).contains("Module two purpose"))
+        let routes = RenderProjection(exact, buildApiRoutes: true)
+        let first = routes.packageFile(exact.packages[0].moduleId, "fixture")
+        let second = routes.packageFile(exact.packages[1].moduleId, "fixture")
+        @Expect(!overviewContent(rendered, "html/" + first).contains("Module two purpose"))
+        @Expect(overviewContent(rendered, "html/" + second).contains("Module two purpose"))
     }
 
     @TestCase
@@ -101,11 +106,11 @@ class HtmlPackageConceptsTest {
         for (page in cases) {
             let value = overviewFixture([page])
             let artifacts = HtmlDocumentationRenderer().render(value)
-            @Expect(!overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture")).contains("class=\"cj-package-overview\""))
+            @Expect(!overviewContent(artifacts, "html/packages/fixture/index.html").contains("class=\"cj-package-overview\""))
             @Expect(!overviewContent(artifacts, "html/concepts/deep/overview.html").contains("cj-package-return"))
         }
         let all = overviewFixture([cases[0]], audience: "all")
-        @Expect(overviewContent(HtmlDocumentationRenderer().render(all), "html/" + packagePagePath(all.packages[0].moduleId, "fixture")).contains("Hidden purpose"))
+        @Expect(overviewContent(HtmlDocumentationRenderer().render(all), "html/packages/fixture/index.html").contains("Hidden purpose"))
     }
     @TestCase
     func oldSyntheticSnapshotNeverBecomesAuthorTextByRouteOrWording(): Unit {
@@ -115,12 +120,12 @@ class HtmlPackageConceptsTest {
                 MarkdownNode("paragraph", children: [MarkdownNode("text", literal: wording)])]))
         let value = overviewFixture([old])
         let artifacts = HtmlDocumentationRenderer().render(value)
-        @Expect(!overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture")).contains("class=\"cj-package-overview\""))
+        @Expect(!overviewContent(artifacts, "html/packages/fixture/index.html").contains("class=\"cj-package-overview\""))
         let authored = overviewFixture([overviewPage(wording)])
-        @Expect(overviewContent(HtmlDocumentationRenderer().render(authored), "html/" + packagePagePath(authored.packages[0].moduleId, "fixture")).contains(wording))
+        @Expect(overviewContent(HtmlDocumentationRenderer().render(authored), "html/packages/fixture/index.html").contains(wording))
         authored.appendDiagnostic(Diagnostic("warning", "CJDOC3026", "Captured page used a bounded fallback",
             source: Some(SourceRange("docs/en/package.md", SourcePosition(1, 1, 0), SourcePosition(1, 1, 0)))))
-        @Expect(!overviewContent(HtmlDocumentationRenderer().render(authored), "html/" + packagePagePath(authored.packages[0].moduleId, "fixture")).contains("class=\"cj-package-overview\""))
+        @Expect(!overviewContent(HtmlDocumentationRenderer().render(authored), "html/packages/fixture/index.html").contains("class=\"cj-package-overview\""))
     }
     @TestCase
     func sharedSourcesKeepOnePackageEntryAndExactRouteReturns(): Unit {
@@ -129,12 +134,32 @@ class HtmlPackageConceptsTest {
             first.text, first.markdown, packageName: "fixture", language: Some("en"), defaultLanguage: Some("en"))
         let value = overviewFixture([first, other])
         let rendered = HtmlDocumentationRenderer().render(value)
-        let path = packagePagePath(value.packages[0].moduleId, "fixture")
+        let path = "packages/fixture/index.html"
         let pkg = overviewContent(rendered, "html/" + path)
         @Expect(pkg.contains("class=\"cj-package-overview\""))
-        @Expect(!pkg.contains("href=\"../concepts/other.html\""))
+        @Expect(!pkg.contains("href=\"../../concepts/other.html\""))
         @Expect(overviewContent(rendered, "html/concepts/deep/overview.html").contains("../../" + path + "#declarations"))
         @Expect(overviewContent(rendered, "html/concepts/other.html").contains("../" + path + "#declarations"))
+    }
+
+    @TestCase
+    func legacyPackageCanStillReadTheSameDeclarationAndFollowCanonicalRoute(): Unit {
+        let documentation = overviewFixture([overviewPage("Package introduction")])
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let pkg = documentation.packages[0]
+        let legacy = historicalPackagePagePath(pkg.moduleId, pkg.name)
+        let aliased = overviewContent(artifacts, "html/" + legacy)
+        let canonical = overviewContent(artifacts, "html/packages/fixture/index.html")
+        let anchor = symbolAnchor(documentation.declarations[0])
+        @Expect(aliased.contains("data-cjdoc-route=\"package-alias\""))
+        @Expect(!aliased.contains("data-cjdoc-page-id"))
+        @Expect(aliased.contains("rel=\"canonical\" href=\"../packages/fixture/\""))
+        @Expect(aliased.contains("data-cjdoc-alias-target href=\"../packages/fixture/index.html\""))
+        @Expect(aliased.contains("id=\"" + anchor + "\""))
+        @Expect(canonical.contains("id=\"" + anchor + "\""))
+        @Expect(canonical.contains("data-cjdoc-page-id=\"package:" + pkg.moduleId + ":fixture\""))
+        @Expect(aliased.contains("href=\"../fixture/Entry/index.html\""))
+        @Expect(canonical.contains("href=\"../../fixture/Entry/index.html\""))
     }
 }
 

@@ -34,37 +34,88 @@ private func declarationRowSummary(symbol: SymbolDoc): String {
     }
 }
 
-// A compact row: name links to the declaration page, the kind is a badge, and the
-// one-paragraph summary replaces the old row-level signature. The name is the
-// navigation label shared with the sidebar, so overloads and repeated
-// extensions stay distinguishable without a signature column.
+// Display-only soft-break opportunities at the label's own generated lists: the
+// generic parameter list and the parameter list, plus the separators inside
+// them. The text stays byte-identical (copy, identity and signatures never pass
+// through here), nested parentheses in default expressions get no breaks, and
+// an empty list is never split.
+internal func appendSoftWrappedLabel(w: HtmlWriter, value: String): Unit {
+    var start = 0
+    var index = 0
+    var depth = 0
+    while (index < value.size) {
+        let byte = value[index]
+        var breakAfter = false
+        if ((byte == b'(' || byte == b'<') && depth == 0) {
+            if (index + 1 < value.size) {
+                let next = value[index + 1]
+                breakAfter = next != b')' && next != b'>'
+            }
+            depth = 1
+        } else if (byte == b'(' || byte == b'<') {
+            depth++
+        } else if (byte == b')' || byte == b'>') {
+            if (depth > 0) { depth-- }
+        } else if (byte == b',' && depth == 1 && index + 1 < value.size && value[index + 1] == b' ') {
+            index++
+            breakAfter = true
+        }
+        if (breakAfter) {
+            w.text(value[start..index + 1])
+            w.void("wbr")
+            start = index + 1
+        }
+        index++
+    }
+    if (start < value.size) { w.text(value[start..]) }
+}
+
+// A compact row: name links to the declaration page and the one-paragraph
+// summary replaces the old row-level signature. The name is the navigation
+// label shared with the sidebar, so overloads and repeated extensions stay
+// distinguishable without a signature column. The row itself is the outline
+// target, so a table of contents entry points at the visible declaration rather
+// than at the source header or a table ordinal.
 private func appendDeclarationRow(w: HtmlWriter, projection: RenderProjection,
-    symbol: SymbolDoc, locale: String): Unit {
+    symbol: SymbolDoc, locale: String, rootPrefix: String, showKind: Bool): Unit {
     let name = sidebarPackageLabels(projection, symbol.moduleId, symbol.packageName)
         .get(symbol.id).getOrDefault({ => readerDeclarationName(symbol) })
+    // Attribute order keeps the historical row prefix these pages have always
+    // published; the row anchor and outline role follow the member metadata.
     w.open("tr", attrs: [htmlClass("cj-decl-table__row"),
         htmlFlag("data-cjdoc-member"),
         htmlAttr("data-member-symbol-id", symbol.id),
         htmlAttr("data-member-name", symbol.name),
-        htmlAttr("data-member-kind", symbol.kind)])
+        htmlAttr("data-member-kind", symbol.kind),
+        htmlAttr("id", symbolAnchor(symbol)),
+        htmlAttr("data-cjdoc-toc-role", "entry")])
     w.element("td", [htmlClass("cj-decl-table__name")]) { cell =>
         cell.element("a", [htmlClass("cj-decl-table__link"),
-            htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref("../", symbol.id)))]) { link =>
-            link.textElement("code", name)
+            htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref(rootPrefix, symbol.id))),
+            htmlFlag("data-cjdoc-api-link")]) { link =>
+            link.open("code")
+            appendSoftWrappedLabel(link, name)
+            link.close("code")
+        }
+        // The kind appears once per section; a merged author-group heading
+        // (or a hidden kind heading) no longer states it, so the row then
+        // carries the small label itself instead of a whole column.
+        if (showKind) {
+            cell.textElement("span", htmlKindLabel(symbol.kind, locale), attrs: [
+                htmlClass("cj-kind cj-decl-table__kind"), htmlAttr("data-kind", symbol.kind)])
         }
         appendDeprecationBadgeFor(cell, projection, symbol, locale)
         appendDeclarationClassificationBadges(cell, projection.catalog, projection.snapshotId,
-            symbol, "../", includeGroup: false)
-    }
-    w.element("td", [htmlClass("cj-decl-table__kind")]) { cell =>
-        cell.textElement("span", htmlKindLabel(symbol.kind, locale),
-            attrs: [htmlClass("cj-kind"), htmlAttr("data-kind", symbol.kind)])
+            symbol, rootPrefix, includeGroup: false)
     }
     w.element("td", [htmlClass("cj-decl-table__summary")]) { cell =>
         cell.text(declarationRowSummary(symbol))
         if (let Some(action) <- projection.deprecations().action(symbol.id)) {
-            cell.text(" ")
-            appendReplacementLink(cell, action, projection, "../", locale)
+            // The migration action owns a line of its own instead of trailing
+            // the summary text or sharing the name cell.
+            cell.element("div", [htmlClass("cj-decl-table__replacement")]) { line =>
+                appendReplacementLink(line, action, projection, rootPrefix, locale)
+            }
         }
     }
     w.close("tr")
@@ -104,20 +155,22 @@ internal func packageDeclarationCategories(symbols: ArrayList<SymbolDoc>):
     (ordered, kindByName)
 }
 
+// `showKind` mirrors the rendered section above the table: when a visible kind
+// heading already says "Functions", the column would repeat it on every row.
 private func appendDeclarationTable(w: HtmlWriter, projection: RenderProjection,
-    symbols: ArrayList<SymbolDoc>, locale: String): Unit {
+    symbols: ArrayList<SymbolDoc>, locale: String, rootPrefix: String,
+    showKind: Bool): Unit {
     w.open("table", attrs: [htmlClass("cj-decl-table")])
     w.open("thead", attrs: [htmlClass("cj-sr-only")])
     w.open("tr")
-    for (column in [label(locale, "Name", "名称"), label(locale, "Kind", "种类"),
-        label(locale, "Summary", "摘要")]) {
+    for (column in [label(locale, "Name", "名称"), label(locale, "Summary", "摘要")]) {
         w.textElement("th", column, attrs: [htmlAttr("scope", "col")])
     }
     w.close("tr")
     w.close("thead")
     w.open("tbody")
     for (symbol in symbols) {
-        appendDeclarationRow(w, projection, symbol, locale)
+        appendDeclarationRow(w, projection, symbol, locale, rootPrefix, showKind)
     }
     w.close("tbody")
     w.close("table")
@@ -126,10 +179,10 @@ private func appendDeclarationTable(w: HtmlWriter, projection: RenderProjection,
 
 internal func appendPackageDeclarationGroups(w: HtmlWriter,
     projection: RenderProjection, pageModuleId: String, pagePackageName: String,
-    symbols: ArrayList<SymbolDoc>, locale: String): Unit {
+    symbols: ArrayList<SymbolDoc>, locale: String, rootPrefix!: String = ""): Unit {
     let roles = partitionDeclarationGroups(symbols, projection.catalog)
     if (!hasGroupedDeclarations(roles)) {
-        appendPackageDeclarationKinds(w, projection, symbols, locale)
+        appendPackageDeclarationKinds(w, projection, symbols, locale, rootPrefix)
         return
     }
     prepareDeclarationGroupAnchors(roles, pageModuleId, pagePackageName, None)
@@ -146,12 +199,13 @@ internal func appendPackageDeclarationGroups(w: HtmlWriter,
         }
         w.open("section", attrs: [htmlClass("cj-api-group"),
             htmlAttr("data-cjdoc-declaration-group", role.id)])
-        w.open("h2", attrs: [htmlAttr("id", role.anchor)])
+        w.open("h2", attrs: [htmlAttr("id", role.anchor),
+            htmlAttr("data-cjdoc-toc-role", "group")])
         w.text(declarationGroupDisplayTitle(role, locale))
         w.textElement("span", label(locale, " (${role.symbols.size})", "（${role.symbols.size}）"),
             attrs: [htmlFlag("data-cjdoc-group-count"), htmlAttr("data-group-total", role.symbols.size.toString())])
         w.close("h2")
-        appendPackageDeclarationKinds(w, projection, role.symbols, locale,
+        appendPackageDeclarationKinds(w, projection, role.symbols, locale, rootPrefix,
             groupPrefix: role.kindPrefix)
         w.close("section")
         w.newline()
@@ -167,7 +221,7 @@ private func appendKindHeading(w: HtmlWriter, headingTag: String, anchorId: Stri
 
 private func appendGroupedKindSection(w: HtmlWriter, projection: RenderProjection,
     category: String, group: ArrayList<SymbolDoc>,
-    locale: String, groupPrefix: String, showKindHeading: Bool): Unit {
+    locale: String, groupPrefix: String, showKindHeading: Bool, rootPrefix: String): Unit {
     let (groupId, heading) = packageDeclarationHeading(category, locale)
     let count = label(locale, " (${group.size})", "（${group.size}）")
     if (showKindHeading) {
@@ -181,13 +235,17 @@ private func appendGroupedKindSection(w: HtmlWriter, projection: RenderProjectio
         w.textElement("span", "", attrs: [htmlClass("cj-anchor-alias"),
             htmlAttr("id", groupPrefix + groupId), htmlAttr("aria-hidden", "true")])
     }
-    appendDeclarationTable(w, projection, group, locale)
+    // A merged kind heading no longer names the kind above the table, and the
+    // generic "Other declarations" heading never names the concrete kind, so
+    // those rows carry the small label instead.
+    appendDeclarationTable(w, projection, group, locale, rootPrefix,
+        !showKindHeading || category == "other")
     w.close("section")
     w.newline()
 }
 
 private func appendPackageDeclarationKinds(w: HtmlWriter, projection: RenderProjection,
-    symbols: ArrayList<SymbolDoc>, locale: String,
+    symbols: ArrayList<SymbolDoc>, locale: String, rootPrefix: String,
     groupPrefix!: String = ""): Unit {
     let (ordered, _) = packageDeclarationCategories(symbols)
     if (ordered.isEmpty()) { return }
@@ -197,7 +255,7 @@ private func appendPackageDeclarationKinds(w: HtmlWriter, projection: RenderProj
         let layout = declarationGroupLayout(ordered.size, 2)
         for (entry in ordered) {
             appendGroupedKindSection(w, projection, entry[0], entry[1], locale,
-                groupPrefix, layout.showKindHeading)
+                groupPrefix, layout.showKindHeading, rootPrefix)
         }
         return
     }
@@ -231,7 +289,8 @@ private func appendPackageDeclarationKinds(w: HtmlWriter, projection: RenderProj
             htmlAttr("data-cjdoc-toc-role", "group")])
         w.text(heading + count)
         w.close(headingTag)
-        appendDeclarationTable(w, projection, group, locale)
+        // "Other declarations" is not a concrete kind, so its rows keep one.
+        appendDeclarationTable(w, projection, group, locale, rootPrefix, category == "other")
         w.close("section")
         w.newline()
     }

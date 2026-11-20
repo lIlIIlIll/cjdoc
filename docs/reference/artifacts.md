@@ -127,6 +127,8 @@ target/doc/
 
 类型和独立成员的 HTML 正文写入 `<包>/<类型>/<成员>/index.html` 等实际文件。重载共用一个选择页，每条签名另有独立文件。两种旧 `symbols/*.html` 文件都直接链接到对应正文；它们不是正文或机器表示。存在概念文档时，`concepts/` 下还有首页、模块页、包页与配置的指南路由。
 
+包参考页写入 `packages/<包名分段>/index.html`，例如 `packages/pocketkit/authoring/index.html`。通过 HTTP 打开时，页内导航使用以 `/` 结尾的目录地址；通过 `file://` 打开时使用实际文件。以前分享的 `packages/package-….html` 仍能打开同一个包并保留片段；关闭 JavaScript 时，旧页面也可以直接阅读。
+
 `html/` 下的相对路径都以该文档根为基准，因此整棵目录既能用静态 HTTP 子路径托管，也能用 `file://` 打开。部署要复制整个 `html/`：只复制 `index.html`、或只搬运 `agent/` 都会让 manifest 指向的页面与全文入口失效。
 
 `--agent-full` 适用于 generate、render、serve；非 serve 命令要求同时请求 `html`。它只增加聚合全文 `llms-full.txt` 与分片描述 `agent-full-index.json`，不加它也有逐页、逐声明的 Markdown/JSON 表示。
@@ -138,7 +140,7 @@ target/doc/
 | `navigation-index.json` | `cjdoc.navigation-index/2` | 导航索引首片，含 `pagination`（`offset`、`returned`、`total`、`part`、`parts`、`next`、`pathBase`）；必须沿 `next` 读到结束，首片不是完整枚举 |
 | `search-index.json`、`search-index.js` | `cjdoc.search-index/11`，内嵌 `cjdoc.search-contract/2` | 静态站搜索用 `discovery` + `bounded-static`，只支持 `search` |
 | `symbol-index.json` | `cjdoc.symbol-index/2` | 符号库存，与 `--format symbol-index` 内容同类 |
-| `agent/manifest.json` | `cjdoc.machine-manifest/2` | 绑定快照、发布修订、作用域、资源哈希，以及每个 HTML/Markdown/JSON 表示的相对路径 |
+| `agent/manifest.json` | `cjdoc.machine-manifest/3` | 绑定快照、发布修订、作用域、资源哈希，以及每个 HTML/Markdown/JSON 表示的相对路径 |
 | `agent/docs.json` | `cjdoc.doc-ir/18` | 与 manifest 对应的自包含 Doc IR |
 | `agent/symbols/*.json` | `cjdoc.declaration/3` | 单条声明的独立表示，含分类与源码投影 |
 | `agent/pages/*.json` | `cjdoc.page/2` | 概念页、包页或项目页的独立表示 |
@@ -151,7 +153,7 @@ target/doc/
 
 Doc IR 只装在内存或只有 `docs.json` 时，结果的 `packagedRepresentations` 为 `false`：规范路由存在不代表资源真的随包复制。装载 `agent/manifest.json` 才会校验资源哈希与完整表示映射。
 
-新包使用 `cjdoc.machine-manifest/2` + `cjdoc.read/2`，HTML 表示给出实际的 `index.html` 文件路径，而不是 HTTP 目录地址。CLI 仍能验证和查询 `cjdoc.machine-manifest/1` + `cjdoc.read/1` 的旧包，并返回其中的原路径；不接受两代路径混用。两种包的 `agent/docs.json` 均为 Doc IR v18。
+新发布使用 `cjdoc.machine-manifest/3` + `cjdoc.read/3`：包的 HTML 表示使用新包地址的实际 `index.html` 文件，声明地址与 `/2` 相同。CLI 仍能验证和查询 `/1` + `/1` 和 `/2` + `/2` 的旧发布，沿用各自的原始地址。manifest 版本必须与读取投影版本配对；三种发布的 `agent/docs.json` 均为 Doc IR v18。
 
 ## 多语言产物布局
 
@@ -243,7 +245,7 @@ versions/
 | `agent-full-index` | `cjdoc.agent-full-index/1` | 聚合全文分片索引 |
 | `declaration` | `cjdoc.declaration/3` | 单条声明的独立表示 |
 | `page` | `cjdoc.page/2` | 单个概念页的独立表示 |
-| `machine-manifest` | `cjdoc.machine-manifest/2`、`cjdoc.machine-manifest/1` | 发布写 v2；schema 也描述可验证读取的 v1 包 |
+| `machine-manifest` | `cjdoc.machine-manifest/3`、`/2`、`/1` | 发布写 `/3`；schema 也描述可验证读取的 `/2` 和 `/1` 包 |
 | `query-request` | `cjdoc.query-request/3` | 固定快照查询请求 |
 | `query-result` | `cjdoc.query-result/4` | 查询结果 envelope |
 | `search-contract` | `cjdoc.search-contract/2` | 不是 JSON Schema，是搜索行为契约数据 |

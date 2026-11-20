@@ -49,7 +49,8 @@ def _json(path: Path) -> dict:
 
 def _captured_ir(snapshot: Path) -> dict:
     value = _json(snapshot)
-    pairs = {"cjdoc.machine-manifest/1": "cjdoc.read/1", "cjdoc.machine-manifest/2": "cjdoc.read/2"}
+    pairs = {"cjdoc.machine-manifest/1": "cjdoc.read/1", "cjdoc.machine-manifest/2": "cjdoc.read/2",
+             "cjdoc.machine-manifest/3": "cjdoc.read/3"}
     if value.get("schemaVersion") in pairs:
         if value.get("projection") != pairs[value["schemaVersion"]]:
             raise SearchCaseFailure("manifest schema and read projection disagree")

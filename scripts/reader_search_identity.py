@@ -21,10 +21,11 @@ def _require(condition: bool, message: str) -> None:
         raise ValueError("Reader search identity: " + message)
 
 
-# Both published generations are verified; each keeps its own reading projection
+# Each published generation is verified; each keeps its own reading projection
 # and therefore its own snapshot identity domain. A package never mixes them.
 MANIFEST_PAIRS = (("cjdoc.machine-manifest/1", "cjdoc.read/1"),
-                  ("cjdoc.machine-manifest/2", "cjdoc.read/2"))
+                  ("cjdoc.machine-manifest/2", "cjdoc.read/2"),
+                  ("cjdoc.machine-manifest/3", "cjdoc.read/3"))
 
 
 def _raw_contract(encoded: str) -> str:
@@ -227,6 +228,7 @@ def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None 
             "snapshotId": snapshot, "projectionId": projection,
             "docIr": packaged_ir, "docIrSha256": doc_record["sha256"],
             "docIrPath": doc_record["path"], "manifestPair": pair,
+            "representations": manifest.get("representations", []),
             "inventory": inventory, "symbolIndexSha256": inventory_sha}
 
 

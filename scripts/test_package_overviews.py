@@ -13,9 +13,9 @@ ROOT = 'cjdoc:module:v1:root'
 DEPENDENCY = 'cjdoc:module:v1:path:pocketkit_support'
 
 
-def package_route(module, package='pocketkit'):
-    # The fixture's independently prescribed module/package identity determines
-    # the expected canonical route; no generated href participates in this oracle.
+def legacy_package_route(module, package='pocketkit'):
+    # The historical compatibility filename is independently prescribed by the
+    # module/package identity; it must remain readable without the alias script.
     key = f'{len(module.encode())}:{module}{package}'
     slug = key.encode().hex()
     if len(slug) > 96:
@@ -25,6 +25,62 @@ def package_route(module, package='pocketkit'):
             second = (second * 257 + byte) % 2147483629
         slug = f'{slug[:64]}--{first}-{second}'
     return 'packages/package-' + slug + '.html'
+
+
+def package_root(site):
+    # A normal publication nests its site under html/, while a composed version
+    # root is the html directory itself.
+    return site / 'html' if (site / 'html' / 'packages').is_dir() else site
+
+
+def canonical_packages(site):
+    """Map published package identities to the pages that claim them.
+
+    The oracle reads the page's own captured module/package identity instead of
+    deriving the readable route, so a route allocation bug cannot hide itself.
+    """
+    pages = {}
+    for path in sorted((package_root(site) / 'packages').rglob('index.html')):
+        text = path.read_text()
+        body = re.search(r'<body\b[^>]*>', text)
+        identity = re.search(r'data-cjdoc-page-id="([^"]*)"', body.group(0) if body else '')
+        if not identity or not identity.group(1).startswith('package:'):
+            continue
+        assert 'data-cjdoc-package-alias-for' not in body.group(0), path
+        assert identity.group(1) not in pages, (identity.group(1), path, pages[identity.group(1)])
+        pages[identity.group(1)] = path
+    return pages
+
+
+def package_page(site, module, package='pocketkit'):
+    identity = f'package:{module}:{package}'
+    pages = canonical_packages(site)
+    assert identity in pages, (identity, sorted(pages))
+    return pages[identity]
+
+
+def member_ids(text):
+    return set(re.findall(r'<tr\b[^>]*\bdata-cjdoc-member\b[^>]*\bid="([^"]+)"', text))
+
+
+def verify_alias(site, package, module, package_name='pocketkit'):
+    """The old filename is the same published content, not a second package page."""
+    alias = package_root(site) / legacy_package_route(module, package_name)
+    assert alias.is_file(), alias
+    text = alias.read_text()
+    body = re.search(r'<body\b[^>]*>', text).group(0)
+    assert 'data-cjdoc-package-alias-for="package:' + module + ':' + package_name + '"' in body, alias
+    assert 'data-cjdoc-page-id' not in body and 'data-cjdoc-symbol-id' not in body, alias
+    assert 'data-cjdoc-route="package-alias"' in body, alias
+    assert member_ids(text) == member_ids(package.read_text()), alias
+    targets = re.findall(r'<a\b[^>]*\bdata-cjdoc-alias-target\b[^>]*\bhref="([^"]*)"', text)
+    assert len(targets) == 1, (alias, targets)
+    assert reachable(alias, targets[0]) == package.resolve(), (alias, targets[0])
+    canonical = re.search(r'<link rel="canonical" href="([^"]*)">', text)
+    assert canonical and canonical.group(1).endswith('/'), alias
+    directory = (alias.parent / unquote(urlsplit(canonical.group(1)).path)).resolve()
+    assert directory / 'index.html' == package.resolve(), alias
+    return alias
 
 
 class Page(HTMLParser):
@@ -123,8 +179,9 @@ def main():
         return site
 
     def verify(name, site, module=ROOT, expectation=None, *, locale='en', version='1.0.0', aliases=()):
-        package = site / 'html' / package_route(module)
+        package = package_page(site, module)
         text = package.read_text()
+        alias = verify_alias(site, package, module)
         role = 'ROOT' if module == ROOT else 'DEPENDENCY'
         api_marker = f'{role}_API_{version}'
         other_api = f'{"DEPENDENCY" if role == "ROOT" else "ROOT"}_API_{version}'
@@ -138,7 +195,8 @@ def main():
             identity = 'RootIdentity' if module == ROOT else 'DepIdentity'
             assert any(d['moduleId'] == module and d['packageName'] == 'pocketkit' and d['name'] == identity
                        for d in data['declarations']), name
-        receipt = {'name': name, 'package': str(package.relative_to(output)), 'authored': expectation is not None,
+        receipt = {'name': name, 'package': str(package.relative_to(output)),
+                   'compatibilityAlias': str(alias.relative_to(output)), 'authored': expectation is not None,
                    'locale': locale, 'moduleId': module, 'packageName': 'pocketkit', 'apiMarker': api_marker,
                    'forbiddenApiMarker': other_api}
         if expectation:
@@ -227,8 +285,9 @@ def main():
     for version in ['1.0.0', '2.0.0']:
         # Compose's documented version root and the fixture input determine identity.
         version_site = output / 'versions' / version
-        package = version_site / package_route(ROOT)
+        package = package_page(version_site, ROOT)
         text = package.read_text()
+        verify_alias(version_site, package, ROOT)
         expectation = expected(version=version)
         guide = version_site / expectation['route']
         assert expectation['summary'] in text and expectation['bodyMarker'] in guide.read_text()

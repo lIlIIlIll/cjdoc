@@ -14,7 +14,7 @@ internal func validateCapturedPageRoutes(documentation: DocumentationSet): Unit 
     let reserved = HashSet<String>()
     for (route in ["index.html", "validation.html"]) { let _ = reserved.add(route) }
     for (packageDoc in documentation.packages) {
-        let _ = reserved.add(packagePagePath(packageDoc.moduleId, packageDoc.name))
+        let _ = reserved.add(historicalPackagePagePath(packageDoc.moduleId, packageDoc.name))
     }
     for (symbol in documentation.declarations) {
         let _ = reserved.add(symbolPagePath(symbol))

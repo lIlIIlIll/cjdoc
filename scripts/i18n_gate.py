@@ -47,6 +47,116 @@ class VersionRoutes(HTMLParser):
                 "routes": json.loads(routes or "{}"),
             })
 
+class HtmlPageIdentity(HTMLParser):
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.route: str | None = None
+        self.page_id: str | None = None
+        self.symbol_id: str | None = None
+        self.package_alias_for: str | None = None
+        self.canonical: str | None = None
+        self.alias_target: str | None = None
+        self.members: dict[str, str] = {}
+        self.choice_entries: set[str] = set()
+        self.feed(text)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        if tag == "body":
+            self.route = values.get("data-cjdoc-route")
+            self.page_id = values.get("data-cjdoc-page-id")
+            self.symbol_id = values.get("data-cjdoc-symbol-id")
+            self.package_alias_for = values.get("data-cjdoc-package-alias-for")
+        elif tag == "link" and values.get("rel") == "canonical":
+            self.canonical = values.get("href")
+        elif tag == "a" and "data-cjdoc-alias-target" in values:
+            self.alias_target = values.get("href")
+        elif tag == "tr" and "data-cjdoc-member" in values:
+            symbol, anchor = values.get("data-member-symbol-id"), values.get("id")
+            if symbol and anchor:
+                self.members[anchor] = symbol
+        elif tag == "li" and values.get("data-cjdoc-toc-role") == "entry":
+            anchor = values.get("id")
+            if anchor:
+                self.choice_entries.add(anchor)
+
+
+def page_anchor(symbol_id: str) -> str:
+    return "symbol-" + symbol_id.encode("utf-8").hex()
+
+
+def check_package_alias_contract(language_root: Path) -> dict:
+    """Keep the package compatibility page a full body bound to its canonical page."""
+    package_dir = language_root / "packages"
+    if not package_dir.is_dir():
+        return {"canonical": {}, "aliases": {}}
+    canonical: dict[str, tuple[Path, HtmlPageIdentity]] = {}
+    aliases: dict[str, Path] = {}
+    for page in sorted(package_dir.rglob("*.html")):
+        identity = HtmlPageIdentity(page.read_text())
+        if identity.package_alias_for is not None:
+            aliases[identity.package_alias_for] = page
+        elif (identity.page_id or "").startswith("package:"):
+            canonical[identity.page_id] = (page, identity)
+        elif page.name.startswith("package-"):
+            raise AssertionError(f"{page}: historical package filename has no package identity")
+    for identity, page in aliases.items():
+        primary = canonical.get(identity)
+        assert primary is not None, f"{page}: package alias has no canonical page"
+        primary_path, primary_identity = primary
+        alias = HtmlPageIdentity(page.read_text())
+        assert alias.page_id is None and alias.symbol_id is None, page
+        assert alias.route == "package-alias", page
+        assert alias.alias_target is not None, page
+        target = (page.parent / unquote(urlsplit(alias.alias_target).path)).resolve()
+        assert target == primary_path.resolve(), (page, alias.alias_target)
+        assert alias.canonical is not None and urlsplit(alias.canonical).path.endswith("/"), page
+        directory = (page.parent / unquote(urlsplit(alias.canonical).path)).resolve()
+        assert directory / "index.html" == primary_path.resolve(), page
+        assert alias.members == primary_identity.members, page
+        for anchor, symbol in alias.members.items():
+            assert anchor == page_anchor(symbol), (page, anchor)
+        assert page.name.startswith("package-"), page
+    for identity, (page, parser) in canonical.items():
+        assert parser.symbol_id is None, page
+        assert parser.route == "api", page
+        for anchor, symbol in parser.members.items():
+            assert anchor == page_anchor(symbol), (page, anchor)
+    return {"canonical": canonical, "aliases": aliases}
+
+
+def check_package_manifest_rows(manifest: dict, publication: Path, language: str,
+                                canonical: dict[str, tuple[Path, HtmlPageIdentity]]) -> None:
+    """A package is one logical page; its declarations are anchors on that page."""
+    rows = [row for row in manifest["routes"] if row["language"] == language
+            and (row["pageId"] or "").startswith("package:")]
+    identities: dict[str, list[dict]] = {}
+    for row in rows:
+        identities.setdefault(row["pageId"], []).append(row)
+    assert set(identities) == set(canonical), (sorted(identities), sorted(canonical))
+    for identity, package_rows in identities.items():
+        page, parser = canonical[identity]
+        expected = page.relative_to(publication).as_posix()
+        identity_rows = [row for row in package_rows if row["sectionId"] is None]
+        assert len(identity_rows) == 1, identity_rows
+        identity_row = identity_rows[0]
+        assert identity_row["symbolId"] is None and identity_row["ownerSymbolId"] is None
+        assert urlsplit(identity_row["href"]).path == expected, identity_row
+        declaration_rows = [row for row in package_rows if row["sectionId"] is not None]
+        assert {row["sectionId"] for row in declaration_rows} == set(parser.members)
+        for row in declaration_rows:
+            assert row["symbolId"] is None and row["ownerSymbolId"] is None, row
+            assert row["sectionId"] == page_anchor(parser.members[row["sectionId"]]), row
+            assert urlsplit(row["href"]).path == expected and urlsplit(row["href"]).fragment, row
+    # The compatibility body is a real page but not a second logical package row.
+    alias_paths = {
+        urlsplit(row["href"]).path.removeprefix(f"html/{language}/")
+        for row in manifest["routes"] if row["language"] == language
+    }
+    for alias in (publication / "html" / language).rglob("packages/package-*.html"):
+        assert alias.relative_to(publication / "html" / language).as_posix() not in alias_paths, alias
+
+
 def artifacts(root: Path) -> dict[str, str]:
     return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(root.rglob("*")) if p.is_file() and p.name != ".cjdoc-output.json"}
@@ -255,18 +365,46 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
 
     author = json.loads((multi / "docs.json").read_text())
     symbol_route = next((multi / "html/en/symbols").glob("symbol-*.html")).relative_to(multi / "html/en").as_posix()
-    package_route = next((multi / "html/en/packages").glob("*.html")).relative_to(multi / "html/en").as_posix()
+    package_site_manifest = json.loads((multi / "site-manifest.json").read_text())
+    english_packages = [row for row in package_site_manifest["routes"]
+                        if row["language"] == "en" and (row["pageId"] or "").startswith("package:")]
+    package_identity_rows = [row for row in english_packages
+                             if row["symbolId"] is None and row["sectionId"] is None]
+    assert len(package_identity_rows) == 1, package_identity_rows
+    package_route = urlsplit(package_identity_rows[0]["href"]).path.removeprefix("html/en/")
+    assert package_route == "packages/language_fixture/index.html", package_route
+    package_id = package_identity_rows[0]["pageId"]
+    english_root = multi / "html/en"
+    package_inventory = check_package_alias_contract(english_root)
+    historical_package_route = package_inventory["aliases"][package_id].relative_to(english_root).as_posix()
     alias_route = next(path for path in (multi / "html/en/symbols").glob("*.html")
                        if not path.name.startswith("symbol-")).relative_to(multi / "html/en").as_posix()
     english = next(index for index, page in enumerate(author["pages"]) if page["id"] == "start" and page["language"] == "en")
     for name, route in (("home", "index.html"), ("validation", "validation.html"),
-                        ("symbol", symbol_route), ("package", package_route), ("alias", alias_route),
+                        ("symbol", symbol_route), ("historical-package", historical_package_route),
+                        ("alias", alias_route),
                         ("scheme", "javascript:payload.html"), ("encoded", "%2e%2e/payload.html")):
         invalid = copy.deepcopy(author)
         invalid["pages"][english]["route"] = route
         source = work / f"reserved-{name}.json"
         source.write_text(json.dumps(invalid, ensure_ascii=False))
         run(f"reject-reserved-{name}", ["render", "--input", str(source), "--format", "json", "--stdout"], expected=2)
+    # An authored page may occupy a readable candidate path; the generated
+    # package moves without losing its identity, declaration rows or old alias.
+    claimed = copy.deepcopy(author)
+    claimed["pages"][english]["route"] = package_route
+    source = work / "author-claims-package.json"
+    source.write_text(json.dumps(claimed, ensure_ascii=False))
+    claimed_output = work / "author-claims-package"
+    run("author-claims-package", ["render", "--input", str(source), "--format", "html",
+        "--all-languages", "--output", str(claimed_output)])
+    for language in ("en", "zh-CN"):
+        locale_root = claimed_output / "html" / language
+        inventory = check_package_alias_contract(locale_root)
+        assert inventory["canonical"][package_id][0].relative_to(locale_root).as_posix() != package_route
+        assert inventory["aliases"][package_id].relative_to(locale_root).as_posix() == historical_package_route
+    authored = HtmlPageIdentity((claimed_output / "html/en" / package_route).read_text())
+    assert authored.route == "concept" and authored.package_alias_for is None
     for name in ("exact", "fallback"):
         invalid = copy.deepcopy(author)
         if name == "exact":
@@ -341,6 +479,29 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     assert "HiddenArithmeticalKeyword" not in publication.read_text()
     run("publication-ir", ["render", "--input", str(publication), "--format", "json", "--stdout"])
     assert manifest["defaultLanguage"] == "zh-CN"
+    for language in ("en", "zh-CN"):
+        contract = check_package_alias_contract(multi / "html" / language)
+        check_package_manifest_rows(manifest, multi, language, contract["canonical"])
+        assert contract["canonical"] and contract["aliases"], language
+    # An alias is real page content, but it never becomes a logical package row
+    # or a second manifest section owner.
+    package_rows = [row for row in manifest["routes"] if (row["pageId"] or "").startswith("package:")]
+    assert {row["language"] for row in package_rows} == {"en", "zh-CN"}
+    assert all(row["symbolId"] is None and row["ownerSymbolId"] is None and
+               "/packages/package-" not in row["href"] for row in package_rows)
+    # A monolingual publication takes its package files from the publisher
+    # manifest, never from a directory glob that would also list the alias.
+    mono_manifest = json.loads((single / "html/agent/manifest.json").read_text())
+    mono_packages = [row for row in mono_manifest["representations"] if row["kind"] == "package"]
+    assert len(mono_packages) == 1, mono_packages
+    assert mono_packages[0]["html"] == "packages/language_fixture/index.html", mono_packages[0]
+    assert (single / "html" / mono_packages[0]["html"]).is_file()
+    mono_contract = check_package_alias_contract(single / "html")
+    mono_identity = mono_packages[0]["id"].removeprefix("cjdoc:")
+    assert set(mono_contract["canonical"]) == {mono_identity}
+    mono_alias = mono_contract["aliases"][mono_identity]
+    assert (single / "html" / mono_packages[0]["html"]).read_text().count("<script") == 4
+    assert mono_alias.name.startswith("package-")
     api_routes = {(item["language"], item["symbolId"]): item["href"]
                   for item in manifest["routes"]
                   if item["symbolId"] and item["pageId"] is None and item["sectionId"] is None}
@@ -354,13 +515,19 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
             assert f'data-cjdoc-symbol-id="{identity}"' in scoped.read_text()
             canonical = "../" * (relative.count("/") + 1) + relative.removesuffix("index.html")
             assert f'<link rel="canonical" href="{canonical}">' in scoped.read_text()
+    overload_anchors = {
+        page_anchor(symbol["id"]) for symbol in author["declarations"]
+        if symbol["qualifiedName"] == "language_fixture.Calculator.increment"
+    }
+    assert len(overload_anchors) == 2
     for language, prefix in (("zh-CN", "html/"), ("en", "html/en/")):
         choice = next(item for item in manifest["routes"]
                       if item["language"] == language and (item["pageId"] or "").startswith("api-choice:"))
         assert choice["symbolId"] is None
         assert choice["href"] == prefix + "language_fixture/Calculator/increment/index.html"
         content = (multi / choice["href"]).read_text()
-        assert "increment(value: Int64)" in content and "increment(value: String)" in content
+        assert "<code>increment(Int64)</code>" in content and "<code>increment(String)</code>" in content
+        assert HtmlPageIdentity(content).choice_entries == overload_anchors
     for route in manifest["routes"]:
         url = urlsplit(route["href"])
         target = multi / unquote(url.path)

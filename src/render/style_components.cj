@@ -232,6 +232,7 @@ private let HTML_CHROME_STYLE = """
 .cj-tree__kind[data-kind="property"], .cj-tree__kind[data-kind="variable"] { background: var(--cj-code-string); }
 .cj-tree__kind[data-kind="extend"], .cj-tree__kind[data-kind="typeAlias"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--cj-code-type); }
 .cj-tree__more { display: block; padding: .22rem .5rem; border-radius: var(--cj-radius); color: var(--cj-muted); font-size: .8125rem; }
+button.cj-tree__more { border: 0; background: none; text-align: start; cursor: pointer; font-family: inherit; }
 
 .cj-toc__title { margin: 0 0 .5rem; color: var(--cj-muted); font-size: .75rem; font-weight: 600; }
 .cj-toc__list, .cj-toc__children { margin: 0; padding: 0; list-style: none; }
@@ -243,7 +244,8 @@ private let HTML_CHROME_STYLE = """
 }
 .cj-toc__link:hover { color: var(--cj-fg); text-decoration: none; }
 .cj-toc__link--active { border-left-color: var(--cj-accent); color: var(--cj-accent); font-weight: 600; }
-.cj-toc__item--member .cj-toc__link, .cj-toc__item--api .cj-toc__link { font-family: var(--cj-font-mono); font-size: .75rem; }
+.cj-toc__item--member .cj-toc__link, .cj-toc__item--api .cj-toc__link,
+.cj-toc__item--entry .cj-toc__link { font-family: var(--cj-font-mono); font-size: .75rem; }
 .cj-toc__toggle {
   display: inline-grid; flex: none; place-items: center; width: 1.25rem; height: 1.5rem; padding: 0;
   border: 0; background: none; color: var(--cj-muted); cursor: pointer;
@@ -412,7 +414,6 @@ pre:hover > .cj-code__copy, .cj-code__copy:focus-visible, .cj-code__copy[data-cj
   display: inline-block; flex: none; padding: 0 .35em; border: 1px solid currentColor; border-radius: 4px;
   color: var(--cj-warning); font: 600 .75rem/1.45 var(--cj-font-sans); vertical-align: baseline; white-space: nowrap;
 }
-.cj-decl-table__name > .cj-deprecation { margin-inline-end: .35em; }
 .cj-prose li > .cj-deprecation, .cj-page-header__title > .cj-deprecation { margin-inline-start: .45em; }
 .cj-replacement { color: var(--cj-accent); font-weight: 500; overflow-wrap: anywhere; }
 .cj-replacement > code { color: inherit; }
@@ -496,18 +497,25 @@ a.cj-badge:hover { border-color: var(--cj-accent); background: var(--cj-accent-s
 .cj-record-list, .cj-diagnostics { margin: .5rem 0; padding: 0; list-style: none; }
 .cj-record-list > li, .cj-diagnostics > li { padding: .3rem 0; border-bottom: 1px solid var(--cj-border); }
 .cj-content .cj-record-list > li + li, .cj-content .cj-diagnostics > li + li { margin-top: 0; }
-.cj-package-index, .cj-reading-paths, .cj-overview__links {
+.cj-package-index, .cj-reading-paths {
   margin: .5rem 0 2rem; padding: 0; list-style: none; border-top: 1px solid var(--cj-border);
 }
-.cj-package-index > li, .cj-overview__links > li, .cj-reading-paths > li {
+.cj-package-index > li, .cj-reading-paths > li {
   display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .15rem 1rem;
   margin: 0; padding: .55rem 0; border-bottom: 1px solid var(--cj-border);
 }
-.cj-content .cj-package-index > li + li, .cj-content .cj-overview__links > li + li, .cj-content .cj-reading-paths > li + li { margin-top: 0; }
-.cj-package-index > li > a, .cj-overview__links > li > a { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.cj-content .cj-package-index > li + li, .cj-content .cj-reading-paths > li + li { margin-top: 0; }
+.cj-package-index > li > a { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .cj-package-index .cj-meta { flex: none; font-variant-numeric: tabular-nums; }
-.cj-package-index p, .cj-overview__links p, .cj-reading-paths p { flex-basis: 100%; margin: 0; color: var(--cj-muted); font-size: .875rem; }
-.cj-overview, .cj-decl-groups, .cj-api-group { margin: 1.5rem 0; }
+.cj-reading-paths p { flex-basis: 100%; margin: 0; color: var(--cj-muted); font-size: .875rem; }
+.cj-reference-package { flex-basis: 100%; min-width: 0; }
+.cj-reference-package summary, .cj-reference-branch summary {
+  width: fit-content; max-width: 100%; cursor: pointer; color: var(--cj-muted); font-size: .875rem;
+}
+.cj-content ul.cj-reference-entries { margin: .3rem 0 .5rem; padding-inline-start: 1.25rem; }
+.cj-content .cj-reference-entries > li + li { margin-top: .25rem; }
+.cj-reference-entries a { overflow-wrap: anywhere; }
+.cj-decl-groups, .cj-api-group { margin: 1.5rem 0; }
 .cj-decl-groups ul { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin: 1rem 0 2rem; padding: 0; list-style: none; }
 .cj-content .cj-decl-groups li + li { margin-top: 0; }
 .cj-package-overview, .cj-package-return, .cj-guide-entry { margin: 1rem 0; }
@@ -546,25 +554,33 @@ private let HTML_REFERENCE_STYLE = """
 .cj-type-link:hover { text-decoration-color: currentColor; }
 .cj-introduction { margin: 1.25rem 0; }
 .cj-decl-group { margin-top: 1.5rem; }
+/* The name column is as wide as its content needs, capped so the summary keeps
+   real space. A compact label breaks only at its generated parameter/generic
+   boundaries (`<wbr>`), so a single identifier that is still wider than the
+   whole column scrolls inside the name itself instead of truncating or forcing
+   the page sideways. */
 .cj-decl-table { width: 100%; margin: .35rem 0 1.5rem; border-collapse: collapse; font-size: .875rem; }
 .cj-decl-table__row { border-top: 1px solid var(--cj-border); }
 .cj-decl-table__row:last-child { border-bottom: 1px solid var(--cj-border); }
 .cj-decl-table__row:hover { background: var(--cj-surface); }
-.cj-decl-table td { padding: .45rem .75rem .45rem 0; vertical-align: baseline; }
+.cj-decl-table td { padding: .45rem .75rem .45rem 0; vertical-align: baseline; overflow-wrap: anywhere; }
 .cj-decl-table td:first-child { padding-left: .35rem; }
-.cj-decl-table { table-layout: fixed; }
-.cj-decl-table :is(th, td):nth-child(1) { width: 38%; }
-.cj-decl-table :is(th, td):nth-child(2) { width: 6.5rem; }
-.cj-decl-table__name { overflow-wrap: anywhere; }
-.cj-decl-table__link { margin-right: .35rem; font: 600 .875rem/1.45 var(--cj-font-mono); }
+.cj-decl-table__name { width: max-content; max-width: 30rem; overflow-wrap: normal; }
+.cj-decl-table__name > .cj-deprecation { margin-inline-start: .4rem; }
+.cj-decl-table__link {
+  display: block; max-width: 30rem; font: 600 .875rem/1.45 var(--cj-font-mono);
+  overflow-x: auto; overflow-wrap: normal; white-space: normal; scrollbar-width: thin;
+}
 .cj-decl-table__link code { font-size: inherit; }
-.cj-decl-table__kind { white-space: nowrap; }
+.cj-decl-table__kind { margin-inline-start: .4rem; vertical-align: baseline; }
 .cj-decl-table__summary { color: var(--cj-muted); font-size: .9375rem; line-height: 1.5; overflow-wrap: anywhere; }
+.cj-decl-table__replacement { margin-top: .15rem; }
 @media (max-width: 760px) {
   .cj-decl-table, .cj-decl-table tbody { display: block; }
-  .cj-decl-table__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .5rem; padding: .5rem .35rem; }
-  .cj-decl-table td, .cj-decl-table td:first-child { display: block; width: auto; min-width: 0; padding: 0; }
-  .cj-decl-table__summary { grid-column: 1 / -1; }
+  .cj-decl-table__row { display: grid; grid-template-columns: minmax(0, 1fr); gap: .15rem .5rem; padding: .5rem .35rem; }
+  .cj-decl-table td, .cj-decl-table td:first-child { display: block; width: auto; max-width: none; min-width: 0; padding: 0; }
+  .cj-decl-table__name { max-width: none; }
+  .cj-decl-table__link { max-width: 100%; }
 }
 
 .cj-members { margin-top: 2.25rem; }

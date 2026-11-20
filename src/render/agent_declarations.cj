@@ -112,7 +112,7 @@ protected func agentRepresentationMappings(context: DocumentationReadSnapshot): 
         let source = pkg.source
         if (!first) { out.append(",") }; first = false
         appendAgentRepresentation(out, "package", "cjdoc:package:${source.moduleId}:${source.name}",
-            packagePagePath(source.moduleId, source.name),
+            context.projection.packageFile(source.moduleId, source.name),
             agentPackageMarkdownPath(source.moduleId, source.name),
             agentPackageJsonPath(source.moduleId, source.name))
     }
@@ -216,7 +216,7 @@ internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactStore,
     appendAgentPageArtifacts(machine, context)
     let reportRows = appendCapturedReportArtifacts(machine, context, reports)
     let out = StringBuilder()
-    out.append("{\"schemaVersion\":\"cjdoc.machine-manifest/2\",\"snapshotId\":${escapeJsonString(context.snapshotId)}," +
+    out.append("{\"schemaVersion\":\"cjdoc.machine-manifest/3\",\"snapshotId\":${escapeJsonString(context.snapshotId)}," +
         "\"pathBase\":\"document-root\",\"projection\":${escapeJsonString(CJDOC_READ_PROJECTION)},\"publicationRevision\":" +
         escapeJsonString(context.publicationRevision) + ",\"scope\":")
     appendAgentReadingScope(out, context, None)

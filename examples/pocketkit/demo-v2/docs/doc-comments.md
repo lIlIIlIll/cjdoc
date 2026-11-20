@@ -209,10 +209,10 @@ a / b
 
 ## 弃用与版本
 
-`requireFirstText` 和 `firstTextOrEmpty` 都会显示「已弃用」。前者用一条 `@replacement` 提供可点击的迁移入口；后者只有源码 `@Deprecated`，因此只显示状态，没有替代链接：
+`requireFirstText` 和 `firstTextOrEmpty` 都会显示「已弃用」。前者用一条 `@replacement` 提供可点击的迁移入口；后者只有源码 `@Deprecated`，页面显示「空目录和首项为空字符串时都返回 `""`，调用方无法区分。」作为源码说明，没有替代链接：
 
 ```text
-@summary 读取第一条非空文本；仅用于演示文档注释。
+@summary 读取首项；目录为空或首项为空字符串时抛出异常。
 @description 这个旧式入口把两种缺失情况转换为异常。
 
 它只读取第一项，不会跳过空条目去找下一项。

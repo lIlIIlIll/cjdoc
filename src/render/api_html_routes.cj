@@ -13,6 +13,10 @@ private let API_HTML_DIGEST_START = 12
 private let API_HTML_RESERVED_ROOTS = ["en", "zh-cn", "assets", "packages", "symbols", "agent",
     "schemas", "search", "api-surface", "coverage", "markdown", "html", "versions", "latest"]
 
+internal enum ApiRouteProjection {
+    | Historical | ReadableSymbols | ReadablePackages
+}
+
 internal class ApiHtmlChoice {
     let id: String
     let file: String
@@ -30,10 +34,21 @@ internal class ApiHtmlChoice {
 internal class ApiHtmlRoutes {
     private let files = HashMap<String, String>()
     private let choices = ArrayList<ApiHtmlChoice>()
+    private let packageFiles = HashMap<String, String>()
 
     init(documentation: DocumentationSet, symbols: ArrayList<SymbolDoc>,
-        members: HashMap<String, ArrayList<SymbolDoc>>, legacy!: Bool = false) {
-        if (legacy) {
+        members: HashMap<String, ArrayList<SymbolDoc>>, packages: ArrayList<ProjectedPackage>,
+        projection: ApiRouteProjection) {
+        match (projection) {
+            case ReadablePackages => allocatePackageHtmlRoutes(documentation, packages, packageFiles)
+            case _ =>
+                for (pkg in packages) {
+                    let source = pkg.source
+                    packageFiles[routeKey(source.moduleId, source.name)] =
+                        historicalPackagePagePath(source.moduleId, source.name)
+                }
+        }
+        if (let Historical <- projection) {
             for (symbol in symbols) { files[symbol.id] = symbolPagePath(symbol) }
             return
         }
@@ -59,6 +74,10 @@ internal class ApiHtmlRoutes {
     func fileHref(symbolId: String): String { apiHtmlFileHref(files[symbolId]) }
 
     func webPath(symbolId: String): String { apiHtmlWebPath(files[symbolId]) }
+
+    func packageFile(moduleId: String, name: String): String {
+        packageFiles[routeKey(moduleId, name)]
+    }
 
     prop selectionPages: ReadOnlyList<ApiHtmlChoice> { get() { choices } }
 }
@@ -178,6 +197,115 @@ private class ApiRouteClaims {
         let key = prefix + portableFileNameKey(parts[parts.size - 1])
         !files.contains(key) && !directories.contains(key + "/")
     }
+
+    func claim(path: String): Bool {
+        if (path.size > API_HTML_MAX_PATH || !free(path)) { return false }
+        reserve(path)
+        true
+    }
+}
+
+private func packageHtmlDirectory(name: String): String {
+    if (name.isEmpty() || name.size > API_HTML_MAX_PATH) { return "" }
+    let out = StringBuilder()
+    out.append("packages")
+    for (segment in name.split(".")) {
+        out.append("/")
+        out.append(apiEscapedName(segment))
+        if (out.size + API_HTML_INDEX.size > API_HTML_MAX_PATH) { return "" }
+    }
+    out.toString()
+}
+
+// Detect portable conflicts before making any claims: neither of two packages
+// that differ only by case at a shared ancestor gets to pick its spelling.
+private class PackageRouteCandidates {
+    private let directories = HashMap<String, String>()
+    private let names = HashMap<String, Int64>()
+    private let files = HashMap<String, Int64>()
+
+    func add(name: String, candidate: String): Unit {
+        let key = portableFileNameKey(name)
+        names[key] = names.get(key).getOrDefault({ => 0 }) + 1
+        let file = portableFileNameKey(candidate)
+        files[file] = files.get(file).getOrDefault({ => 0 }) + 1
+        let _ = visitDirectories(name, { spelling =>
+            let folded = portableFileNameKey(spelling)
+            if (let Some(previous) <- directories.get(folded)) {
+                if (previous != spelling) { directories[folded] = "" }
+            } else { directories[folded] = spelling }
+            true
+        })
+        if (let Some(previous) <- directories.get(key)) {
+            if (previous != name) { directories[key] = "" }
+        } else { directories[key] = name }
+    }
+
+    func unique(name: String, candidate: String): Bool {
+        names[portableFileNameKey(name)] == 1 && files[portableFileNameKey(candidate)] == 1 &&
+            !directories[portableFileNameKey(name)].isEmpty() && consistentParents(name)
+    }
+
+    func consistentParents(name: String): Bool {
+        visitDirectories(name, { spelling => !directories[portableFileNameKey(spelling)].isEmpty() })
+    }
+
+    private func visitDirectories(name: String, visit: (String) -> Bool): Bool {
+        for (i in 1..name.size) {
+            if (name[i] == b'.' && !visit(name[..i])) { return false }
+        }
+        true
+    }
+}
+
+private func allocatePackageHtmlRoutes(documentation: DocumentationSet,
+    packages: ArrayList<ProjectedPackage>, files: HashMap<String, String>): Unit {
+    if (packages.isEmpty()) { return }
+    let claims = ApiRouteClaims()
+    for (page in documentation.pages) { claims.reserve(page.route) }
+    let ordered = ArrayList<ProjectedPackage>(packages.toArray())
+    sort(ordered, lessThan: { a, b =>
+        if (a.source.moduleId == b.source.moduleId) { a.source.name < b.source.name }
+        else { a.source.moduleId < b.source.moduleId }
+    })
+    let candidates = PackageRouteCandidates()
+    let pending = ArrayList<(String, String, String)>()
+    for (pkg in ordered) {
+        let source = pkg.source
+        let alias = historicalPackagePagePath(source.moduleId, source.name)
+        if (!claims.free(alias)) {
+            throw IllegalArgumentException("cannot retain historical package route for '${source.moduleId}:${source.name}'")
+        }
+        claims.reserve(alias)
+        let candidate = packageHtmlDirectory(source.name)
+        if (!candidate.isEmpty()) { candidates.add(source.name, candidate) }
+        pending.add((routeKey(source.moduleId, source.name), source.name, candidate))
+    }
+    // Claim ordinary routes first, so a disambiguated path cannot steal one.
+    for ((key, name, candidate) in pending where !candidate.isEmpty()) {
+        let file = candidate + API_HTML_INDEX
+        if (candidates.unique(name, candidate) && claims.claim(file)) { files[key] = file }
+    }
+    for ((key, name, candidate) in pending where !files.contains(key)) {
+        let digest = contractFingerprint(key)
+        let prefixes = if (!candidate.isEmpty() && candidates.consistentParents(name)) {
+            [candidate + "~", "packages/~package~"]
+        } else { ["packages/~package~"] }
+        for (prefix in prefixes) {
+            for (length in API_HTML_DIGEST_START..=digest.size) {
+                let file = prefix + digest[..length] + API_HTML_INDEX
+                if (file.size > API_HTML_MAX_PATH) { break }
+                if (claims.claim(file)) {
+                    files[key] = file
+                    break
+                }
+            }
+            if (files.contains(key)) { break }
+        }
+        if (!files.contains(key)) {
+            throw IllegalArgumentException("cannot allocate distinct portable package route for '${key}'")
+        }
+    }
 }
 
 private class ApiRouteFamily {
@@ -274,12 +402,7 @@ private class ApiRouteAllocator {
         for (family in families) { allocateFamily(family) }
     }
 
-    private func claim(directory: String): Bool {
-        let file = directory + API_HTML_INDEX
-        if (file.size > API_HTML_MAX_PATH || !claims.free(file)) { return false }
-        claims.reserve(file)
-        true
-    }
+    private func claim(directory: String): Bool { claims.claim(directory + API_HTML_INDEX) }
 
     private func claimModuleChoice(candidate: String, group: ArrayList<ApiRouteFamily>): Unit {
         let modules = HashSet<String>()

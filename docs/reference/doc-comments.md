@@ -40,7 +40,7 @@
 
 ### 弃用与迁移
 
-在声明上写源码 `@Deprecated` 或文档标签 `@deprecated`，HTML 就会在 API 名称或签名旁显示「已弃用」。两者都有时只标一次。未写说明或某种语言没有译文时，弃用状态仍可见；当只有一种语言写了说明时，其他语言的详情可显示带回退标记的原文。
+在声明上写源码 `@Deprecated` 或文档标签 `@deprecated`，HTML 会在 API 名称或签名旁显示「已弃用」。详情优先显示 `@deprecated` 说明；只有一种语言写了说明时，其他语言可显示带回退标记的原文。没有作者说明时，可读取 `@Deprecated` 的字符串消息并标为「源码说明」。没有可读消息时只显示弃用状态。
 
 要提供独立的「改用」链接，在同一个注释里写一条 `@replacement`，使用替代 API 的限定名。目标有重载时，加上参数类型列表，如 `pocketkit.TextCatalog.add(String)`。把迁移原因和需要区别处理的返回值写在可翻译的 `@deprecated` 里：
 
@@ -57,7 +57,7 @@
 
 把 `@replacement` 放在顶层，和列表、代码围栏等 Markdown 块用空行隔开。它不标记弃用；`@see`、行内代码和源码注解的消息也不生成迁移链接。目标为空、不唯一、指向自己、对当前读者不可见或无法验证时，`CJDOC3138` 指向注释位置，页面仍保留弃用状态与说明。
 
-在 [PocketKit 弃用示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)对照两种结果：`firstTextOrEmpty` 只有徽标，`requireFirstText` 同时提供「改用 `TextCatalog.first()`」。点击旧名称仍打开旧 API。
+在 [PocketKit 弃用示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)对照两种结果：`firstTextOrEmpty` 说明为什么弃用，但没有替代链接；`requireFirstText` 另有「改用 `TextCatalog.first()`」。点击旧名称仍打开旧 API。
 
 ### 行为契约
 

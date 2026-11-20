@@ -28,6 +28,7 @@ internal class LanguageHtmlPage {
     let file: String
     let symbolId: ?String
     let pageId: ?String
+    let packageAliasFor: ?String
     let entry: Int64
     let anchors: Array<String>
     let anchorMembership = HashSet<String>()
@@ -39,8 +40,9 @@ internal class LanguageHtmlPage {
         this.file = file
         symbolId = generatedHtmlBodyAttribute(content, "data-cjdoc-symbol-id")
         pageId = generatedHtmlBodyAttribute(content, "data-cjdoc-page-id")
+        packageAliasFor = generatedHtmlBodyAttribute(content, "data-cjdoc-package-alias-for")
         this.entry = entry
-        this.anchors = documentationHtmlAnchors(content)
+        this.anchors = if (packageAliasFor.isSome()) { [] } else { documentationHtmlAnchors(content) }
         this.needsToggle = content.contains("id=\"cjdoc-main\"") &&
             !content.contains("class=\"cj-lang-toggle\"")
         for (anchor in anchors) { let _ = anchorMembership.add(anchor) }
@@ -52,10 +54,12 @@ internal class LanguageHtmlInventory {
     let files = HashMap<String, LanguageHtmlPage>()
     let routes = HashMap<String, String>()
     let symbolFiles = HashMap<String, LanguageHtmlPage>()
+    let generatedPages = HashMap<String, LanguageHtmlPage>()
 
     func identity(documentation: DocumentationSet, page: LanguageHtmlPage): String {
         if (let Some(id) <- page.symbolId) { return "symbol:" + id }
         if (let Some(id) <- page.pageId) { return id }
+        if (let Some(id) <- page.packageAliasFor) { return id }
         languagePageIdentity(documentation, page.route, page.language)
     }
 
@@ -65,10 +69,12 @@ internal class LanguageHtmlInventory {
         let file = if (mounted) { route } else { language + "/" + route }
         let page = LanguageHtmlPage(language, route, file, entry, content)
         pages.add(page)
+        if (page.packageAliasFor.isSome()) { return }
         let key = language + ":" + route
         if (!mounted && files.contains(key)) { return }
         files[key] = page
         if (let Some(id) <- page.symbolId) { symbolFiles[language + ":" + id] = page }
+        if (let Some(id) <- page.pageId) { generatedPages[language + ":" + id] = page }
         if (page.needsToggle || content.contains("class=\"cj-lang-toggle\"")) {
             routes[language + ":" + identity(documentation, page)] = file
         }

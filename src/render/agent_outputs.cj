@@ -110,7 +110,7 @@ private func agentNavigationPages(context: DocumentationReadSnapshot,
     for (pkg in projection.packages) {
         let packageName = pkg.source.name
         pages.add(AgentNavigationPage("cjdoc:package:${pkg.source.moduleId}:${packageName}",
-            "package", packageName, packagePagePath(pkg.source.moduleId, packageName),
+            "package", packageName, projection.packageFile(pkg.source.moduleId, packageName),
             packageName: Some(packageName), moduleId: Some(pkg.source.moduleId)))
     }
     let routes = projection.apiRoutes.getOrThrow()

@@ -56,6 +56,8 @@ private func agentPackageMarkdown(context: DocumentationReadSnapshot, pkg: Packa
     out.append("# Package ")
     appendEscapedMarkdownText(out, pkg.name)
     out.append("\n\nSnapshot: " + context.snapshotId + "\n\nThis is a declaration directory; each linked declaration is independently readable.\n\n")
+    out.append("[Package HTML](" + encodeMarkdownDestination("../../" +
+        context.projection.packageFile(pkg.moduleId, pkg.name)) + ")\n\n")
     let symbols = ArrayList<SymbolDoc>()
     for (symbol in context.projection.visibleSymbols where symbol.moduleId == pkg.moduleId && symbol.packageName == pkg.name) {
         symbols.add(symbol)
@@ -99,7 +101,8 @@ internal func appendAgentPageArtifacts(artifacts: RenderArtifactStore,
         appendPackage(raw, source)
         let _ = artifacts.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
         let _ = artifacts.addText("html/" + jsonPath, "application/json",
-            agentPageEnvelope(context, id, "package", Some(source.moduleId), packagePagePath(source.moduleId, source.name),
+            agentPageEnvelope(context, id, "package", Some(source.moduleId),
+                context.projection.packageFile(source.moduleId, source.name),
                 markdownPath, jsonPath, markdown, packageJson: raw.toString()))
     }
     let markdown = "# " + context.documentation.project.name + "\n\nSnapshot: " + context.snapshotId +

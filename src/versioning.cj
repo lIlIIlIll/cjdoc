@@ -241,6 +241,7 @@ internal class VersionSite {
     let sectionIdsByPage = HashMap<String, HashMap<String, VersionLogicalIdentity>>()
     let monoAnchors = HashMap<String, HashSet<String>>()
     let apiDirectoryFiles = HashSet<String>()
+    let compatibilityPages = HashSet<String>()
     let parentsByIdentity = HashMap<String, VersionLogicalIdentity>()
     var defaultLanguage = ""
 
@@ -884,6 +885,14 @@ private func attachComposedApiDiffEvidence(html: String, site: VersionSite,
     result
 }
 
+private func versionAliasBody(html: String): Bool {
+    match (public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-route")) {
+        case Some("symbol-alias") => true
+        case Some("package-alias") => true
+        case _ => false
+    }
+}
+
 private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: String,
     latestPolicy: String, budget: VersionComposeBudget): Array<public_render.RenderArtifact> {
     let artifacts = ArrayList<public_render.RenderArtifact>()
@@ -904,7 +913,10 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
                 let html = try { String.fromUtf8(file.bytes) } catch (_: Exception) {
                     throw IllegalArgumentException("version HTML is not UTF-8 '${file.path}'")
                 }
-                if (public_render.generatedHtmlBodyAttribute(html, "data-cjdoc-route") == Some("symbol-alias")) {
+                // Both symbol and package compatibility bodies redirect to their
+                // canonical page through symbol-alias.js. Injecting a selector
+                // would compete with that redirect; keep query and fragment.
+                if (versionAliasBody(html)) {
                     budget.reserveArtifact(outputPath, file.bytes.size)
                     artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, file.bytes))
                     continue
@@ -987,11 +999,11 @@ private func versionNavigationMessage(state: VersionNavigationState, chinese: Bo
         case VersionNavigationState.MissingSymbol =>
             if (chinese) { "（此版本没有该符号）" } else { " (symbol unavailable in this version)" }
         case VersionNavigationState.MissingLanguage =>
-            if (chinese) { "（此版本没有该语言，已打开默认语言）" } else { " (language unavailable; opening the default language)" }
+            if (chinese) { "（此版本无该语言 · 打开默认语言）" } else { " (language unavailable · open the default language)" }
         case VersionNavigationState.MissingSection =>
-            if (chinese) { "（此版本没有对应章节或阅读位置，已打开可用位置）" } else { " (section or reading position unavailable; opening an available position)" }
+            if (chinese) { "（无对应章节或阅读位置 · 打开可用位置）" } else { " (section or reading position unavailable · open the available position)" }
         case VersionNavigationState.MissingPage =>
-            if (chinese) { "（此版本没有该页面，已返回版本首页）" } else { " (page unavailable in this version; opening its home page)" }
+            if (chinese) { "（此版本无对应页面 · 前往版本首页）" } else { " (page unavailable in this version · go to version home)" }
     }
 }
 

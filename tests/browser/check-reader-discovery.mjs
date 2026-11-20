@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -76,7 +76,52 @@ const checkDesktopActionKeyboard = async member => {
   report.tasks.push({id: 'desktop-member-action-keyboard-paints-and-navigates', pass: true});
 };
 try {
+  const manifest = JSON.parse(await readFile(path.join(site, 'agent', 'manifest.json'), 'utf8'));
+  const published = manifest.representations.filter(row => row.kind === 'symbol')
+    .map(row => [row.id, row.html]).sort();
+  const reference = page.locator('main [data-cjdoc-reference-symbol]');
+  const homeBytes = (await stat(path.join(site, 'index.html'))).size;
+  const coldResources = [];
+  const recordCold = request => {
+    if (request.resourceType() !== 'document') {
+      coldResources.push(new URL(request.url()).pathname.split('/').at(-1));
+    }
+  };
+  page.on('request', recordCold);
+  try {
+    await page.goto(ownerUrl);
+  } finally {
+    page.off('request', recordCold);
+  }
+  assert.equal(await reference.count(), 0, 'repeat pages do not embed the complete reference');
+  const ownerBranch = page.locator('#cjdoc-sidebar [data-cjdoc-tree-item="type"]').filter({
+    has: page.locator('a[aria-current="page"]'),
+  });
+  const members = ownerBranch.locator(':scope > ul > [data-cjdoc-tree-item="member"]');
+  const coldMembers = await members.count();
+  assert.equal(coldMembers, 5, 'a cold member branch receives only the server window');
+  coldResources.sort();
+  assert.deepEqual(coldResources,
+    ['search-index.js', 'search.js', 'sidebar-index.js', 'style.css', 'theme-bootstrap.js'],
+    'keep the existing cold resource inventory without loading Doc IR or a second reference index');
+  const reveal = ownerBranch.locator('[data-cjdoc-sidebar-reveal]');
+  assert.equal(await reveal.isVisible(), true, 'the full branch is directly discoverable');
+  await reveal.press('Enter');
+  const tailLink = ownerBranch.getByRole('link', { name: 'member0499()', exact: true });
+  assert.equal(await tailLink.isVisible(), true);
+  const tailHref = await tailLink.getAttribute('href');
+  assert.match(tailHref, /^#symbol-/);
+  const revealedMembers = await members.count();
+  assert.equal(revealedMembers, index.entries.filter(entry =>
+    entry.qualifiedName.startsWith('reader_scale.Member500.member')).length);
+  await tailLink.press('Enter');
+  await page.waitForURL(ownerUrl + tailHref);
+  assert.equal(await page.locator('[id=' + JSON.stringify(tailHref.slice(1)) + '] > summary').isVisible(), true);
   await page.goto(indexUrl);
+  assert.deepEqual(await reference.evaluateAll(links => links.map(link =>
+    [link.dataset.cjdocReferenceSymbol, decodeURI(link.getAttribute('href'))]).sort()), published);
+  report.tasks.push({ id: 'complete-static-reference-with-windowed-cold-sidebar', pass: true,
+    publishedSymbols: published.length, homeBytes, coldMembers, coldResources, revealedMembers });
   await query('kind:function');
   assert.equal(await previous.isDisabled(), true);
   const found = [];

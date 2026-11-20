@@ -43,7 +43,8 @@ internal let HTML_SIDEBAR_SCRIPT = """
       : "cj-tree__link");
     if (href.indexOf("#") < 0) link.setAttribute("data-cjdoc-nav-link", "");
     if (isPage) link.setAttribute("aria-current", "page");
-    link.setAttribute("href", kind ? globalThis.__CJDOC_API_ROUTE__(apiRoot + href) : root + href);
+    link.setAttribute("href", href.startsWith("#") ? href :
+      kind ? globalThis.__CJDOC_API_ROUTE__(apiRoot + href) : root + href);
     if (kind) {
       const chip = element("span", "cj-tree__kind");
       chip.setAttribute("data-kind", kind);
@@ -68,11 +69,10 @@ internal let HTML_SIDEBAR_SCRIPT = """
     owner.append(list);
     return list;
   };
-  const addToggle = (list, labelText) => {
+  const addToggle = labelText => {
     const button = element("button", "cj-tree__toggle");
     button.type = "button";
     button.setAttribute("data-cjdoc-tree-toggle", "");
-    button.setAttribute("aria-controls", list.id);
     button.setAttribute("aria-expanded", "false");
     button.setAttribute("aria-label", (isChinese ? "展开或收起 " : "Toggle ") + labelText);
     return button;
@@ -87,37 +87,47 @@ internal let HTML_SIDEBAR_SCRIPT = """
     if (list.id) toggle.setAttribute("aria-controls", list.id);
   };
 
-  const typeMatches = (type, query) => {
-    if (!type) return false;
-    if (folded(type.label).indexOf(query) >= 0) return true;
-    return (type.members || []).some(memberId => {
-      const member = memberRecord(memberId);
-      return Boolean(member) && folded(member.label).indexOf(query) >= 0;
-    });
-  };
-  const packageMatches = (pkg, query) => {
-    if (!pkg) return false;
-    if (folded(pkg.label).indexOf(query) >= 0) return true;
-    return (pkg.types || []).some(typeId => typeMatches(typeRecord(typeId), query));
-  };
-
-  const memberItem = (type, memberId) => {
+  const memberMatches = (ownerId, memberId, query, matches) => {
     const member = memberRecord(memberId);
+    return Boolean(member) && (folded(member.label).includes(query) ||
+      (member.ownerId === ownerId && typeMatches(memberId, query, matches)));
+  };
+  const typeMatches = (typeId, query, matches) => {
+    if (matches.has(typeId)) return matches.get(typeId);
+    const type = typeRecord(typeId);
+    const hit = Boolean(type) && (folded(type.label).includes(query) ||
+      (type.members || []).some(id => memberMatches(typeId, id, query, matches)));
+    matches.set(typeId, hit);
+    return hit;
+  };
+  const itemToggle = item => item.querySelector(":scope > .cj-tree__row > [data-cjdoc-tree-toggle]");
+
+  const memberItem = (ownerId, type, memberId) => {
+    const member = memberRecord(memberId);
+    if (!member) return null;
     const item = treeItem("member", memberId);
-    if (!member) return item;
     const row = element("div", "cj-tree__row");
-    row.append(treeLink(type.href + "#" + member.anchor, member.label, member.kind,
-      memberId === currentId, memberId));
+    const href = (type.href === currentPage ? "" : type.href) + "#" + member.anchor;
+    row.append(treeLink(href, member.label, member.kind, false, memberId));
     item.append(row);
+    // Inherited or extension context is a real anchor on this owner, not a
+    // second owner edge from which to recurse.
+    if (member.ownerId === ownerId && typeRecord(memberId)?.members.length) {
+      const toggle = addToggle(member.label);
+      row.prepend(toggle);
+      bindTypeToggle(item, toggle);
+    }
     return item;
   };
-  const fillMembers = (list, type) => {
-    if (list.hasAttribute("data-cjdoc-tree-partial")) {
-      completePartial(list, (type.members || []).map(id => memberItem(type, id)));
-      return;
+  const fillMembers = (list, type, ownerId) => {
+    const create = id => memberItem(ownerId, type, id);
+    if (list.hasAttribute("data-cjdoc-tree-partial")) return completePartial(list, type.members, create);
+    if (list.childElementCount) return null;
+    for (const memberId of type.members) {
+      const child = create(memberId);
+      if (child) list.append(child);
     }
-    if (list.childElementCount) return;
-    for (const memberId of type.members || []) list.append(memberItem(type, memberId));
+    return null;
   };
   const typeItem = typeId => {
     const type = typeRecord(typeId);
@@ -126,20 +136,10 @@ internal let HTML_SIDEBAR_SCRIPT = """
     const row = element("div", "cj-tree__row");
     item.append(row);
     row.append(treeLink(type.href, type.label, type.kind, typeId === currentId, typeId));
-    if (!Array.isArray(type.members) || !type.members.length) return item;
-    const list = addChildList(item, typeId);
-    const toggle = addToggle(list, type.label);
-    bindToggle(toggle, list);
-    toggle.dataset.cjdocTreeBound = "true";
-    row.prepend(toggle);
-    toggle.addEventListener("click", () => {
-      const expanded = toggle.getAttribute("aria-expanded") === "true";
-      if (!expanded) fillMembers(list, type);
-      setExpanded({toggle, list}, !expanded);
-    });
-    if (typeId === currentId) {
-      fillMembers(list, type);
-      setExpanded({toggle, list}, true);
+    if (type.members?.length) {
+      const toggle = addToggle(type.label);
+      row.prepend(toggle);
+      bindTypeToggle(item, toggle);
     }
     return item;
   };
@@ -159,17 +159,50 @@ internal let HTML_SIDEBAR_SCRIPT = """
     if (!record.list) return buildPackageChildren(record);
     if (record.list.hasAttribute("data-cjdoc-tree-partial") && record.pkg &&
       Array.isArray(record.pkg.types)) {
-      completePartial(record.list, record.pkg.types.map(typeItem));
+      completePartial(record.list, record.pkg.types, typeItem);
     }
     return record.list;
   };
-  // Complete a partial branch without losing its trailing full-index link.
-  const completePartial = (list, children) => {
-    if (!list || !list.hasAttribute("data-cjdoc-tree-partial")) return;
-    const more = [...list.children].filter(child =>
-      child.classList.contains("cj-tree__item--more"));
-    list.replaceChildren(...children.filter(Boolean), ...more);
+  // Keep work already expanded inside the window, and insert the other
+  // immediate children in publisher order. No grandchildren are built here.
+  const completePartial = (list, ids, create) => {
+    if (!list || !list.hasAttribute("data-cjdoc-tree-partial")) return null;
+    const existing = new Map();
+    const more = [];
+    for (const child of list.children) {
+      if (child.classList.contains("cj-tree__item--more")) more.push(child);
+      else existing.set(child.dataset.cjdocTreeKey, child);
+    }
+    let firstNew = null;
+    const children = [];
+    for (const id of ids) {
+      const old = existing.get(id);
+      const child = old || create(id);
+      if (!child) continue;
+      children.push(child);
+      if (!old && !firstNew) firstNew = child;
+    }
+    list.replaceChildren(...children, ...more);
     list.removeAttribute("data-cjdoc-tree-partial");
+    for (const item of more) {
+      const button = item.querySelector("[data-cjdoc-sidebar-reveal]");
+      const link = item.querySelector("[data-cjdoc-sidebar-more]");
+      if (button) button.hidden = true;
+      if (link) link.hidden = false;
+    }
+    return firstNew;
+  };
+  const bindReveal = (list, fill, choice) => {
+    if (!list || !list.hasAttribute("data-cjdoc-tree-partial")) return;
+    const button = list.querySelector(":scope > .cj-tree__item--more > [data-cjdoc-sidebar-reveal]");
+    if (!button) return;
+    const link = button.parentElement.querySelector("[data-cjdoc-sidebar-more]");
+    button.hidden = false;
+    if (link) link.hidden = true;
+    button.addEventListener("click", () => {
+      fill()?.querySelector("a")?.focus();
+      choice();
+    });
   };
   // Other types build their member list only when expanded or filtered.
   const ensureTypeList = (item, type) => {
@@ -177,9 +210,27 @@ internal let HTML_SIDEBAR_SCRIPT = """
     if (existing) return existing;
     if (!type || !Array.isArray(type.members) || !type.members.length) return null;
     const list = addChildList(item, item.dataset.cjdocTreeKey);
-    const toggle = item.querySelector("[data-cjdoc-tree-toggle]");
+    const toggle = itemToggle(item);
     if (toggle) bindToggle(toggle, list);
     return list;
+  };
+  const bindTypeToggle = (item, toggle) => {
+    const id = item.dataset.cjdocTreeKey;
+    const type = typeRecord(id);
+    if (!type || !type.members.length) return;
+    const initial = item.querySelector(":scope > ul");
+    toggle.hidden = false;
+    toggle.dataset.cjdocTreeExpanded = toggle.getAttribute("aria-expanded");
+    if (initial) setExpanded({toggle, list: initial}, !initial.hidden);
+    bindReveal(initial, () => fillMembers(initial, type, id), () => rememberBranch(item, true));
+    toggle.addEventListener("click", () => {
+      const list = ensureTypeList(item, type);
+      if (!list) return;
+      const expanded = toggle.getAttribute("aria-expanded") === "true";
+      if (!expanded) fillMembers(list, type, id);
+      setExpanded({toggle, list}, !expanded);
+      rememberBranch(item, !expanded);
+    });
   };
 
   const initSidebarTree = () => {
@@ -193,33 +244,25 @@ internal let HTML_SIDEBAR_SCRIPT = """
         toggle: item.querySelector("[data-cjdoc-tree-toggle]"),
         pkg: packageData(item.dataset.cjdocTreeKey)
       };
-      if (record.toggle) record.toggle.hidden = false;
       if (record.toggle && record.list) setExpanded(record, !record.list.hidden);
-      if (record.toggle) {
+      if (record.toggle && record.pkg?.types.length) {
+        record.toggle.hidden = false;
+        record.toggle.dataset.cjdocTreeExpanded = record.toggle.getAttribute("aria-expanded");
+        bindReveal(record.list, () => completePartial(record.list, record.pkg.types, typeItem),
+          () => rememberBranch(item, true));
         record.toggle.addEventListener("click", () => {
           const expanded = record.toggle.getAttribute("aria-expanded") === "true";
           if (!expanded && !ensurePackageChildren(record)) return;
           setExpanded(record, !expanded);
+          rememberBranch(item, !expanded);
         });
       }
       packages.push(record);
     }
     // Expose toggles only after binding their listeners.
-    for (const item of tree.querySelectorAll("[data-cjdoc-tree-item='type']")) {
-      const toggle = item.querySelector("[data-cjdoc-tree-toggle]");
-      if (!toggle || toggle.dataset.cjdocTreeBound) continue;
-      toggle.dataset.cjdocTreeBound = "true";
-      const initial = item.querySelector(":scope > ul");
-      toggle.hidden = false;
-      if (initial) setExpanded({toggle, list: initial}, !initial.hidden);
-      toggle.addEventListener("click", () => {
-        const type = typeRecord(item.dataset.cjdocTreeKey);
-        const list = ensureTypeList(item, type);
-        if (!list) return;
-        const expanded = toggle.getAttribute("aria-expanded") === "true";
-        if (!expanded && type) fillMembers(list, type);
-        setExpanded({toggle, list}, !expanded);
-      });
+    for (const item of tree.querySelectorAll("[data-cjdoc-tree-item='type'],[data-cjdoc-tree-item='member']")) {
+      const toggle = itemToggle(item);
+      if (toggle) bindTypeToggle(item, toggle);
     }
     const filterInput = document.querySelector("[data-cjdoc-sidebar-filter]");
     if (filterInput) {
@@ -268,20 +311,21 @@ internal let HTML_SIDEBAR_SCRIPT = """
     return [...record.list.children].filter(child =>
       child.dataset.cjdocTreeItem === "type");
   };
-  const expandMatchingType = (elementNode, type, query) => {
-    const list = ensureTypeList(elementNode, type);
-    const toggle = elementNode.querySelector("[data-cjdoc-tree-toggle]");
+  const expandMatchingType = (item, id, type, query, matches) => {
+    const list = ensureTypeList(item, type);
+    const toggle = itemToggle(item);
     if (!list || !toggle) return;
-    const nameHit = folded(type.label).indexOf(query) >= 0;
-    fillMembers(list, type);
+    const nameHit = folded(type.label).includes(query);
+    fillMembers(list, type, id);
     for (const member of list.children) {
-      if (member.classList.contains("cj-tree__item--more")) {
-        member.hidden = false;
-        continue;
+      if (member.classList.contains("cj-tree__item--more")) { member.hidden = false; continue; }
+      const memberId = member.dataset.cjdocTreeKey;
+      const hit = memberMatches(id, memberId, query, matches);
+      member.hidden = !nameHit && !hit;
+      if (hit && memberRecord(memberId)?.ownerId === id) {
+        const nested = typeRecord(memberId);
+        if (nested?.members.length) expandMatchingType(member, memberId, nested, query, matches);
       }
-      const label = member.querySelector(".cj-tree__label");
-      const matches = nameHit || folded(label ? label.textContent : "").indexOf(query) >= 0;
-      member.hidden = !matches;
     }
     setExpanded({toggle, list}, true);
   };
@@ -289,25 +333,25 @@ internal let HTML_SIDEBAR_SCRIPT = """
   const applyFilter = query => {
     let total = 0;
     const modules = new Map();
+    const matches = new Map();
     for (const record of packages) {
       const pkg = record.pkg || packageData(record.id);
       record.pkg = pkg;
       const packageHit = Boolean(pkg) && folded(pkg.label).indexOf(query) >= 0;
-      const matching = !packageHit && !packageMatches(pkg, query);
-      record.item.hidden = matching;
-      if (matching) continue;
+      const hidden = !packageHit && !(pkg?.types || []).some(id => typeMatches(id, query, matches));
+      record.item.hidden = hidden;
+      if (hidden) continue;
       total += 1;
       const module = record.module || record.item;
       modules.set(module, (modules.get(module) || 0) + 1);
       if (!ensurePackageChildren(record)) continue;
       setExpanded(record, true);
       for (const typeElement of typeElements(record)) {
-        const type = typeRecord(typeElement.dataset.cjdocTreeKey);
-        const hit = packageHit || typeMatches(type, query);
-        typeElement.hidden = !hit;
-        if (hit && type && type.members && type.members.length) {
-          expandMatchingType(typeElement, type, query);
-        }
+        const id = typeElement.dataset.cjdocTreeKey;
+        const type = typeRecord(id);
+        const hit = typeMatches(id, query, matches);
+        typeElement.hidden = !packageHit && !hit;
+        if (hit && type?.members.length) expandMatchingType(typeElement, id, type, query, matches);
       }
     }
     for (const record of packages) {
@@ -320,24 +364,23 @@ internal let HTML_SIDEBAR_SCRIPT = """
     return total;
   };
 
+  const restoreVisibleChildren = list => {
+    if (!list) return;
+    for (const child of list.children) {
+      child.hidden = false;
+      const nested = child.querySelector(":scope > ul");
+      const toggle = itemToggle(child);
+      if (!nested || !toggle) continue;
+      restoreVisibleChildren(nested);
+      setExpanded({toggle, list: nested}, toggle.dataset.cjdocTreeExpanded === "true");
+    }
+  };
   const restoreTree = () => {
     for (const record of packages) {
       record.item.hidden = false;
-      const module = record.module || record.item;
-      module.hidden = false;
-      if (record.list) {
-        for (const child of record.list.children) {
-          child.hidden = false;
-          const members = child.querySelector(":scope > ul");
-          const toggle = child.querySelector("[data-cjdoc-tree-toggle]");
-          if (!members || !toggle) continue;
-          for (const member of members.children) member.hidden = false;
-          setExpanded({toggle, list: members}, Boolean(child.querySelector(
-            ".cj-tree__link--ancestor, .cj-tree__link[aria-current='page']")));
-        }
-        setExpanded(record, Boolean(record.item.querySelector(
-          ".cj-tree__link--ancestor, .cj-tree__link[aria-current='page']")));
-      }
+      (record.module || record.item).hidden = false;
+      restoreVisibleChildren(record.list);
+      setExpanded(record, record.toggle?.dataset.cjdocTreeExpanded === "true");
     }
   };
 
@@ -382,6 +425,63 @@ internal let HTML_SIDEBAR_SCRIPT = """
     filterSidebar();
   };
 
+  // Browser back-forward caches keep the live DOM when available. Restore the
+  // same explicit branch choices if the browser rebuilt the document instead.
+  const branchChoices = new Map();
+  const branchKey = () => pageKey("cjdoc-sidebar-branches");
+  const rememberBranch = (item, expanded) => {
+    const toggle = itemToggle(item);
+    if (toggle) toggle.dataset.cjdocTreeExpanded = expanded ? "true" : "false";
+    if (!toggle) return;
+    branchChoices.set(item.dataset.cjdocTreeKey, expanded);
+    // A deliberate choice inside a filtered branch also makes its open
+    // ancestors reachable when the filter is cleared and after history return.
+    let parent = item.parentElement?.closest("[data-cjdoc-tree-item]");
+    while (parent && tree.contains(parent)) {
+      const parentToggle = itemToggle(parent);
+      if (parentToggle?.getAttribute("aria-expanded") === "true") {
+        parentToggle.dataset.cjdocTreeExpanded = "true";
+        branchChoices.set(parent.dataset.cjdocTreeKey, true);
+      }
+      parent = parent.parentElement?.closest("[data-cjdoc-tree-item]");
+    }
+    try { sessionStorage.setItem(branchKey(), JSON.stringify([...branchChoices])); } catch (_) { /* optional */ }
+  };
+  const restoreBranches = () => {
+    if (!tree || !historyReturn()) return;
+    let saved;
+    try { saved = JSON.parse(sessionStorage.getItem(branchKey()) || "[]"); } catch (_) { return; }
+    if (!Array.isArray(saved)) return;
+    const restore = (item, expanded) => {
+      const toggle = itemToggle(item);
+      if (!toggle) return;
+      toggle.dataset.cjdocTreeExpanded = expanded ? "true" : "false";
+      const record = packages.find(pkg => pkg.item === item);
+      if (record) {
+        ensurePackageChildren(record);
+        setExpanded(record, expanded);
+      } else {
+        const id = item.dataset.cjdocTreeKey;
+        const type = typeRecord(id);
+        const list = ensureTypeList(item, type);
+        if (list) fillMembers(list, type, id);
+        setExpanded({toggle, list}, expanded);
+      }
+    };
+    const remaining = new Map(saved.filter(row => Array.isArray(row) &&
+      typeof row[0] === "string" && typeof row[1] === "boolean"));
+    const visit = item => {
+      const id = item.dataset.cjdocTreeKey;
+      if (remaining.has(id)) {
+        const expanded = remaining.get(id);
+        restore(item, expanded);
+        branchChoices.set(id, expanded);
+      }
+      const list = item.querySelector(":scope > ul");
+      if (list) for (const child of list.children) visit(child);
+    };
+    for (const record of packages) visit(record.item);
+  };
   // Native history restores document scroll, not nested sidebar scroll.
   // Capture at pagehide to beat queued events; restore only on Back/Forward.
   let sidebarOffset = 0;
@@ -477,6 +577,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
 
   initSidebarTree();
   initScroll();
+  restoreBranches();
   restoreFilter();
   restoreScroll();
   initDrawer();

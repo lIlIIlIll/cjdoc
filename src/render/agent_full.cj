@@ -66,7 +66,7 @@ private func agentFullUnitContent(context: DocumentationReadSnapshot, unit: Agen
     match (unit.kind) {
         case "page" => context.renderPageMarkdown(unit.key).getOrThrow()
         case "package" =>
-            let path = packagePagePath(unit.key, unit.packageName)
+            let path = context.projection.packageFileHref(unit.key, unit.packageName)
             "# Package " + unit.packageName + "\n\nCanonical page: <" + path + ">\n"
         case _ => context.renderDeclarationMarkdown(unit.key).getOrThrow()
     }

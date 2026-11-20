@@ -227,7 +227,8 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
             self.assertEqual(value["$id"], schema_id, name)
             if name == "machine-manifest":
-                pairs = [("cjdoc.machine-manifest/1", "cjdoc.read/1"), (version, "cjdoc.read/2")]
+                pairs = [("cjdoc.machine-manifest/1", "cjdoc.read/1"),
+                         ("cjdoc.machine-manifest/2", "cjdoc.read/2"), (version, "cjdoc.read/3")]
                 self.assertEqual(value["properties"]["schemaVersion"]["enum"], [v for v, _ in pairs])
                 self.assertEqual(value["properties"]["projection"]["enum"], [p for _, p in pairs])
                 self.assertEqual([

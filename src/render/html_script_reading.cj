@@ -40,9 +40,10 @@ internal let HTML_READING_SCRIPT = """
     if (!tocList) return;
     const mobileOutline = window.matchMedia("(max-width: 1180px)");
     const headings = [...content.querySelectorAll(
-      "h1, h2, h3, h4, h5, h6, [data-cjdoc-toc-role='member']")].filter(heading => {
+      "h1, h2, h3, h4, h5, h6, [data-cjdoc-toc-role='member'], [data-cjdoc-toc-role='entry']")].filter(heading => {
       const role = heading.dataset.cjdocTocRole;
       if (role === "member") return true;
+      if (role === "entry") return Boolean(heading.id) && !heading.closest("details");
       if (heading.closest("[data-cjdoc-member]")) return false;
       if (heading.closest("details")) return false;
       return (role === "api-root" || role === "api" || role === "group" ||
@@ -59,7 +60,19 @@ internal let HTML_READING_SCRIPT = """
       heading.id = id;
       usedIds.add(id);
     };
+    // A declaration row or a choice option names itself by its primary link,
+    // never by badges, summaries or migration actions that share the container.
+    const entryLabel = entry => {
+      const link = entry.querySelector(
+        "[data-cjdoc-toc-link], .cj-decl-table__link, a[data-cjdoc-api-link]");
+      const value = link ? link.textContent : "";
+      return (value || "").trim().replace(/\\s+/g, " ");
+    };
     const headingLabel = heading => {
+      if (heading.dataset.cjdocTocRole === "entry") {
+        const explicit = heading.dataset.cjdocTocLabel;
+        return (explicit || entryLabel(heading)).trim().replace(/\\s+/g, " ");
+      }
       const explicit = heading.dataset.cjdocTocLabel;
       return (explicit || heading.textContent || "").trim().replace(/\\s+/g, " ");
     };
@@ -73,14 +86,21 @@ internal let HTML_READING_SCRIPT = """
     const itemClass = heading => {
       const role = heading.dataset.cjdocTocRole;
       if (role === "member") return "cj-toc__item cj-toc__item--member";
+      if (role === "entry") return "cj-toc__item cj-toc__item--entry";
       if (role === "group") return "cj-toc__item cj-toc__item--group";
       if (role === "api-root" || role === "api") return "cj-toc__item cj-toc__item--api";
       return "cj-toc__item";
     };
     const boundedTreeKey = value => String(value).replace(/[^A-Za-z0-9_-]+/g, "-");
-    const depthOf = heading => heading.dataset.cjdocTocRole === "member"
-      ? Number(heading.dataset.cjdocTocDepth || 3)
-      : Number(heading.tagName.slice(1));
+    // An overload label and its signatures are peers in the reading outline.
+    // Their semantic heading levels in the body do not set the outline depth.
+    const depthOf = heading => {
+      const parent = parentOf.get(heading);
+      if (parent) return depthOf(parent) + 1;
+      const role = heading.dataset.cjdocTocRole;
+      if (role === "member" || role === "entry") return Number(heading.dataset.cjdocTocDepth || 3);
+      return Number(heading.tagName.slice(1));
+    };
     const createLink = heading => {
       const id = targetId(heading);
       const link = element("a", "cj-toc__link", headingLabel(heading));
@@ -120,14 +140,20 @@ internal let HTML_READING_SCRIPT = """
     const enclosingGroup = heading =>
       containerHeading(heading, "[data-cjdoc-member-group]", "[data-cjdoc-toc-role='group']") ||
       containerHeading(heading, "[data-cjdoc-declaration-group]", ":scope > h2");
+    // A declaration entry belongs to the visible kind heading that states its
+    // kind; when that heading is merged into its author group, the group title is
+    // the parent. A choice page has neither, so its `#api-options` heading wins.
+    const enclosingEntry = heading =>
+      containerHeading(heading, ".cj-decl-group", ":scope > [data-cjdoc-toc-role='group']") ||
+      enclosingGroup(heading);
     let section = null;
     const parentOf = new Map();
     for (const heading of headings) {
       const role = heading.dataset.cjdocTocRole;
       if (role === "api-root" || role === "api" || role === "group") {
         section = heading;
-      } else if (role === "overload" || role === "member") {
-        const parent = enclosingGroup(heading) || section;
+      } else if (role === "overload" || role === "member" || role === "entry") {
+        const parent = (role === "entry" ? enclosingEntry(heading) : enclosingGroup(heading)) || section;
         if (parent) parentOf.set(heading, parent);
       }
     }
@@ -161,15 +187,30 @@ internal let HTML_READING_SCRIPT = """
     if (mobileToc) mobileToc.hidden = headings.length === 0;
     layout?.classList.toggle("cj-layout--with-toc", !toc.hidden);
     if (!headings.length) return;
-    const links = [...tocList.querySelectorAll("a")];
-    const linksByTarget = new Map(links.map(link => [link.dataset.tocTarget, link]));
-    let activeLink = null;
+    // One target can be listed by both the desktop and the mobile outline, so
+    // the active state and `aria-current` are applied to every copy.
+    const linksByTarget = new Map();
+    for (const list of [tocList, mobileList]) {
+      if (!list) continue;
+      for (const link of list.querySelectorAll("a[data-toc-target]")) {
+        const target = link.dataset.tocTarget;
+        const links = linksByTarget.get(target);
+        if (links) links.push(link); else linksByTarget.set(target, [link]);
+      }
+    }
+    let activeLinks = [];
     const setActive = targetIdValue => {
-      const next = linksByTarget.get(targetIdValue) || null;
-      if (next === activeLink) return;
-      if (activeLink) activeLink.classList.remove("cj-toc__link--active");
-      if (next) next.classList.add("cj-toc__link--active");
-      activeLink = next;
+      const next = linksByTarget.get(targetIdValue) || [];
+      if (next.length && activeLinks.length && next[0] === activeLinks[0]) return;
+      for (const link of activeLinks) {
+        link.classList.remove("cj-toc__link--active");
+        link.removeAttribute("aria-current");
+      }
+      for (const link of next) {
+        link.classList.add("cj-toc__link--active");
+        link.setAttribute("aria-current", "location");
+      }
+      activeLinks = next;
     };
     let clickedTarget = null;
     let releaseTimer = 0;
@@ -231,7 +272,7 @@ internal let HTML_READING_SCRIPT = """
           if (link.textContent !== label) link.textContent = label;
         }
       }
-      if (activeLink && !visibleIds.has(activeLink.dataset.tocTarget) && visible.length) {
+      if (activeLinks.length && !visibleIds.has(activeLinks[0].dataset.tocTarget) && visible.length) {
         setActive(targetId(visible[0]));
       }
       toc.hidden = visible.length === 0;

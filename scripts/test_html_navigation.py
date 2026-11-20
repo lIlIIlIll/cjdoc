@@ -56,6 +56,7 @@ function matchesSelector(node, selector) {
       if (!(name in node.attrs)) continue;
       if (attribute[2] === undefined || node.attrs[name] === attribute[2]) return true;
     }
+    if (node.tag === part) return true;
   }
   return false;
 }
@@ -125,8 +126,12 @@ class Node {
   getBoundingClientRect() { return {top: this.top || 0}; }
   querySelector(selector) {
     if (selector.startsWith(":scope > ")) {
-      const tag = selector.slice(":scope > ".length);
-      return this.children.find(child => child.tag === tag) || null;
+      const path = selector.slice(":scope > ".length).split(" > ");
+      let nodes = [this];
+      for (const part of path) {
+        nodes = nodes.flatMap(node => node.children.filter(child => matchesSelector(child, part)));
+      }
+      return nodes[0] || null;
     }
     const found = this.search(selector);
     return found || null;

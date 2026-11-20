@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { declarationUrl } from './generated-route.mjs';
 
 const site = process.env.CJDOC_I18N_SITE;
 if (!site) throw new Error('CJDOC_I18N_SITE is required for the i18n browser gate');
@@ -33,7 +34,8 @@ test.beforeAll(async () => {
         ? { prefix: '/versions/', root: composedRoot }
         : null;
     if (!mount) return response.writeHead(404).end();
-    const relative = decodeURIComponent(url.pathname.slice(mount.prefix.length));
+    const pathname = decodeURIComponent(url.pathname.slice(mount.prefix.length));
+    const relative = !pathname || pathname.endsWith('/') ? pathname + 'index.html' : pathname;
     const file = path.resolve(mount.root, relative);
     if (!file.startsWith(mount.root + path.sep)) return response.writeHead(404).end();
     try {
@@ -171,6 +173,35 @@ test('guide section identity survives translated headings', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Usage', exact: true })).toBeVisible();
 });
 
+test('switch languages at a package declaration row, not its symbol detail', async ({ page }) => {
+  const packageId = manifest.routes.find(route => route.language === 'zh-CN' &&
+    route.pageId?.startsWith('package:') && route.pageId.endsWith(':language_fixture') &&
+    !route.sectionId).pageId;
+  const rows = manifest.routes.filter(route => route.pageId === packageId && route.sectionId);
+  for (const mode of ['http', 'file']) {
+    const zh = manifest.routes.find(route => route.language === 'zh-CN' &&
+      route.pageId === packageId && !route.sectionId);
+    await page.goto(destination(mode, zh.href));
+    const add = page.locator('main tr[data-member-name="add"]');
+    const anchor = await add.getAttribute('id');
+    expect(anchor).toMatch(/^symbol-/);
+    const source = rows.find(route => route.language === 'zh-CN' && route.sectionId === anchor);
+    const target = rows.find(route => route.language === 'en' && route.sectionId === anchor);
+    expect(source.symbolId).toBeNull();
+    expect(target.symbolId).toBeNull();
+    await page.goto(destination(mode, source.href));
+    await page.locator('.cj-lang-toggle__current').click();
+    const english = page.locator('.cj-lang-toggle a[hreflang="en"]');
+    await expect(english).toHaveAttribute('data-position-state', 'mapped');
+    await english.press('Enter');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page).toHaveURL(declarationUrl(destination(mode, target.href), page.url()));
+    await expect(page.locator('body')).toHaveAttribute('data-cjdoc-page-id', packageId);
+    await expect(add).toBeVisible();
+    expect(await add.getAttribute('id')).toBe(anchor);
+  }
+});
+
 test('a missing translated chapter recovers across mapped, empty-hash and browser-history states', async ({ page }) => {
   const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'advanced');
   const mappedSource = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'usage');
@@ -291,7 +322,7 @@ test('Ctrl or Command click opens the exact overload and parameter in a new tab'
     english.click({ modifiers: ['ControlOrMeta'] }),
   ]);
   await expect(opened.locator('html')).toHaveAttribute('lang', 'en');
-  expect(opened.url()).toBe(base + translated.href);
+  await expect(opened).toHaveURL(declarationUrl(translated.href, base));
   await expect(opened.locator(`details[id="${context.href.split('#')[1]}"]`)).toHaveJSProperty('open', true);
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
   await opened.close();
@@ -327,7 +358,7 @@ for (const mode of ['file', 'http']) {
       const english = page.locator('.cj-lang-toggle a[hreflang="en"]');
       await expect(english).toHaveAttribute('data-position-state', 'mapped');
       await english.click();
-      expect(page.url()).toBe(destination(mode, target.href));
+      await expect(page).toHaveURL(declarationUrl(destination(mode, target.href), page.url()));
       await expect(page.locator(`details[id="${target.href.split('#')[1]}"]`)).toHaveJSProperty('open', true);
     });
   }

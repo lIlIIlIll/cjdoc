@@ -328,4 +328,54 @@ class HtmlOverloadContractLayoutTest {
         @Expect(routes.filePath("route:解析"), Some("fixture/解析/index.html"))
         @Expect(routes.filePath("route:ά") != routes.filePath("route:ά"), true)
     }
+
+    @TestCase
+    func packageRoutesKeepPortableIdentityAndAuthoredFiles(): Unit {
+        let cases = [("a", "pocketkit"), ("a", "pocketkit.authoring"),
+            ("a", "twin"), ("b", "twin"), ("a", "Upper.a"), ("a", "upper.b"),
+            ("a", "Hậ"), ("a", "Ha\u{0302}\u{0323}"), ("a", "guide"), ("a", "blocked.child"),
+            ("a", "解析"), ("a", "con"), ("a", ""), ("a", "../unsafe"),
+            ("a", "very_long_package_name_very_long_package_name_very_long_package_name_very_long_package_name_very_long_package_name")]
+        let page = { id: String, route: String =>
+            DocumentationPage(id, "docs/" + id + ".md", route, id, "guide", "", MarkdownNode("document"))
+        }
+        let docs = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+            ProjectInfo("route-allocation"), ConfigurationSnapshot(lintProfile: "off"),
+            pages: [page("guide", "packages/guide/index.html"), page("file", "packages/blocked")])
+        let forward = ArrayList<ProjectedPackage>()
+        let backward = ArrayList<ProjectedPackage>()
+        for (i in 0..cases.size) {
+            let (moduleId, name) = cases[i]
+            forward.add(ProjectedPackage(PackageDoc(name, moduleId)))
+            let (reversedId, reversedName) = cases[cases.size - i - 1]
+            backward.add(ProjectedPackage(PackageDoc(reversedName, reversedId)))
+        }
+        let routes = { packages: ArrayList<ProjectedPackage>, projection: ApiRouteProjection =>
+            ApiHtmlRoutes(docs, ArrayList<SymbolDoc>(), HashMap<String, ArrayList<SymbolDoc>>(),
+                packages, projection)
+        }
+        let current = routes(forward, ReadablePackages)
+        let reversed = routes(backward, ReadablePackages)
+        let historical = routes(forward, ReadableSymbols)
+        let seen = HashSet<String>()
+        for ((moduleId, name) in cases) {
+            let path = current.packageFile(moduleId, name)
+            @Expect(path, reversed.packageFile(moduleId, name))
+            @Expect(seen.add(portableFileNameKey(path)))
+            @Expect(path.size <= 116 && path.startsWith("packages/") && path.endsWith("/index.html"))
+            @Expect(!path.contains(".."))
+            @Expect(historical.packageFile(moduleId, name), historicalPackagePagePath(moduleId, name))
+        }
+        @Expect(current.packageFile("a", "pocketkit"), "packages/pocketkit/index.html")
+        @Expect(current.packageFile("a", "pocketkit.authoring"), "packages/pocketkit/authoring/index.html")
+        @Expect(apiHtmlFileHref(current.packageFile("a", "解析")), "packages/%E8%A7%A3%E6%9E%90/index.html")
+        @Expect(current.packageFile("a", "twin").startsWith("packages/twin~"))
+        @Expect(current.packageFile("b", "twin").startsWith("packages/twin~"))
+        @Expect(!current.packageFile("a", "Upper.a").startsWith("packages/Upper/"))
+        @Expect(!current.packageFile("a", "upper.b").startsWith("packages/upper/"))
+        @Expect(current.packageFile("a", "Hậ").startsWith("packages/Hậ~"))
+        @Expect(current.packageFile("a", "guide").startsWith("packages/guide~"))
+        @Expect(!current.packageFile("a", "blocked.child").startsWith("packages/blocked/"))
+        @Expect(current.packageFile("a", "con"), "packages/~636f6e/index.html")
+    }
 }

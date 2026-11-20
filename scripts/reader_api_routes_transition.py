@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import hashlib
+from html.parser import HTMLParser
 import json
 from pathlib import Path
 import posixpath
@@ -74,8 +75,8 @@ def _check_corpus(profile: dict, observation: dict) -> None:
 
 
 def _validate_profile(profile: dict) -> None:
-    _require(set(profile) == PROFILE_FIELDS and profile["schemaVersion"] == SCHEMA,
-             "unsupported or incomplete profile")
+    _require(set(profile) in (PROFILE_FIELDS, PROFILE_FIELDS | {"package"}) and
+             profile["schemaVersion"] == SCHEMA, "unsupported or incomplete profile")
     _require(isinstance(profile["recipe"], str) and bool(profile["recipe"]), "missing corpus recipe")
     for name in ("sourceSha256", "taskManifestSha256"):
         _require(isinstance(profile[name], str) and SHA.fullmatch(profile[name]) is not None,
@@ -90,6 +91,14 @@ def _validate_profile(profile: dict) -> None:
              "the captured-page declaration is missing")
     _require(page["kind"] is None or (isinstance(page["kind"], str) and bool(page["kind"])),
              "the captured-page declaration kind is not text or null")
+    if "package" in profile:
+        package = profile["package"]
+        _require(isinstance(package, dict) and set(package) == {"id", "html"} and
+                 isinstance(package["id"], str) and package["id"].startswith("cjdoc:package:"),
+                 "unexpected package breadcrumb registration")
+        href = _check_address(package["html"], "registered package")
+        _require(href.startswith("packages/") and href.endswith("/index.html"),
+                 "expected a readable package file")
     _require(set(profile["locales"]) == {"en", "zh-CN"}, "complete bilingual snapshots are required")
     for observations in profile["locales"].values():
         _require(set(observations) == {"baseline", "after"}, "both full snapshots are required")
@@ -257,6 +266,56 @@ def _lookup_address(table: dict, page_dir: str, path: str) -> str | None:
     return None
 
 
+class _PackageBody(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bodies: list[dict[str, str | None]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "body":
+            self.bodies.append(dict(attrs))
+
+
+def _package_breadcrumb(proof: dict, site: Path, symbol_id: str,
+                        expected: dict, *, historical: bool) -> str:
+    declarations = [row for row in proof["docIr"]["declarations"] if row["id"] == symbol_id]
+    _require(len(declarations) == 1, "breadcrumb page declaration is absent or ambiguous")
+    declaration = declarations[0]
+    module, name = declaration["moduleId"], declaration["packageName"]
+    package_id = f"cjdoc:package:{module}:{name}"
+    _require(package_id == expected["id"], "the reader page belongs to a different package")
+    packages = [row for row in proof["docIr"]["packages"]
+                if (row["moduleId"], row["name"]) == (module, name)]
+    _require(len(packages) == 1 and symbol_id in packages[0]["symbolIds"],
+             "the captured package does not own the reader declaration")
+    rows = [row for row in proof["representations"]
+            if row.get("kind") == "package" and row.get("id") == package_id]
+    _require(len(rows) == 1, "the breadcrumb package has no unique published representation")
+    href = _check_address(rows[0].get("html"), "package representation")
+    if historical:
+        _require(re.fullmatch(r"packages/package-[a-f0-9-]+\.html", href) is not None,
+                 "the historical package representation is not its original file")
+        document(site, href)
+    else:
+        _require(href == expected["html"], "the package file is not the preregistered readable route")
+        parser = _PackageBody()
+        parser.feed(document(site, href).read_text(encoding="utf-8"))
+        _require(len(parser.bodies) == 1 and
+                 parser.bodies[0].get("data-cjdoc-page-id") == package_id.removeprefix("cjdoc:") and
+                 parser.bodies[0].get("data-cjdoc-page") == "package" and
+                 parser.bodies[0].get("data-cjdoc-route") == "api" and
+                 "data-cjdoc-symbol-id" not in parser.bodies[0],
+                 "the readable package file does not have the registered canonical identity")
+    return href
+
+
+def _package_url(value: str, page_dir: str, package_href: str) -> bool:
+    parts = urlsplit(value)
+    return (bool(parts.path) and not any((parts.scheme, parts.netloc)) and
+            not any(mark in value for mark in ("?", "#")) and not parts.path.startswith("/") and
+            _resolve(page_dir, _decode_path(parts.path)) == package_href)
+
+
 def _url_token(value: str, table: dict, page_dir: str, page_symbol: str | None = None) -> str:
     """Map one address to a stable token; unrelated addresses keep their exact spelling."""
     _require(isinstance(value, str), "a published link is not text")
@@ -365,6 +424,9 @@ def register_api_route_transition(profile_file: Path, baseline: Path, native: di
         page_symbol = _page_symbol(table, profile["page"])
         page_href = table["hrefById"][page_symbol]
         frozen[locale] = {
+            **({"packageHref": _package_breadcrumb(proof, sites[locale], page_symbol,
+                                                   profile["package"], historical=True)}
+               if "package" in profile else {}),
             "pair": list(proof["manifestPair"]),
             "snapshotId": proof["snapshotId"],
             "projectionId": proof["projectionId"],
@@ -401,7 +463,8 @@ def validate_api_route_registration(registration: dict) -> dict:
             _require(isinstance(text, str) and _digest(text) == record["sha256"],
                      "registered full snapshot changed: " + locale + "/" + label)
         frozen = registration["baseline"][locale]
-        _require(isinstance(frozen, dict) and set(frozen) == BASELINE_FIELDS,
+        expected_fields = BASELINE_FIELDS | ({"packageHref"} if "package" in profile else set())
+        _require(isinstance(frozen, dict) and set(frozen) == expected_fields,
                  "unexpected registered baseline record")
         _require(isinstance(frozen["pair"], list) and tuple(frozen["pair"]) in MANIFEST_PAIRS,
                  "unsupported registered manifest pair")
@@ -417,6 +480,14 @@ def validate_api_route_registration(registration: dict) -> dict:
                  "registered page declaration is absent from the baseline inventory")
         _require(table["hrefById"][frozen["pageSymbolId"]] == frozen["pageHref"],
                  "registered page address changed")
+        if "package" in profile:
+            href = _check_address(frozen["packageHref"], "historical package")
+            page_dir = posixpath.dirname(frozen["pageHref"])
+            for label in ("baseline", "after"):
+                targets = [match.group("value") for line in registration["snapshots"][locale][label].split("\n")
+                           if (match := URL_LINE.fullmatch(line))]
+                _require(sum(_package_url(value, page_dir, href) for value in targets) == 1,
+                         "the frozen accessible tree does not have exactly one historical package breadcrumb")
         _require(link_targets(registration["snapshots"][locale]["baseline"], table, frozen["pageHref"]) ==
                  frozen["linkTargets"], "registered baseline ARIA link targets changed: " + locale)
     return profile
@@ -426,7 +497,7 @@ class ApiRouteQualification:
     """Prove the address-only difference for one locale between verified products."""
 
     def __init__(self, registration: dict, locale: str, before_proof: dict, after_proof: dict,
-                 before_table: dict, after_table: dict):
+                 before_table: dict, after_table: dict, package_href: str | None = None):
         self.registration = registration
         self.profile = registration["profile"]
         self.locale = locale
@@ -436,6 +507,7 @@ class ApiRouteQualification:
         self.after_table = after_table
         self.frozen = registration["baseline"][locale]
         self.snapshots = registration["snapshots"][locale]
+        self.package_href = package_href
 
     # -- addresses -------------------------------------------------------
     def _table(self, side: str) -> dict:
@@ -469,11 +541,19 @@ class ApiRouteQualification:
         page_href = self.page_href(side)
         page_dir = posixpath.dirname(page_href)
         page_symbol = table["idByHref"][page_href]
+        package_href = self.frozen.get("packageHref") if side == "baseline" else self.package_href
         lines = []
         for line in tree.split("\n"):
             match = URL_LINE.fullmatch(line)
-            lines.append(line if match is None else
-                         match.group("lead") + _url_token(match.group("value"), table, page_dir, page_symbol))
+            if match is None:
+                lines.append(line)
+                continue
+            value = match.group("value")
+            if package_href is not None and _package_url(value, page_dir, package_href):
+                token = "<cjdoc-package:" + self.profile["package"]["id"] + ">"
+            else:
+                token = _url_token(value, table, page_dir, page_symbol)
+            lines.append(match.group("lead") + token)
         return "\n".join(lines)
 
     # -- accessible tree -------------------------------------------------
@@ -560,7 +640,8 @@ def qualify_api_routes(registration: dict, locale: str, before_site: Path, after
         _require(before_proof[name] == frozen[name], "baseline publisher identity changed: " + name)
     _require(before_proof["symbolIndexSha256"] == frozen["symbolIndexSha256"],
              "baseline publisher identity changed: symbolIndexSha256")
-    _require(after_proof["manifestPair"][1] == "cjdoc.read/2",
+    expected_projection = "cjdoc.read/3" if "package" in profile else "cjdoc.read/2"
+    _require(after_proof["manifestPair"][1] == expected_projection,
              "expected readable API projection: " + locale)
     if not doc_ir_transition:
         # A routes-only exception stays narrow: the captured documentation model
@@ -576,9 +657,16 @@ def qualify_api_routes(registration: dict, locale: str, before_site: Path, after
     _check_search_addresses(after_proof["index"], after_table, locale)
     _require(after_table["ids"] == before_table["ids"],
              "the candidate inventory is not the same visible declaration set: " + locale)
-    qualification = ApiRouteQualification(registration, locale, before_proof, after_proof,
-                                          before_table, after_table)
     _require(_page_symbol(after_table, profile["page"]) == frozen["pageSymbolId"],
              "the captured page is not the registered declaration: " + locale)
+    package_href = None
+    if "package" in profile:
+        _require(_package_breadcrumb(before_proof, before_site, frozen["pageSymbolId"],
+                                     profile["package"], historical=True) == frozen["packageHref"],
+                 "baseline package breadcrumb changed after registration")
+        package_href = _package_breadcrumb(after_proof, after_site, frozen["pageSymbolId"],
+                                          profile["package"], historical=False)
+    qualification = ApiRouteQualification(registration, locale, before_proof, after_proof,
+                                          before_table, after_table, package_href=package_href)
     qualification.check_inventories()
     return qualification

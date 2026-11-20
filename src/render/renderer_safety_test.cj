@@ -2,6 +2,7 @@ package cjdoc.render
 
 import cjdoc.model.*
 import std.collection.*
+import std.fs.*
 import markdown.{MarkdownEngine, MarkdownProfile}
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -462,14 +463,14 @@ class RendererSafetyTest {
     func htmlNavigationMarksCurrentPackageAndHidesEmptyToc(): Unit {
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
         let artifacts = HtmlDocumentationRenderer().render(documentation)
-        let packagePath = "html/${packagePagePath("cjdoc:module:v1:renderer-safety", "fixture")}"
+        let packagePath = "html/packages/fixture/index.html"
         let packageHtml = rendererSafetyContent(artifacts, packagePath)
 
         // Currentness is ARIA, not a class: sidebarPageIsCurrent never marks a
         // link that carries a fragment, and the ancestor modifier only marks the
         // package branch that contains the current page.
         @Expect(packageHtml.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
-            "aria-current=\"page\" href=\"../packages/"), true)
+            "aria-current=\"page\" data-cjdoc-api-link href=\"../../packages/fixture/index.html\""), true)
         @Expect(packageHtml.contains("data-cjdoc-sidebar-tree"), true)
         let symbol = documentation.declarations[0]
         let symbolPath = rendererSafetyRoutes(documentation).symbolFileHref(symbol.id)
@@ -477,7 +478,8 @@ class RendererSafetyTest {
         // Only the current package's types are server-rendered; the function page
         // keeps the package branch and its own symbol link in that branch.
         @Expect(functionPage.contains("<a class=\"cj-tree__link cj-tree__link--ancestor\" " +
-            "data-cjdoc-nav-link href=\"" + pageRootPrefix(symbolPath) + "packages/"), true)
+            "data-cjdoc-nav-link data-cjdoc-api-link href=\"" + pageRootPrefix(symbolPath) +
+            "packages/fixture/index.html\""), true)
         @Expect(functionPage.contains("<a class=\"cj-tree__link\" data-cjdoc-nav-link " +
             "aria-current=\"page\" href=\"" + pageRootPrefix(symbolPath) + symbolPath + "\""), true)
         @Expect(functionPage.contains("data-cjdoc-tree-item=\"package\""), true)
@@ -525,7 +527,7 @@ class RendererSafetyTest {
         @Expect(!symbolHtml.contains("top-source-disabled"), true)
         @Expect(symbolHtml.contains(
             "<h1 class=\"cj-page-header__title\" data-cjdoc-toc-role=\"api-root\" " +
-            "data-cjdoc-toc-label=\"class Owner\">"), true)
+            "data-cjdoc-toc-label=\"Owner\">"), true)
         @Expect(symbolHtml.contains(
             "<div class=\"cj-member-row\"><details class=\"cj-member\" id=\"symbol-"), true)
         @Expect(symbolHtml.contains("data-cjdoc-member data-member-name=\"member\""), true)
@@ -922,21 +924,119 @@ class RendererSafetyTest {
     }
 
     @TestCase
-    func onlyTheCapturedStandardAnnotationMarksStatusWithoutProse(): Unit {
-        for ((spelling, provenance, expected) in [
-            ("@Deprecated[message: \"Use fixture.other\"]", "source", true),
-            ("@DeprecatedSoon[message: \"Use fixture.other\"]", "source", false),
-            ("@Deprecated", "provider", false)
+    func onlyTheCapturedStandardAnnotationMarksStatus(): Unit {
+        for ((spelling, provenance, status, reason) in [
+            ("@Deprecated[message: \"Use fixture.other\"]", "source", true, true),
+            ("@Deprecated[variable]", "source", true, false),
+            ("@DeprecatedSoon[message: \"Use fixture.other\"]", "source", false, false),
+            ("@Deprecated", "provider", false, false)
         ]) {
             let annotation = AnnotationDoc(spelling, provenance: provenance,
                 provider: if (provenance == "provider") { Some("ast") } else { None<String> })
             let document = rendererSafetyDocumentation(MarkdownNode("document"), annotations: [annotation])
             let page = rendererSafetyPage(HtmlDocumentationRenderer().render(document), document,
                 document.declarations[0].id)
-            @Expect(page.contains(">Deprecated</span>"), expected)
-            @Expect(!page.contains("class=\"cj-deprecation-note\""))
+            @Expect(page.contains(">Deprecated</span>"), status)
+            // Only a captured, readable source annotation adds prose.
+            @Expect(page.contains("cj-deprecation-note__source"), reason)
             @Expect(!page.contains("class=\"cj-replacement\""))
+            // The outline names the visible declaration, never the raw header.
+            @Expect(page.contains("data-cjdoc-toc-label=\"api\">"), true)
+            @Expect(!page.contains("data-cjdoc-toc-label=\"@Deprecated"), true)
         }
+    }
+
+    @TestCase
+    func readableSourceAnnotationBecomesPlainSourceProseOnce(): Unit {
+        let annotation = AnnotationDoc("@Deprecated[message: \"Use parse instead. <img src=x onerror=alert(1)>\"]")
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
+            annotations: [annotation])
+        let page = rendererSafetyPage(HtmlDocumentationRenderer().render(documentation), documentation,
+            documentation.declarations[0].id)
+        @Expect(page.contains("class=\"cj-deprecation-note\""))
+        // One explanation block: the source reason does not repeat the old callout.
+        @Expect(page.split("cj-deprecation-note__source").size - 1, 1)
+        @Expect(page.contains("Source annotation: "))
+        @Expect(page.contains("&lt;img src=x onerror=alert(1)&gt;"))
+        @Expect(!page.contains("<img src=x"))
+        @Expect(!page.contains("class=\"cj-replacement\""))
+        @Expect(page.contains("data-cjdoc-toc-label=\"api\">"), true)
+    }
+
+    @TestCase
+    func authorProseWinsOverTheSourceAnnotationMessage(): Unit {
+        let authorProse = MarkdownNode("document", children: [MarkdownNode("paragraph",
+            children: [MarkdownNode("text", literal: "Author reason.")])])
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
+            tags: [DocTag("deprecated", "", "", descriptionMarkdown: Some(authorProse))],
+            annotations: [AnnotationDoc("@Deprecated[\"Source reason.\"]")])
+        let page = rendererSafetyPage(HtmlDocumentationRenderer().render(documentation), documentation,
+            documentation.declarations[0].id)
+        @Expect(page.contains("Author reason."))
+        @Expect(!page.contains("Source reason."))
+        @Expect(!page.contains("cj-deprecation-note__source"))
+    }
+
+    @TestCase
+    func expandedMemberShowsTheSameSourceReasonAsItsStandalonePage(): Unit {
+        let moduleId = "cjdoc:module:v1:source-reason-member"
+        let ownerId =
+            "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asource-reason-member::fixture::class:Owner#g0()"
+        let memberId =
+            "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asource-reason-member::fixture::Owner::function:member#g0()"
+        let source = SourceRange("src/owner.cj", SourcePosition(1, 1, 0),
+            SourcePosition(1, 24, 23))
+        let owner = SymbolDoc(ownerId, "class", "Owner", "fixture.Owner", "fixture", moduleId,
+            "public", source, "public class Owner", SemanticInfo("partial", "ast"))
+        let member = SymbolDoc(memberId, "function", "member", "fixture.Owner.member",
+            "fixture", moduleId, "public", source, "public func member(): Unit",
+            SemanticInfo("partial", "ast"), ownerId: Some(ownerId),
+            documentation: Some(DocComment("raw", "Member", "", MarkdownNode("document"))),
+            annotations: [AnnotationDoc("@Deprecated[\"Source reason.\"]")])
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+            ProjectInfo("source-reason-member"), ConfigurationSnapshot(lintProfile: "off"),
+            providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
+                SemanticCapabilities(false, false, false, false, false, annotations: true))],
+            modules: [ModuleDoc(moduleId, "source-reason-member", "root", "",
+                packageNames: ["fixture"])],
+            packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/owner.cj"],
+                symbolIds: [ownerId, memberId])],
+            files: [FileDoc("src/owner.cj", moduleId, "fixture")], declarations: [owner, member])
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        let standalone = renderSymbolPage(documentation, projection, projection.visibleIndex,
+            member, HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+        let expanded = renderSymbolPage(documentation, projection, projection.visibleIndex,
+            owner, HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+        for (page in [standalone, expanded]) {
+            @Expect(page.contains("cj-deprecation-note__source"), true)
+            @Expect(page.contains("Source annotation: Source reason."), true)
+            // The summary keeps the status; the reason appears once in the note.
+            @Expect(page.split("Source reason.").size - 1, 1)
+            @Expect(page.contains("class=\"cj-replacement\""), false)
+        }
+    }
+
+    @TestCase
+    func frozenSourceOnlyOldParseRendersItsAnnotationReason(): Unit {
+        // The published v18 fixture is a real source-only declaration: its
+        // source annotation carries the message and the comment has no
+        // @deprecated prose.
+        let document = decodeDocIr(String.fromUtf8(
+            File.readFrom("tests/fixtures/golden-v18/basic.docs.json")))
+        var checked = false
+        for (symbol in document.declarations where symbol.name == "oldParse") {
+            checked = true
+            for (tag in symbol.documentation.getOrThrow().tags) {
+                @Expect(tag.name == "deprecated", false)
+            }
+            @Expect(sourceDeprecationMessage(symbol), Some("Use parse instead."))
+            let page = rendererSafetyPage(HtmlDocumentationRenderer().render(document), document,
+                symbol.id)
+            @Expect(page.contains("Source annotation: Use parse instead."), true)
+            // The message is not a destination: an unbound reason makes no link.
+            @Expect(page.contains("class=\"cj-replacement\""), false)
+        }
+        @Expect(checked, true)
     }
 
     @TestCase

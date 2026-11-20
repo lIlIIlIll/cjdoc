@@ -365,13 +365,14 @@ public let MACHINE_MANIFEST_SCHEMA_TEMPLATE = ##"{
   "required": ["schemaVersion", "snapshotId", "pathBase", "projection", "publicationRevision", "scope", "docIr", "symbolIndex", "documentSets", "representations", "resources", "reports", "fullReference", "limits"],
   "oneOf": [
     {"properties": {"schemaVersion": {"const": "cjdoc.machine-manifest/1"}, "projection": {"const": "cjdoc.read/1"}}},
-    {"properties": {"schemaVersion": {"const": "cjdoc.machine-manifest/2"}, "projection": {"const": "cjdoc.read/2"}}}
+    {"properties": {"schemaVersion": {"const": "cjdoc.machine-manifest/2"}, "projection": {"const": "cjdoc.read/2"}}},
+    {"properties": {"schemaVersion": {"const": "cjdoc.machine-manifest/3"}, "projection": {"const": "cjdoc.read/3"}}}
   ],
   "properties": {
-    "schemaVersion": {"enum": ["cjdoc.machine-manifest/1", "cjdoc.machine-manifest/2"]},
+    "schemaVersion": {"enum": ["cjdoc.machine-manifest/1", "cjdoc.machine-manifest/2", "cjdoc.machine-manifest/3"]},
     "snapshotId": {"type": "string", "pattern": "^cjdoc:snapshot:v1:[0-9a-f]{64}$"},
     "pathBase": {"const": "document-root"},
-    "projection": {"enum": ["cjdoc.read/1", "cjdoc.read/2"]},
+    "projection": {"enum": ["cjdoc.read/1", "cjdoc.read/2", "cjdoc.read/3"]},
     "publicationRevision": {"type": "string"},
     "scope": {"$ref": "#/$defs/manifestScope"},
     "docIr": {"$ref": "#/$defs/docIrResource"},

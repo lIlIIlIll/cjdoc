@@ -20,7 +20,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "1e3b9d485b137cb34da1143f6934a58f927169e3fbebb7695e438ebfc7bdfb33"
+CANONICAL_SEARCH_JS_SHA256 = "ea1ae8180db971271d8cccd47f184fdecab49e26fe6a7d2b24c46ba7b336c2c2"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "3dc968472190aab99c8a0db38a612cf95640e5a45b88f759d67480aa9fd115fd"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "601425eaed9db6165c2097148280088c6df3c85a001618e27926e90c54c3e2a4"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -58,8 +58,18 @@ class PageParser(HTMLParser):
         self.script_sources: list[str] = []
         self.is_alias = False
         self.api_identity: str | None = None
+        self.page_route: str | None = None
+        self.page_role: str | None = None
+        self.page_identity: str | None = None
+        self.symbol_identity: str | None = None
+        self.package_alias_for: str | None = None
+        self.member_symbols: dict[str, str] = {}
+        self.toc_groups: set[str] = set()
+        self.alias_targets: list[dict[str, str]] = []
         self.language: str | None = None
         self.canonical: str | None = None
+        self.title: str = ""
+        self.title_depth = 0
         self.has_shell = False
         self.idrefs: list[tuple[str, str]] = []
         self.root_prefixes: list[str] = []
@@ -83,9 +93,32 @@ class PageParser(HTMLParser):
                 self.errors.append("duplicate canonical link")
             self.canonical = values.get("href")
         if lowered_tag == "body":
-            self.is_alias = values.get("data-cjdoc-route") == "symbol-alias"
-            self.api_identity = values.get("data-cjdoc-symbol-id") or values.get("data-cjdoc-page-id")
+            self.page_route = values.get("data-cjdoc-route")
+            self.page_role = values.get("data-cjdoc-page")
+            self.page_identity = values.get("data-cjdoc-page-id")
+            self.symbol_identity = values.get("data-cjdoc-symbol-id")
+            self.package_alias_for = values.get("data-cjdoc-package-alias-for")
+            self.is_alias = self.page_route == "symbol-alias"
+            self.api_identity = self.symbol_identity or self.page_identity
             self.has_shell = "data-cjdoc-page" in values
+        if lowered_tag == "a" and "data-cjdoc-alias-target" in values:
+            self.alias_targets.append(values)
+        if lowered_tag == "a" and "data-cjdoc-api-link" in values:
+            # A generated navigational link addresses the concrete file; the
+            # projection script may shorten it only once the page is served.
+            parsed = urlsplit(values.get("href") or "")
+            if not parsed.scheme and parsed.path.endswith("/"):
+                self.errors.append(
+                    "projection-owned link must address a generated file, not a directory")
+        if lowered_tag == "title":
+            self.title_depth += 1
+        if lowered_tag == "tr" and "data-cjdoc-member" in values:
+            symbol = values.get("data-member-symbol-id")
+            anchor = values.get("id")
+            if symbol and anchor:
+                self.member_symbols[anchor] = symbol
+            elif self.package_alias_for or (self.page_identity or "").startswith("package:"):
+                self.errors.append("package declaration row must publish its SymbolId and stable anchor")
         if lowered_tag == "style":
             self.errors.append("inline style element is forbidden")
         if lowered_tag not in VOID_ELEMENTS:
@@ -120,6 +153,8 @@ class PageParser(HTMLParser):
             self.triggers.append(("settings", values))
         if "data-cjdoc-root-prefix" in values:
             self.root_prefixes.append(values["data-cjdoc-root-prefix"] or "")
+        if values.get("data-cjdoc-toc-role") == "group" and values.get("id"):
+            self.toc_groups.add(values["id"])
         if lowered_tag == "meta" and (values.get("http-equiv") or "").lower() == "content-security-policy":
             if self.stack != ["html", "head"]:
                 self.errors.append("CSP meta must be a direct child of head")
@@ -158,12 +193,16 @@ class PageParser(HTMLParser):
             self.errors.append(f"mismatched end tag </{tag}> (expected {expected})")
             return
         self.stack.pop()
+        if lowered == "title" and self.title_depth:
+            self.title_depth -= 1
         if lowered == "script" and self.script_depth:
             self.script_depth -= 1
 
     def handle_data(self, data: str) -> None:
         if self.script_depth and data.strip():
             self.errors.append("inline script content is forbidden")
+        elif self.title_depth:
+            self.title += data
 
     def close(self) -> None:
         super().close()
@@ -204,6 +243,7 @@ def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, st
 SIDEBAR_PACKAGE_FIELDS = {"id", "label", "href", "types"}
 SIDEBAR_TYPE_FIELDS = {"label", "kind", "kindLabel", "href", "members"}
 SIDEBAR_MEMBER_FIELDS = {"label", "kind", "kindLabel", "anchor"}
+SIDEBAR_MEMBER_OPTIONAL_FIELDS = {"ownerId"}
 UNSAFE_KEYS = {"__proto__", "constructor", "prototype"}
 
 
@@ -334,9 +374,15 @@ def validate_sidebar_index(root: Path, pages: dict[Path, PageParser], visible_id
         if UNSAFE_KEYS & set(group):
             raise ValueError("sidebar-index.js must not publish prototype keys")
     for member in members.values():
-        if not isinstance(member, dict) or set(member) != SIDEBAR_MEMBER_FIELDS or \
-                any(not isinstance(value, str) or not value for value in member.values()):
+        if not isinstance(member, dict) or not SIDEBAR_MEMBER_FIELDS <= set(member) or \
+                not set(member) <= SIDEBAR_MEMBER_FIELDS | SIDEBAR_MEMBER_OPTIONAL_FIELDS or \
+                any(not isinstance(member[key], str) or not member[key]
+                    for key in SIDEBAR_MEMBER_FIELDS):
             raise ValueError("sidebar-index.js contains an invalid member")
+        owner = member.get("ownerId")
+        if owner is not None and (not isinstance(owner, str) or not owner or owner not in types):
+            raise ValueError(
+                "sidebar-index.js member owner must name a published type or be null")
     seen_packages: set[str] = set()
     for package in packages:
         if not isinstance(package, dict) or set(package) != SIDEBAR_PACKAGE_FIELDS:
@@ -378,6 +424,104 @@ def validate_sidebar_index(root: Path, pages: dict[Path, PageParser], visible_id
     known_members = {member_id for entry in types.values() for member_id in entry["members"]}
     if known_members != set(members):
         raise ValueError("sidebar-index.js member table must match its type listings")
+
+
+def package_page_anchor(symbol_id: str) -> str:
+    """The stable row anchor a canonical package page gives one declaration."""
+    if not symbol_id:
+        return "symbol-root"
+    return "symbol-" + symbol_id.encode("utf-8").hex()
+
+
+def validate_package_pages(root: Path, pages: dict[Path, PageParser]) -> tuple[int, int]:
+    """Bind every package compatibility body to one canonical publisher body."""
+    canonical: dict[tuple[str | None, str], Path] = {}
+    aliases: dict[tuple[str | None, str], Path] = {}
+    for page, parser in pages.items():
+        identity = parser.page_identity
+        if parser.package_alias_for is not None:
+            if identity is not None or parser.symbol_identity is not None:
+                raise ValueError(
+                    f"{page.relative_to(root)}: package compatibility body must not "
+                    "carry generated page or symbol identity")
+            if parser.page_route != "package-alias":
+                raise ValueError(
+                    f"{page.relative_to(root)}: package compatibility body must use the package-alias route")
+            if not parser.package_alias_for.startswith("package:"):
+                raise ValueError(f"{page.relative_to(root)}: package compatibility identity is invalid")
+            key = (parser.language, parser.package_alias_for)
+            if key in aliases:
+                raise ValueError(
+                    f"{page.relative_to(root)}: duplicate package compatibility body for "
+                    f"{parser.package_alias_for}")
+            aliases[key] = page
+        elif parser.page_route == "package-alias":
+            raise ValueError(f"{page.relative_to(root)}: package compatibility identity is missing")
+        elif identity is not None and identity.startswith("package:"):
+            if parser.page_route != "api":
+                raise ValueError(
+                    f"{page.relative_to(root)}: canonical package page must use the api route")
+            key = (parser.language, identity)
+            if key in canonical:
+                raise ValueError(
+                    f"{page.relative_to(root)}: duplicate canonical package identity {identity}")
+            canonical[key] = page
+    for (language, identity), page in canonical.items():
+        parser = pages[page]
+        name = page.relative_to(root).as_posix()
+        if (language, identity) not in aliases:
+            raise ValueError(f"{name}: canonical package page has no compatibility body")
+        if not parser.canonical:
+            raise ValueError(f"{name}: canonical package page must publish its canonical address")
+        canonical_url = urlsplit(parser.canonical)
+        if not canonical_url.path.endswith("/") or canonical_url.query or canonical_url.fragment:
+            raise ValueError(
+                f"{name}: canonical package address must be the readable directory, not {parser.canonical!r}")
+        target, fragment = resolve_local(root, page, parser.canonical)
+        if target is None or fragment or (target / "index.html").resolve() != page.resolve():
+            raise ValueError(f"{name}: canonical package address does not name this body")
+        for anchor, symbol in parser.member_symbols.items():
+            if anchor != package_page_anchor(symbol):
+                raise ValueError(
+                    f"{name}: declaration row {anchor} does not belong to {symbol}")
+    for (language, identity), page in aliases.items():
+        parser = pages[page]
+        name = page.relative_to(root).as_posix()
+        primary = canonical.get((language, identity))
+        if primary is None:
+            raise ValueError(f"{name}: package compatibility body has no canonical page for {identity}")
+        canonical_parser = pages[primary]
+        targets = parser.alias_targets
+        if len(targets) != 1:
+            raise ValueError(
+                f"{name}: package compatibility body needs exactly one alias target, found {len(targets)}")
+        href = targets[0].get("href") or ""
+        target_url = urlsplit(href)
+        if target_url.path.endswith("/") or target_url.query or target_url.fragment or \
+                target_url.path.rsplit("/", 1)[-1] != "index.html":
+            raise ValueError(
+                f"{name}: package alias target must name the canonical package file, not {href!r}")
+        target, fragment = resolve_local(root, page, href)
+        if target is None or fragment or target.resolve() != primary.resolve():
+            raise ValueError(f"{name}: package alias target does not name its canonical body")
+        if not parser.canonical:
+            raise ValueError(f"{name}: package compatibility body must publish its canonical address")
+        canonical_url = urlsplit(parser.canonical)
+        if not canonical_url.path.endswith("/") or canonical_url.query or canonical_url.fragment:
+            raise ValueError(
+                f"{name}: canonical address must be the readable package directory")
+        directory, fragment = resolve_local(root, page, parser.canonical)
+        if directory is None or fragment or (directory / "index.html").resolve() != primary.resolve():
+            raise ValueError(f"{name}: canonical address does not name the canonical package body")
+        if parser.title != canonical_parser.title:
+            raise ValueError(f"{name}: package compatibility body must keep the canonical title")
+        if parser.member_symbols != canonical_parser.member_symbols:
+            raise ValueError(
+                f"{name}: package compatibility body must render every canonical declaration")
+        if parser.toc_groups != canonical_parser.toc_groups:
+            raise ValueError(
+                f"{name}: package compatibility body must keep the canonical section anchors")
+    return len(canonical), len(aliases)
 
 
 def main() -> int:
@@ -439,6 +583,16 @@ def main() -> int:
         ]
         if parser.is_alias:
             expected_scripts = [prefix + "symbol-alias.js"]
+        elif parser.package_alias_for is not None:
+            # The compatibility body is the full published package page, so it
+            # loads the standard asset list plus the shared alias redirect.
+            expected_scripts = [
+                prefix + "theme-bootstrap.js",
+                prefix + "symbol-alias.js",
+                prefix + "search-index.js",
+                prefix + "sidebar-index.js",
+                prefix + "search.js",
+            ]
         if parser.script_sources != expected_scripts:
             raise ValueError(
                 f"{relative}: expected exact canonical script references"
@@ -448,6 +602,7 @@ def main() -> int:
 
     if not pages:
         raise ValueError("site must contain at least one HTML page")
+    package_pages, package_aliases = validate_package_pages(publication_root, pages)
     for page, parser in list(pages.items()):
         for link in parser.links:
             target, fragment = resolve_local(publication_root, page, link)
@@ -658,7 +813,8 @@ def main() -> int:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")
     validate_shell_contract(publication_root, pages, prefixes)
     validate_sidebar_index(root, pages, api_canonical_ids)
-    print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
+    print(f"validated {len(pages)} HTML pages and {len(entries)} search entries "
+          f"({package_pages} package pages, {package_aliases} compatibility aliases)")
     return 0
 
 

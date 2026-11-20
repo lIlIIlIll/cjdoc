@@ -530,7 +530,7 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
     manifest = load_json(document(root, "agent/manifest.json"))
     check_schema(manifest, schema, "agent/manifest.json")
     if (manifest["pathBase"] != "document-root" or
-            (manifest["schemaVersion"], manifest["projection"]) != ("cjdoc.machine-manifest/2", "cjdoc.read/2")):
+            (manifest["schemaVersion"], manifest["projection"]) != ("cjdoc.machine-manifest/3", "cjdoc.read/3")):
         raise ContractError("manifest projection or path base is not the reading contract")
     if manifest["snapshotId"] != navigation_root["scope"]["snapshotId"]:
         raise ContractError("manifest and navigation name different snapshots")

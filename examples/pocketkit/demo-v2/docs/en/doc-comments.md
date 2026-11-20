@@ -211,10 +211,10 @@ a / b
 
 ## Deprecation and versions
 
-Both `requireFirstText` and `firstTextOrEmpty` show **Deprecated**. The first uses one `@replacement` tag to link to its replacement. The second has only a source `@Deprecated` annotation, so it shows the status without a migration link:
+Both `requireFirstText` and `firstTextOrEmpty` show **Deprecated**. The first uses one `@replacement` tag to link to its replacement. The second has only a source `@Deprecated` annotation, so its page shows the annotation's reason, “An empty catalogue and a blank first entry are indistinguishable.”, as a source note and has no migration link:
 
 ```text
-@summary[lang=en] Read the first entry if it is non-empty; a documentation example only.
+@summary[lang=en] Read the first entry; throw if the catalogue is empty or its first entry is an empty string.
 @description[lang=en] This legacy entry point turns two missing-value cases into exceptions.
 
 It reads only the first entry and never skips a blank entry to look for the next one.

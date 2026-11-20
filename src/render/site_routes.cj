@@ -3,6 +3,10 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+internal func packagePageIdentity(pkg: PackageDoc): String {
+    "package:${pkg.moduleId}:${pkg.name}"
+}
+
 internal class PublishedLanguageRoute {
     let language: String
     let pageId: ?String
@@ -61,8 +65,19 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
         let projection = RenderProjection(view)
         addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, "index.html", pageId: Some("api-home")))
         for (pkg in projection.packages) {
-            addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, packagePagePath(pkg.source.moduleId, pkg.source.name),
-                pageId: Some("package:" + pkg.source.moduleId + ":" + pkg.source.name)))
+            let source = pkg.source
+            let id = packagePageIdentity(source)
+            if (let Some(page) <- inventory.generatedPages.get(language + ":" + id)) {
+                let route = PublishedLanguageRoute(language, page.route, pageId: Some(id))
+                addPublishedLanguageRoute(routes, files, route)
+                if (let Some(symbols) <- projection.topLevelByPackage.get(routeKey(source.moduleId, source.name))) {
+                    for (symbol in symbols) {
+                        let anchor = symbolAnchor(symbol)
+                        addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language,
+                            page.route + "#" + anchor, pageId: Some(id), sectionId: Some(anchor)))
+                    }
+                }
+            }
         }
         for (symbol in projection.visibleSymbols) {
             let page = match (inventory.symbolFiles.get(language + ":" + symbol.id)) {
@@ -94,6 +109,7 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
             }
         }
         for (published in inventory.pages where published.language == language && published.pageId.isSome()) {
+            if (published.pageId.getOrThrow().startsWith("package:")) { continue }
             if (files[language + ":" + published.route].entry != published.entry) { continue }
             routes.add(PublishedLanguageRoute(language, published.file, pageId: published.pageId))
         }
@@ -105,14 +121,13 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
                 for (tag in comment.tags where !tag.fieldId.isEmpty()) { anchors[documentationFieldAnchor(tag.fieldId)] = (symbol.id, Some(tag.fieldId)) }
             }
         }
-        for (published in inventory.pages where published.language == language) {
+        for (published in inventory.pages where published.language == language && published.symbolId.isSome()) {
             if (files[language + ":" + published.route].entry != published.entry) { continue }
-            let owner = published.symbolId
-            if (owner.isNone()) { continue }
+            let owner = published.symbolId.getOrThrow()
             for (anchor in published.anchors) {
                 if (let Some((symbolId, sectionId)) <- anchors.get(anchor)) {
                     routes.add(PublishedLanguageRoute(language, published.file + "#" + anchor,
-                        pageId: Some("context:" + owner.getOrThrow()), symbolId: Some(symbolId), sectionId: sectionId,
+                        pageId: Some("context:" + owner), symbolId: Some(symbolId), sectionId: sectionId,
                         ownerSymbolId: Some(symbolId)))
                 }
             }
