@@ -4,7 +4,7 @@ import pocketkit.TextCatalog
 
 /**
  * @summary 读取第一条非空文本；仅用于演示文档注释。
- * @description 这个旧式入口把两种缺失情况转换为异常。新代码应直接调用 `catalog.first()`。
+ * @description 这个旧式入口把两种缺失情况转换为异常。
  *
  * 它只读取第一项，不会跳过空条目去找下一项。
  *
@@ -12,7 +12,7 @@ import pocketkit.TextCatalog
  * - 空字符串是已有条目，但不能作为结果返回。
  *
  * @summary[lang=en] Read the first entry if it is non-empty; a documentation example only.
- * @description[lang=en] This legacy entry point turns two missing-value cases into exceptions. Call `catalog.first()` in new code.
+ * @description[lang=en] This legacy entry point turns two missing-value cases into exceptions.
  *
  * It reads only the first entry and never skips a blank entry to look for the next one.
  *
@@ -27,8 +27,19 @@ import pocketkit.TextCatalog
  * @throws[lang=en,id=empty-catalogue] IllegalStateException The catalogue has no entries.
  * @throws[id=blank-entry] IllegalArgumentException 第一条文本是空字符串。
  * @throws[lang=en,id=blank-entry] IllegalArgumentException The first entry is an empty string.
- * @deprecated 改用 `catalog.first()`：`None` 表示空目录，`Some("")` 表示首项为空；按调用方需要分别处理，其他 `Some(text)` 直接取出 `text`。
- * @deprecated[lang=en] Use `catalog.first()`. Handle `None` (empty catalogue) and `Some("")` (empty first entry) separately; unwrap `text` from any other `Some(text)`.
+ * @replacement pocketkit.TextCatalog.first
+ * @deprecated 调用 `catalog.first()` 后分别处理三种结果：
+ *
+ * - `None`：目录没有条目。
+ * - `Some("")`：首项存在，但内容为空。
+ * - `Some(text)`：首项非空，取出 `text`。
+ *
+ * @deprecated[lang=en] Handle the three results of `catalog.first()` separately:
+ *
+ * - `None`: the catalogue has no entries.
+ * - `Some("")`: the first entry exists but is blank.
+ * - `Some(text)`: the first entry is non-empty; unwrap `text`.
+ *
  * @see pocketkit.TextCatalog.first
  * @see pocketkit.TextCatalog.isEmpty
  * @since 0.2.0
@@ -87,6 +98,22 @@ public func requireFirstText(catalog: TextCatalog): String {
     match (catalog.first()) {
         case None => throw IllegalStateException("empty catalogue")
         case Some("") => throw IllegalArgumentException("empty first entry")
+        case Some(text) => text
+    }
+}
+
+/**
+ * @summary 读取第一条文本；没有条目时返回空字符串。
+ * @summary[lang=en] Read the first entry, or return an empty string if there are no entries.
+ * @param catalog 要读取的文本目录。
+ * @param[lang=en] catalog The text catalogue to read.
+ * @return 第一条文本，或没有条目时返回空字符串。
+ * @return[lang=en] The first entry, or an empty string when there are no entries.
+ */
+@Deprecated["An empty catalogue and a blank first entry are indistinguishable."]
+public func firstTextOrEmpty(catalog: TextCatalog): String {
+    match (catalog.first()) {
+        case None => ""
         case Some(text) => text
     }
 }

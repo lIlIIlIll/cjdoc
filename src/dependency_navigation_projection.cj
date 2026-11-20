@@ -22,12 +22,67 @@ private func bindDependencyMarkdown(node: nav_model.MarkdownNode, owner: nav_mod
     for (child in node.children) { bindDependencyMarkdown(child, owner, binder, importScope: importScope) }
 }
 
+private func replacementNavigation(tag: nav_model.DocTag, count: Int64, owner: nav_model.SymbolDoc,
+    binder: DependencyNavigationBinder): nav_model.TypeNavigation {
+    let reason = if (count != 1) { "only one replacement may be declared" }
+        else if (!nav_model.sharedReplacementTag(tag)) { "expected one unqualified tag with a single API reference" }
+        else if (!nav_model.declarationIsDeprecated(owner)) { "the declaration is not deprecated" }
+        else { "" }
+    if (!reason.isEmpty()) { return nav_model.TypeNavigation("unavailable", "none", reason) }
+    if (let Some(failure) <- tag.navigation) { return failure }
+    if (tag.referenceState == "ambiguous") {
+        return nav_model.TypeNavigation("ambiguous", "none", "ambiguous target; specify its signature")
+    }
+    if (let Some(id) <- tag.targetSymbolId) { return binder.resolveLocalReference(owner, id) }
+
+    // Normalize only the lookup suffix; the authored selector is part of the replay evidence.
+    let opening = tag.subject.indexOf("(").getOrDefault({ => tag.subject.size })
+    let target = if (opening == tag.subject.size) { tag.subject }
+        else { tag.subject[..opening] + nav_model.normalizeTypeSpelling(tag.subject[opening..]) }
+    let decision = binder.resolveReference(owner, target, importScope: false)
+    if (decision.state != "resolved") { return decision }
+    if (!decision.dependencyInstanceId.isEmpty() &&
+        (decision.matchLevel == "exact" || decision.matchLevel == "compatible") &&
+        nav_model.replacementMatchesExternalKey(tag.subject, decision.symbolKey)) {
+        for (set in binder.documentSets where set.id == decision.documentSetId) {
+            if (nav_model.replacementUrlWithinDocumentSet(decision.url, set)) {
+                return nav_model.TypeNavigation(decision.state, decision.matchLevel,
+                    nav_model.externalReplacementSelection(owner, tag.subject, decision),
+                    dependencyInstanceId: decision.dependencyInstanceId, documentSetId: decision.documentSetId,
+                    indexIdentity: decision.indexIdentity, symbolKey: decision.symbolKey, url: decision.url,
+                    apiIdentity: decision.apiIdentity, language: decision.language)
+            }
+        }
+    }
+    nav_model.TypeNavigation("unavailable", "none", "target has no replayable replacement evidence")
+}
+
+private func bindReplacementTag(tag: nav_model.DocTag, count: Int64, owner: nav_model.SymbolDoc,
+    binder: DependencyNavigationBinder): nav_model.DocTag {
+    let navigation = replacementNavigation(tag, count, owner, binder)
+    let local = navigation.state == "resolved" && navigation.documentSetId.isEmpty()
+    if (navigation.state != "resolved") {
+        binder.diagnostics.add(nav_model.Diagnostic("warning", "CJDOC3138",
+            "@replacement: " + navigation.reason, source: tag.source, symbolId: Some(owner.id)))
+    }
+    nav_model.DocTag(tag.name, tag.subject, tag.description, source: tag.source,
+        referenceState: if (local) { "resolved" }
+            else if (navigation.state == "ambiguous") { "ambiguous" } else { "unavailable" },
+        targetSymbolId: if (local) { Some(navigation.symbolKey) } else { None }, navigation: Some(navigation))
+}
+
 private func bindDependencyComment(comment: nav_model.DocComment, owner: nav_model.SymbolDoc,
     binder: DependencyNavigationBinder): nav_model.DocComment {
     bindDependencyMarkdown(comment.markdown, owner, binder)
     for (text in comment.localizedTexts) { bindDependencyMarkdown(text.markdown, owner, binder) }
     let tags = ArrayList<nav_model.DocTag>()
+    var replacements: Int64 = 0
+    for (tag in comment.tags where tag.name == "replacement") { replacements++ }
     for (tag in comment.tags) {
+        if (tag.name == "replacement") {
+            tags.add(bindReplacementTag(tag, replacements, owner, binder))
+            continue
+        }
         if (let Some(tree) <- tag.exampleMarkdown) { bindDependencyMarkdown(tree, owner, binder) }
         if (let Some(tree) <- tag.descriptionMarkdown) { bindDependencyMarkdown(tree, owner, binder) }
         var navigation: ?nav_model.TypeNavigation = tag.navigation

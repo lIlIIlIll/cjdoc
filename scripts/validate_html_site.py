@@ -20,7 +20,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "52adb81d677db9d4472c8aae3da6097604cacad76c0061dac53252aca41945f0"
+CANONICAL_SEARCH_JS_SHA256 = "1e3b9d485b137cb34da1143f6934a58f927169e3fbebb7695e438ebfc7bdfb33"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "3dc968472190aab99c8a0db38a612cf95640e5a45b88f759d67480aa9fd115fd"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "601425eaed9db6165c2097148280088c6df3c85a001618e27926e90c54c3e2a4"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -275,18 +275,55 @@ def validate_shell_contract(root: Path, pages: dict[Path, PageParser],
                     f"{name}: expected one {kind} trigger, found {count}")
 
 
-def validate_sidebar_index(root: Path, pages: dict[Path, PageParser]) -> None:
+def validate_sidebar_deprecations(root: Path, source: Path, pages: dict[Path, PageParser],
+                                  records: object, visible_ids: set[str]) -> None:
+    if not isinstance(records, dict) or not byte_sorted(list(records)) or UNSAFE_KEYS & records.keys():
+        raise ValueError("sidebar-index.js deprecated table requires safe byte-sorted keys")
+    for identity, action in records.items():
+        if not identity.startswith("cjdoc:v2:") or identity not in visible_ids:
+            raise ValueError("sidebar-index.js deprecated identity must be a visible canonical API")
+        if action is None:
+            continue
+        if not isinstance(action, dict) or set(action) != {"label", "kind", "href"} or any(
+            not isinstance(value, str) or not value for value in action.values()
+        ) or CLASSIFICATION_CONTROL.search(action["label"]):
+            raise ValueError("sidebar-index.js contains an invalid replacement action")
+        href, kind = action["href"], action["kind"]
+        if re.search(r'[\x00-\x20\x7f<>"\\]', href) or kind not in {"api", "exact", "compatible"}:
+            raise ValueError("sidebar-index.js replacement URL or route kind is unsafe")
+        parsed = urlsplit(href)
+        target, fragment = resolve_local(root, source, href)
+        if target is None:
+            if kind == "api" or parsed.scheme not in {"http", "https"} or not parsed.hostname or \
+                    parsed.username is not None or parsed.password is not None:
+                raise ValueError("sidebar-index.js replacement URL is not an approved web destination")
+            continue
+        # Records are publication-root-relative, unlike ordinary per-page links.
+        path = unquote(parsed.path.removeprefix("./"))
+        if any(part in {"", ".", ".."} for part in path.split("/")) or ":" in path or "\\" in path:
+            raise ValueError("sidebar-index.js replacement URL is not a safe site route")
+        page = pages.get(target)
+        if page is None or (fragment and fragment not in page.ids):
+            raise ValueError("sidebar-index.js replacement destination does not exist")
+        if kind == "api" and (parsed.query or fragment or page.is_alias or
+                              page.api_identity not in visible_ids or page.api_identity == identity):
+            raise ValueError("sidebar-index.js replacement must reach a different visible API body")
+
+
+def validate_sidebar_index(root: Path, pages: dict[Path, PageParser], visible_ids: set[str]) -> None:
     source = root / "sidebar-index.js"
     text = source.read_text(encoding="utf-8")
     prefix, suffix = "globalThis.__CJDOC_SIDEBAR_INDEX__=", ";\n"
     if not text.startswith(prefix) or not text.endswith(suffix):
         raise ValueError("sidebar-index.js must contain only its generated assignment")
     sidebar = strict_loads(text[len(prefix):-len(suffix)], description="sidebar-index.js")
-    if not isinstance(sidebar, dict) or set(sidebar) != {
-            "version", "packages", "types", "members"}:
+    required = {"version", "packages", "types", "members"}
+    if not isinstance(sidebar, dict) or not required <= set(sidebar) <= required | {"deprecated"}:
         raise ValueError("sidebar-index.js must publish version, packages, types and members")
-    if sidebar["version"] != 2:
-        raise ValueError("sidebar-index.js must publish navigation version 2")
+    if sidebar["version"] != 3:
+        raise ValueError("sidebar-index.js must publish navigation version 3")
+    if "deprecated" in sidebar:
+        validate_sidebar_deprecations(root, source, pages, sidebar["deprecated"], visible_ids)
     packages, types, members = sidebar["packages"], sidebar["types"], sidebar["members"]
     if not isinstance(packages, list) or not isinstance(types, dict) or \
             not isinstance(members, dict):
@@ -620,7 +657,7 @@ def main() -> int:
     if set(signatures) != expected_signature_ids:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")
     validate_shell_contract(publication_root, pages, prefixes)
-    validate_sidebar_index(root, pages)
+    validate_sidebar_index(root, pages, api_canonical_ids)
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0
 

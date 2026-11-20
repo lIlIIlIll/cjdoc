@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import unittest
@@ -12,18 +13,16 @@ from test_validate_html_site import (canonical_api_route_script, canonical_searc
                                      canonical_theme_bootstrap_script)
 
 
-def extract_between(script: str, start: str, end: str, prelude: bool = True) -> str:
-    """Keep tested JavaScript identical to the renderer's emitted script.
-
-    The slice keeps the opening declaration through the closing brace that ends
-    the function, so the harness can call it by name.
-    """
-    assert start in script, start
-    body = script.split(start, 1)[1].split(end, 1)[0]
-    terminator = end.split("\n\n", 1)[0]
-    shared = ('  const isChinese = false;\n  const root = "";\n  const apiRoot = root;\n'
-              '  const currentId = "";\n  const currentPage = "";\n')
-    return (shared if prelude else "") + start + body + terminator + "\n"
+def extract_between(script: str, start: str, following: str, prelude: bool = True) -> str:
+    """Slice the emitted JavaScript through the brace before the next statement."""
+    opening = re.search(r"(?m)^[ \t]*" + re.escape(start), script)
+    assert opening is not None, start
+    closing = re.compile(r"(?m)^([ \t]*\};)\n\n[ \t]*" + re.escape(following))
+    end = closing.search(script, opening.end())
+    assert end is not None, following
+    shared = ('const isChinese = false;\nconst root = "";\nconst apiRoot = root;\n'
+              'const currentId = "";\nconst currentPage = "";\n')
+    return (shared if prelude else "") + script[opening.start():end.end(1)] + "\n"
 
 
 DOM_PRELUDE = r"""
@@ -176,8 +175,7 @@ class HtmlNavigationTest(unittest.TestCase):
 
     def test_route_state_marks_overview_page_and_api_ancestor(self) -> None:
         script = canonical_search_script()
-        source = extract_between(script, "  const syncRouteState = () => {",
-                                 "\n  };\n\n  const positionSidebar")
+        source = extract_between(script, "const syncRouteState = () => {", "const positionSidebar")
         harness = r"""
 const sidebar = new Node("aside");
 sidebar.dataset.cjdocCurrentPage = "index.html";
@@ -209,8 +207,7 @@ assert.deepEqual(state(api), {page: null, ancestor: true});
 
     def test_position_sidebar_prefers_current_page_then_deepest_ancestor(self) -> None:
         script = canonical_search_script()
-        source = extract_between(script, "  const positionSidebar = () => {",
-                                 "\n  };\n\n  const typeElements")
+        source = extract_between(script, "const positionSidebar = () => {", "const typeElements")
         harness = r"""
 const run = (nodes) => {
   const sidebar = new Node("aside");
@@ -243,10 +240,8 @@ assert.equal(run([link("cj-sidebar__link", 40, true)]), 0);
 
     def test_filter_expands_matching_branch_and_hides_others(self) -> None:
         script = canonical_search_script()
-        source = (extract_between(script, "  const packages = [];",
-                                  "\n  };\n\n  const syncRouteState")
-                  + extract_between(script, "  const typeElements = record => {",
-                                    "\n  };\n\n  const initDrawer", prelude=False))
+        source = (extract_between(script, "const packages = [];", "const syncRouteState")
+                  + extract_between(script, "const typeElements = record => {", "const initDrawer", prelude=False))
         harness = r"""
 const tree = build("nav", "cj-tree");
 const copperModule = build("section", "cj-tree__module",
@@ -363,8 +358,7 @@ assert(memberRows.every(member => !member.hidden));
 
     def test_drawer_sets_page_state_and_restores_focus(self) -> None:
         script = canonical_search_script()
-        source = extract_between(script, "  const initDrawer = () => {",
-                                 "\n  };\n\n  initSidebarTree")
+        source = extract_between(script, "const initDrawer = () => {", "initSidebarTree")
         harness = r"""
 const sidebar = new Node("aside", "cj-sidebar");
 sidebar.append(build("input", "cj-input", {"data-cjdoc-sidebar-filter": ""}));

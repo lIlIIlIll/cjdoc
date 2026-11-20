@@ -23,6 +23,7 @@
 - 示例可整体折叠；在「显示设置 → 示例默认状态」选择默认展开或折叠。
 - 「显示设置」新增代码长行软换行、长输出默认展开和「恢复默认设置」。预期输出和复制内容保留原样。
 - 类型和成员改用可读的目录地址，例如 `pocketkit/TextCatalog/` 与 `pocketkit/TextCatalog/join/`。`pocketkit/TextCatalog/find/` 列出重载，具体签名各有可分享的链接。页首和成员操作区的**复制链接**指向相应声明；离线复制保留 `index.html`。
+- 在包表、成员、侧栏和搜索结果里可直接辨认已弃用 API。[`@replacement`](reference/doc-comments.md#弃用与迁移) 指定的有效目标显示为独立的「改用」链接；点击原名称或在搜索中按 Enter 仍打开原声明。
 - 双语站的默认语言 API 不加前缀；若默认语言是中文，英文使用 `en/`。静态托管需发布完整 `html/`，并让目录地址读取其中的 `index.html`。旧的两种 `symbols/` 链接继续指向原声明。
 - 新 HTML 机器包使用 `cjdoc.machine-manifest/2` + `cjdoc.read/2`。CLI 仍能验证和查询既有的 v1 包，Doc IR v18 不变。
 

@@ -52,6 +52,7 @@ private func appendDeclarationRow(w: HtmlWriter, projection: RenderProjection,
             htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref("../", symbol.id)))]) { link =>
             link.textElement("code", name)
         }
+        appendDeprecationBadgeFor(cell, projection, symbol, locale)
         appendDeclarationClassificationBadges(cell, projection.catalog, projection.snapshotId,
             symbol, "../", includeGroup: false)
     }
@@ -61,6 +62,10 @@ private func appendDeclarationRow(w: HtmlWriter, projection: RenderProjection,
     }
     w.element("td", [htmlClass("cj-decl-table__summary")]) { cell =>
         cell.text(declarationRowSummary(symbol))
+        if (let Some(action) <- projection.deprecations().action(symbol.id)) {
+            cell.text(" ")
+            appendReplacementLink(cell, action, projection, "../", locale)
+        }
     }
     w.close("tr")
     w.newline()

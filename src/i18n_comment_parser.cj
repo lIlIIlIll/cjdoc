@@ -18,7 +18,7 @@ internal class LocalizedCommentItem {
     }
 }
 
-private class LocalizedCommentLineMap {
+internal class LocalizedCommentLineMap {
     let row: Int64
     let columnOffset: Int64
     let text: String
@@ -36,7 +36,7 @@ private func leadingCommentWhitespace(value: String): Int64 {
     index
 }
 
-private func localizedCommentRows(raw: String): Array<LocalizedCommentLineMap> {
+internal func localizedCommentRows(raw: String): Array<LocalizedCommentLineMap> {
     let result = ArrayList<LocalizedCommentLineMap>()
     let leading = leadingCommentWhitespace(raw)
     var content = raw.trimAscii()
@@ -75,10 +75,10 @@ private func localizedCommentRows(raw: String): Array<LocalizedCommentLineMap> {
     result.toArray()
 }
 
-private func localizedLineSource(base: DocComment, rows: Array<LocalizedCommentLineMap>,
+internal func localizedLineRange(source: ?SourceLocation, rows: Array<LocalizedCommentLineMap>,
     line: Int64): ?SourceLocation {
     if (line >= rows.size) { return None }
-    match (base.commentSource) {
+    match (source) {
         case None => None
         case Some(origin) =>
             let mapping = rows[line]
@@ -152,7 +152,7 @@ internal func parseLocalizedComment(base: DocComment, defaultLanguage: ?String,
     var index: Int64 = 0
     while (index < lines.size) {
         let line = lines[index]
-        let source = localizedLineSource(base, rows, index)
+        let source = localizedLineRange(base.commentSource, rows, index)
         if (let Some(active) <- current) {
             if (isAdmonitionKind(active.tag.name) &&
                 (line.trimAscii().isEmpty() || !eligible[index] || line.trimAscii().startsWith("@"))) {
@@ -181,7 +181,10 @@ internal func parseLocalizedComment(base: DocComment, defaultLanguage: ?String,
         if (let Some(value) <- head) {
             current = None
             rejected = false
-            if (let Some(code) <- value.error) {
+            if (value.name == "replacement") {
+                // The source parser owns single-line metadata, including invalid entries.
+                ()
+            } else if (let Some(code) <- value.error) {
                 diagnostics.add(Diagnostic("error", code,
                     "invalid documentation tag @" + value.name + "; language qualifier rejected",
                     source: source, symbolId: Some(symbolId)))
@@ -215,6 +218,7 @@ internal func parseLocalizedComment(base: DocComment, defaultLanguage: ?String,
     result.defaultLanguage = defaultLanguage
     result.localizationScope = "all"
     result.since = base.since; result.version = base.version; result.authors.add(all: base.authors)
+    result.replacements.add(all: base.replacements)
     for (tag in base.contracts where tag.name == "group" || tag.name == "tag") {
         result.contracts.add(tag)
     }
@@ -244,7 +248,7 @@ internal func parseAdmonitionsOnlyComment(base: DocComment,
     var index: Int64 = 0
     while (index < lines.size) {
         let line = lines[index]
-        let source = localizedLineSource(base, rows, index)
+        let source = localizedLineRange(base.commentSource, rows, index)
         if (let Some(active) <- current) {
             if (line.trimAscii().isEmpty() || !eligible[index] || line.trimAscii().startsWith("@")) {
                 current = None
@@ -276,6 +280,7 @@ internal func parseAdmonitionsOnlyComment(base: DocComment,
     result.examples.add(all: base.examples)
     result.returns = base.returns; result.returnTagCount = base.returnTagCount
     result.throwsTags.add(all: base.throwsTags); result.see.add(all: base.see)
+    result.replacements.add(all: base.replacements)
     result.contracts.add(all: base.contracts)
     result.since = base.since; result.version = base.version
     result.deprecated = base.deprecated; result.authors.add(all: base.authors)
@@ -295,8 +300,8 @@ private func requiresLocalizedFeature(raw: String, includeAdmonitions: Bool): Bo
         if (eligible[index]) {
             if (includeAdmonitions && admonitionTagHead(lines[index]).isSome()) { return true }
             if (let Some(head) <- localizedTagHead(lines[index])) {
-                if (head.language.isSome() || head.entryId.isSome() || head.error.isSome() ||
-                    head.name == "summary" || head.name == "description") { return true }
+                if (head.name != "replacement" && (head.language.isSome() || head.entryId.isSome() ||
+                    head.error.isSome() || head.name == "summary" || head.name == "description")) { return true }
             }
         }
         index++

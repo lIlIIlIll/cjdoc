@@ -119,7 +119,8 @@ private func appendTreeToggle(w: HtmlWriter, controlsId: String, name: String,
     w.close("button")
 }
 
-private func appendSidebarMember(w: HtmlWriter, ownerHref: String, member: SymbolDoc): Unit {
+private func appendSidebarMember(w: HtmlWriter, projection: RenderProjection,
+    ownerHref: String, member: SymbolDoc, locale: String): Unit {
     // A member row is never a branch, so it carries no key the scripts resolve;
     // the full identity stays in its link, which is what navigation copies.
     let anchor = symbolAnchor(member)
@@ -133,6 +134,7 @@ private func appendSidebarMember(w: HtmlWriter, ownerHref: String, member: Symbo
         appendTreeKind(row, member.kind)
         row.textElement("span", htmlContextLabel(member),
             attrs: [htmlClass("cj-tree__label")])
+        appendDeprecationBadgeFor(row, projection, member, locale)
         row.close("a")
     })
     w.close("li")
@@ -157,7 +159,7 @@ private func appendSidebarMembers(w: HtmlWriter, projection: RenderProjection,
     } else { ownerHref }
     w.open("ul", attrs: sidebarChildrenAttrs(treeChildrenId(owner.id), partial))
     for (index in start..end) {
-        appendSidebarMember(w, memberHref, entries[index].symbol)
+        appendSidebarMember(w, projection, memberHref, entries[index].symbol, locale)
     }
     if (partial) {
         appendSidebarMore(w, ownerHref,
@@ -188,6 +190,7 @@ private func appendSidebarType(w: HtmlWriter, projection: RenderProjection,
             projection.publicApiPrefix(rootPrefix) + path))
         appendTreeKind(row, symbol.kind)
         row.textElement("span", labelText, attrs: [htmlClass("cj-tree__label")])
+        appendDeprecationBadgeFor(row, projection, symbol, locale)
         row.close("a")
     })
     if (symbol.id == currentId) {

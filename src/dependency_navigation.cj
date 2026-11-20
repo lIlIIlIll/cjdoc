@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.model as link_model
+import cjdoc.model.{scopedGenericParameter, scopedGenericReference}
 import std.collection.*
 import std.sort.*
 

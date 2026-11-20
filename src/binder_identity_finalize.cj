@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.model.normalizeTypeSpelling
 import std.collection.*
 
 func makeSymbolId(moduleId: String, packageName: String, owner: String, kind: String, name: String, genericArity: Int64,

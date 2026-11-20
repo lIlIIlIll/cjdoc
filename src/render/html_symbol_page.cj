@@ -121,8 +121,14 @@ private func appendInlineMemberSignature(w: HtmlWriter, member: SymbolDoc,
 }
 
 private func appendMemberSummary(w: HtmlWriter, member: SymbolDoc, origin: String,
-    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String, deprecated: Bool): Unit {
+    if (deprecated) { w.open("span", attrs: [htmlClass("cj-member__signature cj-member__signature--deprecated")]) }
     appendInlineMemberSignature(w, member, typeLinkIndex, rootPrefix)
+    if (deprecated) {
+        w.text(" ")
+        appendDeprecationBadge(w, locale)
+        w.close("span")
+    }
     if (origin != "declared") {
         w.textElement("span", memberOriginLabel(origin, locale),
             attrs: [htmlClass("cj-badge cj-badge--origin")])
@@ -173,7 +179,12 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
     rootPrefix: String, locale: String, sectionHeadingLevel!: Int64 = 3): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
-    w.open("div", attrs: [htmlClass("cj-member-row")])
+    let deprecations = projection.deprecations()
+    let deprecated = deprecations.contains(member.id)
+    let replacement = deprecations.action(member.id)
+    w.open("div", attrs: [htmlClass(if (replacement.isSome()) {
+        "cj-member-row cj-member-row--replacement"
+    } else { "cj-member-row" })])
     w.open("details", attrs: [htmlClass("cj-member"), htmlAttr("id", anchor),
         htmlFlag("data-cjdoc-member"), htmlAttr("data-member-name", member.name),
         htmlAttr("data-member-kind", member.kind),
@@ -183,9 +194,13 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
         htmlAttr("id", anchor + "-summary"), htmlAttr("data-cjdoc-toc-role", "member"),
         htmlAttr("data-cjdoc-toc-depth", sectionHeadingLevel.toString()),
         htmlAttr("data-cjdoc-toc-label", htmlContextLabel(member))])
-    appendMemberSummary(w, member, entry.origin, typeLinkIndex, rootPrefix, locale)
+    appendMemberSummary(w, member, entry.origin, typeLinkIndex, rootPrefix, locale, deprecated)
     w.close("summary")
     w.open("div", attrs: [htmlClass("cj-member__body")])
+    if (deprecated) {
+        appendApiDeprecationNote(w, projection, member, deprecationExplanation(member, locale),
+            rootPrefix, locale, assetLookup)
+    }
     appendMemberOriginContext(w, projection, entry, rootPrefix, locale)
     appendDocumentationHtml(w, index, member, rootPrefix, assetLookup, typeLinkIndex,
         headingBase: sectionHeadingLevel, locale: locale, sectionHeadingLevel: sectionHeadingLevel)
@@ -199,6 +214,7 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
         headingLevel: sectionHeadingLevel)
     w.close("div")
     w.close("details")
+    if (let Some(action) <- replacement) { appendReplacementLink(w, action, projection, rootPrefix, locale) }
     appendMemberClassificationBadges(w, projection, member, rootPrefix)
     appendInlineMemberActions(w, projection, member, rootPrefix, locale)
     w.close("div")
@@ -256,17 +272,16 @@ internal func memberSectionAnchor(title: String): String {
     }
 }
 
-private func overloadCountsOf(entries: ArrayList<HtmlMemberEntry>): (HashMap<String, Int64>, Bool) {
-    let overloadCounts = HashMap<String, Int64>()
+private func overloadCountsOf(entries: ArrayList<HtmlMemberEntry>, deprecations: DeprecationProjection):
+    (HashMap<String, (Int64, Int64)>, Bool) {
+    let overloadCounts = HashMap<String, (Int64, Int64)>()
     var hasOverloads = false
     for (entry in entries) {
         let key = "${entry.groupKey}:${entry.symbol.name}"
-        let count = match (overloadCounts.get(key)) {
-            case Some(value) => value + 1
-            case None => 1
-        }
-        overloadCounts[key] = count
-        if (count == 2) { hasOverloads = true }
+        let (total, deprecated) = overloadCounts.get(key).getOrDefault({ => (0i64, 0i64) })
+        let step: Int64 = if (deprecations.contains(entry.symbol.id)) { 1 } else { 0 }
+        overloadCounts[key] = (total + 1, deprecated + step)
+        if (total == 1) { hasOverloads = true }
     }
     (overloadCounts, hasOverloads)
 }
@@ -297,7 +312,7 @@ private func appendMemberGroupHead(w: HtmlWriter, title: String, kindAnchor: Str
 }
 
 private func appendOverloadHeading(w: HtmlWriter, member: SymbolDoc, count: Int64,
-    headingLevel: Int64, locale: String): Unit {
+    headingLevel: Int64, locale: String, deprecatedCount: Int64): Unit {
     let groupTitleId = "overloads-" + symbolAnchor(member)
     let heading = "h${headingLevel}"
     w.open("div", attrs: [htmlClass("cj-overloads"), htmlAttr("role", "group"),
@@ -309,6 +324,7 @@ private func appendOverloadHeading(w: HtmlWriter, member: SymbolDoc, count: Int6
     w.textElement("code", member.name)
     w.textElement("span", count.toString() + " " + label(locale, "overloads", "个重载"),
         attrs: [htmlClass("cj-overloads__count"), htmlFlag("data-cjdoc-overload-count")])
+    if (deprecatedCount > 0) { appendDeprecationBadge(w, locale, partial: deprecatedCount < count) }
     w.close(heading)
     w.newline()
 }
@@ -323,7 +339,7 @@ internal func appendMemberSection(w: HtmlWriter,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String,
     layout: DeclarationGroupLayout, kindAnchor: String, rootPrefix: String): Unit {
     if (entries.isEmpty()) { return }
-    let (overloadCounts, hasOverloads) = overloadCountsOf(entries)
+    let (overloadCounts, hasOverloads) = overloadCountsOf(entries, projection.deprecations())
     let overloadHeadingLevel = min(6, layout.entryParentLevel + 1)
     let sliced = entries.size > LARGE_MEMBER_BROWSER_ROWS && !hasOverloads
     w.open("section", attrs: [htmlClass(if (layout.showKindHeading) {
@@ -358,19 +374,19 @@ internal func appendMemberSection(w: HtmlWriter,
 private func appendMemberEntry(w: HtmlWriter, documentation: DocumentationSet,
     projection: RenderProjection, index: HashMap<String, SymbolDoc>, entry: HtmlMemberEntry,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    overloadCounts: HashMap<String, Int64>, overloadHeadingLevel: Int64,
+    overloadCounts: HashMap<String, (Int64, Int64)>, overloadHeadingLevel: Int64,
     layout: DeclarationGroupLayout, locale: String, activeOverloadKey: String, rootPrefix: String): String {
     let member = entry.symbol
     var active = activeOverloadKey
     let overloadKey = "${entry.groupKey}:${member.name}"
-    let count = overloadCounts.get(overloadKey).getOrDefault({ => 0 })
+    let (count, deprecatedCount) = overloadCounts[overloadKey]
     if (!active.isEmpty() && active != overloadKey) {
         w.close("div")
         w.newline()
         active = ""
     }
     if (count > 1 && active.isEmpty()) {
-        appendOverloadHeading(w, member, count, overloadHeadingLevel, locale)
+        appendOverloadHeading(w, member, count, overloadHeadingLevel, locale, deprecatedCount)
         active = overloadKey
     }
     let parentLevel = if (count > 1) { overloadHeadingLevel } else { layout.entryParentLevel }
@@ -460,13 +476,15 @@ private func appendSymbolBreadcrumbs(w: HtmlWriter, projection: RenderProjection
 }
 
 private func appendSymbolHeaderTitle(w: HtmlWriter, projection: RenderProjection,
-    symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String, locale: String): Unit {
+    symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String, locale: String,
+    statusOnly: Bool): Unit {
     w.open("div", attrs: [htmlClass("cj-page-header__title-row")])
     w.open("h1", attrs: [htmlClass("cj-page-header__title"),
         htmlAttr("data-cjdoc-toc-role", "api-root"),
         htmlAttr("data-cjdoc-toc-label", htmlTocLabel(symbol))])
     w.textElement("code", readerSymbolTitle(symbol, locale))
     w.close("h1")
+    if (statusOnly) { appendDeprecationBadge(w, locale) }
     w.textElement("span", htmlKindLabel(symbol.kind, locale),
         attrs: [htmlClass("cj-kind"), htmlAttr("data-kind", symbol.kind)])
     w.element("div", [htmlClass("cj-page-header__badges")], { badges =>
@@ -712,12 +730,20 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     w.open("header", attrs: [htmlClass(if (symbol.kind == "extend") {
         "cj-page-header cj-page-header--api cj-page-header--extension"
     } else { "cj-page-header cj-page-header--api" })])
-    appendSymbolHeaderTitle(w, projection, symbol, assetLookup, rootPrefix, locale)
+    let deprecations = projection.deprecations()
+    let deprecated = deprecations.contains(symbol.id)
+    let explanation: ?DocTag = if (deprecated) { deprecationExplanation(symbol, locale) } else { None }
+    appendSymbolHeaderTitle(w, projection, symbol, assetLookup, rootPrefix, locale,
+        deprecated && explanation.isNone() && deprecations.action(symbol.id).isNone())
     if (hasMemberPage) {
         appendSymbolOverview(w, symbol, assetLookup, rootPrefix, locale)
     }
     appendSymbolMetadata(w, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
         locale: locale, includeSummary: false, pagePresentation: true)
+    if (deprecated) {
+        appendApiDeprecationNote(w, projection, symbol, explanation, rootPrefix, locale, assetLookup,
+            standalone: true)
+    }
     appendTypeGuideEntry(w, documentation, projection, symbol, rootPrefix, locale)
     w.close("header")
     w.newline()

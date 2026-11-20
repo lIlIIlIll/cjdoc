@@ -652,6 +652,19 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
             tags.add(publicTagForAudience(tag, renderableIds))
         }
         tags.add(all: defaultPublicAdmonitionTags(localized))
+        for (tag in value.replacements) {
+            let projected = publicTagForAudience(tag, renderableIds)
+            let source = tag.source.flatMap({ location => sourceMapper.capturedRange(moduleId, location) })
+            let failure: ?public_model.TypeNavigation = if (tag.referenceState == "resolved" &&
+                projected.targetSymbolId.isNone()) {
+                Some(public_model.TypeNavigation("unavailable", "none", "target excluded by documentation audience"))
+            } else if (tag.referenceState == "broken") {
+                Some(public_model.TypeNavigation("unavailable", "none", "replacement points to its own declaration"))
+            } else { None }
+            tags.add(public_model.DocTag(projected.name, projected.subject, projected.description,
+                referenceState: projected.referenceState, targetSymbolId: projected.targetSymbolId,
+                source: source, navigation: failure))
+        }
         for (tag in value.contracts) {
             tags.add(publicTagForAudience(tag, renderableIds))
         }
@@ -660,7 +673,12 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
             case None => ()
         }
         match (value.deprecated) {
-            case Some(text) => tags.add(public_model.DocTag("deprecated", "", text))
+            case Some(text) =>
+                let legacy = localized.isEmpty() || value.localizationScope == "admonitions"
+                let tree: ?public_model.MarkdownNode = if (legacy && !text.isEmpty()) {
+                    Some(publicMarkdown(text, assetCollector, sourcePath, declarationSource, symbolId, context))
+                } else { None }
+                tags.add(public_model.DocTag("deprecated", "", text, descriptionMarkdown: tree))
             case None => ()
         }
         for (text in value.authors) {

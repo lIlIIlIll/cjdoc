@@ -10,16 +10,17 @@ private let RENDERER_SAFETY_MARKDOWN_PAGE = "markdown/" +
     markdownPackagePagePath("cjdoc:module:v1:renderer-safety", "fixture")
 
 private func rendererSafetyDocumentation(markdown: MarkdownNode,
-    tags!: Array<DocTag> = []): DocumentationSet {
+    tags!: Array<DocTag> = [], annotations!: Array<AnnotationDoc> = []): DocumentationSet {
     let moduleId = "cjdoc:module:v1:renderer-safety"
     let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::function:api#g0()"
     let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 24, 23))
     let symbol = SymbolDoc(symbolId, "function", "api", "fixture.api", "fixture", moduleId,
         "public", source, "public func api(): Unit", SemanticInfo("partial", "ast"),
-        documentation: Some(DocComment("raw", "summary", "", markdown, tags: tags)))
+        documentation: Some(DocComment("raw", "summary", "", markdown, tags: tags)), annotations: annotations)
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("renderer-safety"),
         ConfigurationSnapshot(lintProfile: "off"), providers: [ProviderInfo("ast", "builtin",
-            moduleId, "partial", SemanticCapabilities(false, false, false, false, false))],
+            moduleId, "partial", SemanticCapabilities(false, false, false, false, false,
+                annotations: !annotations.isEmpty()))],
         modules: [ModuleDoc(moduleId, "renderer-safety", "root", "", packageNames: ["fixture"])],
         packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [symbolId])],
         files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [symbol])
@@ -918,6 +919,41 @@ class RendererSafetyTest {
         @Expect(markdown.contains("#### Since\n\n- 1\\.0"))
         @Expect(markdown.contains("#### Authors\n\n- Ada"))
         @Expect(markdown.contains("#### Version\n\n- 2\\.0"))
+    }
+
+    @TestCase
+    func onlyTheCapturedStandardAnnotationMarksStatusWithoutProse(): Unit {
+        for ((spelling, provenance, expected) in [
+            ("@Deprecated[message: \"Use fixture.other\"]", "source", true),
+            ("@DeprecatedSoon[message: \"Use fixture.other\"]", "source", false),
+            ("@Deprecated", "provider", false)
+        ]) {
+            let annotation = AnnotationDoc(spelling, provenance: provenance,
+                provider: if (provenance == "provider") { Some("ast") } else { None<String> })
+            let document = rendererSafetyDocumentation(MarkdownNode("document"), annotations: [annotation])
+            let page = rendererSafetyPage(HtmlDocumentationRenderer().render(document), document,
+                document.declarations[0].id)
+            @Expect(page.contains(">Deprecated</span>"), expected)
+            @Expect(!page.contains("class=\"cj-deprecation-note\""))
+            @Expect(!page.contains("class=\"cj-replacement\""))
+        }
+    }
+
+    @TestCase
+    func deprecationProseUsesTheSameSafeMarkupAsOtherDocumentation(): Unit {
+        let raw = "<img src=x onerror=alert(1)>"
+        let prose = MarkdownNode("document", children: [MarkdownNode("paragraph",
+            children: [MarkdownNode("html_inline", literal: raw)])])
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"), tags: [
+            DocTag("deprecated", "", raw, descriptionMarkdown: Some(prose)),
+            DocTag("replacement", "fixture.other", "")
+        ])
+        let page = rendererSafetyPage(HtmlDocumentationRenderer().render(documentation), documentation,
+            documentation.declarations[0].id)
+        @Expect(page.contains("class=\"cj-deprecation-note\""))
+        @Expect(page.contains("&lt;img src=x onerror=alert(1)&gt;"))
+        @Expect(!page.contains(raw))
+        @Expect(!page.contains("class=\"cj-replacement\""))
     }
 
     @TestCase

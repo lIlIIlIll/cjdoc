@@ -41,14 +41,12 @@ internal func sidebarPackageLabels(projection: RenderProjection,
 // JSON object keys are emitted in UTF-8 byte order so the shared navigation
 // payload is byte-identical regardless of hash-map iteration order.
 internal func byteSequenceCompare(left: String, right: String): Int64 {
-    let leftBytes = left.toArray()
-    let rightBytes = right.toArray()
-    let shared = min(leftBytes.size, rightBytes.size)
+    let shared = min(left.size, right.size)
     for (index in 0..shared) {
-        let difference = Int64(leftBytes[index]) - Int64(rightBytes[index])
+        let difference = Int64(left[index]) - Int64(right[index])
         if (difference != 0) { return difference }
     }
-    leftBytes.size - rightBytes.size
+    left.size - right.size
 }
 
 private func sortByteOrdered(values: ArrayList<String>): Unit {
@@ -109,6 +107,28 @@ private class SidebarIndexInventory {
     }
 }
 
+private func appendSidebarDeprecations(out: RenderTextBuffer, projection: RenderProjection): Unit {
+    let entries = projection.deprecations().entries
+    if (entries.isEmpty()) { return }
+    let ids = ArrayList<String>()
+    for ((id, _) in entries) { ids.add(id) }
+    sortByteOrdered(ids)
+    out.append(",\"deprecated\":{")
+    var first = true
+    for (id in ids) {
+        if (!first) { out.append(",") }
+        first = false
+        out.append(escapeJsonString(id) + ":")
+        match (entries[id]) {
+            case Some(action) =>
+                out.append("{\"label\":${escapeJsonString(action.name)},\"kind\":${escapeJsonString(action.kind)},")
+                out.append("\"href\":${escapeJsonString(action.href)}}")
+            case None => out.append("null")
+        }
+    }
+    out.append("}")
+}
+
 /**
  * Publish only the navigation metadata the lazy sidebar tree needs. Canonical
  * declaration pages, signatures, documentation and the complete member indexes
@@ -118,7 +138,7 @@ internal func renderSidebarIndexScript(projection: RenderProjection, locale: Str
     let inventory = SidebarIndexInventory()
     inventory.collect(projection)
     let out = RenderTextBuffer()
-    out.append("globalThis.__CJDOC_SIDEBAR_INDEX__={\"version\":2,\"packages\":[")
+    out.append("globalThis.__CJDOC_SIDEBAR_INDEX__={\"version\":3,\"packages\":[")
     for (index in 0..inventory.packages.size) {
         if (index > 0) { out.append(",") }
         let path = inventory.packages[index]
@@ -154,6 +174,8 @@ internal func renderSidebarIndexScript(projection: RenderProjection, locale: Str
         out.append(escapeJsonString(id) + ":")
         appendSidebarMemberEntry(out, inventory.members[id], locale)
     }
-    out.append("}};\n")
+    out.append("}")
+    appendSidebarDeprecations(out, projection)
+    out.append("};\n")
     out.toString()
 }

@@ -211,11 +211,11 @@ a / b
 
 ## Deprecation and versions
 
-`requireFirstText` is deprecated for teaching purposes; its recommended replacement, `first()`, is not. Use an explicit summary for the short description and a separate description for two paragraphs and a list:
+Both `requireFirstText` and `firstTextOrEmpty` show **Deprecated**. The first uses one `@replacement` tag to link to its replacement. The second has only a source `@Deprecated` annotation, so it shows the status without a migration link:
 
 ```text
 @summary[lang=en] Read the first entry if it is non-empty; a documentation example only.
-@description[lang=en] This legacy entry point turns two missing-value cases into exceptions. Call `catalog.first()` in new code.
+@description[lang=en] This legacy entry point turns two missing-value cases into exceptions.
 
 It reads only the first entry and never skips a blank entry to look for the next one.
 
@@ -226,7 +226,13 @@ It reads only the first entry and never skips a blank entry to look for the next
 @return[lang=en] The first entry, unchanged and non-empty.
 @throws[lang=en,id=empty-catalogue] IllegalStateException The catalogue has no entries.
 @throws[lang=en,id=blank-entry] IllegalArgumentException The first entry is an empty string.
-@deprecated[lang=en] Use `catalog.first()`. Handle `None` (empty catalogue) and `Some("")` (empty first entry) separately; unwrap `text` from any other `Some(text)`.
+@replacement pocketkit.TextCatalog.first
+@deprecated[lang=en] Handle the three results of `catalog.first()` separately:
+
+- `None`: the catalogue has no entries.
+- `Some("")`: the first entry exists but is blank.
+- `Some(text)`: the first entry is non-empty; unwrap `text`.
+
 @see pocketkit.TextCatalog.first
 @see pocketkit.TextCatalog.isEmpty
 @since 0.2.0
@@ -235,9 +241,11 @@ It reads only the first entry and never skips a blank entry to look for the next
 @version example-1
 ```
 
-Look for two exception rows, two authors, two **See also** links, and deprecation instructions for both cases. Write one `@since` for the API's introduction and one `@version` for the version recorded by the author. Neither controls version switching on the site. Add one `@author` per author.
+In the package table or on the `requireFirstText` page, follow **Use `TextCatalog.first()`** to the replacement. The `@see` links for `first` and `isEmpty` still appear under **See also**. `isEmpty` is not a replacement. Use `@since` for the API's introduction and `@version` for the version recorded by the author. Neither controls version switching on the site.
 
 <!-- cjdoc-bind target="pocketkit.authoring.requireFirstText" -->
+
+<!-- cjdoc-bind target="pocketkit.authoring.firstTextOrEmpty" -->
 
 ## Groups and tags
 

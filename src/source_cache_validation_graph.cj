@@ -29,10 +29,8 @@ internal func validateCachedDocComment(comment: ?DocComment): Unit {
                 throw IllegalArgumentException("invalid cached documentation admonition")
             }
         }
-        let expected = parseDocComment(value.raw)
-        // The lexer-derived binding pass validates this range independently;
-        // reparsing comment text alone has no file-position information.
-        expected.commentSource = value.commentSource
+        // The lexer-derived binding pass validates the comment range independently.
+        let expected = parseDocCommentAt(value.raw, value.commentSource)
         let actualWriter = SourceCacheWriter()
         let expectedWriter = SourceCacheWriter()
         cacheAddDocComment(actualWriter, Some(value))

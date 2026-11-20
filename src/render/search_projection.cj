@@ -339,7 +339,10 @@ private func searchTagBodyText(tag: DocTag): String {
     let out = RenderTextBuffer()
     out.append(tag.name)
     if (!tag.subject.isEmpty()) { out.append(" " + tag.subject) }
-    if (let Some(tree) <- tag.descriptionMarkdown) {
+    if (tag.name == "deprecated" && tag.translationState.isEmpty()) {
+        // The legacy prose tree is presentation-only; keep its retrieval text.
+        if (!tag.description.isEmpty()) { out.append(" " + tag.description) }
+    } else if (let Some(tree) <- tag.descriptionMarkdown) {
         let text = markdownNodeText(tree)
         if (!text.isEmpty()) { out.append(" " + text) }
         else if (!tag.description.isEmpty()) { out.append(" " + tag.description) }
@@ -361,7 +364,7 @@ private func searchFullBody(symbol: SymbolDoc): String {
     }
     let out = RenderTextBuffer()
     out.append(markdownNodeText(comment.markdown))
-    for (tag in comment.tags) {
+    for (tag in comment.tags where tag.name != "replacement") {
         let text = searchTagBodyText(tag)
         if (!text.isEmpty()) { out.append(" " + text) }
     }

@@ -118,7 +118,7 @@ Restrained strategy: neutrals plus one accent. Every theme remaps the same roles
 - **Accent** marks links, focus, the current navigation entry, pressed options and the active outline entry. `accent-soft` is the quiet field behind the current entry and the selected search hit.
 - **Neutrals**: `bg` is the reading plane; `surface` groups tools (search trigger, toolbars, notes); `surface-2` carries hover and kind badges; `border` divides rows, `border-strong` outlines inputs (≥3:1 against its ground).
 - **Syntax roles** color highlighted code, linked types (`code-type`) and declaration-kind badges and dots, so a kind reads the same in the tree, the tables and search results.
-- **Status**: success/warning/danger appear only in copy feedback, admonitions and risk badges, always with text.
+- **Status**: success/warning/danger appear in copy feedback, admonitions and status badges, always with text. Deprecation uses `--cj-warning` without tinting the name, signature, or row.
 
 Eight choices: System (follows `prefers-color-scheme`, light by default), Light, Dark, Paper (warm neutrals, rust accent), Ocean (deep blue, cyan), Forest (sage neutrals, green), Terminal (near-black, phosphor green, monospace UI) and Violet (cool neutrals, violet). Every theme meets WCAG AA for each foreground/background pair it uses (text 4.5:1, UI borders 3:1). Print forces black on white.
 
@@ -159,6 +159,8 @@ One control radius (6px) for buttons, inputs, code blocks, signatures and tree r
 - **Package declaration table:** per kind group, rows of name (navigation label, monospace link) | kind badge | one-line summary. No signatures in the table.
 - **Declaration header:** title, kind badge, classification badges, and a quiet action group for "View source" (when available) and "Copy link". The actions wrap together on narrow screens. The summary and signature (`cj-signature`, copyable, linked types underlined in `code-type`) remain below the title row.
 - **Members:** grouped by kind with counts; overload families grouped under one title. Each member is a native `<details class="cj-member">` whose summary is the signature line plus a one-line description; the body holds parameters (`cj-params` definition rows), returns, throws, examples and relationships. Row actions (standalone page, source, copy link) are icon buttons revealed on hover/focus, a menu on touch.
+- **Deprecation:** a small outlined text badge follows the declaration name or signature. A verified replacement is a separate accent link: after the package summary, outside a member's `<summary>`, or outside the search listbox for its selected hit. Sidebar rows keep only their original destination and may truncate the name, never the badge. Overload headings distinguish partial and full deprecation using distinct visible declarations; cross-module choices label rows only.
+- **Deprecation detail:** a border rule and a left-hand label frame the migration link and author's explanation; on narrow screens they stack. Keep Markdown and its language marker. With neither prose nor a link, place the label beside the title or signature instead of rendering an empty note.
 - **Admonitions:** bordered aside tinted by level (note uses the accent, warning and danger their status colors) with an icon and title; risk badges repeat the level on collapsed members.
 - **Code blocks:** tinted `code-bg`, hairline border, copy button revealed on hover/focus (always visible on touch), copy state in `data-cjdoc-copy-state`.
 

@@ -105,6 +105,27 @@ private func selectedDocumentationTag(text: DocumentationText, locale: String,
 }
 
 
+// A sole nonempty foreign explanation stays readable when the default
+// language has no authored deprecation prose.
+internal func deprecationExplanation(symbol: SymbolDoc, locale: String): ?DocTag {
+    let comment = match (symbol.documentation) { case Some(value) => value; case None => return None }
+    let selected = findTag(comment, "deprecated")
+    if (let Some(tag) <- selected) {
+        if (!tag.description.trimAscii().isEmpty() ||
+            tag.descriptionMarkdown.map({ tree => !tree.children.isEmpty() }).getOrDefault({ => false })) {
+            return selected
+        }
+    }
+    var fallback: ?DocumentationText = None
+    for (text in comment.localizedTexts where text.kind == "deprecated" && text.state == "valid" &&
+        !text.text.trimAscii().isEmpty()) {
+        if (fallback.isSome()) { return None }
+        fallback = Some(text)
+    }
+    fallback.map({ text => selectedDocumentationTag(text, locale,
+        requestedState: requestedDocumentationState(comment, text.fieldId, locale)) })
+}
+
 private func requestedDocumentationState(comment: DocComment, fieldId: String, locale: String): String {
     for (text in comment.localizedTexts where text.fieldId == fieldId && text.language == Some(locale)) {
         if (text.state == "empty") { return "empty" }
@@ -181,7 +202,7 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
     for (tag in value.tags) {
         // Shared metadata keeps every declaration an author marked, in both
         // languages, because membership is not a translated field.
-        if (["since", "version", "author", "group", "tag"].contains(tag.name)) { tags.add(tag) }
+        if (["since", "version", "author", "group", "tag", "replacement"].contains(tag.name)) { tags.add(tag) }
     }
     let seen = HashSet<String>()
     for (parameter in symbol.parameters) {

@@ -128,6 +128,16 @@ private func behaviorContractName(tagText: String): ?String {
     }
     None
 }
+
+private func replacementTagLine(text: String): Bool {
+    text == "@replacement" || text.startsWith("@replacement ") ||
+        text.startsWith("@replacement\t") || text.startsWith("@replacement[")
+}
+
+private func deprecationTagLine(text: String): Bool {
+    text == "@deprecated" || text.startsWith("@deprecated ")
+}
+
 private func isStructuredDocTag(tagText: String): Bool {
     tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t") ||
         tagText.startsWith("@group[") ||
@@ -138,7 +148,8 @@ private func isStructuredDocTag(tagText: String): Bool {
         tagText.startsWith("@throws ") ||
         tagText == "@see" || tagText.startsWith("@see ") ||
         tagText.startsWith("@since ") ||
-        tagText == "@deprecated" || tagText.startsWith("@deprecated ") ||
+        deprecationTagLine(tagText) ||
+        replacementTagLine(tagText) ||
         tagText.startsWith("@author ") || tagText.startsWith("@version ") ||
         tagText == "@example" || tagText.startsWith("@example ") ||
         behaviorContractName(tagText).isSome() || admonitionTagHead(tagText).isSome()
@@ -288,11 +299,12 @@ private class DocCommentParseState {
     let contracts = ArrayList<DocTag>()
     let throwsTags = ArrayList<DocTag>()
     let seeTags = ArrayList<DocTag>()
+    let replacements = ArrayList<DocTag>()
     let authors = ArrayList<String>()
     var returns: ?DocTag = None
     var returnTagCount: Int64 = 0
     var since: ?String = None
-    var deprecated: ?String = None
+    var deprecated: ?DocTag = None
     var version: ?String = None
     var currentTag: ?DocTag = None
     var currentAdmonition: ?DocTag = None
@@ -320,6 +332,17 @@ private class DocCommentParseState {
         }
     }
 
+    func consumeDeprecationProse(line: String, tagEligible: Bool): Bool {
+        if (let Some(tag) <- currentTag) {
+            if (tag.name != "deprecated" || (tagEligible && line.trimAscii().startsWith("@"))) {
+                return false
+            }
+            tag.description += "\n" + line
+            return true
+        }
+        false
+    }
+
     func appendBodyLine(line: String): Unit {
         body.add(line)
         currentTag = None
@@ -329,7 +352,7 @@ private class DocCommentParseState {
         if (!body.isEmpty() && !body[body.size - 1].isEmpty()) { body.add("") }
     }
 
-    func consumeStructuredTag(line: String, tagText: String): Bool {
+    func consumeStructuredTag(line: String, tagText: String, source: ?SourceLocation): Bool {
         if (!tagText.startsWith("@")) { return false }
         currentTag = None
         currentAdmonition = None
@@ -360,6 +383,13 @@ private class DocCommentParseState {
             // treating the extra words as another tag or as prose.
             let line = declarationTagLine(tagText.removePrefix("@tag").replace("\t", " "))
             contracts.add(DocTag("tag", line.id, line.rest))
+        } else if (replacementTagLine(tagText)) {
+            let (subject, remainder) = match (localizedTagHead(tagText)) {
+                case Some(head) =>
+                    if (head.error.isSome()) { ("", tagText) } else { splitReferenceSubject(head.rest) }
+                case None => ("", tagText)
+            }
+            replacements.add(DocTag("replacement", subject, remainder, source: source))
         } else if (tagText.startsWith("@param ")) {
             let (subject, description) = splitSubject(tagText.removePrefix("@param "))
             let tag = DocTag("param", subject, description)
@@ -401,12 +431,10 @@ private class DocCommentParseState {
             currentTag = tag
         } else if (tagText.startsWith("@since ")) {
             since = tagText.removePrefix("@since ").trimAscii()
-        } else if (tagText == "@deprecated" || tagText.startsWith("@deprecated ")) {
-            deprecated = if (tagText == "@deprecated") {
-                ""
-            } else {
-                tagText.removePrefix("@deprecated ").trimAscii()
-            }
+        } else if (deprecationTagLine(tagText)) {
+            let tag = DocTag("deprecated", "", tagText.removePrefix("@deprecated").trimAscii())
+            deprecated = Some(tag)
+            currentTag = Some(tag)
         } else if (tagText.startsWith("@author ")) {
             authors.add(tagText.removePrefix("@author ").trimAscii())
         } else if (tagText.startsWith("@version ")) {
@@ -454,9 +482,10 @@ private class DocCommentParseState {
         parsed.returnTagCount = returnTagCount
         parsed.throwsTags.add(all: throwsTags)
         parsed.see.add(all: seeTags)
+        parsed.replacements.add(all: replacements)
         parsed.contracts.add(all: contracts)
         parsed.since = since
-        parsed.deprecated = deprecated
+        parsed.deprecated = deprecated.map({ tag => tag.description.trimAscii() })
         parsed.authors.add(all: authors)
         parsed.version = version
         parsed
@@ -464,8 +493,14 @@ private class DocCommentParseState {
 }
 
 func parseDocComment(raw: String): DocComment {
+    parseDocCommentAt(raw, None<SourceLocation>)
+}
+
+internal func parseDocCommentAt(raw: String, source: ?SourceLocation): DocComment {
     let lines = cleanDocLines(raw)
     let state = DocCommentParseState()
+    let rows: Array<LocalizedCommentLineMap> =
+        if (source.isSome() && raw.contains("@replacement")) { localizedCommentRows(raw) } else { [] }
     let structure = markdownBlockStructure(rawJoinLines(lines))
     let tagEligible = topLevelParagraphLines(lines, structure)
     var lineIndex: Int64 = 0
@@ -475,18 +510,26 @@ func parseDocComment(raw: String): DocComment {
             lineIndex++
             continue
         }
+        if (state.consumeDeprecationProse(line, tagEligible[lineIndex])) {
+            lineIndex++
+            continue
+        }
         if (!tagEligible[lineIndex]) {
             state.appendBodyLine(line)
             lineIndex++
             continue
         }
         let tagText = line.trimAscii()
-        if (state.consumeStructuredTag(line, tagText)) {
+        let tagSource: ?SourceLocation =
+            if (replacementTagLine(tagText)) { localizedLineRange(source, rows, lineIndex) } else { None }
+        if (state.consumeStructuredTag(line, tagText, tagSource)) {
             lineIndex++
             continue
         }
         state.consumeTagContinuation(line, tagText)
         lineIndex++
     }
-    state.toDocComment(raw)
+    let comment = state.toDocComment(raw)
+    comment.commentSource = source
+    comment
 }

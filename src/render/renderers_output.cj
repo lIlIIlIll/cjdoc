@@ -104,7 +104,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactStore,
         let _ = artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8",
             HTML_THEME_BOOTSTRAP_SCRIPT)
         let _ = artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
-            HTML_API_LINK_SCRIPT + HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
+            HTML_READER_BUNDLE)
         let _ = artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8",
             HTML_SYMBOL_ALIAS_SCRIPT)
         let _ = artifacts.addText("html/style.css", "text/css; charset=utf-8",
