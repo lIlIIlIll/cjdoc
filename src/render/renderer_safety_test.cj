@@ -953,11 +953,10 @@ class RendererSafetyTest {
             annotations: [annotation])
         let page = rendererSafetyPage(HtmlDocumentationRenderer().render(documentation), documentation,
             documentation.declarations[0].id)
-        @Expect(page.contains("class=\"cj-deprecation-note\""))
+        @Expect(page.contains("<aside class=\"cj-deprecation-note cj-deprecation-note--source\">"))
         // One explanation block: the source reason does not repeat the old callout.
-        @Expect(page.split("cj-deprecation-note__source").size - 1, 1)
-        @Expect(page.contains("Source annotation: "))
-        @Expect(page.contains("&lt;img src=x onerror=alert(1)&gt;"))
+        @Expect(page.split("<p class=\"cj-deprecation-note__source\">").size - 1, 1)
+        @Expect(page.contains("Source annotation: </span>Use parse instead. &lt;img src=x onerror=alert(1)&gt;</p>"))
         @Expect(!page.contains("<img src=x"))
         @Expect(!page.contains("class=\"cj-replacement\""))
         @Expect(page.contains("data-cjdoc-toc-label=\"api\">"), true)
@@ -1008,8 +1007,8 @@ class RendererSafetyTest {
         let expanded = renderSymbolPage(documentation, projection, projection.visibleIndex,
             owner, HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
         for (page in [standalone, expanded]) {
-            @Expect(page.contains("cj-deprecation-note__source"), true)
-            @Expect(page.contains("Source annotation: Source reason."), true)
+            @Expect(page.contains("<p class=\"cj-deprecation-note__source\">"), true)
+            @Expect(page.contains("Source annotation: </span>Source reason.</p>"), true)
             // The summary keeps the status; the reason appears once in the note.
             @Expect(page.split("Source reason.").size - 1, 1)
             @Expect(page.contains("class=\"cj-replacement\""), false)
@@ -1032,7 +1031,7 @@ class RendererSafetyTest {
             @Expect(sourceDeprecationMessage(symbol), Some("Use parse instead."))
             let page = rendererSafetyPage(HtmlDocumentationRenderer().render(document), document,
                 symbol.id)
-            @Expect(page.contains("Source annotation: Use parse instead."), true)
+            @Expect(page.contains("Source annotation: </span>Use parse instead.</p>"), true)
             // The message is not a destination: an unbound reason makes no link.
             @Expect(page.contains("class=\"cj-replacement\""), false)
         }

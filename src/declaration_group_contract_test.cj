@@ -164,7 +164,9 @@ class DeclarationGroupingContracts {
             @Expect(publicHasDiagnostic(doc, "CJDOC3131"))
             let artifacts = api_render.HtmlDocumentationRenderer().render(doc)
             for (artifact in artifacts where artifact.path.startsWith("html/packages/")) {
-                @Expect(artifact.content.contains("id=\"api-group-shared\">shared"))
+                @Expect(artifact.content.contains(
+                    "<h2 id=\"api-group-shared\" data-cjdoc-toc-role=\"group\">shared<span"))
+                @Expect(artifact.content.split("id=\"api-group-shared\"").size, 2)
             }
         } finally { let _ = removeIfExists(project, recursive: true) }
     }

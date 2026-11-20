@@ -30,18 +30,9 @@ globalThis.cjdocSearch = (() => {
     total, complete, next, coverage, facets
   });
 
-  const hasUnpairedSurrogate = value => {
-    for (let index = 0; index < value.length; index += 1) {
-      const code = value.charCodeAt(index);
-      if (code >= 0xd800 && code <= 0xdbff) {
-        if (index + 1 >= value.length) return true;
-        const next = value.charCodeAt(index + 1);
-        if (next < 0xdc00 || next > 0xdfff) return true;
-        index += 1;
-      } else if (code >= 0xdc00 && code <= 0xdfff) return true;
-    }
-    return false;
-  };
+  // Unicode-mode matching treats a valid pair as one scalar outside this range.
+  const SURROGATE = /[\uD800-\uDFFF]/u;
+  const hasUnpairedSurrogate = value => SURROGATE.test(value);
   const utf8Bytes = value => {
     if (typeof value !== "string" || hasUnpairedSurrogate(value)) {
       throw new TypeError("invalid Unicode scalar sequence");
@@ -61,6 +52,7 @@ globalThis.cjdocSearch = (() => {
     return Uint8Array.from(bytes);
   };
   const compareByteArrays = (left, right) => {
+    if (left === right) return 0;
     const size = Math.min(left.length, right.length);
     for (let index = 0; index < size; index += 1) {
       if (left[index] !== right[index]) return left[index] < right[index] ? -1 : 1;
@@ -374,23 +366,21 @@ globalThis.cjdocSearch = (() => {
     return {all: Object.freeze(all), byScope};
   };
 
-  const prepareFilterProperties = (source, contract) => {
+  const prepareFilterProperties = (source, fields) => {
     const properties = new Map();
-    for (const definition of contract.filterFields) {
-      for (const property of propertyArray(definition.property)) {
-        if (!own(source, property)) continue;
-        const value = source[property];
-        const values = Array.isArray(value) ? value : [value];
-        properties.set(property, values.map(raw => ({
-          raw, folded: typeof raw === "string" && !hasUnpairedSurrogate(raw) ? fold(raw) : ""
-        })));
-      }
+    for (const property of fields) {
+      if (!own(source, property)) continue;
+      const value = source[property];
+      const values = Array.isArray(value) ? value : [value];
+      properties.set(property, values.map(raw => ({
+        raw, folded: typeof raw === "string" && !hasUnpairedSurrogate(raw) ? fold(raw) : ""
+      })));
     }
     return properties;
   };
-  const prepareEntry = (entry, modules, indexScope, contract, tagDictionary) => {
+  const prepareEntry = (entry, modules, snapshot, fields, tagDictionary) => {
     if (!isObject(entry) || own(entry, "tagIds") ||
-        !nonemptyString(entry.id) || !nonemptyString(entry.snapshotId) || !nonemptyString(entry.canonicalId) ||
+        !nonemptyString(entry.id) || entry.snapshotId !== snapshot.id || !nonemptyString(entry.canonicalId) ||
         typeof entry.concept !== "boolean" || !Number.isSafeInteger(entry.scope) ||
         typeof entry.kind !== "string" || typeof entry.name !== "string" || hasUnpairedSurrogate(entry.name) ||
         !nullableString(entry.qualifiedName) || !nullableString(entry.packageName) ||
@@ -411,7 +401,6 @@ globalThis.cjdocSearch = (() => {
           nonemptyString(exposure.qualifiedName) && nonemptyString(exposure.packageName))) return null;
     if ([entry.kind, entry.summary, entry.summaryDisplay, entry.body, entry.href,
         ...entry.parameterTypes].some(hasUnpairedSurrogate)) return null;
-    if (entry.snapshotId !== indexScope.snapshotId) return null;
     if (entry.concept) {
       if (entry.scope !== -1 || entry.kind !== "concept" || entry.genericArity !== 0 ||
           entry.packageName !== null || entry.qualifiedName !== null || entry.ownerId !== null ||
@@ -443,7 +432,7 @@ globalThis.cjdocSearch = (() => {
     const exposures = entry.exposures.map(exposure => ({
       raw: exposure,
       idBytes: utf8Bytes(exposure.id),
-      filterProperties: prepareFilterProperties(exposure, contract)
+      filterProperties: prepareFilterProperties(exposure, fields)
     }));
     exposures.sort((a, b) => compareByteArrays(a.idBytes, b.idBytes));
     const name = entry.name || "";
@@ -461,13 +450,13 @@ globalThis.cjdocSearch = (() => {
       ...classification.tags.flatMap(tag => [tag.id, tag.title])].filter(Boolean).join("\n");
     return {
       raw: entry, snapshotId: entry.snapshotId, canonicalId: entry.canonicalId,
-      snapshotBytes: utf8Bytes(entry.snapshotId), canonicalBytes: utf8Bytes(entry.canonicalId),
+      snapshotBytes: snapshot.bytes, canonicalBytes: utf8Bytes(entry.canonicalId),
       concept: entry.concept, scope: entry.scope, kind: entry.kind, name, qualifiedName,
       packageName, ownerName, symbolKey: entry.symbolKey || "",
       genericArity: entry.genericArity, parameterTypes, exposures, sections: entry.sections,
       classification, tagIds: Object.freeze(classification.tags.map(tag => tag.id)),
       tagFacets: Object.freeze(tagFacts), metadataText,
-      filterProperties: prepareFilterProperties(entry, contract),
+      filterProperties: prepareFilterProperties(entry, fields),
       nameFold: fold(name), qualifiedFold: fold(qualifiedName),
       identifierFold: fold([qualifiedName, name, ownerName].join("\n")),
       structuredFold: fold(structured + "\n" + metadataText),
@@ -511,8 +500,11 @@ globalThis.cjdocSearch = (() => {
     const byIdentity = new Map();
     const byCanonicalId = new Map();
     const usedTagKeys = new Set();
+    // Every entry must bind to the same publication snapshot and filter contract.
+    const snapshot = {id: index.scope.snapshotId, bytes: utf8Bytes(index.scope.snapshotId)};
+    const fields = new Set(index.contract.filterFields.flatMap(field => propertyArray(field.property)));
     for (const entry of index.entries) {
-      const facts = prepareEntry(entry, modules, index.scope, index.contract, tagDictionary.byScope);
+      const facts = prepareEntry(entry, modules, snapshot, fields, tagDictionary.byScope);
       if (!facts) return invalid;
       for (const tag of facts.tagFacets) usedTagKeys.add(tag.key);
       const snapshotGroup = byIdentity.get(facts.snapshotId) || new Map();
@@ -1067,7 +1059,11 @@ globalThis.cjdocSearch = (() => {
     const query = normalized.query;
     const queryEmpty = !query || /^[ \t\n\r\f\v]*$/u.test(query);
     const hasNarrowing = normalizedResult.hasUserNarrowing;
-    const filterOnly = queryEmpty && hasNarrowing && !selectedIdentity(normalized);
+    const selected = selectedIdentity(normalized);
+    const filterOnly = queryEmpty && hasNarrowing && !selected;
+    if (queryEmpty && !filterOnly && !selected) {
+      return {unique: [], filterOnly, queryEmpty, hasNarrowing};
+    }
     const hasOverload = overloadSelected(normalized);
     const scoped = [];
     for (const group of prepared.entries) {
@@ -1078,13 +1074,12 @@ globalThis.cjdocSearch = (() => {
       const filterResult = filterAdmits(facts, group.exposures, normalizedResult.filters);
       if (!filterResult.admitted ||
           !setPredicatesAdmit(facts, normalizedResult.setPredicates)) continue;
-      let evidence = [];
+      let evidence;
       if (filterOnly) evidence = [evidenceFrom(prepared, normalized.mode, "filter_only")].filter(Boolean);
-      else if (selectedIdentity(normalized)) {
+      else if (selected) {
         evidence = selectorEvidence(facts, group.exposures, normalized, prepared,
           normalized.mode, hasOverload);
-      } else if (queryEmpty) evidence = [];
-      else evidence = queryEvidence(facts, group.exposures, query, prepared,
+      } else evidence = queryEvidence(facts, group.exposures, query, prepared,
         normalized.mode, hasOverload);
       if (!evidence.length) continue;
       let best = evidence[0];

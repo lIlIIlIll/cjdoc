@@ -32,7 +32,9 @@ private func rowDocumentation(symbols: Array<SymbolDoc>, audience!: String = "ex
 
 private func packageRowsHtml(documentation: DocumentationSet, locale: String): String {
     for (artifact in renderDocumentationFormatsWithOptions(documentation, ["html"], locale: locale)) {
-        if (artifact.path.startsWith("html/packages/")) { return artifact.content }
+        if (artifact.path.startsWith("html/packages/") && artifact.path.endsWith("/index.html")) {
+            return artifact.content
+        }
     }
     throw IllegalArgumentException("missing package page")
 }
@@ -106,7 +108,7 @@ class HtmlPackageDeclarationTest {
             // captured source header; the kind is the section heading, not a
             // repeated badge column on every row.
             for (symbol in documentation.declarations) {
-                @Expect(html.contains("href=\"../" + projection.symbolFileHref(symbol.id) + "\""))
+                @Expect(html.contains("href=\"../../" + projection.symbolFileHref(symbol.id) + "\""))
             }
             @Expect(!html.contains("where K &lt;: Hashable"))
             @Expect(!html.contains("class=\"cj-kind\""))
@@ -241,9 +243,12 @@ class HtmlPackageDeclarationTest {
         @Expect(!html.contains("<img src=x onerror=alert(1)>"))
         @Expect(!html.contains("<svg onload=alert(1)>"))
         @Expect(!html.contains(unusedSentinel))
-        @Expect(html.contains("</a><div class=\"cj-badges\">"))
+        let primary = html.indexOf("<a class=\"cj-decl-table__link\"").getOrThrow()
+        let badges = html.indexOf("<div class=\"cj-badges\">").getOrThrow()
+        @Expect(primary < badges)
+        @Expect(html[primary..badges].contains("</a>"))
         @Expect(html.contains("data-cjdoc-tag-id=\"stream\""))
-        @Expect(html.contains("href=\"../index.html?tag=stream&amp;moduleId=cjdoc%3Amodule%3Av1%3Apackage-rows&amp;snapshotId="))
+        @Expect(html.contains("href=\"../../index.html?tag=stream&amp;moduleId=cjdoc%3Amodule%3Av1%3Apackage-rows&amp;snapshotId="))
     }
 
     // Issue #112: the anchor must resolve for the far more common single-category
@@ -338,7 +343,7 @@ class HtmlPackageDeclarationTest {
         // removing them restores the exact label.
         @Expect(wrapped.contains("parse(<wbr>text: String, <wbr>separator!: String"), true)
         @Expect(wrapped.replace("<wbr>", ""),
-            "parse(text: String, separator!: String = \",\")")
+            "parse(text: String, separator!: String = &quot;,&quot;)")
         let empty = HtmlWriter()
         appendSoftWrappedLabel(empty, "isEmpty()")
         @Expect(empty.toString(), "isEmpty()")
