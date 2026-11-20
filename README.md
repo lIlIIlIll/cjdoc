@@ -5,99 +5,62 @@
   </picture>
 </h1>
 
-<p align="center"><strong>把仓颉源码里的文档注释生成为可搜索、可离线打开的 API 文档站点。</strong></p>
+<p align="center"><strong>从仓颉源码和文档注释生成可搜索、可离线阅读的 API 站点。</strong></p>
 
 <p align="center">
 <a href="https://github.com/lIlIIlIll/cjdoc/releases"><img src="https://img.shields.io/github/v/release/lIlIIlIll/cjdoc?style=flat&amp;label=release" alt="上游发行版"></a>
 <a href="https://github.com/lIlIIlIll/cjdoc/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/lIlIIlIll/cjdoc/ci.yml?branch=main&amp;style=flat&amp;label=CI%20main" alt="上游 main CI"></a>
-<a href="https://github.com/lIlIIlIll/cjdoc/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-176a54?style=flat" alt="license MIT"></a>
-<a href="docs/getting-started/install.md"><img src="https://img.shields.io/badge/Cangjie_SDK-1.2.0-176a54?style=flat" alt="构建要求 Cangjie SDK 1.2.0"></a>
+<a href="https://github.com/lIlIIlIll/cjdoc/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-176a54?style=flat" alt="MIT 许可证"></a>
+<a href="docs/getting-started/install.md"><img src="https://img.shields.io/badge/Cangjie_SDK-1.2.0-176a54?style=flat" alt="需要 Cangjie STS 1.2.0 SDK"></a>
 </p>
 
 <p align="center">
-<a href="https://liliilill.github.io/cjdoc/">在线演示</a> · <a href="#安装">安装</a> · <a href="#快速开始">快速开始</a> · <a href="docs/README.md">用户手册</a> · <a href="docs/release-notes.md">发布记录</a>
+<a href="https://liliilill.github.io/cjdoc/">在线演示</a> · <a href="#快速开始">快速开始</a> · <a href="#安装">安装</a> · <a href="docs/README.md">用户手册</a>
 </p>
 
 <p align="center">
   <a href="docs/assets/readme/preview-themes.webp">
-    <img src="docs/assets/readme/preview-themes.webp" width="900" alt="cjdoc 生成的 PocketKit 文档：纸色主题的桌面 API 页、海洋主题的成员页、紫罗兰主题的指南页">
+    <img src="docs/assets/readme/preview-themes.webp" width="900" alt="PocketKit 文档的三个实际页面：带迁移链接的弃用 API、TextCatalog.join 成员和目录入门指南">
   </a>
 </p>
 
-<p align="center">PocketKit 示例文档，由 cjdoc 生成 · 点图查看原图</p>
-
-## cjdoc 能做什么
-
-cjdoc 读取 cjpm 项目的源码和 `/** ... */` 文档注释，输出 API 文档。注释写了什么，页面就显示什么：它不补写说明，也不自动翻译。
-
-| 你想要 | cjdoc 提供 |
-|---|---|
-| 一个能直接阅读的 API 站点 | 静态 HTML：包、类型、成员导航，签名、参数、返回、异常和示例；内置搜索（`Ctrl+K`、`⌘K` 或 `/`）；双击 `index.html` 即可打开，也可整目录上传到任意静态托管 |
-| 在 API 之外介绍项目 | 项目首页、包概述和 Markdown 指南，指南与 API 互相链接 |
-| 中英文文档 | 发布作者维护的 `zh-CN` 与 `en` 内容，读者在页面上切换语言 |
-| 确认文档可信 | `cjdoc check` 报告缺失或失效的注释，编译并运行注释里的示例，按覆盖率设置门槛 |
-| 管理版本 | 比较两个版本的公开 API，把多个版本组合成可切换的站点 |
-| 交给工具读取 | JSON（Doc IR）、Markdown、API surface、覆盖率和符号索引；`cjdoc query` 与本地 MCP 服务供编辑器和 Agent 查询 |
+<p align="center">由当前源码版 cjdoc 生成的 PocketKit 文档，图中部分功能尚未进入发行包 · 点图查看原图</p>
 
 ## 安装
 
-cjdoc 运行在已加载 **Cangjie STS 1.2.0 SDK** 环境的终端里，支持 Linux x64、macOS ARM64 和 Windows x64。
+1. 在当前终端加载 [Cangjie STS 1.2.0 SDK](docs/getting-started/install.md#前提准备-sdk-120)，确认 `cjc -v` 和 `cjpm -v` 都报告 `1.2.0`。
+2. 从 [v0.7.9 发布页](https://github.com/lIlIIlIll/cjdoc/releases/tag/v0.7.9)下载对应平台的压缩包（Linux x64、macOS ARM64 或 Windows x64），[校验后解压](docs/getting-started/install.md#安装预编译发行包)。不要只下载单独的可执行文件，归档才包含配套 worker。
+3. 把 `cjdoc` 和 `chir-worker-main` 放在同一个目录（Windows 上两者都有 `.exe`），再把该目录加到当前终端的 `PATH`。
+4. 运行 `cjdoc --version`。安装 v0.7.9 后应看到 `cjdoc 0.7.9`。
 
-- **预编译发行包**：从 [Releases](https://github.com/lIlIIlIll/cjdoc/releases) 下载对应平台的压缩包，核对校验值后按[安装指南](docs/getting-started/install.md#安装预编译发行包)安装。包含配套 worker 的版本须将两个可执行文件安装到同一目录。
-- **从源码构建**：另需匹配的静态 stdx 1.2.0，步骤见[安装指南](docs/getting-started/install.md)。
-
-安装后在任意目录确认：
-
-```bash
-cjdoc --version
-```
-
-输出 `cjdoc 0.7.9` 这样的版本行即可继续。
-
-0.7.9 默认使用与主程序一起安装的 CHIR worker 补充类型信息，不需要手填 worker 路径。使用旧版 0.7.8 时，请阅读[对应版本手册](https://github.com/lIlIIlIll/cjdoc/blob/v0.7.8/docs/README.md)。
+想体验截图中的新功能，可[从源码构建](docs/getting-started/install.md#从源码构建)。如果你是在发行归档里打开本文件，请按 `release-manifest.json` 的 `sourceCommit` 在 [GitHub 仓库](https://github.com/lIlIIlIll/cjdoc)查看同版本的 `docs/README.md`。
 
 ## 快速开始
 
-为一个最小的仓颉库写注释，生成并打开它的 API 站点。
+进入已有 `cjpm` 项目的根目录。下面在一个已有的包里添加函数，不用改 `cjpm.toml`。还没有项目？跟着[第一个站点](docs/tutorials/first-site.md)从空目录开始。
 
-**前提条件**：`cjdoc --version`、`cjc -v` 和 `cjpm -v` 在当前终端都能运行。
+### 1. 为一个 API 写注释
 
-**1. 创建项目。** 在一个空的工作目录执行：
-
-```bash
-cjpm init --name docdemo --path docdemo --type=static
-cd docdemo
-```
-
-把 `cjpm.toml` 替换为：
-
-```toml
-[package]
-name = "docdemo"
-version = "0.1.0"
-cjc-version = "1.2.0"
-output-type = "static"
-
-[dependencies]
-```
-
-**2. 写一个带注释的函数。** 新建 `src/api.cj`：
+在包的源码目录新建 `greet.cj`。把第一行的 `package demo` 换成该目录其他源码文件的 `package` 声明。选一个没有定义同名函数的包。
 
 ~~~cangjie
-package docdemo
+package demo
 
 /**
  * 为名字生成问候语。
  *
- * name 原样保留，不修剪空白；空字符串返回 `Hello, !`。
- * @param name 要问候的名字，可以为空。
+ * 名字里的空白原样保留，允许空字符串。
+ *
+ * @param name 要问候的名字。
  * @return 格式为 `Hello, <name>!` 的字符串。
- * @example 问候仓颉 {must-pass run}
+ * @example 问候普通名字和空名字 {must-pass run}
  * ```cangjie
  * println(greet("Cangjie"))
+ * println(greet(""))
  * ```
  * ```output
  * Hello, Cangjie!
+ * Hello, !
  * ```
  */
 public func greet(name: String): String {
@@ -105,56 +68,57 @@ public func greet(name: String): String {
 }
 ~~~
 
-**3. 编译、检查示例并生成站点。** 在 `docdemo/` 里执行：
+cjdoc 从声明读取签名，从 `/** ... */` 注释读取说明和示例。`output` 中的两行是你写下的预期输出；生成站点并不会运行这段代码。说明和译文也不会自动补齐。
+
+### 2. 生成并打开站点
+
+在项目根目录运行：
 
 ```bash
-cjpm build
-cjdoc check --project . --check-examples
 cjdoc generate --project . --format html
 ```
 
-**预期结果**
+打开 `target/doc/html/index.html`，在页眉搜索 `greet`。打开结果后，可看到签名、参数与返回值说明，以及示例代码和两行预期输出。如果项目配置了别的输出目录，从该目录的 `html/index.html` 打开。没配置输出格式时，省略 `--format html` 只会生成 JSON。
 
-- `cjdoc check` 编译并运行注释里的示例，把实际输出与 `output` 围栏比较，全部一致时以退出码 `0` 结束。
-- 站点入口是 `target/doc/html/index.html`。
-- 终端报告的文档质量 warning 不代表示例或生成失败；按诊断检查对应注释。CHIR 无法补齐信息时仍保留源码声明。
+### 3. 边改边看
 
-用浏览器打开 `target/doc/html/index.html`，进入 `docdemo` 包的 `greet`，可以看到签名、参数、返回值和示例。整个 `target/doc/html/` 目录可以直接上传发布。
+在项目根目录启动本地预览：
 
-`generate` 默认会为 CHIR 语义补充编译项目，但不编译或运行注释里的示例；示例是否成立以 `check --check-examples` 的结果为准。每一步的解释和各平台的打开方式见[生成第一个站点](docs/tutorials/first-site.md)。
-
-## 保存常用设置
-
-在项目根的 `cjdoc.toml` 中保存重复使用的设置。例如，为上面的 `docdemo` 添加：
-
-```toml
-[output]
-formats = ["html"]
-directory = "target/doc"
+```bash
+cjdoc serve --project .
 ```
 
-以后在项目根执行 `cjdoc generate` 即可生成同样的站点。临时换目录时用 `cjdoc generate --output target/preview`；命令行值覆盖对应配置默认值。更多设置见[配置参考](docs/reference/configuration.md)。
+用浏览器打开 `http://127.0.0.1:8080/`。改一下 `greet.cj` 的摘要并保存，等终端提示重建完成，再刷新 `greet` 页面，应看到新摘要。完成后按 `Ctrl+C` 停止预览。端口被占用或页面没更新时，见[本地预览指南](docs/how-to/preview.md)。
 
-## 接下来
+### 4. 检查示例输出
 
-| 你要做什么 | 从这里继续 |
+仅在信任项目中的示例代码、且当前环境能为示例进程施加内存限制时，在项目根目录运行：
+
+```bash
+cjdoc check --project . --check-examples
+```
+
+`{must-pass run}` 要求示例编译并运行成功，实际标准输出必须与 `output` 中的两行一致。命令检查整个项目，启用的检查都通过时以 `0` 退出。看到 `CJDOC3072` 时对照诊断中的预期和实际输出；看到 `CJDOC3074` 时，示例未能构建为可执行文件，或当前环境无法施加内存限制。处理方式见[示例检查指南](docs/how-to/check-examples.md)。
+
+## 用文档完成什么
+
+| 你的任务 | 从这里开始 |
 |---|---|
-| 加入项目首页、包概述和指南 | [加入首页和指南](docs/tutorials/add-guides.md) |
-| 发布中英文文档 | [发布中英文](docs/tutorials/publish-languages.md) |
-| 生成、检查、预览、发布、比较版本、接入 MCP | [按任务操作](docs/README.md#按任务操作) |
-| 查命令选项、`cjdoc.toml`、注释标签、产物和查询协议 | [查规则](docs/README.md#查规则) |
-| 命令报错或结果不符合预期 | [按症状排错](docs/how-to/troubleshoot.md) |
+| 给 API 站点加项目介绍、包概述或上手指南 | [加入首页和指南](docs/tutorials/add-guides.md) |
+| 把生成的站点发给读者 | [生成与发布](docs/how-to/generate-and-publish.md) |
+| 找漏写的说明，给 CI 加文档覆盖率门槛 | [检查质量](docs/how-to/check-quality.md) |
+| 让读者在中文和英文之间切换 | [发布中英文](docs/tutorials/publish-languages.md) |
+| 查升级会影响哪些 API，发布多个版本 | [比较 API 与发布版本](docs/how-to/compare-and-version.md) |
+| 让编辑器或 Agent 查询已生成的文档 | [命令行查询与 MCP](docs/how-to/query-and-mcp.md) |
 
-## 使用前需要知道
+查命令、配置或注释标签，打开[用户手册](docs/README.md#查规则)。要导出 Markdown、JSON 或 API 报告，查[输出格式](docs/reference/artifacts.md)。扩大 API 展示范围或发布机器可读文件前，先[确认要公开的内容](docs/how-to/select-inputs.md)。
 
-- 页面内容来自源码注释。发布前请[核对 API 说明与实际行为](docs/how-to/review-contracts.md)。
-- 默认只呈现公开和受保护的 API。这个范围决定读者看到什么，不是脱敏手段；调整范围见[选择输入](docs/how-to/select-inputs.md)。
-- 平台差异和资源上限见[状态与限制](docs/reference/states-and-limits.md)。
+无法启动或生成结果不符合预期？见[按症状排错](docs/how-to/troubleshoot.md)。
 
 ## 参与开发
 
-修改 cjdoc、运行本地检查或准备发行版，从[维护者文档](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/README.md)开始。各版本的变化见[发布记录](docs/release-notes.md)。
+修改 cjdoc 请读[维护者文档](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/README.md)。升级请查[发布记录](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/release-notes.md)。
 
 ## 许可证
 
-[MIT](https://github.com/lIlIIlIll/cjdoc/blob/main/LICENSE)。随发行包分发的第三方组件见 [THIRD_PARTY_NOTICES.md](https://github.com/lIlIIlIll/cjdoc/blob/main/THIRD_PARTY_NOTICES.md)。
+[MIT](https://github.com/lIlIIlIll/cjdoc/blob/main/LICENSE)。随工具分发的组件见[第三方声明](https://github.com/lIlIIlIll/cjdoc/blob/main/THIRD_PARTY_NOTICES.md)。
