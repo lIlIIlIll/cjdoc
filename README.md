@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="docs/assets/readme/preview-themes.webp">
-    <img src="docs/assets/readme/preview-themes.webp" width="900" alt="PocketKit 文档的三个实际页面：带迁移链接的弃用 API、TextCatalog.join 成员和目录入门指南">
+    <img src="docs/assets/readme/preview-themes.webp" width="900" alt="PocketKit 中文文档：authoring 包的两条声明和本页目录、firstTextOrEmpty 的弃用原因，以及展开的 TextCatalog.first 成员">
   </a>
 </p>
 
