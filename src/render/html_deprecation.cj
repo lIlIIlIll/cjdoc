@@ -20,18 +20,13 @@ internal func appendReplacementLink(w: HtmlWriter, action: DeprecationAction,
         case Some(_) => navigationHref(rootPrefix, action.href).getOrThrow()
         case None => projection.publicApiPrefix(rootPrefix) + action.href
     }
-    let attrs = ArrayList<HtmlAttr>(documentationHrefAttrs(url, cssClass: "cj-replacement", navigation: action.navigation))
-    if (action.navigation.isNone()) { attrs.add(htmlFlag("data-cjdoc-api-link")) }
+    let attrs = ArrayList<HtmlAttr>(documentationHrefAttrs(url, cssClass: "cj-replacement"))
+    if (let Some(navigation) <- action.navigation) {
+        attrs.add(htmlAttr("data-doc-match", navigation.matchLevel))
+    } else { attrs.add(htmlFlag("data-cjdoc-api-link")) }
     w.element("a", attrs.toArray()) { link =>
         link.text(label(locale, "Use ", "改用 "))
         link.textElement("code", action.name)
-    }
-}
-
-internal func appendReplacementLinkFor(w: HtmlWriter, projection: RenderProjection,
-    symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
-    if (let Some(action) <- projection.deprecations().action(symbol.id)) {
-        appendReplacementLink(w, action, projection, rootPrefix, locale)
     }
 }
 

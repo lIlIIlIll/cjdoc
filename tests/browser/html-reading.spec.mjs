@@ -387,7 +387,7 @@ for (const [locale, transport] of [['en', 'file'], ['zh-CN', 'subpath']]) {
 
     const trigger = page.locator('[data-cjdoc-search-trigger]');
     const dialog = page.locator('[data-cjdoc-search-dialog]');
-    const input = dialog.getByRole('combobox');
+    const input = dialog.getByRole('combobox', {name: locale === 'en' ? 'Search API' : '搜索 API'});
     const list = dialog.getByRole('listbox');
     const old = list.getByRole('option').filter({has: page.locator('.cj-search__hit-name', {hasText:'requireFirstText'})});
     const action = dialog.locator('a.cj-replacement');
