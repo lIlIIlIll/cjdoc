@@ -1,6 +1,6 @@
 # 选择要生成文档的源码、依赖与条件编译
 
-用 `--include-path-dependencies`、`--cfg`、`--audience`、`--dependency-source`、`--cjpm-cache` 和 `--build-context` 决定一次生成读取哪些源码、按什么条件读取，并确认结果里真的出现了这些声明。
+一次生成读取哪些源码、按什么条件读取，由几个互相独立的开关决定。本页用同一个 workspace 逐个打开它们，并给出确认结果出现的办法。
 
 ## 什么时候用本页
 
@@ -26,7 +26,7 @@ mkdir -p "$TASK_ROOT/workspace/packages/app/src" \
   "$TASK_ROOT/workspace/shared/src"
 ```
 
-`$TASK_ROOT` 是本次练习的根目录，后面所有命令都沿用它。写入 workspace 成员和一份路径依赖：
+`$TASK_ROOT` 是本次练习的根目录，后面所有命令都沿用它。这里的 workspace 有两个成员，其中一个还通过路径依赖引用 `shared`；`app` 里有一处条件编译和一个私有函数：
 
 ```bash
 cat > "$TASK_ROOT/workspace/cjpm.toml" <<'EOF'
@@ -127,7 +127,7 @@ in docs.json: ['hiddenApi', 'peerApi']
 unsupported: [('featureApi', 'conditional compilation expression is unsupported or unresolved')]
 ```
 
-四个默认行为在这个结果里都能看到：
+这四个默认行为都能看到：
 
 - 两个 workspace 成员都收集，`shared` 不收集——路径依赖需要显式开启。
 - `hiddenApi` 在 `docs.json` 里但不在页面和搜索里——默认受众 `external` 只展示 `public` 与 `protected`。
@@ -175,7 +175,7 @@ cjdoc generate --project "$TASK_ROOT/workspace" \
   --include-path-dependencies --cfg feature=basic
 ```
 
-`$TASK_ROOT/site-basic/docs.json` 里没有 `featureApi`，`status` 回到 `complete`。比较不同选择时始终换一个新的 `--output`，不要复用上一次的目录。
+**预期结果**：`$TASK_ROOT/site-basic/docs.json` 里没有 `featureApi`，`status` 回到 `complete`。比较不同选择时始终换一个新的 `--output`，不要复用上一次的目录。
 
 ## 第三步：选择受众
 
@@ -201,7 +201,7 @@ print("search:", sorted({e["name"] for e in entries}))
 PY
 ```
 
-搜索索引此时包含 `hiddenApi`。改成 `--audience package` 时它仍不出现，因为它是 `private`。受众不是访问控制：三种取值下 `docs.json` 都保留全部已捕获声明，发布前自己确认输出目录里放了什么。
+**预期结果**：搜索索引此时包含 `hiddenApi`。改成 `--audience package` 时它仍不出现，因为它是 `private`。受众不是访问控制：三种取值下 `docs.json` 都保留全部已捕获声明，发布前自己确认输出目录里放了什么。
 
 ## 第四步：显式指定依赖源码
 
@@ -222,7 +222,7 @@ print("declarations:", sorted({d["name"] for d in doc["declarations"]}))
 PY
 ```
 
-预期 `shared` 的角色是 `externalDependency`，声明集合为 `hiddenApi`、`peerApi`、`sharedApi`（没有 `--cfg`，所以没有 `featureApi`）。
+**预期结果**：`shared` 的角色是 `externalDependency`，声明集合为 `hiddenApi`、`peerApi`、`sharedApi`（没有 `--cfg`，所以没有 `featureApi`）。
 
 选项可以重复。`NAME` 只能由 ASCII 字母、数字、`_`、`-` 组成并用点分段，会成为该模块的逻辑前缀 `dependencies/<NAME>`；`PATH` 按 cjdoc 进程的当前工作目录解析，跨目录运行时用绝对路径。不要指向压缩包、二进制目录或不含 `cjpm.toml` 的目录。
 
@@ -278,7 +278,7 @@ EOF
 grep yjson "$CACHE_PROJECT/cjpm.lock"
 ```
 
-看到 `cjpm build success` 后，锁文件里记录 `yjson` 的 Git 地址与完整提交，源码位于 `$CACHE_ROOT/git/yjson/<提交>`。这一步只是准备输入：cjdoc 不会替你下载依赖。
+**预期结果**：看到 `cjpm build success`，锁文件里记录 `yjson` 的 Git 地址与完整提交，源码位于 `$CACHE_ROOT/git/yjson/<提交>`。这一步只是准备输入：cjdoc 不会替你下载依赖。
 
 现在让 cjdoc 读同一个缓存：
 
@@ -304,7 +304,7 @@ print("skipped:", [d["message"] for d in doc["diagnostics"] if d["code"] == "CJD
 PY
 ```
 
-预期有一个消费项目模块、一个角色为 `externalDependency` 的 `yjson` 模块，声明里有 `parseValue` 和 yjson 的类型。yjson 自己的锁文件还引用仅用于测试的 `yjson_macros`，缓存里没有它时会出现 `CJDOC1021`，并把 `status` 置为 `partial`；已读取的 yjson 源码仍然完整。
+**预期结果**：有一个消费项目模块、一个角色为 `externalDependency` 的 `yjson` 模块，声明里有 `parseValue` 和 yjson 的类型。yjson 自己的锁文件还引用仅用于测试的 `yjson_macros`，缓存里没有它时会出现 `CJDOC1021`，并把 `status` 置为 `partial`；已读取的 yjson 源码仍然完整。
 
 `--cjpm-cache` 与 `--cache-dir` 是两件事：前者是 cjpm 存放依赖源码的目录，后者是 cjdoc 解析源码时用的缓存（默认 `<项目>/target/cjdoc/cache/source-v11`，用 `--no-cache` 关闭）。不要让两者指向同一个目录。
 
@@ -313,7 +313,7 @@ PY
 默认情况下 cjdoc 记录的是它自己观察到的依赖，状态为 `observed`。如果你有构建系统实际选中的依赖清单，可以用 `cjdoc.build-context/1` 记录把它标成 `verified`。仓库脚本根据目录里现成的源码与清单生成这份记录，不编译、不联网：
 
 ```bash
-CJDOC_SOURCE=/path/to/cjdoc-source
+: "${CJDOC_SOURCE:?请设置为 cjdoc 源码目录}"
 python3 "$CJDOC_SOURCE/scripts/capture_build_context.py" \
   --project "$TASK_ROOT/workspace" \
   --output "$TASK_ROOT/build-context.json" \
@@ -321,7 +321,7 @@ python3 "$CJDOC_SOURCE/scripts/capture_build_context.py" \
   --cfg feature=extra
 ```
 
-把记录交给生成命令，并给出与记录一致的 `--cfg`：
+`--target` 是构建实际选中的目标，必须显式给出，不会从生成器 SDK 推断。把记录交给生成命令，并给出与记录一致的 `--cfg`：
 
 ```bash
 cjdoc generate --project "$TASK_ROOT/workspace" \
@@ -339,7 +339,20 @@ print("deps:", [(d["name"], d["state"], d["target"], d["cfg"])
 PY
 ```
 
-预期 `status: complete`，每个源码依赖的状态是 `verified`，并带上记录中的 `target` 与 `cfg`。记录里的 target 只有在它非空时才替换本次目标；给出的 `--cfg` 与记录不一致时，记录被忽略并报告 `CJDOC2300` 与 `CJDOC2301`，生成继续按观察到的依赖进行。
+**预期结果**：`status: complete`，每个源码依赖的状态是 `verified`，并带上记录中的 `target` 与 `cfg`。记录里的 target 只有在它非空时才替换本次目标；给出的 `--cfg` 与记录不一致时，记录被忽略并报告 `CJDOC2300` 与 `CJDOC2301`，生成继续按观察到的依赖进行。
+
+## 该打开哪个开关
+
+| 目标 | 选项 |
+|---|---|
+| 让路径依赖源码出现在站点里 | `--include-path-dependencies` |
+| 让 cjpm 已下载的 Git/中心仓依赖出现在站点里 | `--include-cached-dependencies`（配 `--cjpm-cache`） |
+| 指定一个确切的依赖源码目录 | `--dependency-source NAME=PATH` |
+| 选中条件编译分支 | `--cfg NAME=VALUE` |
+| 展示私有或全部声明 | `--audience package` 或 `--audience all` |
+| 用构建实际选择替换“观察到”的依赖 | `--build-context record.json` |
+
+这些选项可以组合，但每个只负责一件事：受众不改收集范围，`--cfg` 不改依赖选择，缓存依赖与源码缓存是两个目录。以上选项也可以写进 `cjdoc.toml` 的 `[analysis]`，CLI 显式值覆盖配置。
 
 ## 失败时怎么办
 

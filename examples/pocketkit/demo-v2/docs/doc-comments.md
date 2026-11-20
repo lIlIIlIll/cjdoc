@@ -1,6 +1,7 @@
 # 文档注释示例
 
-把下面的写法放进声明紧邻的 `/** ... */` 注释，再打开每节的「相关 API」对照结果。这里的围栏展示要写的源码；真正可检查的用例在 API 的 `@example` 中。
+本页按任务组织：说明 API、写行为契约、组织提示与列表、写可检查的示例、标注弃用与版本、
+分组与筛选、提供译文、排查错误。每节给出要写进 `/** ... */` 注释的片段，再用「相关 API」打开生成结果对照。
 
 - 说明 API：[参数与返回值](#参数与返回值)、[行为契约](#行为契约)、[弃用与版本](#弃用与版本)。
 - 组织内容：[提示与列表](#提示与列表)、[示例与输出](#示例与输出)、[分组与分类](#分组与分类)。
@@ -8,7 +9,8 @@
 
 ## 参数与返回值
 
-给每个参数一条说明、给返回值一条说明。异常可写多条；此处的 `index-range` 把同一个越界条件的两种语言配成一条。
+**任务**：给每个参数写一条说明，给返回值写一条说明，异常逐条列出。
+同一个越界条件的中英文用同一个 `index-range` 配成一条。
 
 ```text
 @param index 从零开始的索引。
@@ -19,11 +21,14 @@
 @throws[lang=en,id=index-range] IllegalArgumentException `index` is negative or is not smaller than `size`.
 ```
 
-`at` 的参数、返回和异常各有自己的区域。遇到命名默认参数也是只写参数名：`join` 的源码参数是 `separator!: String = ","`，只写 `@param separator 分隔符，默认是逗号，不进行转义。`，生成页会显示 `separator: String = ","`。在[提示与列表](#提示与列表)打开 `join` 核对。
+**确认结果**：`at` 的参数、返回和异常各有自己的区域。命名默认参数也只写参数名：
+`join` 的源码参数是 `separator!: String = ","`，注释里写 `@param separator 分隔符，默认是逗号，不进行转义。`，
+生成页显示 `separator: String = ","`。在[提示与列表](#提示与列表)打开 `join` 核对。
 
 <!-- cjdoc-bind target="pocketkit.TextCatalog.at" -->
 
-用 `{@link …}` 在正文中说明两个同名类型的区别；用 `@see` 把相关 API 列在「另请参阅」，见[弃用与版本](#弃用与版本)。
+正文里用 `{@link …}` 说明两个同名类型的区别，用 `@see` 把相关 API 列进「另请参阅」，
+写法见[弃用与版本](#弃用与版本)。
 
 ```text
 返回 {@link pocketkit.parsing.Token}，不是 {@link pocketkit.io.Token}。
@@ -35,14 +40,17 @@
 
 ## 行为契约
 
-用契约写清调用前后的条件、成本和失败时的状态。`at` 和 `contains` 各展示一项契约，`add` 的整数重载和 `TextReader` 则按项列出多项契约。先把下面的行放到对应声明，别把所有约束堆进同一段正文。
+**任务**：用契约写清调用前后的条件、成本和失败时的状态。`at` 和 `contains` 各展示一项契约，
+`add` 的整数重载和 `TextReader` 按项列出多项契约。先放到对应声明，别把所有约束堆进同一段正文。
 
 ```text
 @precondition 0 <= index < size。
 @precondition[lang=en] 0 <= index < size.
 ```
 
-前置条件显示在[参数与返回值](#参数与返回值)的 `at` 页面。字符串 `add` 的后置条件是 `@postcondition size 比调用前增加一。`；译文是 `@postcondition[lang=en] size increases by one.`。打开[提供译文](#提供译文)中的字符串重载可看到单项标题。
+**确认结果**：前置条件显示在[参数与返回值](#参数与返回值)的 `at` 页面。
+字符串 `add` 的后置条件是 `@postcondition size 比调用前增加一。`，译文是
+`@postcondition[lang=en] size increases by one.`；打开[提供译文](#提供译文)中的字符串重载可见单项标题。
 
 ```text
 @performance 最多检查 `size` 个条目。
@@ -59,7 +67,8 @@
 @throws IllegalArgumentException radix 不是 10。
 ```
 
-`@error` 说明失败时目录保持不变；`@throws` 说明具体抛什么。文档会显示两者，不会自动执行这些约束。要检查行为，另外编写运行示例。
+`@error` 说明失败时目录保持不变，`@throws` 说明具体抛什么。文档会显示两者，但不会执行这些约束；
+要检查行为，另写运行示例。
 
 <!-- cjdoc-bind target="pocketkit.TextCatalog.add" selector="signature:public func add(value: Int64, radix!: Int64 = 10): Unit" -->
 
@@ -74,13 +83,14 @@
 @platform[lang=en] Reads in-memory text without opening a file handle.
 ```
 
-打开类型页的「行为约束」对照四项，向下可看到读取到末尾以及重复关闭的运行示例。
+**确认结果**：类型页的「行为约束」下列出这四项，向下还有读到末尾和重复关闭的运行示例。
 
 <!-- cjdoc-bind target="pocketkit.io.TextReader" -->
 
 ## 提示与列表
 
-每个标签各生成一个提示框，不合并同等级，也不按等级重排。`join` 的六个提示依次说明顺序、多字符分隔符、不转义、两种空结果、不可还原、换行拆分日志。下面各摘一条，并给第一条配上译文：
+**任务**：每个标签生成一个提示框，同等级不合并，也不按等级重排。`join` 的六个提示依次说明顺序、
+多字符分隔符、不转义、两种空结果、不可还原、换行拆分日志。各摘一条，并给第一条配译文：
 
 ```text
 @note[id=join-order] 连接结果保留条目的插入顺序和重复项。
@@ -91,7 +101,7 @@
 
 <!-- cjdoc-bind target="pocketkit.TextCatalog.join" -->
 
-如果要在**同一个框**内分条，照抄 `window` 的换行及缩进。这里会看到一个两项无序列表和一个两项有序列表：
+要在**同一个框**内分条，照抄 `window` 的换行与缩进。这里会看到一个两项无序列表和一个两项有序列表：
 
 ```text
 @note[id=window-empty] + 在起点有效时，`limit: 0` 返回空窗口。
@@ -102,11 +112,11 @@
 2. **按实际长度读取：** 末页可能少于 `limit` 项，请按返回数组的长度遍历。
 ```
 
-普通 `- 第二项` 会成为框外的列表。框内不要插空行；把两个编号写在同一物理行只会得到一段文字。
+普通 `- 第二项` 会成为框外的列表；框内不要插空行，两条编号写在同一物理行只会得到一段文字。
 
 <!-- cjdoc-bind target="pocketkit.TextCatalog.window" -->
 
-指南 Markdown 用顶层引用，不用 `@note` 等源码标签。把标记单独放在第一行，正文另起一行：
+指南 Markdown 用顶层引用，不用 `@note` 等源码标签。标记单独占第一行，正文另起一行：
 
 ```markdown
 > [!NOTE]
@@ -128,14 +138,15 @@
 > [!CAUTION]
 > 用危险提示标明无法挽回的后果。
 
-下面仍是普通引用，没有名为 `[!DANGER]` 的标记：
+下面仍是普通引用，因为没有名为 `[!DANGER]` 的标记：
 
 > [!DANGER]
 > 这段文字仍然是引用。
 
 ## 示例与输出
 
-每个 `@example` 是单独的用例，默认只展示；显式加 `--check-examples` 才编译。同一用例可以把准备步骤和调用分成多个小写 `cangjie` 围栏，变量可跨围栏使用。另一个用例从头开始。
+**任务**：每个 `@example` 是单独的用例，默认只展示，加 `--check-examples` 才编译。
+同一用例可以把准备步骤和调用拆成多个小写 `cangjie` 围栏，变量跨围栏可用；另一个用例从头开始。
 
 ~~~text
 @example 按位置与上限取窗口 {run}
@@ -157,9 +168,12 @@ c
 ```
 ~~~
 
-`{run}` 编译并执行，要求正常退出；`output` 是**你写下的预期**，有围栏才核对标准输出。在[提示与列表](#提示与列表)打开 `window`，可看到四个独立用例：分页、默认值与短末页、空窗口、越界。`join` 的用例会显示默认逗号、自定义分隔符、空分隔符和空目录的结果。
+`{run}` 编译并执行，要求正常退出；`output` 是**你写下的预期**，有围栏才核对标准输出。
+在[提示与列表](#提示与列表)打开 `window`，可见四个独立用例：分页、默认值与短末页、空窗口、越界。
+`join` 的用例显示默认逗号、自定义分隔符、空分隔符和空目录的结果。
 
-用 `{must-pass}` 只查编译，用 `{must-fail}` 要求错误来自片段本身。没有标题或指令也可以写示例：`contains` 的无标题示例只在显式检查时编译，见[行为契约](#行为契约)。
+`{must-pass}` 只查编译，`{must-fail}` 要求错误来自片段本身。没有标题或指令也可以写示例：
+`contains` 的无标题示例只在显式检查时编译，见[行为契约](#行为契约)。
 
 ~~~text
 @example
@@ -194,9 +208,12 @@ let _ = requireFirstText(TextCatalog(["ok"]))
 ```
 ~~~
 
-到[弃用与版本](#弃用与版本)打开 `requireFirstText`，还可看到一个运行用例打印 `alpha`，捕获两种异常并分行打印异常类型。编译示例没有输出约定，空 `output` 只用于要求运行保持安静。
+到[弃用与版本](#弃用与版本)打开 `requireFirstText`，还能看到一个运行用例打印 `alpha`、
+捕获两种异常并分行打印异常类型。编译示例没有输出约定，空 `output` 只用于要求运行保持安静。
 
-API 默认把代码和输出放在同一个框里。[首页快照例](index.md)用 `output layout=prose` 把输出紧贴在代码下方。需要在宽屏并排比较短片段时，把 `output` 围栏的首行改成 ` ```output layout=side-by-side `，窄屏仍先读代码：
+**确认结果**：API 默认把代码和输出放在同一个框里。[首页快照例](index.md)用 `output layout=prose`
+把输出紧贴代码下方。宽屏并排比较短片段时，把 `output` 围栏首行改成 ` ```output layout=side-by-side `，
+窄屏仍先读代码：
 
 ```cangjie
 let catalog = TextCatalog(["a", "b"])
@@ -209,7 +226,9 @@ a / b
 
 ## 弃用与版本
 
-`requireFirstText` 和 `firstTextOrEmpty` 都会显示「已弃用」。前者用一条 `@replacement` 提供可点击的迁移入口；后者只有源码 `@Deprecated`，因此只显示状态，没有替代链接：
+**任务**：`requireFirstText` 和 `firstTextOrEmpty` 都会显示「已弃用」；前者用一条 `@replacement`
+提供可点击的迁移入口，后者只有源码 `@Deprecated`，因此只显示状态。
+用显式摘要控制简述，用详细说明写两个段落和一份列表：
 
 ```text
 @summary 读取第一条非空文本；仅用于演示文档注释。
@@ -239,7 +258,10 @@ a / b
 @version example-1
 ```
 
-在包的声明表和 `requireFirstText` 详情里，用「改用 `TextCatalog.first()`」打开替代 API。`@see` 中的 `first` 和 `isEmpty` 仍各自出现在「另请参阅」，`isEmpty` 不是迁移建议。`@since` 记录 API 的引入版本；`@version` 记录作者给该声明写的版本，二者都不控制站点版本切换。
+**确认结果**：页面上有两行异常、两个作者和两条「另请参阅」链接。在包的声明表和 `requireFirstText`
+详情里用「改用 `TextCatalog.first()`」打开替代 API；`@see` 的 `first` 和 `isEmpty` 仍各自出现在
+「另请参阅」，`isEmpty` 不是迁移建议。`@since` 是引入该 API 的版本；`@version` 是作者给此声明写的
+版本元数据，二者都不控制站点版本切换。引入版本和作者版本各写一项，作者可写多项。
 
 <!-- cjdoc-bind target="pocketkit.authoring.requireFirstText" -->
 
@@ -247,7 +269,8 @@ a / b
 
 ## 分组与分类
 
-在 `TextReader.read` 上写一组和两个标签。重复的 `cursor` 会去重；在 `rewind` 上用同一组的简写：
+**任务**：在 `TextReader.read` 上写一组和两个标签；重复的 `cursor` 会去重。
+在 `rewind` 上用同一组的简写：
 
 ```text
 @group 10-cursor 读取位置
@@ -261,7 +284,7 @@ a / b
 @tag cursor
 ```
 
-在 `cjdoc.toml` 为相同包、类型和 ID 注册组标题和顺序。标签只写 ID，双语显示名放在 TOML：
+再在 `cjdoc.toml` 为相同包、类型和 ID 注册组标题和顺序。标签只写 ID，双语显示名放在 TOML：
 
 ```toml
 [[metadata.groups]]
@@ -292,7 +315,8 @@ zh-CN = "读取"
 en = "Reading"
 ```
 
-组内有 `read` 和 `rewind`；`read` 的「游标」只显示一次。在类型页的成员筛选输入 `tag:cursor tag:reading`，只剩同时拥有两项标签的 `read`。清空筛选恢复其他成员。
+**确认结果**：组内有 `read` 和 `rewind`，`read` 的「游标」只显示一次。
+在类型页的成员筛选输入 `tag:cursor tag:reading`，只剩同时拥有两项标签的 `read`；清空筛选恢复其他成员。
 
 <!-- cjdoc-bind target="pocketkit.io.TextReader.read" -->
 
@@ -300,7 +324,7 @@ en = "Reading"
 
 ## 提供译文
 
-在 `cjdoc.toml` 配置 `[i18n]` 后，无语言标记的作者文字和示例都属于默认语言：
+**任务**：在 `cjdoc.toml` 配置 `[i18n]` 后，无语言标记的作者文字和示例都属于默认语言：
 
 ```toml
 [i18n]
@@ -309,9 +333,13 @@ languages = ["zh-CN", "en"]
 missing-translation = "warn"
 ```
 
-- **配对**：`at` 用 `index` 配对参数、用 `index-range` 配对异常（见[参数与返回值](#参数与返回值)）；`join` 用同一等级、同一个 `join-order` 配对两条提示（见[提示与列表](#提示与列表)）。
-- **缺译回退**：切到 `join` 的英文页，`separator` 仍显示中文说明并标记缺译。补 `@param[lang=en] separator The separator, defaulting to a comma. Entries are not escaped.` 即可提供译文。
-- **未配对的独立用例**：下面两个 `add(String)` 示例即使同名也不会互相翻译。两条都会被 `--check-examples` 检查，不共享变量。打开对应语言页查看 `hello` 或保留空条目后的 `count: 1`、`bytes: 0`。
+- **配对**：`at` 用 `index` 配对参数、用 `index-range` 配对异常（见[参数与返回值](#参数与返回值)）；
+  `join` 用同一等级、同一个 `join-order` 配对两条提示（见[提示与列表](#提示与列表)）。
+- **缺译回退**：切到 `join` 的英文页，`separator` 仍显示中文说明并标记缺译。
+  补 `@param[lang=en] separator The separator, defaulting to a comma. Entries are not escaped.` 即可提供译文。
+- **独立用例不配对**：下面两个 `add(String)` 示例即使同名也不会互相翻译；两条都会被
+  `--check-examples` 检查，且不共享变量。打开对应语言页查看 `hello`，或保留空条目后的
+  `count: 1`、`bytes: 0`。
 
 ~~~text
 @example 追加后按位置读取 {run}
@@ -342,30 +370,34 @@ bytes: 0
 ```
 ~~~
 
-没有显式 `@summary` 时，首个顶层普通段落是摘要；其余正文是详细说明。像[弃用与版本](#弃用与版本)那样写 `@summary` 和 `@description` 可分别指定。可本地化的说明可以有多段及列表；`@group`、`@tag` 是单行共享元数据，不加 `[lang=...]`，参见[分组与分类](#分组与分类)。
+没有显式 `@summary` 时，首个顶层普通段落是摘要，其余正文是详细说明。
+像[弃用与版本](#弃用与版本)那样写 `@summary` 和 `@description` 可分别指定；可本地化的说明可以有多段及列表。
+`@group`、`@tag` 是单行共享元数据，不加 `[lang=...]`，参见[分组与分类](#分组与分类)。
 
 <!-- cjdoc-bind target="pocketkit.TextCatalog.add" selector="signature:public func add(value: String): Unit" -->
 
 ## 写错怎么办
 
-以下是排错用的源码，不是可执行用例。先看表现，再把右侧的正确写法放回声明的注释。
+**任务**：先看表现，再把右侧的正确写法放回声明的注释。以下是排错用的源码，不是可执行用例。
 
-- **提示成了正文**：`@Warning 校验起点。` 不识别；在 `/** ... */` 的顶层写 `@warning 校验起点。`。即使拼写正确，围栏里的标签也只是代码，如下所示。
+- **提示成了正文**：`@Warning 校验起点。` 不识别；在 `/** ... */` 的顶层写 `@warning 校验起点。`。
+  即使拼写正确，围栏里的标签也只是代码，如下所示。
 
   ```text
   @warning 校验起点。
   ```
 
 - **空提示（`CJDOC3117`）**：只写 `@note` 不会出现空框；改成 `@note 连接结果保留条目顺序。`。
-- **提示 ID 冲突（`CJDOC3118`）**：`@note[id=order] 保留顺序。` 与 `@warning[lang=en,id=order] The result preserves order.` 不会配对；把后者改成 `@note[lang=en,id=order] The result preserves order.`。不同提醒则各自用不同 ID。
-- **异常 ID 冲突（`CJDOC3114`）**：把 `@throws[id=first] IllegalStateException 目录为空。` 和 `@throws[id=first] IllegalArgumentException 首项为空。` 写在一起会保留为独立条目；用 `@throws[id=empty-catalogue] IllegalStateException 目录为空。` 和 `@throws[id=blank-entry] IllegalArgumentException 首项为空。` 分开。
+- **提示 ID 冲突（`CJDOC3118`）**：`@note[id=order] 保留顺序。` 与 `@warning[lang=en,id=order] The result preserves order.` 不会配对；把后者改成 `@note[lang=en,id=order] The result preserves order.`。不同提醒各自用不同 ID。
+- **异常 ID 冲突（`CJDOC3114`）**：把 `@throws[id=first] IllegalStateException 目录为空。` 和 `@throws[id=first] IllegalArgumentException 首项为空。` 写在一起会保留为独立条目；改用 `@throws[id=empty-catalogue] IllegalStateException 目录为空。` 和 `@throws[id=blank-entry] IllegalArgumentException 首项为空。`。
 - **共享标签被翻译（`CJDOC3112`）**：`@tag[lang=en] cursor` 无效；写 `@tag cursor`，在 `[metadata.tags.titles]` 为它写 `en = "Cursor"`。
 - **参数或返回字段不匹配**：在 `at` 写 `@param position 起点。` 找不到参数（`CJDOC3109`）；改成 `@param index 从零开始的索引。`。同语言的两条 `@return` 合并成 `@return 保存在该位置的文本。`。普通单语重复返回是 `CJDOC3003`；启用本地化后的同语言字段冲突是 `CJDOC3106`。
 
-检查示例时，优先检查围栏，再检查指令和实际输出：
+检查示例时，先看围栏，再看指令和实际输出：
 
 1. **没有可检查的代码（`CJDOC3032`）**：`cj` 有高亮但不检查；只写 `output`，或 `cangjie` 围栏为空，也算没有代码。有指令时还报 `CJDOC3070`。把 ` ```cj ` 改为非空的小写 ` ```cangjie ` 或 `~~~cangjie` 围栏，例如放入 `println(catalog.at(0))`（先按[提供译文](#提供译文)准备 `catalog`）。
-2. **输出围栏位置不对（`CJDOC3033`）**：已有可检查代码时，`@example 追加后按位置读取 {must-pass}` 配 `output`，或 `{run}` 下写两份 `output` 都无效。改成 `@example 追加后按位置读取 {run}`，只留一个 `output` 围栏；若只编译则删掉 `output`。
-3. **输出不匹配（`CJDOC3072`）**：在中文 `add(String)` 用例写 `HELLO`，而程序打印的是 `hello`。中间的空格、标点及换行也必须一致。保持代码行为不变时，把 `output` 改回 `hello`（不是修改打印来迎合错字）。
+2. **输出围栏位置不对（`CJDOC3033`）**：已有可检查代码时，`@example 追加后按位置读取 {must-pass}` 配 `output`，或 `{run}` 下写两份 `output` 都无效。改成 `@example 追加后按位置读取 {run}`，只留一个 `output` 围栏；只编译则删掉 `output`。
+3. **输出不匹配（`CJDOC3072`）**：中文 `add(String)` 用例写 `HELLO`，而程序打印 `hello`。中间的空格、标点与换行也必须一致；代码正确时把 `output` 改回 `hello`，不要改打印来迎合错字。
 
-用诊断中的用例标题定位；无标题时找限定名，例如 `pocketkit.TextCatalog.contains`。只剩 warning 时，`--deny-warnings` 也会令检查失败。完整指令见[文档注释参考](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/reference/doc-comments.md#示例)，内存、时间、数量上限见[检查示例](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/check-examples.md#资源上限)。
+用诊断里的用例标题定位；无标题时找限定名，例如 `pocketkit.TextCatalog.contains`。
+只剩 warning 时，`--deny-warnings` 也会令检查失败。完整指令见[文档注释参考](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/reference/doc-comments.md#示例)，内存、时间、数量上限见[检查示例](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/check-examples.md#资源上限)。

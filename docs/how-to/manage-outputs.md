@@ -2,6 +2,13 @@
 
 重复生成到同一个目录时只替换 cjdoc 自己登记的文件，你自己放进去的内容保持不变；输出被占用时换一个独立目录拿到可用产物，源码缓存的位置也在这里调整。
 
+## 什么时候用本页
+
+- 每天都生成到同一个 `target/doc`，想知道哪些文件会被改写。
+- 想换格式重新生成，或想保留手工放进输出目录的笔记。
+- 生成报“目录被占用”“产物已被修改”“输出与缓存重叠”。
+- 想给源码缓存换位置，或临时不用缓存。
+
 ## 前提条件
 
 - 已完成[生成第一个站点](../tutorials/first-site.md)，命令在 `docdemo/` 项目根运行。
@@ -44,6 +51,7 @@ cjdoc generate --project . --format html --output "$OUT"
 |---|---|---|
 | 退出码 `2`，`error: bounded read could not access file: '<目录>/.cjdoc-output.json'` | `--output` 指向一个已存在但不是 cjdoc 生成的目录 | 换一个尚不存在的目录；先手工创建空目录也会得到同样结果 |
 | 退出码 `2`，`error: owned output artifact 'html/style.css' was modified; use --force-owned to replace it` | 你改过 cjdoc 登记过的文件 | 换新目录保留旧内容，或确认可以丢弃修改后加 `--force-owned` |
+| 退出码 `2`，`error: render artifact directory '…' is unowned; use --force-owned to adopt it` | 本次产物要写入的普通子目录已存在但不归 cjdoc 所有 | 换新目录，或确认该目录内容可以并入后加 `--force-owned` |
 
 确认不再需要手工修改后，让 cjdoc 用本次内容替换：
 
@@ -64,7 +72,7 @@ cjdoc generate --project . --format html --output "$OUT" --cache-dir .cache/cjdo
 cjdoc generate --project . --format html --output "$OUT" --no-cache
 ```
 
-**预期结果**：第一条命令在 `.cache/cjdoc-source` 下建立缓存；第二条不读写缓存。两个选项同时出现时，以最后一个为准。
+**预期结果**：第一条命令在 `.cache/cjdoc-source` 下建立缓存；第二条不读写缓存。`--cache-dir`、`--no-cache`、`--cache` 同时出现时，以最后一个为准。
 
 输出根与源码缓存不能重叠或互相包含：
 
@@ -107,12 +115,13 @@ macOS 用 `open`，Windows PowerShell 用 `Start-Process` 打开同一路径。
 | `error: unable to verify output lock owner process <pid>; refusing unsafe recovery` | 旧锁的属主进程状态无法验证 | 换一个不重叠的新父目录生成独立产物，见上一节 |
 | `error: owned output artifact '<相对路径>' was modified; use --force-owned to replace it` | 登记过的产物被手工改动 | 换新目录，或确认可丢弃改动后加 `--force-owned` |
 | 提示找不到 `.cjdoc-output.json` | 输出目录存在但不是 cjdoc 生成的 | 换尚不存在的目录 |
+| `error: render artifact '…' collides with unowned output content` | 同名文件已存在且不归 cjdoc 管理 | 换新目录；不要手工删除后重试来掩盖冲突 |
 | `error: output directory '…' and source cache directory '…' overlap` | 缓存落在输出根内或反之 | 把 `--cache-dir` 移到输出根之外 |
 
-输出根、缓存、事务恢复和 `--force-owned` 的完整约束见[产物参考](../reference/artifacts.md)和[CLI 参考](../reference/cli.md)。
+输出根、缓存、事务恢复和 `--force-owned` 的完整约束见[产物参考](../reference/artifacts.md)和 [CLI 参考](../reference/cli.md)。
 
 ## 下一步
 
 - [生成并发布文档](generate-and-publish.md)：选择发布格式并上传完整站点。
-- [按症状排查故障](troubleshoot.md)：定位项目、诊断和预览问题。
 - [本地预览](preview.md)：边改注释边查看页面。
+- [按症状排查故障](troubleshoot.md)：定位项目、诊断和预览问题。

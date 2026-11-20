@@ -1,15 +1,15 @@
 # 目录与资源入门
 
-用 PocketKit **0.2.0** 教学快照完成保存文本、保留快照、处理索引错误和关闭阅读会话四项任务。
-这四项是本教程的练习，不是全库核心任务清单。以下程序在 **Cangjie STS 1.2.0** 上验证。
+用 PocketKit **0.2.0** 完成四项任务：保存文本、保留快照、处理索引错误、关闭阅读会话。
+每节都给出一份完整的调用者程序，并说明它应打印什么。
 
 ## 准备调用者项目
 
-先安装 Cangjie STS 1.2.0，确认 `cjc -v` 和 `cjpm -v` 可用。取得本仓库源码后，
-保留 `examples/pocketkit/demo-v2` 与 `examples/pocketkit/support-v1` 的相对位置。
-调用者只需要 SDK 和这些库源码，不需要 cjdoc binary、stdx 或复现文档站点。
+需要 Cangjie STS 1.2.0：`cjc -v` 和 `cjpm -v` 都应输出版本。
+取得本仓库源码后，保留 `examples/pocketkit/demo-v2` 与 `examples/pocketkit/support-v1` 的相对位置。
+调用者只需要 SDK 和这些库源码，不需要 cjdoc binary、stdx 或文档站点。
 
-在 `examples/pocketkit/guide-caller` 新建目录，将下列内容保存为该目录的 `cjpm.toml`。
+在 `examples/pocketkit/guide-caller` 新建目录，把下面的内容保存为该目录的 `cjpm.toml`。
 `pocketkit` 是 static path dependency，路径相对于这份清单。
 
 ```toml
@@ -23,21 +23,19 @@ output-type = "executable"
 pocketkit = { path = "../demo-v2", output-type = "static" }
 ```
 
-在调用者目录中新建 `src` 子目录，并将下面某一节的**完整程序**保存为 `examples/pocketkit/guide-caller/src/main.cj`。
-四个程序应每次单独替换 `src/main.cj`，不要把它们拼接在同一文件中。
-每次都在 `examples/pocketkit/guide-caller` 工作目录运行同一条命令：
+再新建 `src` 子目录，把某一节的**完整程序**保存为 `examples/pocketkit/guide-caller/src/main.cj`。
+四个程序每次单独替换这个文件，不要拼接在同一文件中。在 `examples/pocketkit/guide-caller` 工作目录运行：
 
 ```sh
 cjpm run --build-args "--jobs 1"
 ```
 
-构建可能先打印状态行；成功运行必须打印该节给出的唯一 `PASS guide-…` 标记。
-编译或断言失败不算成功。以下都是单线程程序；`TextCatalog` 和 `TextReader` 不提供内部同步，
-并发调用需要调用者按 API 作者的说明安排同步。
+构建可能先打印状态行；成功运行时，每节只打印自己的一个 `PASS guide-…` 标记。编译或断言失败都不算成功。
+这些是单线程程序：`TextCatalog` 和 `TextReader` 不提供内部同步，并发调用需要调用者按 API 作者的说明安排同步。
 
 ## 保存并读取文本
 
-构造空目录并调用 `String` 重载追加原样文本，索引从零开始。
+构造空目录，用 `String` 重载追加原样文本，再按索引读回。索引从零开始。
 
 | 精确关联的 API | 本节用途 |
 | --- | --- |
@@ -49,7 +47,7 @@ cjpm run --build-args "--jobs 1"
 | `size` | 核对条目数 |
 
 将以下程序保存为 `src/main.cj`，运行后应打印 `PASS guide-store-read`。
-按索引读取的边界和异常见[索引失败处理](#选择索引失败的处理方式)。
+越界与负索引会抛出异常，处理方式见[索引失败处理](#选择索引失败的处理方式)。
 
 ```cangjie
 package guide_caller
@@ -72,7 +70,7 @@ main(): Int64 {
 
 ## 保留快照再清空
 
-快照保留取得时的元素，不共享目录内部容器。清空后检查原目录为空，并检查快照的全部原元素。
+`snapshot` 保留取得时的元素，不共享目录内部容器。清空后核对原目录为空，快照仍是原条目。
 
 | 精确关联的 API | 本节用途 |
 | --- | --- |
@@ -108,8 +106,8 @@ main(): Int64 {
 
 ## 选择索引失败的处理方式
 
-`at` 对负索引或越界抛出 `IllegalArgumentException`；如果不存在是正常情况，使用返回 `None` 的 `tryAt`。
-整数 `add` 的默认参数按十进制追加；非法 `radix` 必须拒绝，且不追加任何条目。
+`at` 对负索引或越界抛出 `IllegalArgumentException`；如果不存在是正常情况，改用返回 `None` 的 `tryAt`。
+整数 `add` 默认按十进制追加，不支持的 `radix` 必须拒绝，并且不追加任何条目。
 
 | 精确关联的 API | 本节用途 |
 | --- | --- |
@@ -159,9 +157,9 @@ main(): Int64 {
 
 ## 关闭阅读会话
 
-调用者负责关闭 `openText` 返回的**内存会话**；它不是 OS 文件描述符，也不持有网络连接或后台线程。
-EOF 返回 `None`，不等于已关闭。`close` 可重复调用；关闭后 `read` 和 `rewind` 都拒绝，且不会重新打开会话。
-下面用 `finally` 保证调用者在检查过程失败时也关闭会话。
+`openText` 返回的是**内存会话**，由调用者负责关闭；它不是 OS 文件描述符，也不持有网络连接或后台线程。
+读到 EOF 返回 `None`，会话仍然打开。`close` 可以重复调用；关闭后 `read` 和 `rewind` 都会拒绝，且不会重新打开会话。
+下面的程序用 `finally` 保证检查失败时也关闭会话。
 
 | 精确关联的 API | 本节用途 |
 | --- | --- |
@@ -211,7 +209,7 @@ main(): Int64 {
 }
 ```
 
-指南程序的执行证据与源码 `@example` 报告分开记录；普通 Markdown 围栏不自动成为产品 doctest。
-版本切换器还保留 demo-v1 历史指南。应使用该版本的 API，不要把本页的 v2 程序套用到 v1。
+想对照生成页面时，回到本站的 API 参考打开这些声明；版本页仍保留 demo-v1 的旧指南，
+那份指南使用旧的 API，不要把本页的 v2 程序套用到 v1。
 
 [返回项目介绍](index.md)

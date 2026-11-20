@@ -6,6 +6,24 @@
 
 配置错误是输入错误，退出码 `2`，不产出该次文档；质量诊断与未达标门槛是检查失败，退出码 `1`。操作的下一步见[添加指南](../tutorials/add-guides.md)、[发布多语言页面](../tutorials/publish-languages.md)、[检查文档质量](../how-to/check-quality.md)、[代码高亮](../how-to/highlighting.md)、[链接外部文档](../how-to/link-documentation.md)。
 
+## 快速索引
+
+| 你要设置 | 表 | 关键约束 |
+|---|---|---|
+| 产物目录与格式 | `[output]` | 至少一种格式；仅 generate/serve |
+| 受众、并发、规则档、依赖、缓存 | `[analysis]` | `jobs` 为 `1..64`；`cache-dir` 与 `no-cache` 互斥 |
+| 语义模式 | `[semantic]` | `source` 或 `chir`，默认 `chir` |
+| 首页、指南、包概述 | `[docs]`、`[[docs.pages]]`、`[docs.pages.sections]`、`[docs.packages]` | 路由必须在 `concepts/` 下 |
+| 分组与分类标签标题 | `[metadata]`、`[[metadata.groups]]`、`[[metadata.tags]]` | 标题只影响显示 |
+| 发布语言 | `[i18n]` | 只需 `default-language`；最多两种语言 |
+| 质量规则严重级别 | `[lint]` | 规则可单独关闭或升级 |
+| 覆盖率门槛 | `[coverage]` 及包级、翻译门槛 | `0..100` 整数 |
+| 代码高亮 | `[highlight]` | 内置只支持仓颉 |
+| Doc IR 大小 | `[limits]` | `1..64` MiB |
+| 多仓源码来源 | `[[source.repositories]]` | 必须完整 commit SHA |
+| 旧式外部文档链接 | `[external-docs.<名称>]` | 不产生 `verified` |
+| 已移除的示例执行配置 | `[doctest]` | 出现即报错 |
+
 ## 表索引
 
 | 表 | 作用 |
@@ -38,7 +56,7 @@
 
 | 键 | 取值 | 默认 | 说明 |
 |---|---|---|---|
-| `formats` | `json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index` 的数组 | `["json"]` | 至少一项，不能重复；顺序不影响结果 |
+| `formats` | `json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index` 的数组 | `["json"]` | 至少一项，不能重复；输出顺序固定，与书写顺序无关 |
 | `directory` | 目录 | generate/serve 为 `<项目>/target/doc` | 相对路径按项目根解析；不能与源码缓存目录重叠或嵌套 |
 | `agent-full` | `true`、`false` | `false` | 需要 HTML 输出 |
 | `html-font-sans` | 字体族列表字符串 | 无 | 与 `--html-font-sans` 同规则，需要 HTML 输出 |
@@ -55,6 +73,7 @@ agent-full = true
 - `agent-full` 与两个字体键只对 HTML 产物生效：解析后的格式不含 `html`（或命令是 check/`--stdout`）时它们不会被继承，也不会因此报错；配置写错仍在读取时立即报错。命令行显式给出这几项却只要 `json` 时依旧报错。
 - `--output` 覆盖 `directory`；`--stdout` 是一次性的单向输出，此时 `[output]` 整张表都不参与。
 - 关闭型开关可以用 `--no-agent-full` 在单次命令中反转配置。
+- `formats` 写成非数组字面量、空数组或重复项都报配置错误。
 
 ### `[analysis]`：受众、并发、依赖与缓存
 
@@ -65,7 +84,7 @@ agent-full = true
 | `lint-profile` | `off`、`standard`、`strict` | `--lint-profile` |
 | `include-path-dependencies` | `true`、`false` | `--include-path-dependencies`、`--no-include-path-dependencies` |
 | `include-cached-dependencies` | `true`、`false` | `--include-cached-dependencies`、`--no-include-cached-dependencies` |
-| `cjpm-cache` | 目录 | `--cjpm-cache`，要求 `include-cached-dependencies = true` |
+| `cjpm-cache` | 目录 | `--cjpm-cache`，仅在缓存依赖打开时采用 |
 | `cache-dir` | 目录 | `--cache-dir` |
 | `no-cache` | `true`、`false` | `--no-cache` |
 | `cfg` | `NAME=VALUE` 数组 | `--cfg` |
@@ -81,10 +100,11 @@ dependency-sources = ["support=vendor/support"]
 cache-dir = "target/cjdoc-cache"
 ```
 
-- `cache-dir` 与 `no-cache = true` 互斥，同时出现是配置错误；命令行里 `--cache-dir`、`--no-cache`、`--cache` 按最后出现的那个生效，所以配置关闭缓存后仍可用 `--cache` 在单次命令中重新打开。
-- `cfg` 与 `dependency-sources` 按名称合并：CLI 给出同名项时使用 CLI 的值，其余配置项继续生效。`dependency-sources` 的路径同样按项目根解析。
+- `cache-dir` 与 `no-cache = true` 互斥，同时出现是配置错误 `[analysis] cache-dir and no-cache are mutually exclusive`；命令行里 `--cache-dir`、`--no-cache`、`--cache` 按最后出现的那个生效，所以配置关闭缓存后仍可用 `--cache` 在单次命令中重新打开。
+- `cfg` 与 `dependency-sources` 按名称合并：CLI 给出同名项时使用 CLI 的值，其余配置项继续生效。`dependency-sources` 的路径同样按项目根解析，同名项在配置内重复是错误。
 - `dependency-sources` 是对依赖源码的显式选取；`include-path-dependencies` 只控制其余 manifest 路径依赖的自动收集。`--no-include-path-dependencies` 不移除已显式选取的依赖，需要替换路径时用同名 `--dependency-source`。
-- 缓存相关的运行时约束不变：`cjpm-cache` 只在 `include-cached-dependencies` 打开时才有意义，`cache-dir` 不能落在输出目录内。`--no-include-cached-dependencies` 会同时丢弃配置的 `cjpm-cache`，因为该缓存根离开缓存依赖读取没有用途；`--cjpm-cache` 仍要求显式打开缓存依赖。
+- `cjpm-cache` 只在 `include-cached-dependencies` 打开时才被采用；关闭缓存依赖读取后这个缓存根没有用途，配置里写了也不会报错，只是不生效。`--cjpm-cache` 仍要求同一命令里打开缓存依赖，否则报 `--cjpm-cache requires --include-cached-dependencies`。
+- `cache-dir` 不能落在输出目录内，否则冲突检查直接失败。
 
 ### `[semantic]`：语义模式
 
@@ -117,7 +137,7 @@ CLI 的 `--semantic` 默认就是 `chir`，与表中省略 `mode` 时一致；�
 | `index` | 字符串 | `docs/index.md` | 项目内安全相对 `.md` 路径；绝对路径、`\`、`..`、`:` 都报 `[docs] index must be a safe relative Markdown path` |
 | `index-source` | 字符串 | 同 `index` | `index` 的别名；两者都出现时后读到的值生效 |
 
-首页路由固定为 `concepts/index.html`。启用了概念文档但首页源文件不存在时生成默认项目页；模块页、包页的默认源文件是 `docs/modules/<slug>.md`、`docs/packages/<slug>.md`，缺失时生成中性默认正文。`slug` 把名称中 ASCII 字母、数字以外的字符折叠成连字符。
+首页路由固定为 `concepts/index.html`。启用了概念文档但首页源文件不存在时生成默认项目页；模块页、包页的默认源文件是 `docs/modules/<slug>.md`、`docs/packages/<slug>.md`，缺失时生成中性默认正文。`slug` 把名称中 ASCII 字母、数字以外的字符折叠成连字符，全无安全字符时用 `page`。
 
 ### `[[docs.pages]]`：自定义指南或概念页
 
@@ -130,11 +150,11 @@ CLI 的 `--semantic` 默认就是 `chir`，与表中省略 `mode` 时一致；�
 | `route` | 字符串 | `concepts/guides/<源路径 slug>` | 必须在 `concepts/` 下；不能以 `/` 或 `\` 开头，不能含 `..`、`:`、`?`、`#` 或控制字符；未写 `.html` 自动补上。违规报 `[[docs.pages]] route must be a safe relative path` 或 `conceptual page route must stay under concepts/` |
 | `title` | 字符串 | 源文件第一个非代码块、非缩进的 `# ` 标题，否则源路径 | 空值即采用默认 |
 | `id` | 字符串 | `route` | 多语言配对用；带 `language` 却不写 `id` 报 `CJDOC3110 … requires an explicit id; page omitted` |
-| `language` | `zh-CN` 或 `en` | 配置的 `default-language` | 其他语言值报 `unsupported documentation language '<值>'` |
+| `language` | `zh-CN` 或 `en` | 未指定时按配置的 `default-language` | 其他语言值报 `unsupported documentation language '<值>'` |
 | `kind` | `guide`、`package`、`project`、`module` | `guide` | 其他值报 `invalid documentation page` |
 | `package` | 字符串 | 无 | 关联包名；不替代页面绑定与包身份检查 |
 
-单个源文件最多 256 KiB，概念页合计最多 128 页。同一语言内重复 `id` 报 `CJDOC3110` 并跳过重复页。同一语言内路由冲突保留可读前缀并加稳定后缀，报 `CJDOC4060` 并给出实际路由；实际路径以生成的导航索引为准。
+单个源文件最多 256 KiB，概念页合计最多 128 页。同一语言内重复 `id` 于是报 `CJDOC3110` 并跳过重复页（首条保留）。同一语言内路由冲突保留可读前缀并加稳定后缀，报 `CJDOC4060` 并给出实际路由；实际路径以生成的导航索引为准。
 
 ### `[docs.pages.sections]`：多语言章节锚点
 
@@ -268,7 +288,7 @@ languages = ["zh-CN", "en"]
 missing-translation = "warn"
 ```
 
-未知键报 `unknown [i18n] setting '<键>'`，重复键报 `duplicate [i18n] key '<键>'`。语言不做 `zh-Hans`、`zh-TW`、`en-US` 之类的区域别名推断；`--all-languages` 要求本表显式列出语言。注释里的语言限定与译文回退见[文档注释参考](doc-comments.md#多语言注释)。
+未知键报 `unknown [i18n] setting '<键>'`，重复键报 `duplicate [i18n] key '<键>'`。语言不做 `zh-Hans`、`zh-TW`、`en-US` 之类的区域别名推断；`--all-languages` 要求本表显式列出语言，否则报 `--all-languages requires explicit [i18n] languages`。注释里的语言限定与译文回退见[文档注释参考](doc-comments.md#多语言注释)。
 
 ## `[lint]`：质量规则严重级别
 
@@ -306,7 +326,7 @@ broken-link = "error"
 example-not-compiling = "error"
 ```
 
-`--lint-profile off` 不运行质量规则，只做引用解析；`standard`（默认）运行其中一部分；`strict` 额外把「完全没有注释」升级为严格规则。`--deny-warnings` 让 warning 也导致失败。质量发现也写进 `coverage/quality.json`。
+`--lint-profile off` 不运行质量规则，只做引用解析；`standard`（默认）运行其中一部分，不把「完全没有注释」升级为严格规则；`strict` 额外启用严格符号注释规则并检查缺失参数文档。`--deny-warnings` 让 warning 也导致失败。质量发现也写进 `coverage/quality.json`。
 
 ## `[coverage]`：覆盖率门槛
 
