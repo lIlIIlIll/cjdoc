@@ -169,7 +169,7 @@ class BuildIntegrationTests(unittest.TestCase):
             with self.subTest(change=change):
                 repo, site, current, result = self.compatibility_fixture()
                 if change == "missing-preview":
-                    (repo / "docs/assets/readme/preview-dark.png").unlink()
+                    (repo / "docs/assets/readme/preview-themes.webp").unlink()
                 else:
                     (repo / "docs/assets/brand/unused.svg").write_text("not published", encoding="utf-8")
                 with self.assertRaisesRegex(ContractError, "asset inventory mismatch"):
