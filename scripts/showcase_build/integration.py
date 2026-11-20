@@ -22,7 +22,7 @@ FORMATS = ("html", "json", "markdown", "api-surface", "coverage", "symbol-index"
 USER_DOCUMENTATION_DIRECTORIES = ("getting-started", "tutorials", "how-to", "reference")
 PUBLICATION_ASSET_FILES = {
     "brand": ("mark.svg", "lockup-light.svg", "lockup-dark.svg", "favicon.svg", "favicon.ico"),
-    "readme": ("preview-light.png", "preview-dark.png"),
+    "readme": ("preview-themes.webp",),
 }
 
 

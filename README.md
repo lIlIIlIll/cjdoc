@@ -19,13 +19,12 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/preview-dark.png">
-    <img src="docs/assets/readme/preview-light.png" width="900" alt="PocketKit 的 TextCatalog.add 字符串重载、参数与示例">
-  </picture>
+  <a href="docs/assets/readme/preview-themes.webp">
+    <img src="docs/assets/readme/preview-themes.webp" width="900" alt="PocketKit 文档：纸色主题的 API 示例、海洋主题的搜索结果、紫罗兰主题的弃用迁移">
+  </a>
 </p>
 
-<p align="center">PocketKit 示例文档，由 cjdoc 生成</p>
+<p align="center">PocketKit 示例文档，由 cjdoc 生成 · 点图查看原图</p>
 
 ## cjdoc 能做什么
 

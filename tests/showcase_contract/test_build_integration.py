@@ -76,8 +76,7 @@ class BuildIntegrationTests(unittest.TestCase):
         source("docs/schema/doc-ir.schema.json", "{}")
         for name in ("mark.svg", "lockup-light.svg", "lockup-dark.svg", "favicon.svg", "favicon.ico"):
             source("docs/assets/brand/" + name, "brand:" + name)
-        for name in ("preview-light.png", "preview-dark.png"):
-            source("docs/assets/readme/" + name, "preview:" + name)
+        source("docs/assets/readme/preview-themes.webp", "preview:themes")
         source("docs/assets/unselected/legacy.png", "not published")
         (repo / "docs/assets/readme").mkdir(parents=True, exist_ok=True)
 
@@ -110,7 +109,7 @@ class BuildIntegrationTests(unittest.TestCase):
 
         for relative in (
                 "docs/assets/brand/mark.svg", "docs/assets/brand/favicon.ico",
-                "docs/assets/readme/preview-light.png", "docs/assets/readme/preview-dark.png"):
+                "docs/assets/readme/preview-themes.webp"):
             self.assertEqual((site / relative).read_bytes(), (repo / relative).read_bytes())
         self.assertFalse((site / "docs/maintainer").exists())
         self.assertFalse((site / "docs/schema").exists())
