@@ -134,6 +134,10 @@ private func replacementTagLine(text: String): Bool {
         text.startsWith("@replacement\t") || text.startsWith("@replacement[")
 }
 
+private func deprecationTagLine(text: String): Bool {
+    text == "@deprecated" || text.startsWith("@deprecated ")
+}
+
 private func isStructuredDocTag(tagText: String): Bool {
     tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t") ||
         tagText.startsWith("@group[") ||
@@ -144,7 +148,7 @@ private func isStructuredDocTag(tagText: String): Bool {
         tagText.startsWith("@throws ") ||
         tagText == "@see" || tagText.startsWith("@see ") ||
         tagText.startsWith("@since ") ||
-        tagText == "@deprecated" || tagText.startsWith("@deprecated ") || tagText.startsWith("@deprecated\t") ||
+        deprecationTagLine(tagText) ||
         replacementTagLine(tagText) ||
         tagText.startsWith("@author ") || tagText.startsWith("@version ") ||
         tagText == "@example" || tagText.startsWith("@example ") ||
@@ -427,8 +431,7 @@ private class DocCommentParseState {
             currentTag = tag
         } else if (tagText.startsWith("@since ")) {
             since = tagText.removePrefix("@since ").trimAscii()
-        } else if (tagText == "@deprecated" || tagText.startsWith("@deprecated ") ||
-            tagText.startsWith("@deprecated\t")) {
+        } else if (deprecationTagLine(tagText)) {
             let tag = DocTag("deprecated", "", tagText.removePrefix("@deprecated").trimAscii())
             deprecated = Some(tag)
             currentTag = Some(tag)
