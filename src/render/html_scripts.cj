@@ -849,8 +849,11 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
 })();
 """
 
-// search.js order is fixed by renderers_output.cj:
-// sidebar navigation + search kernel + this dialog controller + reading
-// controllers + language navigation.
 internal let HTML_SEARCH_SCRIPT = HTML_SEARCH_KERNEL_SCRIPT + HTML_SEARCH_CONTROLLER_SCRIPT +
     HTML_READING_SCRIPT
+
+// Keep the source indented, but don't ship the common two-space script
+// indentation. The canonical asset test excludes line-sensitive literals.
+internal let HTML_READER_BUNDLE =
+    (HTML_API_LINK_SCRIPT + HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
+    .replace("\n  ", "\n")

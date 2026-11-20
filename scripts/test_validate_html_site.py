@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -55,14 +56,18 @@ def canonical_api_route_script() -> str:
 
 
 def canonical_search_script() -> str:
-    """search.js bytes, in the order renderers_output.cj concatenates them."""
+    """Reproduce the canonical reader bundle, including packaging whitespace."""
     render = SCRIPT.parent.parent / "src/render"
-    return (canonical_api_route_script()
-            + _script_literal(render / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
-            + _script_literal(render / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_SCRIPT")
-            + _script_literal(render / "html_scripts.cj", "HTML_SEARCH_CONTROLLER_SCRIPT")
-            + _script_literal(render / "html_script_reading.cj", "HTML_READING_SCRIPT")
-            + _script_literal(render / "html_script_language.cj", "LANGUAGE_NAVIGATION_SCRIPT"))
+    source = (canonical_api_route_script()
+              + _script_literal(render / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
+              + _script_literal(render / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_SCRIPT")
+              + _script_literal(render / "html_scripts.cj", "HTML_SEARCH_CONTROLLER_SCRIPT")
+              + _script_literal(render / "html_script_reading.cj", "HTML_READING_SCRIPT")
+              + _script_literal(render / "html_script_language.cj", "LANGUAGE_NAVIGATION_SCRIPT"))
+    code = re.sub(r"(?m)^ *//[^\n]*", "", source)
+    if "`" in code or "\\\n" in code:
+        raise ValueError("the reader bundle must not contain template literals or continued string lines")
+    return source.replace("\n  ", "\n")
 
 
 def canonical_theme_bootstrap_script() -> str:
