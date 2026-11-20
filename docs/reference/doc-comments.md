@@ -2,7 +2,22 @@
 
 仓颉声明注释里可用的标签、属性、示例指令、分组与多语言写法，以及指南 Markdown 与 API 的绑定语法。生成流程见[生成与发布](../how-to/generate-and-publish.md)，示例检查的操作步骤见[检查文档示例](../how-to/check-examples.md)，配置项见[配置参考](configuration.md)。
 
-要从源码对照实际页面，打开 [PocketKit 文档注释示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md)；生成 demo-v2 站点后可从首页进入并沿「相关 API」打开对应声明。
+要从源码对照实际页面，打开 [PocketKit 文档注释示例](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md)；生成 demo-v2 站点后可从首页进入并沿「相关 API」打开对应声明。
+
+## 快速索引
+
+| 你要写 | 用哪个标签 | 详见 |
+|---|---|---|
+| 参数、返回值、异常 | `@param`、`@return`、`@throws` | [支持的标签](#支持的标签) |
+| 版本、作者、弃用、相关声明 | `@since`、`@version`、`@author`、`@deprecated`、`@see` | [支持的标签](#支持的标签) |
+| 调用前后条件、状态、并发责任 | 九种行为契约 | [行为契约](#行为契约) |
+| 可执行或可核对的代码 | `@example` 与 `cangjie`、`output` 围栏 | [示例](#示例) |
+| 注意、警告、危险提示 | `@note`、`@warning`、`@danger` | [提示标签](#提示标签) |
+| 页面分组与分类标签 | `@group`、`@tag` | [分组与标签](#分组与标签) |
+| 中英文分别写正文 | `[lang=en]` 等语言限定 | [多语言注释](#多语言注释) |
+| 指南里嵌入 API 入口 | `<!-- cjdoc-bind ... -->` | [指南 Markdown 与 API 绑定](#指南-markdown-与-api-绑定) |
+
+注释内容全部来自作者：cjdoc 不会补写摘要、参数说明或译文，也不会把作者写的说明升级为编译器证明。
 
 ## 注释识别
 
@@ -57,7 +72,7 @@
 
 把 `@replacement` 放在顶层，和列表、代码围栏等 Markdown 块用空行隔开。它不标记弃用；`@see`、行内代码和源码注解的消息也不生成迁移链接。目标为空、不唯一、指向自己、对当前读者不可见或无法验证时，`CJDOC3138` 指向注释位置，页面仍保留弃用状态与说明。
 
-在 [PocketKit 弃用示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)对照两种结果：`firstTextOrEmpty` 只有徽标，`requireFirstText` 同时提供「改用 `TextCatalog.first()`」。点击旧名称仍打开旧 API。
+在 [PocketKit 弃用示例](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)对照两种结果：`firstTextOrEmpty` 只有徽标，`requireFirstText` 同时提供「改用 `TextCatalog.first()`」。点击旧名称仍打开旧 API。
 
 ### 行为契约
 
@@ -75,7 +90,7 @@
 | `@compatibility 旧的单参数调用仍有效，使用默认的十进制。` | 旧用法与兼容条件 | `TextCatalog.add(Int64, radix:)` |
 | `@error radix 不是 10 时，不追加任何条目。` | 失败时的可见行为；具体异常用 `@throws` | `TextCatalog.add(Int64, radix:)` |
 
-在 [PocketKit 行为契约示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#行为契约)里对照中英文源码与关联 API。契约和 `@throws` 都是说明，不会触发行为检查。
+在 [PocketKit 行为契约示例](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md#行为契约)里对照中英文源码与关联 API。契约和 `@throws` 都是说明，不会触发行为检查。
 
 ### 宏声明与宏包裹的源码
 
@@ -204,7 +219,7 @@ error[CJDOC3132]: @tag requires one ASCII identifier (1-64 letters, digits, '-' 
   读取窗口不会移除或重排目录里的条目。
 ```
 
-PocketKit 的 [`TextCatalog.window` 源码](../../examples/pocketkit/demo-v2/src/catalog.cj) 在同一声明中分别演示这两种列表；`TextCatalog.join` 演示重复和混用提示。
+PocketKit 的 [`TextCatalog.window` 源码](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/src/catalog.cj) 在同一声明中分别演示这两种列表；`TextCatalog.join` 演示重复和混用提示。
 
 ### 属性与诊断
 
@@ -285,7 +300,7 @@ error[CJDOC3033]: @example '冲突' has invalid directives: 'must-pass' and 'mus
 
 每个有代码的示例最多一个 `output` 围栏，且必须与 `run` 同用。省略 `output` 只检查正常退出；空 `output` 要求没有标准输出。比较时统一换行符并忽略首尾空行。示例包在无参数 `main` 里执行，不能使用 `args`。
 
-生成页面会展示作者写的预期输出，不会自动采集运行结果。可在 PocketKit 的 [`TextCatalog.window` 源码](../../examples/pocketkit/demo-v2/src/catalog.cj) 看到四个带输出的用例：正常分页、默认值与末页、空窗口、非法参数。生成 PocketKit 文档后，在 `window` 页的「示例」区可看到每个用例的代码和预期输出。
+生成页面会展示作者写的预期输出，不会自动采集运行结果。可在 PocketKit 的 [`TextCatalog.window` 源码](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/src/catalog.cj) 看到四个带输出的用例：正常分页、默认值与末页、空窗口、非法参数。生成 PocketKit 文档后，在 `window` 页的「示例」区可看到每个用例的代码和预期输出。
 
 | 边界或结果 | 报告 |
 |---|---|
@@ -315,7 +330,7 @@ error[CJDOC3033]: @example '冲突' has invalid directives: 'must-pass' and 'mus
 | ` ```output layout=prose ` | 紧贴在代码块下方的正文式输出，适合教程 |
 | ` ```output layout=side-by-side ` | 桌面阅读区足够宽时左右并排；触屏与窄屏仍先代码后输出 |
 
-布局只影响 HTML，不改变编译、运行或输出核对。首页与指南 Markdown 也可用这三种写法：把顶层的 `output` 围栏紧跟在一个或多个小写 `cangjie` 围栏后。两者之间可以写「预期输出」作普通或加粗段落，不要插入标题或其他正文。参见 [PocketKit 示例与输出](../../examples/pocketkit/demo-v2/docs/doc-comments.md#示例与输出)。
+布局只影响 HTML，不改变编译、运行或输出核对。首页与指南 Markdown 也可用这三种写法：把顶层的 `output` 围栏紧跟在一个或多个小写 `cangjie` 围栏后。两者之间可以写「预期输出」作普通或加粗段落，不要插入标题或其他正文。参见 [PocketKit 示例与输出](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md#示例与输出)。
 
 ## 多语言注释
 
@@ -334,7 +349,7 @@ cjdoc 不自动翻译，也不校验译文是否正确、同步或最新；每�
  */
 ```
 
-不写 `@summary` 时，从顶层首个普通段落取摘要。要分别指定摘要和多段详细说明，可照抄 [PocketKit 的弃用示例](../../examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)。
+不写 `@summary` 时，从顶层首个普通段落取摘要。要分别指定摘要和多段详细说明，可照抄 [PocketKit 的弃用示例](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md#弃用与版本)。
 
 语言限定必须紧跟标签名、在同一行，形如 `@param[lang=en] text ...`。`@param` 译文仍要写出真实参数名；语言限定之后的多段说明、列表、表格、引用和围栏都属于该译文。自然语言限定不会改变代码围栏语言或 `{run}` 等示例指令的含义。
 

@@ -10,6 +10,8 @@
 | `1` | 文档诊断、质量门槛、示例检查或 API 门槛失败；生成本身可能仍写出了产物 |
 | `2` | 命令用法、配置或输入路径错误，通常没有可用的新产物 |
 
+看到 `1` 时先读诊断，再看产物是否够用；看到 `2` 时先修命令或输入，不要重试同一条命令。
+
 ## 命令找不到或启动失败
 
 **现象**：`cjdoc: command not found`；或启动时提示缺少仓颉运行库，例如 `error while loading shared libraries: libcangjie-std-ast.so: cannot open shared object file: No such file or directory`；或 `cjdoc: symbol lookup error: cjdoc: undefined symbol: …`。
@@ -27,7 +29,7 @@ cjpm -v
 
 **处理**：命令找不到时按[安装说明](../getting-started/install.md)把安装前缀加入 `PATH`。运行库或符号报错时，在同一终端重新加载仓颉 SDK 的 `envsetup.sh`，并用 `hash -r` 清掉 shell 的命令缓存。
 
-**恢复后**：`command -v cjdoc` 输出安装目录中的绝对路径，`cjdoc --version` 输出 `cjdoc 0.7.8`，`cjc -v` 与 `cjpm -v` 报告同一套 SDK 的 `1.2.0`。
+**恢复后**：`command -v cjdoc` 输出安装目录中的绝对路径，`cjdoc --version` 输出当前版本号，`cjc -v` 与 `cjpm -v` 报告同一套 SDK 的 `1.2.0`。
 
 ## 生成报项目根错误
 
@@ -63,6 +65,7 @@ cjdoc generate --project /你的/项目根 --format html --output target/doc
 | 声明是 `internal` 或 `private` | 默认 `--audience external` 只展示 `public` 和 `protected`。`package` 包含非私有声明；要查看私有声明用 `all` |
 | 声明在条件编译分支里 | 按源码实际读取的条件传值，例如 `--cfg feature=enabled`。不要为了消除提示猜值 |
 | 项目是 workspace | 确认成员目录里有自己的 `cjpm.toml`，且没有越过 workspace 根；成员被跳过时诊断会说明原因 |
+| 依赖库的声明没出现 | 路径依赖要 `--include-path-dependencies`，缓存依赖要 `--include-cached-dependencies`，见[选择输入](select-inputs.md) |
 | 诊断里仍有 `error` | 先修正诊断指向的源码位置，再重新生成 |
 
 查看更宽的可见范围：
@@ -112,7 +115,7 @@ public func greet(name: String): String {
 
 **恢复后**：重新生成并刷新页面，摘要、参数和返回值都显示你写的内容；再次运行 `cjdoc check --project .` 时这些条目不再出现。
 
-`[lint]` 表可以调整各规则的严重级别（`off`、`warning`、`error`），例如把 `missing-example = "off"`。`--lint-profile off` 会关闭 lint，参数覆盖率也可能下降，即使页面仍显示 `@param` 说明；需要参数覆盖率时使用 `standard` 或 `strict`，见[检查文档质量](check-quality.md)。
+`[lint]` 表可以调整各规则的严重级别（`off`、`warning`、`error`），例如把 `missing-example = "off"`。`--lint-profile off` 会关闭 lint，参数覆盖率也可能下降；需要参数覆盖率时使用 `standard` 或 `strict`，见[检查文档质量](check-quality.md)。
 
 ## 修改源码后页面没更新
 
@@ -157,7 +160,7 @@ cjdoc generate --project . --format json --output target/doc-ir-capture
 python3 -c "import json;d=json.load(open('target/doc-ir-capture/docs.json'));print(d['status'], d['apiCollectionState'])"
 ```
 
-`status` 取 `complete` 或 `partial`；`apiCollectionState` 独立取 `resolved`、`partial` 或 `unavailable`。`partial` 表示有一部分输入无法确定，不是所有结果都失效；先确认不完整部分是否影响你要做的覆盖率检查、基线比较或外部链接。
+`status` 取 `complete` 或 `partial`；`apiCollectionState` 独立取 `resolved`、`partial` 或 `unavailable`。两者可以不一致：API 完整收集时，可选高亮后端失败也会让 `status` 为 `partial`。`partial` 表示有一部分输入无法确定，不是所有结果都失效；先确认不完整部分是否影响你要做的覆盖率检查、基线比较或外部链接。
 
 **处理**：按诊断来源处理。
 
@@ -166,6 +169,7 @@ python3 -c "import json;d=json.load(open('target/doc-ir-capture/docs.json'));pri
 | `@When` 条件 | 确认应用需要的条件值后显式传入，例如 `--cfg feature=enabled` |
 | workspace 成员（如 `CJDOC1010`） | 确认成员目录存在且含 `cjpm.toml`，再从 workspace 根重新生成 |
 | 依赖源码 | cjdoc 不代你下载依赖；先准备好依赖，再按[选择输入与依赖](select-inputs.md)引入 |
+| CHIR 语义补充 | 按 `CJDOC2101`–`CJDOC2106` 检查 worker 与编译器，见[CHIR 指南](chir.md) |
 | 仍无法消除 | 保留 `partial` 结果，按[状态与限制参考](../reference/states-and-limits.md)判断它适合哪类用途 |
 
 依赖 warning 不一定把结果标为 `partial`；例如缺失 path 依赖的 `CJDOC2302` 可以与 `complete` 并存，仍应单独处理。
@@ -200,7 +204,7 @@ cjdoc check --project . --check-examples
 
 示例代码只能是函数体内的片段，需要的 `import` 写在所属源码文件中。每个示例最多运行 10 秒，stdout 和 stderr 各 64 KiB，内存上限 2048 MiB，单次检查最多 256 个示例。完整步骤见[检查示例](check-examples.md)。
 
-**恢复后**：`cjdoc check --project . --check-examples` 退出 `0`，所选示例的编译约定通过；带 `run` 的示例实际运行完成，有 `output` 围栏时其内容与实际输出一致。
+**恢复后**：`cjdoc check --project . --check-examples` 退出 `0`；带 `run` 的示例实际运行完成，有 `output` 围栏时其内容与实际输出一致。
 
 ## 质量门槛失败
 
@@ -244,6 +248,7 @@ error: API diff inputs must match project, audience, and cfgProfile
 | 终端已返回提示符且连接被拒绝 | 服务已退出（如 `--project` 不可用） | 修正 `--project` 后重启 |
 | `serve: rebuild failed; keeping the last successful site` | 重建抛错，服务继续用上次成功站点 | 读终端 `error:` 行修正输入，保存触发重建或重启 |
 | `serve: generated html with diagnostics` 且页面未变 | 本次构建有 error 级诊断 | 按终端诊断修正后再次保存 |
+| `serve: output or cache location changed; restart serve` | 重建时解析出不同输出或缓存位置 | 停止并用新的 `--output`/`--cache-dir` 重启 |
 | `status` 为 `error` | 最近一次构建失败 | 查看 `lastError` 与终端诊断，修正后等重建 |
 
 换端口：
@@ -270,9 +275,10 @@ curl -fsS http://127.0.0.1:8081/__cjdoc/status.json
 
 ```bash
 cjdoc --help
+cjdoc generate --help
 ```
 
-`cjdoc --help` 只提供顶层帮助；子命令没有独立帮助，给子命令加 `--help` 会得到 `error: unknown option '--help'`。
+`cjdoc --help` 列出全部命令；子命令帮助是静态文本，例如 `cjdoc generate --help`、`cjdoc versions compose --help`，它们不读项目配置，所以配置写错时也能查阅。未知命令加 `--help` 仍按未知命令处理，退出码 `2`。
 
 常见冲突与提示：
 
@@ -281,11 +287,14 @@ cjdoc --help
 | `error: --stdout and --output are mutually exclusive` | 同时要标准输出和目录输出 |
 | `error: --stdout requires exactly one JSON-producing format` | 选了 HTML、Markdown 或多个格式 |
 | `error: render requires --input` | `render` 缺输入快照 |
+| `error: render accepts only --input, render options, and --max-doc-ir-mib` | 给 `render` 加了项目或输入类选项 |
 | `error: --doc-version requires --format html` | 加了版本标签但没有生成 HTML |
 | `error: --cjpm-cache requires --include-cached-dependencies` | 只给了缓存目录 |
 | `error: check does not accept render output options` | 给 `check` 加了 `--format`、`--output` 或 `--stdout` |
 | `error: check does not accept --force-owned` | `check` 不接受所有权选项 |
 | `error: --jobs must be in 1..64` | 并行度越界 |
+| `error: [highlight].mode must be static or off` | 高亮模式拼错 |
+| `unknown [coverage] setting '…'` | 覆盖率键名拼错 |
 
 若管道收到的内容不是完整 JSON，检查是否只选了一个 `json`、`api-surface`、`coverage` 或 `symbol-index` 格式。诊断始终写到标准错误，重定向时只保留标准输出才能得到单个 JSON 文档。
 

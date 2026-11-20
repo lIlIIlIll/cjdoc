@@ -1,6 +1,14 @@
 # 从保存的快照重新生成文档
 
-用 `cjdoc render` 读取一份已保存的 `docs.json`，重新输出 HTML 或 Markdown，不重新扫描仓颉源码。
+用 `cjdoc render` 读取一份已保存的 `docs.json`，重新输出 HTML 或 Markdown，不重新扫描仓颉源码。适合把同一次捕获分发给不同读者、给旧站点换输出格式，或在源码已不在手边时再生成一份站点。
+
+## 什么时候用本页
+
+- 已经有一份 `cjdoc.doc-ir/18` 的 `docs.json`，想换输出格式或换输出目录。
+- 想把生成和发布分开：先在有源码的机器上捕获，再在别处渲染。
+- 只想改站点版本标签或附加报告，不想重新分析源码。
+
+需要修改注释、示例结果或语义信息时，`render` 做不到；回到源码重新 `generate`。
 
 ## 前提条件
 
@@ -47,7 +55,7 @@ cp target/doc-ir-capture/docs.json "$WORK/current.json"
 - `$WORK/rendered/markdown/index.md`：Markdown 版本，以及同目录内的包页、声明页和概念页文件。
 - 两个入口显示与 `docdemo` 生成时相同的首页和 `greet` 页面内容。
 
-快照里已经记录源码位置、项目、受众、语言，以及生成时用 `--doc-version` 写入的版本标签；`render` 原样沿用这些信息。它不会重新观察源码、重新执行示例、重新计算依赖和标准库链接，也不会因为当前项目配置变化而改变输出。
+快照里已经记录源码位置、项目、受众、语言，以及生成时用 `--doc-version` 写入的版本标签；`render` 原样沿用这些信息。它不会重新观察源码、重新执行示例、重新计算依赖和标准库链接，也不会因为当前项目配置变化而改变输出。离线重放同样保留快照里的源码来源状态，不重新打开 Git 或回执。
 
 ## 3. 选择格式和输出目录
 
@@ -64,9 +72,10 @@ cp target/doc-ir-capture/docs.json "$WORK/current.json"
 
 - 省略 `--output` 时写到当前目录下的 `target/doc`；在 `$WORK` 中运行就是 `$WORK/target/doc`，其中的 `docs.json` 是重新序列化的快照。
 - 输出目录要由 cjdoc 创建和管理，不要提前手工建一个空目录。手工建好的目录会以退出码 `2` 拒绝，提示 `error: bounded read could not access file: '<目录>/.cjdoc-output.json'`。
-- 需要换站点版本标签时加 `--doc-version`，它写入元数据，不改变快照内容。
+- 需要换站点版本标签时加 `--doc-version`（要求同时生成 HTML），它写入元数据，不改变快照内容。
+- 需要一次性输出单个 JSON 类格式时用 `--stdout`，它要求恰好一种 `json`、`api-surface`、`coverage` 或 `symbol-index`，且不能与 `--output` 同用。
 
-`render` 不执行项目配置里的覆盖率门槛，也不会因为门槛失败而以 `1` 退出；覆盖率与质量报告根据快照里的声明和诊断重新生成。
+`render` 不执行项目配置里的覆盖率门槛，也不会因为门槛失败而以 `1` 退出；覆盖率与质量报告根据快照里的声明和诊断重新生成。它也不启动 CHIR worker，不检查示例。
 
 ## 失败时怎么办
 
@@ -77,6 +86,7 @@ cp target/doc-ir-capture/docs.json "$WORK/current.json"
 | `error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/18'` | 快照来自旧版本 cjdoc | 源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的迁移路径 |
 | 输出目录被拒绝 | 提前手工建了目录，或登记产物被改过 | 换一个尚不存在的新输出路径；确认可丢弃手工修改后加 `--force-owned` |
 | `error: render accepts only --input, render options, and --max-doc-ir-mib` | 给 `render` 加了项目、依赖、受众、lint、cfg 或缓存类选项 | 去掉这些选项，改用 `generate` |
+| `error: --doc-version requires --format html` | 只写了版本标签没生成 HTML | 同时加 `--format html` |
 | 页面里缺少某个声明或示例结果 | 快照里本来就没有 | `render` 只展示快照已有内容；补齐后重新 `generate` |
 
 ## 下一步
