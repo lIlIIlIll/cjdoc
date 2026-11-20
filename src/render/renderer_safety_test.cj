@@ -19,7 +19,8 @@ private func rendererSafetyDocumentation(markdown: MarkdownNode,
         documentation: Some(DocComment("raw", "summary", "", markdown, tags: tags)), annotations: annotations)
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("renderer-safety"),
         ConfigurationSnapshot(lintProfile: "off"), providers: [ProviderInfo("ast", "builtin",
-            moduleId, "partial", SemanticCapabilities(false, false, false, false, false))],
+            moduleId, "partial", SemanticCapabilities(false, false, false, false, false,
+                annotations: !annotations.isEmpty()))],
         modules: [ModuleDoc(moduleId, "renderer-safety", "root", "", packageNames: ["fixture"])],
         packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [symbolId])],
         files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [symbol])
