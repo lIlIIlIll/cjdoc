@@ -150,6 +150,21 @@ async function expectCompactPackageLayout(page, narrow) {
   if (narrow) expect(geometry.summaryTop).toBeGreaterThanOrEqual(geometry.nameBottom - 1);
 }
 
+async function expectWholeOutlineParameter(link) {
+  await expect(link.locator('wbr')).toHaveCount(1);
+  const lines = await link.evaluate(element => {
+    const token = element.querySelector('wbr').nextSibling;
+    const rect = document.createRange();
+    const lineAt = offset => {
+      rect.setStart(token, offset);
+      rect.setEnd(token, offset + 1);
+      return rect.getBoundingClientRect().top;
+    };
+    return ['T', 'g', ')'].map(text => lineAt(token.data.indexOf(text)));
+  });
+  expect(lines).toEqual([lines[0], lines[0], lines[0]]);
+}
+
 test('package outline targets real declaration rows and tracks the reader position', async ({page}) => {
   await page.setViewportSize({width:1365,height:768});
   const {home} = await routes(page, 'zh-CN', 'root');
@@ -180,6 +195,7 @@ test('package outline targets real declaration rows and tracks the reader positi
     .getAttribute('id');
   expect(await page.locator('.cj-decl-table__kind').count()).toBe(0);
   const link = page.locator(`[data-cjdoc-toc] [data-toc-target="${target}"]`);
+  await expectWholeOutlineParameter(link);
   await link.click();
   await expect(page).toHaveURL(new RegExp('#' + target + '$'));
   await expect(page.locator(`#${target}`)).toBeInViewport();
@@ -208,6 +224,7 @@ test('package outline targets real declaration rows and tracks the reader positi
   const mobile = page.locator(`[data-cjdoc-mobile-toc] [data-toc-target="${target}"]`);
   await page.locator('[data-cjdoc-mobile-toc] > summary').click();
   await expect(mobile).toBeVisible();
+  await expectWholeOutlineParameter(mobile);
   await expect(mobile).toHaveAttribute('aria-current', 'location');
   const mobileSecond = page.locator(`[data-cjdoc-mobile-toc] [data-toc-target="${second}"]`);
   await mobileSecond.press('Enter');

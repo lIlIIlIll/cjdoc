@@ -246,6 +246,7 @@ button.cj-tree__more { border: 0; background: none; text-align: start; cursor: p
 .cj-toc__link--active { border-left-color: var(--cj-accent); color: var(--cj-accent); font-weight: 600; }
 .cj-toc__item--member .cj-toc__link, .cj-toc__item--api .cj-toc__link,
 .cj-toc__item--entry .cj-toc__link { font-family: var(--cj-font-mono); font-size: .75rem; }
+.cj-toc__item--entry .cj-toc__link { overflow-wrap: normal; overflow-x: auto; }
 .cj-toc__toggle {
   display: inline-grid; flex: none; place-items: center; width: 1.25rem; height: 1.5rem; padding: 0;
   border: 0; background: none; color: var(--cj-muted); cursor: pointer;

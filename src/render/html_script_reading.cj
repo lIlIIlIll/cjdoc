@@ -60,21 +60,16 @@ internal let HTML_READING_SCRIPT = """
       heading.id = id;
       usedIds.add(id);
     };
-    // A declaration row or a choice option names itself by its primary link,
-    // never by badges, summaries or migration actions that share the container.
-    const entryLabel = entry => {
-      const link = entry.querySelector(
-        "[data-cjdoc-toc-link], .cj-decl-table__link, a[data-cjdoc-api-link]");
-      const value = link ? link.textContent : "";
-      return (value || "").trim().replace(/\\s+/g, " ");
-    };
-    const headingLabel = heading => {
-      if (heading.dataset.cjdocTocRole === "entry") {
-        const explicit = heading.dataset.cjdocTocLabel;
-        return (explicit || entryLabel(heading)).trim().replace(/\\s+/g, " ");
+    const headingLabel = heading =>
+      (heading.dataset.cjdocTocLabel || heading.textContent || "").trim().replace(/\\s+/g, " ");
+    // Reuse the primary label's breaks without copying links, badges or markup.
+    const appendEntryLabel = (link, entry) => {
+      const code = entry.querySelector("a[data-cjdoc-api-link] > code");
+      if (!code) return;
+      for (const child of code.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) link.append(child.data);
+        else if (child.nodeName === "WBR") link.append(element("wbr"));
       }
-      const explicit = heading.dataset.cjdocTocLabel;
-      return (explicit || heading.textContent || "").trim().replace(/\\s+/g, " ");
     };
     const targetId = heading => {
       if (heading.dataset.cjdocTocRole === "member") {
@@ -103,7 +98,9 @@ internal let HTML_READING_SCRIPT = """
     };
     const createLink = heading => {
       const id = targetId(heading);
-      const link = element("a", "cj-toc__link", headingLabel(heading));
+      const entry = heading.dataset.cjdocTocRole === "entry";
+      const link = element("a", "cj-toc__link", entry ? undefined : headingLabel(heading));
+      if (entry) appendEntryLabel(link, heading);
       link.setAttribute("href", "#" + id);
       link.dataset.tocTarget = id;
       return link;

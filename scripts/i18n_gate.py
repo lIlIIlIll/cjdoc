@@ -526,7 +526,8 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
         assert choice["symbolId"] is None
         assert choice["href"] == prefix + "language_fixture/Calculator/increment/index.html"
         content = (multi / choice["href"]).read_text()
-        assert "<code>increment(Int64)</code>" in content and "<code>increment(String)</code>" in content
+        assert "<code>increment(<wbr>Int64)</code>" in content
+        assert "<code>increment(<wbr>String)</code>" in content
         assert HtmlPageIdentity(content).choice_entries == overload_anchors
     for route in manifest["routes"]:
         url = urlsplit(route["href"])

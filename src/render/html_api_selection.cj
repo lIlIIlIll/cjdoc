@@ -52,13 +52,12 @@ internal func renderApiSelectionPage(documentation: DocumentationSet, projection
                 let entryLabel = if (ordinal > 1) { choiceLabel + " · #" + ordinal.toString() }
                     else { choiceLabel }
                 let entryAttrs = [htmlAttr("id", symbolAnchor(symbol)),
-                    htmlAttr("data-cjdoc-toc-role", "entry"),
-                    htmlAttr("data-cjdoc-toc-label", entryLabel)]
+                    htmlAttr("data-cjdoc-toc-role", "entry")]
                 list.element("li", entryAttrs) { item =>
                     let destination = apiPrefix + routes.fileHref(symbol.id)
                     item.element("a", [htmlHref(SafeUrl.siteRoute(destination)),
                         htmlFlag("data-cjdoc-api-link")]) { link =>
-                        link.textElement("code", entryLabel)
+                        link.element("code", []) { code => appendSoftWrappedLabel(code, entryLabel) }
                     }
                     appendDeprecationBadgeFor(item, projection, symbol, locale)
                     item.text(" · " + htmlKindLabel(symbol.kind, locale))
