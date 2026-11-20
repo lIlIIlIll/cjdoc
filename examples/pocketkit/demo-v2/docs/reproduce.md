@@ -51,6 +51,11 @@ cjdoc serve --project . --port 8080
 `/__cjdoc/status.json` 提供构建状态，可用来确认这次修改确实重建成功。
 静态 GitHub Pages 不运行编译器或常驻服务器，只发布已生成的页面。
 
+Open the local preview, then save a change to a comment or guide. Use
+`/__cjdoc/status.json` to confirm that the site rebuilt.
+Static GitHub Pages only serves the generated files; it does not run the compiler
+or keep the preview server running.
+
 [返回使用入门 / Back to the usage guide](guide.md)
 
 ## 文档演示的来源与边界
