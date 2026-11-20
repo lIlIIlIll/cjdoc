@@ -264,7 +264,8 @@ internal let HTML_READING_SCRIPT = """
         if (list !== activeList) continue;
         const hidden = !visibleIds.has(link.dataset.tocTarget);
         if (item && item.hidden !== hidden) item.hidden = hidden;
-        if (heading && heading.dataset.cjdocTocRole !== "member") {
+        const role = heading?.dataset.cjdocTocRole;
+        if (heading && role !== "member" && role !== "entry") {
           const label = headingLabel(heading);
           if (link.textContent !== label) link.textContent = label;
         }

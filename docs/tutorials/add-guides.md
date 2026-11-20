@@ -153,7 +153,7 @@ xdg-open target/doc/html/index.html
 预期看到的结果：
 
 - 首页显示标题 `docdemo`、说明文字、问候语示意图、`cangjie` 代码块，以及“继续阅读 开始使用”入口；其中“语言未知”一类标记说明这页还没有语言标注，配置 `[i18n]` 后才会消失。
-- `docdemo` 包页（`target/doc/html/packages/package-*.html`）顶部出现包概述的第一段和“阅读完整包概述”入口，点进去是 `concepts/packages/docdemo.html`。
+- 从首页“API 参考”打开 `docdemo` 包页（`target/doc/html/packages/docdemo/index.html`）。页面顶部显示包概述的第一段；点击“阅读完整包概述”打开 `concepts/packages/docdemo.html`。
 - `target/doc/html/concepts/guides/start.html` 里“第一次问候”排在“名字的边界”之前，“注意”提示块有可见标题和正文，`返回项目首页` 链接打开概念文档索引。
 - 指南页底部“相关 API”指向 `greet`，`greet` 的 API 页面里“相关指南”列出包概述和这篇指南。
 

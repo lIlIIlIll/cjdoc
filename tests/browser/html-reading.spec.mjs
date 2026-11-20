@@ -224,6 +224,7 @@ test('package outline targets real declaration rows and tracks the reader positi
   const mobile = page.locator(`[data-cjdoc-mobile-toc] [data-toc-target="${target}"]`);
   await page.locator('[data-cjdoc-mobile-toc] > summary').click();
   await expect(mobile).toBeVisible();
+  await expect(mobile).toHaveText('firstTextOrEmpty(TextCatalog)');
   await expectWholeOutlineParameter(mobile);
   await expect(mobile).toHaveAttribute('aria-current', 'location');
   const mobileSecond = page.locator(`[data-cjdoc-mobile-toc] [data-toc-target="${second}"]`);

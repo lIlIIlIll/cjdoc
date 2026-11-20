@@ -112,7 +112,8 @@ target/doc/
     ├── llms-full.txt            # 仅 --agent-full
     ├── agent-full-index.json    # 仅 --agent-full
     ├── validation.html
-    ├── packages/package-<id>.html
+    ├── packages/<包名分段>/index.html
+    ├── packages/package-<id>.html  # 历史链接兼容页
     ├── <包>/<类型>/<成员>/index.html
     ├── symbols/<slug>-<id>.html
     ├── symbols/symbol-<id>.html
@@ -127,7 +128,7 @@ target/doc/
 
 类型和独立成员的 HTML 正文写入 `<包>/<类型>/<成员>/index.html` 等实际文件。重载共用一个选择页，每条签名另有独立文件。两种旧 `symbols/*.html` 文件都直接链接到对应正文；它们不是正文或机器表示。存在概念文档时，`concepts/` 下还有首页、模块页、包页与配置的指南路由。
 
-包参考页写入 `packages/<包名分段>/index.html`，例如 `packages/pocketkit/authoring/index.html`。通过 HTTP 打开时，页内导航使用以 `/` 结尾的目录地址；通过 `file://` 打开时使用实际文件。以前分享的 `packages/package-….html` 仍能打开同一个包并保留片段；关闭 JavaScript 时，旧页面也可以直接阅读。
+包参考页写入 `packages/<包名分段>/index.html`，例如 `packages/pocketkit/authoring/index.html`。HTTP 站点链接使用以 `/` 结尾的目录地址；通过 `file://` 打开时链接到实际文件。以前分享的 `packages/package-….html` 仍能打开同一个包并保留查询参数和片段；关闭 JavaScript 时，旧页面也可以直接阅读。
 
 `html/` 下的相对路径都以该文档根为基准，因此整棵目录既能用静态 HTTP 子路径托管，也能用 `file://` 打开。部署要复制整个 `html/`：只复制 `index.html`、或只搬运 `agent/` 都会让 manifest 指向的页面与全文入口失效。
 
