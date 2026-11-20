@@ -35,7 +35,11 @@ private func replacementNavigation(tag: nav_model.DocTag, count: Int64, owner: n
     }
     if (let Some(id) <- tag.targetSymbolId) { return binder.resolveLocalReference(owner, id) }
 
-    let decision = binder.resolveReference(owner, tag.subject, importScope: false)
+    // Normalize only the lookup suffix; the authored selector is part of the replay evidence.
+    let opening = tag.subject.indexOf("(").getOrDefault({ => tag.subject.size })
+    let target = if (opening == tag.subject.size) { tag.subject }
+        else { tag.subject[..opening] + nav_model.normalizeTypeSpelling(tag.subject[opening..]) }
+    let decision = binder.resolveReference(owner, target, importScope: false)
     if (decision.state != "resolved") { return decision }
     if (!decision.dependencyInstanceId.isEmpty() &&
         (decision.matchLevel == "exact" || decision.matchLevel == "compatible") &&

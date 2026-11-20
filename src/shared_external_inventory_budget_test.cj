@@ -69,6 +69,13 @@ private func inventoryBudgetSymbol(value: api_model.DocumentationSet, name: Stri
     throw IllegalStateException("expected generated declaration")
 }
 
+private func inventoryBudgetReplacement(documentation: api_model.DocumentationSet, name: String): api_model.DocTag {
+    for (tag in inventoryBudgetSymbol(documentation, name).documentation.getOrThrow().tags where tag.name == "replacement") {
+        return tag
+    }
+    throw IllegalStateException("expected generated replacement for " + name)
+}
+
 private func inventoryBudgetNavigation(value: api_model.DocumentationSet): api_model.TypeNavigation {
     inventoryBudgetSymbol(value, "use").parameters[0].typeRef.navigation.getOrThrow()
 }
@@ -120,9 +127,9 @@ private func inventoryBudgetSharedOverloadProject(temporary: Path): Path {
     let dependency = temporary.join("dep")
     File.writeTo(dependency.join("src/api.cj"), ("package inventory_dep\n" +
         "/** Integer overload. */\npublic func run(value: Int64): Unit {}\n" +
-        "/** String overload. */\npublic func run(value: String): Unit {}\n").toArray())
+        "/** String overload. */\npublic func run(value: String, count: Int64): Unit {}\n").toArray())
     File.writeTo(root.join("src/api.cj"), ("package inventory_app\nimport inventory_dep\n" +
-        "/** {@link inventory_dep.run} and {@link inventory_dep.run(Int64)} and {@link inventory_dep.run(String)}. */\n" +
+        "/** {@link inventory_dep.run} and {@link inventory_dep.run(Int64)} and {@link inventory_dep.run(String,Int64)}. */\n" +
         "public func use(): Unit {}\n").toArray())
     var text = api_render.rendererFor("symbol-index").render(inventoryBudgetGenerate(dependency))[0].content
     let entries = JsonNode.parse(text).asObject()["entries"].asArray()
@@ -288,7 +295,7 @@ class SharedExternalInventoryBudgetTest {
             let result = inventoryBudgetGenerate(root, sources: ["catalog.json"])
             let markdown = inventoryBudgetSymbol(result, "use").documentation.getOrThrow().markdown
             let integer = inventoryBudgetLink(markdown, "inventory_dep.run(Int64)").getOrThrow()
-            let string = inventoryBudgetLink(markdown, "inventory_dep.run(String)").getOrThrow()
+            let string = inventoryBudgetLink(markdown, "inventory_dep.run(String,Int64)").getOrThrow()
             @Expect(integer.state, "resolved")
             @Expect(string.state, "resolved")
             @Expect(integer.matchLevel, "exact")
@@ -301,11 +308,48 @@ class SharedExternalInventoryBudgetTest {
             @Expect(integer.dependencyInstanceId.isEmpty(), false)
             @Expect(string.dependencyInstanceId, integer.dependencyInstanceId)
             @Expect(integer.symbolKey, "inventory_dep.run|function|0(Int64)")
-            @Expect(string.symbolKey, "inventory_dep.run|function|0(String)")
+            @Expect(string.symbolKey, "inventory_dep.run|function|0(String,Int64)")
             let bare = inventoryBudgetLink(markdown, "inventory_dep.run").getOrThrow()
             @Expect(bare.state, "ambiguous")
             @Expect(bare.matchLevel, "none")
             @Expect(bare.url, "")
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func externalReplacementWithSpacedOverloadSelectorSurvivesReplay(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetSharedOverloadProject(temporary)
+            let subject = "inventory_dep.run(String, Int64)"
+            File.writeTo(root.join("src/api.cj"), ("package inventory_app\n" +
+                "/**\n * @deprecated Old API.\n * @replacement ${subject}\n */\npublic func oldRun(): Unit {}\n" +
+                "/**\n * @deprecated Old API.\n * @replacement inventory_dep.run(Int64, String)\n */\n" +
+                "public func wrongOrder(): Unit {}\n").toArray())
+            let generated = inventoryBudgetGenerate(root, sources: ["catalog.json"])
+            let replayed = api_render.decodeDocIr(api_render.encodeDocIr(generated))
+            for (documentation in [generated, replayed]) {
+                let replacement = inventoryBudgetReplacement(documentation, "oldRun")
+                @Expect(replacement.subject, subject)
+                let navigation = replacement.navigation.getOrThrow()
+                @Expect(navigation.state, "resolved")
+                @Expect(navigation.matchLevel, "exact")
+                @Expect(navigation.symbolKey, "inventory_dep.run|function|0(String,Int64)")
+                let url = "https://docs.example.test/modern/html/run.html#overloads"
+                @Expect(navigation.url, url)
+                let wrong = inventoryBudgetReplacement(documentation, "wrongOrder")
+                @Expect(wrong.navigation.getOrThrow().state, "unresolved")
+                var oldPage = ""
+                var wrongPage = ""
+                for (artifact in api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: "en")) {
+                    if (artifact.path.endsWith("/oldRun/index.html")) { oldPage = artifact.content }
+                    if (artifact.path.endsWith("/wrongOrder/index.html")) { wrongPage = artifact.content }
+                }
+                @Expect(oldPage.contains("<code>${subject}</code>"))
+                @Expect(oldPage.contains("href=\"${url}\""))
+                @Expect(wrongPage.contains("Old API."))
+                @Expect(!wrongPage.contains("cj-replacement"))
+            }
         } finally { let _ = removeIfExists(temporary, recursive: true) }
     }
 
