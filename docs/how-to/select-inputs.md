@@ -343,16 +343,18 @@ PY
 
 ## 该打开哪个开关
 
-| 目标 | 选项 |
-|---|---|
-| 让路径依赖源码出现在站点里 | `--include-path-dependencies` |
-| 让 cjpm 已下载的 Git/中心仓依赖出现在站点里 | `--include-cached-dependencies`（配 `--cjpm-cache`） |
-| 指定一个确切的依赖源码目录 | `--dependency-source NAME=PATH` |
-| 选中条件编译分支 | `--cfg NAME=VALUE` |
-| 展示私有或全部声明 | `--audience package` 或 `--audience all` |
-| 用构建实际选择替换“观察到”的依赖 | `--build-context record.json` |
+| 目标 | 命令行选项 | `cjdoc.toml` 的 `[analysis]` 键 |
+|---|---|---|
+| 让路径依赖源码出现在站点里 | `--include-path-dependencies` | `include-path-dependencies` |
+| 让 cjpm 已下载的 Git/中心仓依赖出现在站点里 | `--include-cached-dependencies`（配 `--cjpm-cache`） | `include-cached-dependencies`、`cjpm-cache` |
+| 指定一个确切的依赖源码目录 | `--dependency-source NAME=PATH` | `dependency-sources` |
+| 选中条件编译分支 | `--cfg NAME=VALUE` | `cfg` |
+| 展示私有或全部声明 | `--audience package` 或 `--audience all` | `audience` |
+| 用构建实际选择替换“观察到”的依赖 | `--build-context FILE` | 无；只能在 `generate` 或 `check` 的命令行指定 |
 
-这些选项可以组合，但每个只负责一件事：受众不改收集范围，`--cfg` 不改依赖选择，缓存依赖与源码缓存是两个目录。以上选项也可以写进 `cjdoc.toml` 的 `[analysis]`，CLI 显式值覆盖配置。
+这些选项可以组合，但每个只负责一件事：受众不改收集范围，`--cfg` 不改依赖选择，缓存依赖和源码缓存使用不同的目录。
+
+配置键的取值和合并规则见[配置参考](../reference/configuration.md)。
 
 ## 失败时怎么办
 
