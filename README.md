@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="docs/assets/readme/preview-themes.webp">
-    <img src="docs/assets/readme/preview-themes.webp" width="900" alt="PocketKit 文档：纸色主题的 API 示例、海洋主题的搜索结果、紫罗兰主题的弃用迁移">
+    <img src="docs/assets/readme/preview-themes.webp" width="900" alt="cjdoc 生成的 PocketKit 文档：纸色主题的桌面 API 页、海洋主题的成员页、紫罗兰主题的指南页">
   </a>
 </p>
 
