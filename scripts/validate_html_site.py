@@ -21,7 +21,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "6fa023656e164d30c5a3f384cfb0bd14feef89dc48590a699b4e3446dcb2730c"
+CANONICAL_SEARCH_JS_SHA256 = "8590943ca1429da1dcdb8ffff002708aeee471956653530de27411f12f65a17d"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "3dc968472190aab99c8a0db38a612cf95640e5a45b88f759d67480aa9fd115fd"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "601425eaed9db6165c2097148280088c6df3c85a001618e27926e90c54c3e2a4"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")

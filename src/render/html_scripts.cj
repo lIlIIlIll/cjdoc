@@ -852,8 +852,8 @@ internal let HTML_SEARCH_CONTROLLER_SCRIPT = """
 internal let HTML_SEARCH_SCRIPT = HTML_SEARCH_KERNEL_SCRIPT + HTML_SEARCH_CONTROLLER_SCRIPT +
     HTML_READING_SCRIPT
 
-// Keep the source indented, but don't ship the common two-space script
-// indentation. The canonical asset test excludes line-sensitive literals.
+// Keep the source indented with one compaction pass for nested bundle lines.
+// The canonical asset test excludes literals sensitive to line indentation.
 internal let HTML_READER_BUNDLE =
     (HTML_API_LINK_SCRIPT + HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
-    .replace("\n  ", "\n")
+    .replace("\n    ", "\n")

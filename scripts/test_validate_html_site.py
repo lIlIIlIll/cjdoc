@@ -67,7 +67,7 @@ def canonical_search_script() -> str:
     code = re.sub(r"(?m)^ *//[^\n]*", "", source)
     if "`" in code or "\\\n" in code:
         raise ValueError("the reader bundle must not contain template literals or continued string lines")
-    return source.replace("\n  ", "\n")
+    return source.replace("\n    ", "\n")
 
 
 def canonical_theme_bootstrap_script() -> str:
