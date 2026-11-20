@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import re
 import sys
+from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -433,10 +434,11 @@ def package_page_anchor(symbol_id: str) -> str:
     return "symbol-" + symbol_id.encode("utf-8").hex()
 
 
-def validate_package_pages(root: Path, pages: dict[Path, PageParser]) -> tuple[int, int]:
-    """Bind every package compatibility body to one canonical publisher body."""
-    canonical: dict[tuple[str | None, str], Path] = {}
-    aliases: dict[tuple[str | None, str], Path] = {}
+def validate_package_pages(root: Path, pages: dict[Path, PageParser],
+                           dependency_scope: Callable[[Path], Path | None]) -> tuple[int, int]:
+    """Bind every compatibility body to the canonical package in its own publication."""
+    canonical: dict[tuple[Path | None, str | None, str], Path] = {}
+    aliases: dict[tuple[Path | None, str | None, str], Path] = {}
     for page, parser in pages.items():
         identity = parser.page_identity
         if parser.package_alias_for is not None:
@@ -449,7 +451,7 @@ def validate_package_pages(root: Path, pages: dict[Path, PageParser]) -> tuple[i
                     f"{page.relative_to(root)}: package compatibility body must use the package-alias route")
             if not parser.package_alias_for.startswith("package:"):
                 raise ValueError(f"{page.relative_to(root)}: package compatibility identity is invalid")
-            key = (parser.language, parser.package_alias_for)
+            key = (dependency_scope(page), parser.language, parser.package_alias_for)
             if key in aliases:
                 raise ValueError(
                     f"{page.relative_to(root)}: duplicate package compatibility body for "
@@ -461,15 +463,15 @@ def validate_package_pages(root: Path, pages: dict[Path, PageParser]) -> tuple[i
             if parser.page_route != "api":
                 raise ValueError(
                     f"{page.relative_to(root)}: canonical package page must use the api route")
-            key = (parser.language, identity)
+            key = (dependency_scope(page), parser.language, identity)
             if key in canonical:
                 raise ValueError(
                     f"{page.relative_to(root)}: duplicate canonical package identity {identity}")
             canonical[key] = page
-    for (language, identity), page in canonical.items():
+    for key, page in canonical.items():
         parser = pages[page]
         name = page.relative_to(root).as_posix()
-        if (language, identity) not in aliases:
+        if key not in aliases:
             raise ValueError(f"{name}: canonical package page has no compatibility body")
         if not parser.canonical:
             raise ValueError(f"{name}: canonical package page must publish its canonical address")
@@ -484,12 +486,12 @@ def validate_package_pages(root: Path, pages: dict[Path, PageParser]) -> tuple[i
             if anchor != package_page_anchor(symbol):
                 raise ValueError(
                     f"{name}: declaration row {anchor} does not belong to {symbol}")
-    for (language, identity), page in aliases.items():
+    for key, page in aliases.items():
         parser = pages[page]
         name = page.relative_to(root).as_posix()
-        primary = canonical.get((language, identity))
+        primary = canonical.get(key)
         if primary is None:
-            raise ValueError(f"{name}: package compatibility body has no canonical page for {identity}")
+            raise ValueError(f"{name}: package compatibility body has no canonical page for {key[2]}")
         canonical_parser = pages[primary]
         targets = parser.alias_targets
         if len(targets) != 1:
@@ -602,7 +604,7 @@ def main() -> int:
 
     if not pages:
         raise ValueError("site must contain at least one HTML page")
-    package_pages, package_aliases = validate_package_pages(publication_root, pages)
+    package_pages, package_aliases = validate_package_pages(publication_root, pages, dependency_scope)
     for page, parser in list(pages.items()):
         for link in parser.links:
             target, fragment = resolve_local(publication_root, page, link)

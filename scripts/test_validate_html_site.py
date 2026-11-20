@@ -306,6 +306,33 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("1 package pages, 1 compatibility aliases", result.stdout)
 
+    def test_reused_dependency_package_keeps_its_own_compatibility_body(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            mounts = [root / "dependencies" / instance for instance in ("first", "second")]
+            for mount in mounts:
+                mount.mkdir(parents=True)
+                self.write_site(mount)
+                self.write_package_pair(mount)
+                (mount / "agent").mkdir()
+                (mount / "agent" / "manifest.json").write_text("{}", encoding="utf-8")
+
+            result = self.validate(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("2 package pages, 2 compatibility aliases", result.stdout)
+
+            alias = mounts[0] / "packages" / "package-fixture.html"
+            alias.write_text(
+                alias.read_text(encoding="utf-8").replace(
+                    'data-cjdoc-alias-target href="fixture/index.html"',
+                    'data-cjdoc-alias-target href="../../second/packages/fixture/index.html"'),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("package alias target does not name its canonical body", result.stderr)
+
     def test_rejects_package_without_compatibility_body(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
