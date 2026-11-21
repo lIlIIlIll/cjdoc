@@ -61,33 +61,78 @@ private func homeReadingPaths(pages: Array<DocumentationPage>, locale: String): 
     })
 }
 
-private func homePackageModuleSuffix(projection: RenderProjection, pkg: ProjectedPackage): String {
-    var sameName: Int64 = 0
-    for (other in projection.packages where other.source.name == pkg.source.name) { sameName++ }
-    if (sameName <= 1) { return "" }
-    match (findProjectedModule(projection, pkg.source.moduleId)) {
-        case Some(module) => module.name + " · "
-        case None => ""
+private func packageReferenceModule(projection: RenderProjection, pkg: PackageDoc): String {
+    findProjectedModule(projection, pkg.moduleId).map({ module => module.name })
+        .getOrDefault({ => pkg.moduleId })
+}
+
+private func appendReferenceEntries(w: HtmlWriter, projection: RenderProjection,
+    symbols: ArrayList<SymbolDoc>, labels: ?HashMap<String, String>, locale: String): Unit {
+    w.open("ul", attrs: [htmlClass("cj-reference-entries")])
+    for (symbol in symbols) {
+        let compact = match (labels) {
+            case Some(values) => values.get(symbol.id)
+            case None => None<String>
+        }
+        let title = compact.getOrDefault({ => htmlContextLabel(symbol) })
+        w.open("li")
+        w.element("a", [htmlFlag("data-cjdoc-api-link"), htmlAttr("data-cjdoc-reference-symbol", symbol.id),
+            htmlHref(SafeUrl.siteRoute(projection.publicSymbolHref("", symbol.id)))]) { link =>
+            link.textElement("code", title)
+        }
+        appendDeprecationBadgeFor(w, projection, symbol, locale)
+        if (let Some(members) <- projection.membersByOwner.get(symbol.id)) {
+            w.open("details", attrs: [htmlClass("cj-reference-branch")])
+            w.textElement("summary", label(locale, "Members", "成员") + " (${members.size})",
+                attrs: [htmlAttr("aria-label", label(locale, "Members of ", "成员：") + title)])
+            appendReferenceEntries(w, projection, members, None, locale)
+            w.close("details")
+        }
+        w.close("li")
     }
+    w.close("ul")
+}
+
+private func appendReferencePackage(w: HtmlWriter, projection: RenderProjection,
+    pkg: ProjectedPackage, duplicateName: Bool, expand: Bool, locale: String): Bool {
+    let source = pkg.source
+    let module = if (duplicateName) { packageReferenceModule(projection, source) + " · " } else { "" }
+    w.open("li")
+    w.element("a", [htmlHref(SafeUrl.siteRoute(projection.packageFileHref(source.moduleId, source.name))),
+        htmlFlag("data-cjdoc-api-link")]) { link =>
+        link.textElement("code", source.name)
+    }
+    w.textElement("span", module + "${pkg.symbols.size} ${label(locale, "declarations", "个声明")}",
+        attrs: [htmlClass("cj-meta")])
+    let roots = projection.topLevelByPackage.get(routeKey(source.moduleId, source.name))
+    if (let Some(symbols) <- roots) {
+        let classes = htmlClass("cj-reference-package")
+        w.open("details", attrs: if (expand) { [classes, htmlFlag("open")] } else { [classes] })
+        w.textElement("summary", label(locale, "Browse declarations", "浏览声明"),
+            attrs: [htmlAttr("aria-label", label(locale, "Browse declarations in ", "浏览声明：") + module + source.name)])
+        appendReferenceEntries(w, projection, symbols,
+            Some(sidebarPackageLabels(projection, source.moduleId, source.name)), locale)
+        w.close("details")
+    }
+    w.close("li")
+    roots.isSome()
 }
 
 internal func appendHomePackageIndex(w: HtmlWriter, projection: RenderProjection,
     locale: String): Unit {
-    w.element("h2", [htmlAttr("id", "packages")]) { heading =>
-        heading.text(label(locale, "Packages", "包"))
+    w.textElement("span", "", attrs: [htmlAttr("id", "api-overview"), htmlClass("cj-anchor-alias"),
+        htmlAttr("aria-hidden", "true")])
+    w.textElement("h2", label(locale, "API reference", "API 参考"), attrs: [htmlAttr("id", "packages")])
+    let nameCounts = HashMap<String, Int64>()
+    for (pkg in projection.packages) {
+        let name = pkg.source.name
+        nameCounts[name] = nameCounts.get(name).getOrDefault({ => 0 }) + 1
     }
     w.open("ul", attrs: [htmlClass("cj-package-index")])
+    var opened = false
     for (pkg in projection.packages) {
-        w.element("li", []) { item =>
-            item.element("a", [htmlHref(documentationRouteHref(
-                packagePagePath(pkg.source.moduleId, pkg.source.name)))]) { link =>
-                link.textElement("code", pkg.source.name)
-            }
-            item.element("span", [htmlClass("cj-meta")]) { meta =>
-                meta.text(homePackageModuleSuffix(projection, pkg))
-                meta.text("${pkg.symbols.size} ${label(locale, "declarations", "个声明")}")
-            }
-        }
+        let hasEntries = appendReferencePackage(w, projection, pkg, nameCounts[pkg.source.name] > 1, !opened, locale)
+        opened = opened || hasEntries
     }
     w.close("ul")
     w.newline()
@@ -95,13 +140,7 @@ internal func appendHomePackageIndex(w: HtmlWriter, projection: RenderProjection
         w.textElement("p", label(locale, "No API declarations are available for this audience.",
             "当前受众范围内没有可用的 API 声明。"), attrs: [htmlClass("cj-empty")])
         w.newline()
-        return
     }
-    w.open("details", attrs: [htmlClass("cj-package-index cj-disclosure")])
-    w.textElement("summary", label(locale, "Complete declaration index", "全部声明索引"),
-        attrs: [htmlClass("cj-disclosure__summary")])
-    appendApiOverview(w, projection, locale)
-    w.close("details")
 }
 
 private func appendDiagnosticEntry(w: HtmlWriter, diagnostic: Diagnostic, locale: String): Unit {

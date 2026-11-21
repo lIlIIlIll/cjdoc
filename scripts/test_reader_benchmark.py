@@ -289,14 +289,13 @@ ROUTE_SYMBOLS = [
 ]
 
 
-def write_route_site(site, doc_ir, locale="en", *, pair=None, addresses=None):
+def write_route_site(site, doc_ir, locale="en", *, pair=2, addresses=None, package_href=None):
     """Publish one genuine search site whose manifest and inventory agree."""
     site = Path(site)
     (site / "agent").mkdir(parents=True, exist_ok=True)
     revision = "fixture-revision"
-    projection = "cjdoc.read/2" if pair is None or pair == 2 else "cjdoc.read/1"
-    manifest_version = "cjdoc.machine-manifest/2" if projection == "cjdoc.read/2" else \
-        "cjdoc.machine-manifest/1"
+    projection = f"cjdoc.read/{pair}"
+    manifest_version = f"cjdoc.machine-manifest/{pair}"
     doc_ir_bytes = json.dumps(doc_ir, ensure_ascii=False, sort_keys=True,
                               separators=(",", ":")).encode("utf-8")
     doc_ir_path = site / "agent/doc-ir.json"
@@ -378,6 +377,13 @@ def write_route_site(site, doc_ir, locale="en", *, pair=None, addresses=None):
                       {"path": "symbol-index.json", "sha256": inventory_sha, "mediaType": "application/json",
                        "bytes": len(inventory_bytes)}],
     }
+    if package_href is not None:
+        manifest["representations"] = [{"kind": "package", "id": ROUTE_PACKAGE_ID, "html": package_href}]
+        package_file = site / package_href
+        package_file.parent.mkdir(parents=True, exist_ok=True)
+        attrs = (f' data-cjdoc-route="api" data-cjdoc-page="package" '
+                 f'data-cjdoc-page-id="{ROUTE_PACKAGE_ID.removeprefix("cjdoc:")}"') if pair == 3 else ""
+        package_file.write_text(f"<!doctype html><html><body{attrs}>reader_scale</body></html>", encoding="utf-8")
     (site / "agent/manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
         encoding="utf-8")
@@ -387,7 +393,7 @@ def write_route_site(site, doc_ir, locale="en", *, pair=None, addresses=None):
 ROUTE_PAGE = {"qualifiedName": "reader_scale.Overload2", "kind": "class"}
 
 
-def route_tree(page_href, addresses):
+def route_tree(page_href, addresses, package_href="packages/package-reader_scale.html"):
     """Render the shape ``page.locator('main').ariaSnapshot()`` produces."""
     import posixpath as _posix
 
@@ -405,7 +411,7 @@ def route_tree(page_href, addresses):
         "          - /url: " + relative("index.html"),
         "      - listitem:",
         "        - link \"Package reader_scale\":",
-        "          - /url: " + relative("packages/package-reader_scale.html"),
+        "          - /url: " + relative(package_href),
         "  - heading \"Overload2\" [level=1]:",
         "    - code: Overload2",
         "  - paragraph: class",
@@ -425,9 +431,12 @@ def route_tree(page_href, addresses):
 HISTORICAL_ADDRESSES = {symbol: "symbols/symbol-" + symbol.replace(":", "-") + ".html"
                         for symbol, *_ in ROUTE_SYMBOLS}
 READABLE_ADDRESSES = {symbol: default for symbol, _, _, default in ROUTE_SYMBOLS}
+ROUTE_PACKAGE_ID = "cjdoc:package:module:reader_scale:reader_scale"
+HISTORICAL_PACKAGE = "packages/package-0123456789ab.html"
+READABLE_PACKAGE = "packages/reader_scale/index.html"
 
 
-def route_profile(root, page_by_side, baseline_resources):
+def route_profile(root, page_by_side, baseline_resources, *, package_breadcrumb=False):
     """Write a route transition profile and its two snapshot files per locale."""
     root = Path(root)
     recipe, source_sha, tasks_sha = "route-reader-recipe", "c" * 64, "d" * 64
@@ -435,6 +444,8 @@ def route_profile(root, page_by_side, baseline_resources):
                "sourceSha256": source_sha, "taskManifestSha256": tasks_sha,
                "routeObserver": {"baseline": "a" * 64, "after": "b" * 64},
                "page": dict(ROUTE_PAGE), "locales": {}}
+    if package_breadcrumb:
+        profile["package"] = {"id": ROUTE_PACKAGE_ID, "html": READABLE_PACKAGE}
     baseline = root / "baseline"
     baseline.mkdir(parents=True, exist_ok=True)
     native_locales = []
@@ -444,7 +455,8 @@ def route_profile(root, page_by_side, baseline_resources):
         native_locales.append({"locale": locale, "browserReport": browser_name})
         for label in ("baseline", "after"):
             page_href, addresses = page_by_side[label]
-            tree = route_tree(page_href, addresses)
+            tree = (route_tree(page_href, addresses, HISTORICAL_PACKAGE) if package_breadcrumb
+                    else route_tree(page_href, addresses))
             name = f"route-{label}-{locale}.aria.txt"
             encoded = tree.encode("utf-8")
             (root / name).write_bytes(encoded)
@@ -1395,9 +1407,19 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                     register_reader(missing_baseline, modified_template_path,
                                     doc_ir_transition=TRANSITION_NAME)
 
-    def route_pair(self, root, *, after_addresses=None):
+    def route_pair(self, root, *, after_addresses=None, package_breadcrumb=False):
         """Publish genuine old/current products and freeze the readable transition."""
         before_ir, after_ir = ir_transition_pair()
+        if package_breadcrumb:
+            for doc_ir in (before_ir, after_ir):
+                doc_ir.setdefault("packages", []).append({
+                    "moduleId": "module:reader_scale", "name": "reader_scale",
+                    "symbolIds": ["cjdoc:v2:type"],
+                })
+                doc_ir["declarations"].append({
+                    "id": "cjdoc:v2:type", "moduleId": "module:reader_scale",
+                    "packageName": "reader_scale",
+                })
         addresses = {"baseline": HISTORICAL_ADDRESSES, "after": after_addresses or READABLE_ADDRESSES}
         sites, page_by_side = {}, {}
         for label, doc_ir in (("baseline", before_ir), ("after", after_ir)):
@@ -1405,11 +1427,15 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
             for locale in ("en", "zh-CN"):
                 sites[(locale, label)] = write_route_site(
                     Path(root) / f"{label}-{locale}", doc_ir, locale,
-                    pair=1 if label == "baseline" else 2, addresses=addresses[label])
+                    pair=1 if label == "baseline" else 3 if package_breadcrumb else 2,
+                    addresses=addresses[label],
+                    package_href=({"baseline": HISTORICAL_PACKAGE, "after": READABLE_PACKAGE}[label]
+                                  if package_breadcrumb else None))
         profile_root = Path(root) / "profile"
         baseline_resources = {locale: sites[(locale, "baseline")][1] for locale in ("en", "zh-CN")}
         profile_file, native = route_profile(
-            profile_root, {side: page_by_side["baseline"] for side in page_by_side}, baseline_resources)
+            profile_root, {side: page_by_side["baseline"] for side in page_by_side}, baseline_resources,
+            package_breadcrumb=package_breadcrumb)
         registration = register_api_route_transition(
             profile_file, profile_root / "baseline", native,
             {locale: sites[(locale, "baseline")][0] for locale in ("en", "zh-CN")},
@@ -1448,6 +1474,40 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                     qualification.normalize_hrefs("after", [READABLE_ADDRESSES["cjdoc:v2:first"]]))
                 self.assertEqual(qualification.page_href("after"),
                                  READABLE_ADDRESSES["cjdoc:v2:type"])
+
+    def test_package_route_transition_preserves_breadcrumb_identity_and_position(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registration, sites, _ = self.route_pair(directory, package_breadcrumb=True)
+            before_site, before_resources = sites[("en", "baseline")]
+            after_site, after_resources = sites[("en", "after")]
+            qualification = qualify_api_routes(registration, "en", before_site, after_site,
+                                               before_resources, after_resources, REPO_SCHEMA,
+                                               doc_ir_transition=True)
+            before = self._observation(registration, "en", "baseline")
+            after = self._observation(registration, "en", "after")
+            tree = route_tree(READABLE_ADDRESSES["cjdoc:v2:type"], READABLE_ADDRESSES, READABLE_PACKAGE)
+            after["accessibility"]["noScript"]["accessibleTree"] = tree
+            qualification.check_trees(before, after)
+            for wrong in ("packages/other/index.html", READABLE_PACKAGE + "?view=full",
+                          READABLE_PACKAGE + "#declarations", HISTORICAL_PACKAGE):
+                altered = deepcopy(after)
+                altered["accessibility"]["noScript"]["accessibleTree"] = tree.replace(READABLE_PACKAGE, wrong)
+                with self.assertRaisesRegex(ValueError, "ARIA content changed"):
+                    qualification.check_trees(before, altered)
+            reordered = deepcopy(after)
+            reordered["accessibility"]["noScript"]["accessibleTree"] = tree.replace(
+                "../../index.html", "<old-home>").replace(
+                    "../../" + READABLE_PACKAGE, "../../index.html").replace(
+                        "<old-home>", "../../" + READABLE_PACKAGE)
+            with self.assertRaisesRegex(ValueError, "ARIA content changed"):
+                qualification.check_trees(before, reordered)
+            package_file = after_site / READABLE_PACKAGE
+            package_file.write_text(package_file.read_text(encoding="utf-8").replace(
+                'data-cjdoc-page-id="package:module:reader_scale:reader_scale"',
+                'data-cjdoc-page-id="package:other:reader_scale"'), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "registered canonical identity"):
+                qualify_api_routes(registration, "en", before_site, after_site, before_resources,
+                                   after_resources, REPO_SCHEMA, doc_ir_transition=True)
 
     def test_route_observation_allows_only_the_registered_observer_change(self):
         with tempfile.TemporaryDirectory() as directory:

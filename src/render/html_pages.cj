@@ -186,18 +186,24 @@ internal func appendSourceDisclosure(w: HtmlWriter, source: String, summary: Str
 }
 
 internal func renderPackagePage(documentation: DocumentationSet, projection: RenderProjection,
-    index: HashMap<String, SymbolDoc>, typeLinkIndex: HtmlTypeLinkIndex,
-    pkg: ProjectedPackage, locale!: String = "en", docVersion!: ?String = None): String {
+    pkg: ProjectedPackage, pageFile: String, locale!: String = "en", docVersion!: ?String = None): String {
     let packageDoc = pkg.source
-    let pagePath = packagePagePath(packageDoc.moduleId, packageDoc.name)
+    let canonical = projection.packageFile(packageDoc.moduleId, packageDoc.name)
+    let compatibility = pageFile != canonical
+    let prefix = pageRootPrefix(pageFile)
+    let identity = packagePageIdentity(packageDoc)
     let w = HtmlWriter(apiRoutes: projection.apiRoutes, unprefixedApiLocale: projection.unprefixedApiLocale)
-    appendPageStart(w, "${label(locale, "Package", "包")} ${packageDoc.name}", "../",
+    appendPageStart(w, "${label(locale, "Package", "包")} ${packageDoc.name}", prefix,
         documentation, projection, locale: locale, docVersion: docVersion,
-        currentPackagePath: Some(pagePath), currentRoute: "api", agentReadable: true,
-        currentPagePath: Some(pagePath),
+        currentPackagePath: Some(apiHtmlFileHref(canonical)),
+        currentRoute: if (compatibility) { "package-alias" } else { "api" }, agentReadable: true,
+        currentPagePath: Some(apiHtmlFileHref(pageFile)),
+        canonical: Some(prefix + apiHtmlWebPath(canonical)),
+        generatedPageId: if (compatibility) { None } else { Some(identity) },
+        packageAliasFor: if (compatibility) { Some(identity) } else { None },
         alternateMarkdown: Some(agentPackageMarkdownPath(packageDoc.moduleId, packageDoc.name)))
     appendBreadcrumbs(w, label(locale, "Breadcrumb", "面包屑导航"),
-        [(label(locale, "Home", "首页"), documentationRouteHref("../index.html"))]) { item =>
+        [(label(locale, "Home", "首页"), documentationRouteHref(prefix + "index.html"))]) { item =>
         item.text(label(locale, "Package", "包") + " ")
         item.element("code", []) { code => code.text(packageDoc.name) }
     }
@@ -205,7 +211,14 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
         heading.text(label(locale, "Package", "包") + " ")
         heading.element("code", []) { code => code.text(packageDoc.name) }
     }
-    appendPackageConceptualOverview(w, documentation, projection, packageDoc, locale)
+    if (compatibility) {
+        w.element("p", [htmlClass("cj-meta")]) { paragraph =>
+            paragraph.textElement("a", label(locale, "Canonical package page", "包的规范页面"),
+                attrs: [htmlFlag("data-cjdoc-alias-target"),
+                    htmlHref(SafeUrl.siteRoute(prefix + apiHtmlFileHref(canonical)))])
+        }
+    }
+    appendPackageConceptualOverview(w, documentation, projection, packageDoc, locale, prefix)
     // The declaration groups own the "Declarations" heading: one visible category
     // becomes the section itself, several keep an umbrella H2 above category H3s.
     var wroteDeclaration = false
@@ -213,7 +226,7 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
         case Some(symbols) =>
             if (!symbols.isEmpty()) {
                 appendPackageDeclarationGroups(w, projection, packageDoc.moduleId,
-                    packageDoc.name, symbols, locale)
+                    packageDoc.name, symbols, locale, rootPrefix: prefix)
                 wroteDeclaration = true
             }
         case None => ()
@@ -227,7 +240,7 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
         w.close("section")
         w.newline()
     }
-    appendPackageMetadata(w, pkg, projection, locale)
+    appendPackageMetadata(w, pkg, projection, locale, prefix)
     appendPageEnd(w, documentation, locale: locale)
     w.toString()
 }

@@ -108,7 +108,7 @@ private func loadQueryMachineManifest(path: Path, text: String, budget: QuerySou
     isLatest!: Bool = false, catalogIdentity!: String = ""): QuerySnapshotInput {
     query_render.validateDocumentationArtifactJson(text, "machine-manifest")
     let manifest = querySnapshotJson(text)
-    // Both manifest generations use the same layout, independent of deployment
+    // All supported manifest generations use the same layout, independent of deployment
     // URL: <document-root>/agent/manifest.json with root-relative resource paths.
     if (path.parent.fileName != "agent") {
         throw DocumentationQueryException("unavailable", "manifest_layout", "A machine manifest must be inside the document root's agent directory.")
@@ -241,7 +241,8 @@ internal func loadDocumentationQuerySources(paths: Array<String>): ArrayList<Que
         budget.reserveFile(text.size)
         let root = querySnapshotJson(text)
         let version = queryString(root, "schemaVersion")
-        if (version == "cjdoc.machine-manifest/1" || version == "cjdoc.machine-manifest/2") {
+        if (version == "cjdoc.machine-manifest/1" || version == "cjdoc.machine-manifest/2" ||
+            version == "cjdoc.machine-manifest/3") {
             result.add(loadQueryMachineManifest(path, text, budget))
         }
         else if (version == "cjdoc.versions/2") { appendQueryVersionSources(result, path, root, budget) }

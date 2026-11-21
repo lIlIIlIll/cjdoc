@@ -105,15 +105,186 @@ protected func scopedGenericReference(owner: SymbolDoc, target: String, index: H
     scopedGenericParameter(owner, docReferenceScopeHead(target), index)
 }
 
+private func sourceAnnotationSpace(byte: Byte): Bool {
+    byte == b' ' || byte == b'\t' || byte == b'\r' || byte == b'\n'
+}
+
+// The marker is an annotation name, not a prefix: `@DeprecatedSoon` and any
+// provider spelling stay ordinary annotations rather than deprecation evidence.
+// `None` means "not the marker"; `Some(open)` is the bracket position, or the
+// spelling size when the annotation has no argument list. Both the status test
+// and the message reader share this single boundary scan.
+private func sourceDeprecatedOpen(spelling: String): ?Int64 {
+    let value = spelling.trimAscii()
+    if (!value.startsWith("@Deprecated")) { return None }
+    var index: Int64 = 11
+    if (index < value.size && value[index] != b'[' && !sourceAnnotationSpace(value[index])) {
+        return None
+    }
+    while (index < value.size && sourceAnnotationSpace(value[index])) { index++ }
+    if (index < value.size && value[index] != b'[') { return None }
+    Some(index)
+}
+
+private func sourceAnnotationIdentifierStart(byte: Byte): Bool {
+    (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == b'_'
+}
+
+private func sourceAnnotationIdentifierByte(byte: Byte): Bool {
+    sourceAnnotationIdentifierStart(byte) || (byte >= b'0' && byte <= b'9')
+}
+
+private func skipSourceAnnotationSpace(value: String, start: Int64, end: Int64): Int64 {
+    var index = start
+    while (index < end && sourceAnnotationSpace(value[index])) { index++ }
+    index
+}
+
+private func sourceAnnotationHexDigit(byte: Byte): Int64 {
+    if (byte >= b'0' && byte <= b'9') { return Int64(byte - b'0') }
+    if (byte >= b'a' && byte <= b'f') { return Int64(byte - b'a') + 10 }
+    if (byte >= b'A' && byte <= b'F') { return Int64(byte - b'A') + 10 }
+    -1
+}
+
+private func sourceAnnotationUnicodeEscape(value: String, start: Int64): ?(Rune, Int64) {
+    if (start + 1 >= value.size || value[start + 1] != b'{') { return None }
+    var index = start + 2
+    var code: Int64 = 0
+    var digits: Int64 = 0
+    while (index < value.size && value[index] != b'}') {
+        let digit = sourceAnnotationHexDigit(value[index])
+        if (digit < 0 || digits >= 8) { return None }
+        code = code * 16 + digit
+        digits++
+        index++
+    }
+    if (index >= value.size || digits == 0) { return None }
+    if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) { return None }
+    Some((Rune(UInt32(code)), index + 1))
+}
+
+private func sourceAnnotationEscape(value: String, start: Int64): ?(Rune, Int64) {
+    if (start + 1 >= value.size) { return None }
+    let escape = value[start + 1]
+    if (escape == b'u') { return sourceAnnotationUnicodeEscape(value, start + 1) }
+    let decoded: Rune = match (escape) {
+        case b't' => Rune(9u32)
+        case b'b' => Rune(8u32)
+        case b'r' => Rune(13u32)
+        case b'n' => Rune(10u32)
+        case b'\'' => Rune(39u32)
+        case b'"' => Rune(34u32)
+        case b'\\' => Rune(92u32)
+        case b'f' => Rune(12u32)
+        case b'v' => Rune(11u32)
+        case b'0' => Rune(0u32)
+        // The lexer accepts `\\$` in a string; it is not interpolation evidence.
+        case b'$' => Rune(36u32)
+        case _ => return None
+    }
+    Some((decoded, start + 2))
+}
+
+// A deprecation reason is prose, not a payload. A longer annotation stays
+// source spelling and keeps the status rather than spending render time on it.
+private let SOURCE_ANNOTATION_MESSAGE_LIMIT: Int64 = 64 * 1024
+
+// Both ordinary string delimiters are literals. Triple-quoted (multiline/raw)
+// forms are not, and the caller never sees their content as a reason.
+private func sourceAnnotationQuote(value: String, start: Int64): ?Byte {
+    if (start >= value.size) { return None }
+    let delimiter = value[start]
+    if (delimiter != b'"' && delimiter != b'\'') { return None }
+    if (start + 2 < value.size && value[start + 1] == delimiter && value[start + 2] == delimiter) {
+        return None
+    }
+    Some(delimiter)
+}
+
+// Only one ordinary string literal is readable. Multiline, raw, interpolated,
+// concatenated and nested forms stay source spelling rather than inferred prose.
+private func sourceAnnotationStringLiteral(value: String, start: Int64): ?(String, Int64) {
+    let delimiter = match (sourceAnnotationQuote(value, start)) {
+        case Some(value) => value
+        case None => return None
+    }
+    var index = start + 1
+    var segmentStart = index
+    var decoded: ?StringBuilder = None
+    while (index < value.size) {
+        let byte = value[index]
+        if (byte == delimiter) {
+            if (let Some(out) <- decoded) {
+                if (segmentStart < index) { out.append(value[segmentStart..index]) }
+                return Some((out.toString(), index + 1))
+            }
+            return Some((value[start + 1..index], index + 1))
+        }
+        if (byte == b'\n' || byte == b'\r') { return None }
+        if (byte == b'\\') {
+            let (rune, next) = match (sourceAnnotationEscape(value, index)) {
+                case Some(escape) => escape
+                case None => return None
+            }
+            let out = match (decoded) {
+                case Some(builder) => builder
+                case None =>
+                    let builder = StringBuilder()
+                    decoded = Some(builder)
+                    builder
+            }
+            if (segmentStart < index) { out.append(value[segmentStart..index]) }
+            out.append(rune)
+            index = next
+            segmentStart = index
+            continue
+        }
+        // An unescaped interpolation is code, not a literal reason.
+        if (byte == b'$' && index + 1 < value.size && value[index + 1] == b'{') { return None }
+        index++
+    }
+    None
+}
+
+private func sourceAnnotationLiteralTail(value: String, start: Int64,
+    bodyEnd: Int64): ?String {
+    let (message, next) = match (sourceAnnotationStringLiteral(value, start)) {
+        case Some(parsed) => parsed
+        case None => return None
+    }
+    if (skipSourceAnnotationSpace(value, next, bodyEnd) != bodyEnd) { return None }
+    if (message.trimAscii().isEmpty()) { return None }
+    Some(message)
+}
+
+// Read the annotation's own single literal argument, either positional or the
+// explicitly named `message`. Names, brackets, quotes and separators must pair;
+// a variable, expression, extra argument or trailing text is not prose.
+private func sourceAnnotationMessage(value: String, open: Int64): ?String {
+    if (value.size > SOURCE_ANNOTATION_MESSAGE_LIMIT) { return None }
+    let bodyEnd = value.size - 1
+    if (open >= value.size || value[bodyEnd] != b']') { return None }
+    var cursor = skipSourceAnnotationSpace(value, open + 1, bodyEnd)
+    if (cursor >= bodyEnd) { return None }
+    if (value[cursor] == b'"' || value[cursor] == b'\'') {
+        return sourceAnnotationLiteralTail(value, cursor, bodyEnd)
+    }
+    let nameStart = cursor
+    if (!sourceAnnotationIdentifierStart(value[cursor])) { return None }
+    while (cursor < bodyEnd && sourceAnnotationIdentifierByte(value[cursor])) { cursor++ }
+    if (value[nameStart..cursor] != "message") { return None }
+    cursor = skipSourceAnnotationSpace(value, cursor, bodyEnd)
+    if (cursor >= bodyEnd || value[cursor] != b':') { return None }
+    cursor = skipSourceAnnotationSpace(value, cursor + 1, bodyEnd)
+    sourceAnnotationLiteralTail(value, cursor, bodyEnd)
+}
+
 // Only annotations captured on this declaration count; provider assertions,
 // inherited members and prose mentioning the marker are not source evidence.
 protected func declarationIsDeprecated(symbol: SymbolDoc): Bool {
     for (annotation in symbol.annotations where annotation.provenance == "source") {
-        let spelling = annotation.spelling.trimAscii()
-        if (spelling == "@Deprecated" || spelling.startsWith("@Deprecated[") ||
-            (spelling.startsWith("@Deprecated") && spelling[11..].trimAsciiStart().startsWith("["))) {
-            return true
-        }
+        if (sourceDeprecatedOpen(annotation.spelling).isSome()) { return true }
     }
     if (let Some(comment) <- symbol.documentation) {
         for (tag in comment.tags where tag.name == "deprecated" && tag.translationState != "missing") {
@@ -125,6 +296,35 @@ protected func declarationIsDeprecated(symbol: SymbolDoc): Bool {
         }
     }
     false
+}
+
+/**
+ * The readable message carried by this declaration's own source `@Deprecated`
+ * annotation, or `None` when no annotation has an unambiguous literal reason.
+ *
+ * Author Markdown prose is preferred elsewhere; this only supplies the
+ * annotation's own text when it can be restored without guessing.
+ */
+protected func sourceDeprecationMessage(symbol: SymbolDoc): ?String {
+    var selected: ?String = None
+    for (annotation in symbol.annotations where annotation.provenance == "source") {
+        let value = annotation.spelling.trimAscii()
+        let open = match (sourceDeprecatedOpen(value)) {
+            case Some(index) => index
+            case None => continue
+        }
+        let message = match (sourceAnnotationMessage(value, open)) {
+            case Some(reason) => reason
+            case None => continue
+        }
+        // Conflicting readable reasons are not a single fact.
+        if (let Some(previous) <- selected) {
+            if (previous != message) { return None }
+            continue
+        }
+        selected = Some(message)
+    }
+    selected
 }
 
 protected func sharedReplacementTag(tag: DocTag): Bool {

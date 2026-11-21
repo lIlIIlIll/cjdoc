@@ -37,7 +37,8 @@ class HtmlPresentationQualityTest {
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
         let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
         let index = artifactContent(artifacts, "html/index.html")
-        @Expect(index.contains("API overview"))
+        @Expect(index.contains("<h2 id=\"packages\">API reference</h2>"))
+        @Expect(index.contains("class=\"cj-package-index\""))
         @Expect(!index.contains("visible declarations</p>"))
         @Expect(!index.contains("top-source-disabled"))
         var packageHtml = ""

@@ -147,7 +147,8 @@ async function expectStable(page) {
     const currentUrl = new URL(current.href);
     currentUrl.search = '';
     expect(current.fragment).toBe('');
-    const href = await page.locator('body[data-cjdoc-page="symbol"]').count() ? declarationUrl : value => value;
+    const directoryPage = await page.locator('body:is([data-cjdoc-page="symbol"], [data-cjdoc-page="package"])').count();
+    const href = directoryPage ? declarationUrl : value => value;
     expect(href(currentUrl.href)).toBe(href(documentUrl.href));
   }
 }
@@ -430,6 +431,123 @@ test.describe('generated HTML reference', () => {
       await expectStable(page);
     });
   }
+
+  test('static API reference covers the publisher inventory without JavaScript', async ({ browser }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    try {
+      const tab = await context.newPage();
+      const manifest = JSON.parse(await readFile(path.join(fixtureRoot, 'agent', 'manifest.json'), 'utf8'));
+      const expected = manifest.representations.filter(row => row.kind === 'symbol')
+        .map(row => [row.id, row.html]).sort();
+      await tab.goto(indexUrl);
+      await expect(tab.locator('#packages')).toHaveText('API reference');
+      await expect(tab.locator('#api-overview')).toHaveCount(1);
+      const actual = await tab.locator('main [data-cjdoc-reference-symbol]').evaluateAll(links =>
+        links.map(link => [link.dataset.cjdocReferenceSymbol, decodeURI(link.getAttribute('href'))]).sort());
+      expect(actual).toEqual(expected);
+      const firstPackage = tab.locator('.cj-reference-package').first();
+      await expect(firstPackage).toHaveAttribute('open', '');
+      const branch = firstPackage.locator('.cj-reference-branch').filter({ has: tab.locator('a[data-cjdoc-reference-symbol] > code', { hasText: 'member15()' }) }).first();
+      const tail = branch.getByRole('link', { name: 'member15()', exact: true });
+      await expect(tail).toHaveCount(0);
+      await branch.locator(':scope > summary').press('Enter');
+      const id = await tail.getAttribute('data-cjdoc-reference-symbol');
+      await tail.press('Enter');
+      await expect(tab.locator('body')).toHaveAttribute('data-cjdoc-symbol-id', id);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('sidebar can reveal a current package and its longest member branch directly', async ({ page }) => {
+    await openIndex(page);
+    await page.locator('ul.cj-package-index > li > a').first().click();
+    const pkg = page.locator('[data-cjdoc-tree-item=package]').filter({
+      has: page.locator('a[aria-current=page]'),
+    });
+    const revealPackage = pkg.getByRole('button', { name: /^Show all \d+ items$/ });
+    await expect(revealPackage).toBeVisible();
+    await revealPackage.press('Enter');
+    await expect(pkg.locator(':scope > ul > [data-cjdoc-tree-item=type]')).not.toHaveCount(5);
+    await referenceBoxClassLink(page).click();
+    const ownerUrl = new URL(page.url());
+    ownerUrl.searchParams.set('keep', '1');
+    await page.goto(ownerUrl.href);
+    const sidebar = page.locator('#cjdoc-sidebar');
+    const revealMembers = sidebar.locator('[data-cjdoc-tree-item=type]').filter({
+      has: page.locator('a[aria-current=page]'),
+    }).getByRole('button', { name: /^Show all \d+ items$/ });
+    await expect(revealMembers).toBeVisible();
+    await revealMembers.press('Enter');
+    const tail = sidebar.getByRole('link', { name: 'veryLongOperation(String, String, Int64, Int64, Bool)', exact: true });
+    const href = await tail.getAttribute('href');
+    expect(href).toMatch(/^#symbol-/);
+    const filter = sidebar.locator('[data-cjdoc-sidebar-filter]');
+    await filter.fill('normalize');
+    await expect(tail).toHaveCount(0);
+    await filter.fill('');
+    await expect(tail).toBeVisible();
+    await tail.press('Enter');
+    await expect(page).toHaveURL(ownerUrl.href + href);
+    await expect(page.locator('main [id=' + JSON.stringify(href.slice(1)) + ']')).toBeVisible();
+    await page.goBack();
+    await expect(tail).toBeVisible();
+  });
+
+  test('published packages preserve old authored groups and stable declaration deep links', async ({ browser }) => {
+    const legacy = 'packages/package-32303a636a646f633a6d6f64756c653a76313a726f6f746465636c61726174696f6e5f67726f757073.html';
+    const canonical = 'packages/declaration_groups/index.html';
+    const groupAnchor = '#api-group-10-application';
+    for (const javaScriptEnabled of [true, false]) {
+      const context = await browser.newContext({ javaScriptEnabled });
+      try {
+        const page = await context.newPage();
+        for (const transport of ['http', 'file']) {
+          for (const locale of declarationLocales) {
+            const home = declarationIndexUrl('groups', locale, transport);
+            const packageLink = declarationUrl(canonical, home);
+            if (javaScriptEnabled) {
+              await page.goto(home);
+              const link = page.locator('main ul.cj-package-index')
+                .getByRole('link', { name: 'declaration_groups', exact: true });
+              await link.focus();
+              expect(new URL(await link.getAttribute('href'), home).href).toBe(packageLink);
+              await link.press('Enter');
+              await expect(page).toHaveURL(packageLink);
+            } else {
+              await page.goto(packageLink);
+            }
+            const packageId = await page.locator('body').getAttribute('data-cjdoc-page-id');
+            expect(packageId).toMatch(/^package:.*:declaration_groups$/);
+            const row = page.locator('main tr[data-member-name="applicationFunction"]');
+            const rowId = await row.getAttribute('id');
+            expect(rowId).toMatch(/^symbol-/);
+            const detail = row.locator('.cj-decl-table__link');
+            const publishedTarget = declarationUrl(await detail.getAttribute('href'), page.url());
+            for (const hash of [groupAnchor, '#' + rowId]) {
+              const old = new URL(legacy + '?ref=shared' + hash, home).href;
+              await page.goto(old);
+              if (javaScriptEnabled) {
+                await expect(page).toHaveURL(packageLink + '?ref=shared' + hash);
+                await expect(page.locator('body')).toHaveAttribute('data-cjdoc-page-id', packageId);
+              } else {
+                await expect(page).toHaveURL(old);
+                await expect(page.locator('body')).toHaveAttribute('data-cjdoc-package-alias-for', packageId);
+                const declared = page.locator('link[rel="canonical"]');
+                expect(new URL(await declared.getAttribute('href'), page.url()).pathname)
+                  .toBe(new URL(packageLink).pathname.replace(/index\.html$/, ''));
+              }
+              await expect(page.locator(hash)).toBeVisible();
+              await expect(row).toBeVisible();
+              expect(declarationUrl(await detail.getAttribute('href'), page.url())).toBe(publishedTarget);
+            }
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  });
 
   test('overview, search state, typography, theme, and API routes are observable', async ({ page }) => {
     await openIndex(page);
@@ -898,8 +1016,9 @@ test.describe('generated HTML reference', () => {
     await expect(row).toHaveCount(1);
     // Package rows carry the navigation label, the kind and a one-line summary.
     await expect(row.locator('.cj-decl-table__link code')).toHaveText('ReferenceBox<T>');
-    await expect(row.locator('.cj-decl-table__kind .cj-kind')).toHaveText('class');
-    await expect(row.locator('.cj-decl-table__kind .cj-kind')).toHaveAttribute('data-kind', 'class');
+    // The visible kind heading already names the kind; the row does not
+    // repeat it in a third column.
+    await expect(row.locator('.cj-decl-table__kind')).toHaveCount(0);
     // No signature, badges or nested links survive on package rows.
     await expect(row.locator('.cj-signature-inline')).toHaveCount(0);
     await expect(row.locator('a a')).toHaveCount(0);
@@ -1739,6 +1858,21 @@ test.describe('authored declaration groups', () => {
               await expect(plain.locator('summary')).toHaveAttribute('data-cjdoc-toc-depth', '3');
               await expect(page.locator(`[data-cjdoc-toc] [data-toc-target="${plainId}"]`)
                 .locator('xpath=..')).toHaveAttribute('data-depth', '3');
+              const levels = await single.evaluate(section => {
+                const overloads = section.querySelector('[data-cjdoc-overload-group]');
+                const ids = [overloads.querySelector('[data-cjdoc-toc-role="overload"]').id,
+                  ...[...overloads.querySelectorAll('details[data-cjdoc-member]')].map(member => member.id),
+                  section.querySelector('[data-member-name="zLast"]').id];
+                const links = new Map([...document.querySelectorAll('[data-cjdoc-toc] [data-toc-target]')]
+                  .map(link => [link.dataset.tocTarget, link.closest('li')]));
+                return ids.map(id => {
+                  const item = links.get(id);
+                  return [item?.parentElement.id, item?.dataset.depth];
+                });
+              });
+              expect(levels.length).toBeGreaterThanOrEqual(4);
+              expect(levels[0][0]).toBeTruthy();
+              expect(levels.every(level => level[0] === levels[0][0] && level[1] === '3')).toBe(true);
               for (const anchor of ['functions', 'properties',
                 'api-kind-14-10-application-functions',
                 'api-kind-16-20-generated-spi-functions']) {

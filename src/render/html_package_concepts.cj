@@ -107,7 +107,7 @@ private func relatedPackagePages(documentation: DocumentationSet,
 }
 
 internal func appendPackageConceptualOverview(w: HtmlWriter, documentation: DocumentationSet,
-    projection: RenderProjection, pkg: PackageDoc, locale: String): Unit {
+    projection: RenderProjection, pkg: PackageDoc, locale: String, prefix: String): Unit {
     let selected = selectedPackageOverviewPage(documentation, projection, pkg, locale)
     if (selected.isNone()) { return }
     let page = selected.getOrThrow()
@@ -119,13 +119,13 @@ internal func appendPackageConceptualOverview(w: HtmlWriter, documentation: Docu
         nav.open("ul")
         nav.element("li", []) { item =>
             item.element("a", [htmlClass("cj-package-overview__link"),
-                htmlHref(documentationRouteHref("../" + page.route))]) { link =>
+                htmlHref(documentationRouteHref(prefix + page.route))]) { link =>
                 link.text(label(locale, "Read package overview", "阅读完整包概述"))
             }
         }
         for (related in relatedPackagePages(documentation, projection, pkg, page, locale)) {
             nav.element("li", []) { item =>
-                item.element("a", [htmlHref(documentationRouteHref("../" + related.route))]) { link =>
+                item.element("a", [htmlHref(documentationRouteHref(prefix + related.route))]) { link =>
                     link.text(related.title)
                 }
             }
@@ -149,9 +149,9 @@ internal func appendConceptualPackageReturn(w: HtmlWriter, documentation: Docume
     }
     if (let Some(page) <- selected) {
         if (let Some(pkg) <- conceptualPackageOwner(documentation, projection, page)) {
-            let href = documentationRouteHref(prefix + packagePagePath(pkg.moduleId, pkg.name) + "#declarations")
+            let href = SafeUrl.siteRoute(prefix + projection.packageFileHref(pkg.moduleId, pkg.name) + "#declarations")
             w.element("p", [htmlClass("cj-package-return")]) { paragraph =>
-                paragraph.element("a", [htmlHref(href)]) { link =>
+                paragraph.element("a", [htmlHref(href), htmlFlag("data-cjdoc-api-link")]) { link =>
                     link.text(label(locale, "Package API", "包 API") + " ")
                     link.textElement("code", pkg.name)
                 }

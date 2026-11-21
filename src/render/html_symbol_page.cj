@@ -182,6 +182,10 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
     let deprecations = projection.deprecations()
     let deprecated = deprecations.contains(member.id)
     let replacement = deprecations.action(member.id)
+    let explanation: ?DocTag = if (deprecated) { deprecationExplanation(member, locale) } else { None }
+    let sourceMessage: ?String = if (deprecated && explanation.isNone()) {
+        sourceDeprecationMessage(member)
+    } else { None }
     w.open("div", attrs: [htmlClass(if (replacement.isSome()) {
         "cj-member-row cj-member-row--replacement"
     } else { "cj-member-row" })])
@@ -198,8 +202,8 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
     w.close("summary")
     w.open("div", attrs: [htmlClass("cj-member__body")])
     if (deprecated) {
-        appendApiDeprecationNote(w, projection, member, deprecationExplanation(member, locale),
-            rootPrefix, locale, assetLookup)
+        appendApiDeprecationNote(w, projection, member, explanation, sourceMessage,
+            None<DeprecationAction>, rootPrefix, locale, assetLookup)
     }
     appendMemberOriginContext(w, projection, entry, rootPrefix, locale)
     appendDocumentationHtml(w, index, member, rootPrefix, assetLookup, typeLinkIndex,
@@ -460,7 +464,8 @@ private func appendSymbolBreadcrumbs(w: HtmlWriter, projection: RenderProjection
     })
     w.element("li", [htmlClass("cj-breadcrumbs__item")], { item =>
         item.open("a", attrs: [htmlHref(SafeUrl.siteRoute(
-            rootPrefix + packagePagePath(symbol.moduleId, symbol.packageName)))])
+            rootPrefix + projection.packageFileHref(symbol.moduleId, symbol.packageName))),
+            htmlFlag("data-cjdoc-api-link")])
         item.text(label(locale, "Package", "包") + " ")
         item.textElement("code", symbol.packageName)
         item.close("a")
@@ -479,9 +484,11 @@ private func appendSymbolHeaderTitle(w: HtmlWriter, projection: RenderProjection
     symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String, locale: String,
     statusOnly: Bool): Unit {
     w.open("div", attrs: [htmlClass("cj-page-header__title-row")])
+    // The outline shows the visible reader title, never the raw source header
+    // (which would include annotations and defaults).
     w.open("h1", attrs: [htmlClass("cj-page-header__title"),
         htmlAttr("data-cjdoc-toc-role", "api-root"),
-        htmlAttr("data-cjdoc-toc-label", htmlTocLabel(symbol))])
+        htmlAttr("data-cjdoc-toc-label", readerSymbolTitle(symbol, locale))])
     w.textElement("code", readerSymbolTitle(symbol, locale))
     w.close("h1")
     if (statusOnly) { appendDeprecationBadge(w, locale) }
@@ -721,7 +728,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     let hasMemberPage = isTypeDeclaration(symbol) || symbol.kind == "extend"
     let owners = visibleOwnerChain(index, symbol)
     appendPageStart(w, pageTitle, rootPrefix, documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
+        currentPackagePath: Some(projection.packageFileHref(symbol.moduleId, symbol.packageName)),
         currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol),
         currentPagePath: Some(apiHtmlFileHref(pageFile)),
         agentReadable: true, alternateMarkdown: Some(agentDeclarationMarkdownPath(symbol)),
@@ -733,16 +740,24 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     let deprecations = projection.deprecations()
     let deprecated = deprecations.contains(symbol.id)
     let explanation: ?DocTag = if (deprecated) { deprecationExplanation(symbol, locale) } else { None }
+    // Only a declaration without author prose needs its annotation scanned.
+    let sourceMessage: ?String = if (deprecated && explanation.isNone()) {
+        sourceDeprecationMessage(symbol)
+    } else { None }
+    let action: ?DeprecationAction = if (deprecated) { deprecations.action(symbol.id) } else { None }
+    // A status-only badge is redundant when the note itself carries the badge,
+    // whether the reason comes from author prose or the source annotation.
+    let hasReason = explanation.isSome() || sourceMessage.isSome()
     appendSymbolHeaderTitle(w, projection, symbol, assetLookup, rootPrefix, locale,
-        deprecated && explanation.isNone() && deprecations.action(symbol.id).isNone())
+        deprecated && !hasReason && action.isNone())
     if (hasMemberPage) {
         appendSymbolOverview(w, symbol, assetLookup, rootPrefix, locale)
     }
     appendSymbolMetadata(w, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
         locale: locale, includeSummary: false, pagePresentation: true)
     if (deprecated) {
-        appendApiDeprecationNote(w, projection, symbol, explanation, rootPrefix, locale, assetLookup,
-            standalone: true)
+        appendApiDeprecationNote(w, projection, symbol, explanation, sourceMessage, action,
+            rootPrefix, locale, assetLookup)
     }
     appendTypeGuideEntry(w, documentation, projection, symbol, rootPrefix, locale)
     w.close("header")

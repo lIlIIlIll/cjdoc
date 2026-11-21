@@ -79,7 +79,8 @@ internal func appendLanguageToggle(w: HtmlWriter, locale: String, languages: Arr
         appendLanguageOption(w, locale, target, href,
             languagePositionRoutes(published, locale, canonicalFile, sourceFile, target),
             current: target == locale, homeFallback: same.isNone(),
-            apiTarget: same.isSome() && (identity.startsWith("symbol:") || identity.startsWith("api-choice:")))
+            apiTarget: same.isSome() && (identity.startsWith("symbol:") ||
+                identity.startsWith("api-choice:") || identity.startsWith("package:")))
     }
     appendLanguageSwitcherEnd(w)
 }
@@ -132,7 +133,9 @@ private func finalizeLanguageStore(artifacts: RenderArtifactStore,
     let published = publishedLanguageRoutes(documentation, languages, inventory)
     for (page in inventory.pages where page.needsToggle) {
         let identity = inventory.identity(documentation, page)
-        let primary = inventory.files[page.language + ":" + page.route]
+        let primary = if (page.packageAliasFor.isSome()) {
+            inventory.generatedPages[page.language + ":" + identity]
+        } else { inventory.files[page.language + ":" + page.route] }
         let switcher = languageToggleHtml(page.language, languages, inventory.routes,
             page.file, primary.file, identity, published)
         let content = artifacts.readText(page.entry, RENDER_ARTIFACT_LIMIT)

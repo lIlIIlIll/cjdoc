@@ -110,9 +110,12 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactStore,
         let _ = artifacts.addText("html/style.css", "text/css; charset=utf-8",
             renderHtmlStylesheet(htmlFonts))
         for (pkg in projection.packages) {
-            let _ = artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
-                "text/html; charset=utf-8",
-                renderPackagePage(documentation, projection, index, typeLinkIndex, pkg, locale: locale, docVersion: docVersion))
+            let canonical = projection.packageFile(pkg.source.moduleId, pkg.source.name)
+            let legacy = historicalPackagePagePath(pkg.source.moduleId, pkg.source.name)
+            for (file in [canonical, legacy]) {
+                let _ = artifacts.addText("html/" + file, "text/html; charset=utf-8",
+                    renderPackagePage(documentation, projection, pkg, file, locale: locale, docVersion: docVersion))
+            }
         }
         let routes = projection.apiRoutes.getOrThrow()
         for (symbol in projection.visibleSymbols) {

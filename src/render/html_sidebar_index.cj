@@ -54,6 +54,14 @@ private func sortByteOrdered(values: ArrayList<String>): Unit {
         stable: true)
 }
 
+// Only these pages actually render member summaries and therefore own the
+// fragments used for their declared and contextual sidebar links.
+internal func sidebarMemberEntries(projection: RenderProjection, symbol: SymbolDoc): ?ArrayList<HtmlMemberEntry> {
+    if (!isTypeDeclaration(symbol) && symbol.kind != "extend") { return None }
+    let entries = projection.members(symbol).entries
+    if (entries.isEmpty()) { None } else { Some(entries) }
+}
+
 private func appendSidebarTypeEntry(out: RenderTextBuffer, projection: RenderProjection,
     symbol: SymbolDoc, label: String, locale: String): Unit {
     out.append("{\"label\":${escapeJsonString(label)}")
@@ -62,20 +70,23 @@ private func appendSidebarTypeEntry(out: RenderTextBuffer, projection: RenderPro
     out.append(",\"href\":${escapeJsonString(projection.symbolFileHref(symbol.id))}")
     out.append(",\"members\":[")
     var first = true
-    for (entry in projection.members(symbol).entries) {
-        if (!first) { out.append(",") }
-        first = false
-        out.append(escapeJsonString(entry.symbol.id))
+    if (let Some(entries) <- sidebarMemberEntries(projection, symbol)) {
+        for (entry in entries) {
+            if (!first) { out.append(",") }
+            first = false
+            out.append(escapeJsonString(entry.symbol.id))
+        }
     }
     out.append("]}")
 }
 
 private func appendSidebarMemberEntry(out: RenderTextBuffer, member: SymbolDoc,
-    locale: String): Unit {
+    expandable: Bool, locale: String): Unit {
     out.append("{\"label\":${escapeJsonString(htmlContextLabel(member))}")
     out.append(",\"kind\":${escapeJsonString(member.kind)}")
     out.append(",\"kindLabel\":${escapeJsonString(htmlKindLabel(member.kind, locale))}")
-    out.append(",\"anchor\":${escapeJsonString(symbolAnchor(member))}}")
+    let owner = if (expandable) { member.ownerId } else { None<String> }
+    out.append(",\"anchor\":${escapeJsonString(symbolAnchor(member))},\"ownerId\":${nullableString(owner)}}")
 }
 
 private class SidebarIndexInventory {
@@ -84,6 +95,25 @@ private class SidebarIndexInventory {
     let typeLabels = HashMap<String, String>()
     let members = HashMap<String, SymbolDoc>()
 
+    private func collectMembers(projection: RenderProjection, roots: ArrayList<SymbolDoc>): Unit {
+        let branch = ArrayList<SymbolDoc>()
+        branch.add(all: roots)
+        while (!branch.isEmpty()) {
+            let owner = branch[branch.size - 1]
+            branch.remove(at: branch.size - 1)
+            if (let Some(entries) <- sidebarMemberEntries(projection, owner)) {
+                for (entry in entries) {
+                    let member = entry.symbol
+                    members[member.id] = member
+                    if (member.ownerId == Some(owner.id) && sidebarMemberEntries(projection, member).isSome()) {
+                        typeLabels[member.id] = htmlContextLabel(member)
+                        branch.add(member)
+                    }
+                }
+            }
+        }
+    }
+
     func collect(projection: RenderProjection): Unit {
         for (pkg in projection.packages) {
             let labels = sidebarPackageLabels(projection, pkg.source.moduleId,
@@ -91,17 +121,15 @@ private class SidebarIndexInventory {
             let ids = ArrayList<String>()
             match (projection.topLevelByPackage.get(
                 routeKey(pkg.source.moduleId, pkg.source.name))) {
-                case Some(symbols) => for (symbol in symbols) {
-                    ids.add(symbol.id)
-                    typeLabels[symbol.id] = labels.get(symbol.id).getOrDefault(
-                        { => htmlContextLabel(symbol) })
-                    for (entry in projection.members(symbol).entries) {
-                        members[entry.symbol.id] = entry.symbol
+                case Some(symbols) =>
+                    for (symbol in symbols) {
+                        ids.add(symbol.id)
+                        typeLabels[symbol.id] = labels.get(symbol.id).getOrDefault({ => htmlContextLabel(symbol) })
                     }
-                }
+                    collectMembers(projection, symbols)
                 case None => ()
             }
-            packages.add(packagePagePath(pkg.source.moduleId, pkg.source.name))
+            packages.add(projection.packageFileHref(pkg.source.moduleId, pkg.source.name))
             packageTypes.add(ids)
         }
     }
@@ -172,7 +200,7 @@ internal func renderSidebarIndexScript(projection: RenderProjection, locale: Str
         if (index > 0) { out.append(",") }
         let id = memberIds[index]
         out.append(escapeJsonString(id) + ":")
-        appendSidebarMemberEntry(out, inventory.members[id], locale)
+        appendSidebarMemberEntry(out, inventory.members[id], inventory.typeLabels.contains(id), locale)
     }
     out.append("}")
     appendSidebarDeprecations(out, projection)

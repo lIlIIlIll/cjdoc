@@ -25,6 +25,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from functools import partial
+from html import unescape
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
@@ -303,6 +304,85 @@ def symbol_page_routes(root: Path, symbol_name: str) -> list[str]:
     return sorted(routes)
 
 
+MEMBER_ROW = re.compile(r"<tr\b[^>]*\bdata-cjdoc-member\b[^>]*>")
+BODY_TAG = re.compile(r"<body\b([^>]*)>")
+HTML_ATTRIBUTE = re.compile(r'([a-zA-Z0-9_:-]+)="([^"]*)"')
+
+
+def attribute_map(fragment: str) -> dict[str, str]:
+    return {name: unescape(value) for name, value in HTML_ATTRIBUTE.findall(fragment)}
+
+
+def body_attributes(text: str) -> dict[str, str]:
+    match = BODY_TAG.search(text)
+    return attribute_map(match.group(1)) if match else {}
+
+
+def member_anchors(text: str) -> dict[str, str]:
+    """Map each rendered declaration row anchor to its own SymbolId."""
+    anchors = {}
+    for tag in MEMBER_ROW.findall(text):
+        values = attribute_map(tag)
+        anchor, symbol = values.get("id"), values.get("data-member-symbol-id")
+        if anchor and symbol:
+            anchors[anchor] = symbol
+            expected = "symbol-" + symbol.encode("utf-8").hex()
+            if anchor != expected:
+                raise ValueError(
+                    f"declaration row anchor {anchor} is not the SymbolId anchor {expected}")
+    return anchors
+
+
+def published_packages(site: Path, root: Path, fixture: str, locale: str) -> list[dict]:
+    """Resolve formal package pages from the publisher manifest, never an alias glob."""
+    if fixture in MULTILINGUAL_FIXTURES:
+        manifest = json.loads((site / "site-manifest.json").read_text(encoding="utf-8"))
+        rows = [row for row in manifest["routes"]
+                if row["language"] == locale and (row["pageId"] or "").startswith("package:")
+                and row["symbolId"] is None and row["sectionId"] is None]
+        if not rows:
+            raise ValueError(f"{fixture}: site manifest publishes no package for {locale}")
+        canonical = [(row["pageId"], site / unquote(urlparse(row["href"]).path)) for row in rows]
+    else:
+        manifest = json.loads((root / "agent" / "manifest.json").read_text(encoding="utf-8"))
+        rows = [row for row in manifest["representations"] if row["kind"] == "package"]
+        if not rows:
+            raise ValueError(f"{fixture}: machine manifest publishes no package")
+        canonical = [(row["id"].removeprefix("cjdoc:"),
+                      root / unquote(urlparse(row["html"]).path)) for row in rows]
+    packages = []
+    for identity, page in canonical:
+        if not page.is_file():
+            raise ValueError(f"{fixture}: package manifest target does not exist: {page}")
+        if not page.is_relative_to(root):
+            raise ValueError(f"{fixture}: package manifest target escapes its locale: {page}")
+        if page.name.startswith("package-"):
+            raise ValueError(
+                f"{fixture}: package manifest must not name the compatibility alias: {page}")
+        body = body_attributes(page.read_text(encoding="utf-8"))
+        if body.get("data-cjdoc-page-id") != identity:
+            raise ValueError(f"{page}: body does not publish package identity {identity}")
+        if "data-cjdoc-package-alias-for" in body:
+            raise ValueError(f"{page}: canonical package body must not look like an alias")
+        # The compatibility body reuses the old filename at the publication's
+        # package directory root, outside the readable package tree.
+        candidates = [candidate for candidate in sorted(root.rglob("package-*.html"))
+                      if body_attributes(candidate.read_text(encoding="utf-8")).get(
+                          "data-cjdoc-package-alias-for") == identity]
+        if len(candidates) != 1:
+            raise ValueError(
+                f"{fixture}: expected one compatibility alias for {identity}, "
+                f"found {len(candidates)}")
+        compatibility = candidates[0]
+        compatibility_body = body_attributes(compatibility.read_text(encoding="utf-8"))
+        if compatibility_body.get("data-cjdoc-page-id") is not None or \
+                compatibility_body.get("data-cjdoc-route") != "package-alias":
+            raise ValueError(
+                f"{compatibility}: compatibility body must not claim a generated page identity")
+        packages.append({"identity": identity, "file": page, "alias": compatibility})
+    return packages
+
+
 def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[dict]:
     # Copy the fixture out of the checkout FIRST. Generating a project writes a
     # `target/` build tree beside its sources, and leaving that inside the
@@ -339,19 +419,27 @@ def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[di
     for locale, root in roots:
         if not root.is_dir():
             raise ValueError(f"{fixture}: expected generated locale root {locale}")
-        package_pages = sorted((root / "packages").glob("*.html"))
-        for page in package_pages:
+        packages = published_packages(site, root, fixture, locale)
+        for package in packages:
+            page, alias = package["file"], package["alias"]
             text = page.read_text(encoding="utf-8")
             absent = missing_anchors(text, FIXTURE_ANCHORS[fixture])
             if absent:
                 raise ValueError(
                     f"{fixture}/{locale}/{page.name}: required anchors are missing: {absent}"
                 )
+            # The compatibility body is the same published content, so a reader
+            # without the alias script still sees every declaration.
+            if member_anchors(alias.read_text(encoding="utf-8")) != member_anchors(text):
+                raise ValueError(
+                    f"{fixture}/{locale}: package alias lost canonical declarations")
             pages.append({
                 "fixture": fixture,
                 "locale": locale,
                 "root": str(root),
-                "route": f"packages/{page.name}",
+                "route": page.relative_to(root).as_posix(),
+                "packageId": package["identity"],
+                "aliasRoute": alias.relative_to(root).as_posix(),
                 "historicalAnchors": list(FIXTURE_ANCHORS[fixture]),
             })
     if not pages:
@@ -542,6 +630,39 @@ def check_native_zoom(browser, pages) -> list[str]:  # noqa: ANN001 - Playwright
                     )
     finally:
         context.close()
+    return failures
+
+
+def check_package_alias_redirect(page, entry: dict, transport: str,
+                                 server_base: str | None) -> list[str]:  # noqa: ANN001
+    """The old package filename opens the canonical page and keeps query/fragment."""
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+
+    failures = []
+    where = f"{entry['fixture']}/{entry['locale']} {transport} alias"
+    if transport == "http" and entry["fixture"] not in MULTILINGUAL_FIXTURES:
+        return failures
+    expected = unquote(urlparse(transport_url(entry, transport, server_base)).path)
+    if transport == "http":
+        expected = expected.removesuffix("index.html")
+    page.goto(transport_url(entry, transport, server_base,
+                            route=entry["aliasRoute"], query=[("tag", "stream")],
+                            fragment="declarations"))
+    try:
+        page.wait_for_url(lambda url: unquote(urlparse(url).path) == expected, timeout=5000)
+    except BrowserTimeout:
+        return [f"{where}: alias did not reach its canonical package"]
+    state = page.evaluate(
+        """() => ({search: location.search, hash: location.hash,
+                    anchors: !!document.getElementById('declarations'),
+                    rows: document.querySelectorAll('.cj-decl-table__row').length})"""
+    )
+    if "tag=stream" not in state["search"]:
+        failures.append(f"{where}: alias dropped the query state")
+    if state["hash"] != "#declarations":
+        failures.append(f"{where}: alias dropped the fragment")
+    if not state["anchors"] or state["rows"] < 1:
+        failures.append(f"{where}: canonical page lost its declarations after redirect")
     return failures
 
 
@@ -1136,6 +1257,12 @@ def main() -> int:
                             page, group_tag_pages, name, width, height, theme,
                             "http", server_base,
                         )
+                for entry in pages:
+                    # The compatibility filename is a real page for a reader
+                    # without scripts, and a query-preserving redirect with them.
+                    failures += check_package_alias_redirect(page, entry, "file", None)
+                for entry in group_tag_pages:
+                    failures += check_package_alias_redirect(page, entry, "http", server_base)
                 failures += check_native_zoom(browser, pages)
                 failures += check_keyboard(page, pages[0])
                 failures += check_accessible_names(page, pages)

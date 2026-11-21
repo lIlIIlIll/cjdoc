@@ -40,7 +40,7 @@ internal func routeKey(moduleId: String, packageName: String): String {
     "${moduleId.size}:${moduleId}${packageName}"
 }
 
-internal func packagePagePath(moduleId: String, name: String): String {
+internal func historicalPackagePagePath(moduleId: String, name: String): String {
     "packages/package-${boundedHtmlSlug(routeKey(moduleId, name))}.html"
 }
 
@@ -199,6 +199,14 @@ internal class RenderProjection {
         apiRoutes.getOrThrow().fileHref(symbolId)
     }
 
+    func packageFile(moduleId: String, name: String): String {
+        apiRoutes.getOrThrow().packageFile(moduleId, name)
+    }
+
+    func packageFileHref(moduleId: String, name: String): String {
+        apiHtmlFileHref(packageFile(moduleId, name))
+    }
+
     func publicApiPrefix(resourcePrefix: String): String {
         publicApiRootPrefix(resourcePrefix, unprefixedApiLocale)
     }
@@ -234,8 +242,8 @@ internal class RenderProjection {
     }
 
     init(documentation: DocumentationSet, snapshotId!: String = "",
-        buildApiRoutes!: Bool = false, legacyApiRoutes!: Bool = false, apiRoutes!: ?ApiHtmlRoutes = None,
-        unprefixedApiLocale!: String = "") {
+        buildApiRoutes!: Bool = false, routeProjection!: ApiRouteProjection = ReadablePackages,
+        apiRoutes!: ?ApiHtmlRoutes = None, unprefixedApiLocale!: String = "") {
         this.documentation = documentation
         this.snapshotId = snapshotId
         this.unprefixedApiLocale = unprefixedApiLocale
@@ -263,9 +271,6 @@ internal class RenderProjection {
                 case None => groups[key] = ArrayList<SymbolDoc>([symbol])
             }
         }
-        this.apiRoutes = if (buildApiRoutes) {
-            Some(ApiHtmlRoutes(documentation, visibleSymbols, membersByOwner, legacy: legacyApiRoutes))
-        } else { apiRoutes }
 
         let packagesByRoute = HashMap<String, ProjectedPackage>()
         for (pkg in documentation.packages) {
@@ -285,6 +290,9 @@ internal class RenderProjection {
                 packages.add(projected)
             }
         }
+        this.apiRoutes = if (buildApiRoutes) {
+            Some(ApiHtmlRoutes(documentation, visibleSymbols, membersByOwner, packages, routeProjection))
+        } else { apiRoutes }
 
         let modulesById = HashMap<String, ProjectedModule>()
         for (module in documentation.modules) {
@@ -739,7 +747,7 @@ internal func validateHtmlRouting(projection: RenderProjection, assets: ArrayLis
         let _ = paths.add(path)
     }
     for (pkg in projection.packages) {
-        let path = packagePagePath(pkg.source.moduleId, pkg.source.name)
+        let path = historicalPackagePagePath(pkg.source.moduleId, pkg.source.name)
         if (!paths.add(path)) {
             throw IllegalArgumentException("HTML route collision for package '${pkg.source.name}'")
         }

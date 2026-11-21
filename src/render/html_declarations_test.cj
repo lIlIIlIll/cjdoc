@@ -32,7 +32,9 @@ private func rowDocumentation(symbols: Array<SymbolDoc>, audience!: String = "ex
 
 private func packageRowsHtml(documentation: DocumentationSet, locale: String): String {
     for (artifact in renderDocumentationFormatsWithOptions(documentation, ["html"], locale: locale)) {
-        if (artifact.path.startsWith("html/packages/")) { return artifact.content }
+        if (artifact.path.startsWith("html/packages/") && artifact.path.endsWith("/index.html")) {
+            return artifact.content
+        }
     }
     throw IllegalArgumentException("missing package page")
 }
@@ -93,19 +95,23 @@ class HtmlPackageDeclarationTest {
         let projection = RenderProjection(documentation, buildApiRoutes: true)
         for (locale in ["en", "zh-CN"]) {
             let html = declarationRowsHtml(packageRowsHtml(documentation, locale))
-            @Expect(html.contains("<code>Entry&lt;T&gt;</code>"))
-            @Expect(html.contains("<code>Map&lt;K, V&gt;</code>"))
-            @Expect(html.contains("<code>Unknown</code>"))
-            @Expect(!html.contains("<code>Unknown&lt;NotInModel&gt;</code>"))
-            @Expect(html.contains("<code>Entry&lt;String&gt;</code>"))
-            @Expect(!html.contains("Entry&lt;String&gt;&lt;T&gt;"))
+            // Generated list boundaries carry display-only soft breaks; the
+            // reader text is unchanged once the void elements are removed.
+            let plain = html.replace("<wbr>", "")
+            @Expect(plain.contains("<code>Entry&lt;T&gt;</code>"))
+            @Expect(plain.contains("<code>Map&lt;K, V&gt;</code>"))
+            @Expect(plain.contains("<code>Unknown</code>"))
+            @Expect(!plain.contains("NotInModel"))
+            @Expect(plain.contains("<code>Entry&lt;String&gt;</code>"))
+            @Expect(!plain.contains("Entry&lt;String&gt;&lt;T&gt;"))
             // Rows link to the canonical declaration routes and never inline the
-            // captured source header; the kind is the badge, not a heading.
+            // captured source header; the kind is the section heading, not a
+            // repeated badge column on every row.
             for (symbol in documentation.declarations) {
-                @Expect(html.contains("href=\"../" + projection.symbolFileHref(symbol.id) + "\""))
+                @Expect(html.contains("href=\"../../" + projection.symbolFileHref(symbol.id) + "\""))
             }
             @Expect(!html.contains("where K &lt;: Hashable"))
-            @Expect(html.contains("class=\"cj-kind\" data-kind=\"class\""))
+            @Expect(!html.contains("class=\"cj-kind\""))
             @Expect(html.contains(if (locale == "en") { "Classes (3)" } else { "类（3）" }))
         }
         @Expect(encodeDocIr(documentation), original)
@@ -162,8 +168,11 @@ class HtmlPackageDeclarationTest {
         @Expect(external.contains("类（1）"))
         @Expect(external.contains("函数（1）"))
         @Expect(external.contains("宏（1）"))
-        @Expect(external.contains("class=\"cj-kind\" data-kind=\"class\">类</span>"))
-        @Expect(external.contains("class=\"cj-kind\" data-kind=\"function\">函数</span>"))
+        // Each visible kind heading states the kind once; the rows do not
+        // repeat it in a third column.
+        @Expect(external.contains(">类（1）</h3>"))
+        @Expect(external.contains(">函数（1）</h3>"))
+        @Expect(!external.contains("class=\"cj-kind\""))
         @Expect(htmlKindLabel("macro", "zh-CN"), "宏")
         @Expect(external.contains("Quoted"))
         @Expect(!external.contains("Hidden"))
@@ -234,9 +243,12 @@ class HtmlPackageDeclarationTest {
         @Expect(!html.contains("<img src=x onerror=alert(1)>"))
         @Expect(!html.contains("<svg onload=alert(1)>"))
         @Expect(!html.contains(unusedSentinel))
-        @Expect(html.contains("</a><div class=\"cj-badges\">"))
+        let primary = html.indexOf("<a class=\"cj-decl-table__link\"").getOrThrow()
+        let badges = html.indexOf("<div class=\"cj-badges\">").getOrThrow()
+        @Expect(primary < badges)
+        @Expect(html[primary..badges].contains("</a>"))
         @Expect(html.contains("data-cjdoc-tag-id=\"stream\""))
-        @Expect(html.contains("href=\"../index.html?tag=stream&amp;moduleId=cjdoc%3Amodule%3Av1%3Apackage-rows&amp;snapshotId="))
+        @Expect(html.contains("href=\"../../index.html?tag=stream&amp;moduleId=cjdoc%3Amodule%3Av1%3Apackage-rows&amp;snapshotId="))
     }
 
     // Issue #112: the anchor must resolve for the far more common single-category
@@ -278,6 +290,67 @@ class HtmlPackageDeclarationTest {
         @Expect(!html.contains("id=\"enums\""))
         @Expect(!html.contains("(0)"))
         @Expect(!html.contains("（0）"))
+    }
+
+    // The kind is stated once: a visible kind heading suppresses the row badge,
+    // while an author group whose kind heading is merged (one visible kind) must
+    // still tell the reader the kind on each row.
+    @TestCase
+    func kindBadgeAppearsOnlyWhenNoHeadingStatesIt(): Unit {
+        let singleKind = rowSymbol("function:alpha#g0()", "alpha", "function",
+            "public func alpha(): Unit")
+        let single = packageRowsHtml(rowDocumentation([singleKind]), "en")
+        @Expect(single.contains(">Functions (1)</h2>"))
+        @Expect(!single.contains("cj-decl-table__kind"))
+
+        let groupedBase = rowSymbol("function:grouped#g0()", "grouped", "function",
+            "public func grouped(): Unit")
+        let grouped = SymbolDoc(groupedBase.id, groupedBase.kind, groupedBase.name,
+            groupedBase.qualifiedName, groupedBase.packageName, groupedBase.moduleId,
+            groupedBase.visibility, groupedBase.source, groupedBase.headerSpelling,
+            groupedBase.semantic, documentation: Some(DocComment("raw", "summary", "",
+                MarkdownNode("document"), tags: [DocTag("group", "core", "")])))
+        let groupedDocumentation = rowDocumentation([grouped], metadata: DocumentationMetadata(
+            groups: [DocumentationGroupDefinition(ROW_MODULE, "fixture", "core", "Core")]))
+        let groupedHtml = packageRowsHtml(groupedDocumentation, "en")
+        // One visible kind under the author group: no second heading, so the row
+        // carries the kind badge.
+        @Expect(groupedHtml.contains("data-group-total=\"1\""))
+        @Expect(!groupedHtml.contains(">Functions (1)</h3>"))
+        @Expect(groupedHtml.contains("<span class=\"cj-kind cj-decl-table__kind\" " +
+            "data-kind=\"function\">function</span>"))
+    }
+
+    // The declaration row itself is the outline target: it owns the stable
+    // symbol anchor, carries the entry role, and keeps the compact label text
+    // intact across display-only soft-break points.
+    @TestCase
+    func declarationRowsOwnStableAnchorsAndKeepCompactLabelText(): Unit {
+        let symbol = rowSymbol("function:parse#g0(String)", "parse", "function",
+            "public func parse(text: String): Unit")
+        let html = declarationRowsHtml(packageRowsHtml(rowDocumentation([symbol]), "en"))
+        let anchor = symbolAnchor(symbol)
+        @Expect(html.contains("<tr class=\"cj-decl-table__row\" data-cjdoc-member " +
+            "data-member-symbol-id=\"" + symbol.id + "\""), true)
+        @Expect(html.contains("id=\"" + anchor + "\" data-cjdoc-toc-role=\"entry\""), true)
+        @Expect(html.split("id=\"" + anchor + "\"").size, 2)
+        // The primary link is still the declaration destination.
+        @Expect(html.contains("<a class=\"cj-decl-table__link\" "), true)
+        let out = HtmlWriter()
+        appendSoftWrappedLabel(out, "parse(text: String, separator!: String = \",\")")
+        let wrapped = out.toString()
+        // Soft breaks land only after the generated list opener and separators;
+        // removing them restores the exact label.
+        @Expect(wrapped.contains("parse(<wbr>text: String, <wbr>separator!: String"), true)
+        @Expect(wrapped.replace("<wbr>", ""),
+            "parse(text: String, separator!: String = &quot;,&quot;)")
+        let empty = HtmlWriter()
+        appendSoftWrappedLabel(empty, "isEmpty()")
+        @Expect(empty.toString(), "isEmpty()")
+        // A default expression's own parentheses are not display boundaries.
+        let nested = HtmlWriter()
+        appendSoftWrappedLabel(nested, "policy(value: Option<(Int64, String)>)")
+        @Expect(nested.toString(), "policy(<wbr>value: Option&lt;(Int64, String)&gt;)")
     }
 
     // An audience that sees no declarations still gets a labelled, TOC-visible

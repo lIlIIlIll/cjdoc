@@ -38,6 +38,7 @@
 - 键盘回归使用真实 DOM 事件与原生生成页面。保留 ranking/IME 单元行为检查，并让 DOM test double 提供标准事件 `target`；删除截取内部函数再用空 `render` stub 复述调用顺序的测试，不给新函数名重建 stub。生成器的导航单测保留 ARIA、真实链接和内容契约，不钉 JS 赋值语句或 CSS 选择器／断点源码；目录可见性、筛选和响应式操作由真实浏览器回归覆盖。现有真实 browser 的 Control/Meta+K 关闭移动主题 modal、解除 inert 并聚焦搜索的用例继续保留。
 - 移动菜单的 pointer hit-test 先将实际 popup 原生滚入视口，再分别验证 action 位于视口内且实际接收指针；不将视口以外的坐标误判为 paint containment 裁切。菜单仍必须通过独立的浏览器 hit-testing，不能只看 DOM 存在或 `display`。
 - `tests/browser/check-reader-discovery.mjs` 在实际原生 1k 站点检查完整分页身份/顺序、查询重置、IME/键盘精确尾部链接、立即导航后的 sidebar/文档历史，以及规定视口/明暗主题中的翻页控件和边界说明。它不替代冻结的三文件规模测量 harness。
+- 同一 discovery 检查把首页静态 API 主链接逐一与发布清单对账，并记录首页字节数。重复 API 页不得嵌入完整总览；冷启动只含服务端 5 项窗口，沿用原有静态资源，不额外请求 Doc IR 或另一份索引。按 Enter 展开 500 成员分支后，末项必须可导航到原生锚点。此检查不改变冻结性能和无障碍阈值。
 - 首次完整成对 CI 的 500 成员下一帧 P95 最高 165.4ms，未达到事前 150ms 目标。独立 trace 将主要成本定位到恢复 500 行时的样式/布局（一次涉及 16,984 个样式元素、约 19k dirty layout objects），并排除仅增加 layout containment 的方案。仅在 screen media 中对未展开、无焦点且未打开操作菜单的行使用浏览器原生 `content-visibility:auto`；保留全部 DOM、作者正文和精确锚点，展开契约与 print 始终走完整布局。不支持所用 selector 的浏览器保留原布局。对所有行延后布局的早期方案曾使离屏展开契约的 rendered text 变为空，既有 showcase 检查捕获该回归；双展开后保留完整作者正文的实际场景防止重现。诊断样本不是正式通过凭据，仍以完整 cohort 的比较为准。
 - 真实库的成对相对门槛也捕获了查询与冷加载退化；不同查询交替的 CPU profile 显示 `wordParts` 及逐字符分类是主要脚本成本。按原生 entry 对象惰性缓存不随查询变化的分词/缩写/拼写候选；缓存数量受当前索引条目数约束，不复制全部正文、不缓存固定查询响应，也不跳过不同查询的原始 rank/sort。正式比较继续要求原始前 20 排序和 index payload 完全一致。
 - 侧栏初始化保留服务端的 5 项窗口、当前项位置与完整索引链接；partial 标记不触发自动补全。明确展开或筛选时才补齐该分支，关闭分支不构造子树。数据与真实 href 完整保留，正文成员 DOM 不因窗口缩小而减少。
@@ -183,6 +184,7 @@ workflow 只在 `READER_CORPUS=1000` 时预登记 `v17-v18-unregistered-source` 
 - search-index 仍是 `/11`，search-contract 仍是 `/2`。每侧的原始 `search-index.json`、`search-index.js` 和捕获 receipt 分别核验；严格解析 JS wrapper 的两个数据赋值：index 数据须与 JSON 一致，signature payload 在配对比较中须严格一致，且不允许额外可执行片段。另从 publisher 打包的 Doc IR 独立重算 snapshot ID，并以完整 schema 11 投影、UTF-8 长度前缀输入重算 projection fingerprint。
 - 只有上述证明成功后，比较副本才可配对 `scope.snapshotId`、`scope.sourceSnapshotId`、`entries[].snapshotId` 及根/coverage 的 `projectionId`。其余 schema 11 payload、正文、分类、模块/依赖/暴露、href、顺序、coverage 与 contract 全部严格相等。保留两侧原始 JSON/JS、receipt、SHA-256 和新身份，不回写产物。
 - ARIA 登记使用 `cjdoc.reader-aria-transition/1` profile。它必须冻结 `en` 与 `zh-CN` 两种 locale 的完整 before/after ARIA snapshots、对应 corpus/locale 身份及完整快照摘要；摘要和实际快照都须匹配。允许的树差异仅限 #173 的反向类型使用位置文案、#174 按投影成员数省略工具栏控件的默认状态，以及 #176 的真实 current-page/ancestor 状态。未知树差异拒绝。
+- 可读路由登记使用 `reader-scale-readable-api.json`。从原始 `/1` 发布和冻结树读取历史包地址；只接受 `/3` 发布中与捕获声明的模块和包身份一致、且正文身份确证的 `packages/reader_scale/index.html`。仅配对这条已登记的包面包屑与原有已证实的声明地址；链接顺序、查询、片段和其余可访问性树内容不变。
 - ARIA profile 仅约束 ARIA snapshot 差异，不豁免字体、字体文件、实际 font usage、字号、正文排版或其它视觉指标；这些仍按原规则相等比较。数值门槛、样本数、原始任务、声明下限、排名、print 检查和性能/资源阈值均不变。
 
 这两项是 baseline 后、after 前写入新注册预算的 preregistration。`reader_compare.py` 仍只接收已冻结的 `--budgets`，没有 after-time 豁免开关；未注册时原有严格默认继续生效。它们描述可接受的窄差异，不是任何本地或远端 Reader 运行通过的证据。

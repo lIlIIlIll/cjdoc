@@ -3,7 +3,7 @@ package pocketkit.authoring
 import pocketkit.TextCatalog
 
 /**
- * @summary 读取第一条非空文本；仅用于演示文档注释。
+ * @summary 读取首项；目录为空或首项为空字符串时抛出异常。
  * @description 这个旧式入口把两种缺失情况转换为异常。
  *
  * 它只读取第一项，不会跳过空条目去找下一项。
@@ -11,7 +11,7 @@ import pocketkit.TextCatalog
  * - 空目录没有第一项。
  * - 空字符串是已有条目，但不能作为结果返回。
  *
- * @summary[lang=en] Read the first entry if it is non-empty; a documentation example only.
+ * @summary[lang=en] Read the first entry; throw if the catalogue is empty or its first entry is an empty string.
  * @description[lang=en] This legacy entry point turns two missing-value cases into exceptions.
  *
  * It reads only the first entry and never skips a blank entry to look for the next one.
@@ -56,7 +56,7 @@ import pocketkit.TextCatalog
  *     println("empty: IllegalStateException")
  * }
  * try {
- *     let _ = requireFirstText(TextCatalog([""]))
+ *     let _ = requireFirstText(TextCatalog(["", "later"]))
  *     throw IllegalStateException("expected a blank-entry exception")
  * } catch (_: IllegalArgumentException) {
  *     println("blank: IllegalArgumentException")
@@ -109,6 +109,8 @@ public func requireFirstText(catalog: TextCatalog): String {
  * @param[lang=en] catalog The text catalogue to read.
  * @return 第一条文本，或没有条目时返回空字符串。
  * @return[lang=en] The first entry, or an empty string when there are no entries.
+ * @deprecated 空目录和首项为空字符串时都返回 `""`，调用方无法区分。
+ * @deprecated[lang=en] An empty catalogue and an empty first entry both return `""`; callers cannot tell them apart.
  */
 @Deprecated["An empty catalogue and a blank first entry are indistinguishable."]
 public func firstTextOrEmpty(catalog: TextCatalog): String {

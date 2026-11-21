@@ -3,16 +3,6 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-internal func htmlTocLabel(symbol: SymbolDoc): String {
-    let header = symbol.headerSpelling.trimAscii()
-    if (header.isEmpty()) { return "${symbol.kind} ${symbol.name}" }
-    let visibilityPrefix = "${symbol.visibility} "
-    if (header.startsWith(visibilityPrefix)) {
-        return header[visibilityPrefix.size..].trimAscii()
-    }
-    header
-}
-
 internal func findTag(comment: DocComment, name: String, subject!: ?String = None): ?DocTag {
     for (tag in comment.tags) {
         if (tag.name == name && (subject.isNone() || tag.subject == subject.getOrThrow())) { return Some(tag) }
@@ -479,7 +469,7 @@ internal func appendSymbolArticle(w: HtmlWriter,
     w.open("article", attrs: [htmlClass("cj-symbol-entry"), htmlAttr("id", symbolAnchor(symbol))])
     w.open("h3", attrs: [htmlClass("cj-symbol-entry__title"),
         htmlAttr("data-cjdoc-toc-role", tocRole),
-        htmlAttr("data-cjdoc-toc-label", htmlTocLabel(symbol))])
+        htmlAttr("data-cjdoc-toc-label", htmlContextLabel(symbol))])
     if (linkTitle) {
         w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(typeLinkIndex.projection.publicSymbolHref(rootPrefix, symbol.id)))])
         w.textElement("code", readerQualifiedName(symbol))

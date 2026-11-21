@@ -58,7 +58,7 @@ class HtmlSidebarNavigationTest {
         let documentation = sidebarFixtureDocumentation(moduleId, "fixture",
             declarations.toArray())
         let projection = RenderProjection(documentation, buildApiRoutes: true)
-        let packagePath = packagePagePath(moduleId, "fixture")
+        let packagePath = "packages/fixture/index.html"
         let selectedPath = projection.symbolFileHref(selected.getOrThrow().id)
         let html = renderSidebarHtml(projection, Some(packagePath),
             selected, Some(selectedPath))
@@ -115,7 +115,7 @@ class HtmlSidebarNavigationTest {
             declarations: [outer, inner, member])
         validateDocumentationSet(documentation)
         let projection = RenderProjection(documentation, buildApiRoutes: true)
-        let packagePath = packagePagePath(moduleId, packageName)
+        let packagePath = "packages/${packageName}/index.html"
         let outerPath = projection.symbolFileHref(outer.id)
         for (current in [inner, member]) {
             let currentPath = projection.symbolFileHref(current.id)
@@ -130,6 +130,20 @@ class HtmlSidebarNavigationTest {
             // Nested declarations stay reachable as fragment links on the owner page.
             @Expect(html.contains("../${outerPath}#${symbolAnchor(inner)}"))
         }
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let nestedPath = projection.symbolFileHref(inner.id)
+        var overview = ""
+        var nestedPage = ""
+        var sidebar = ""
+        for (artifact in artifacts) {
+            if (artifact.path == "html/index.html") { overview = artifact.content }
+            if (artifact.path == "html/" + nestedPath) { nestedPage = artifact.content }
+            if (artifact.path == "html/sidebar-index.js") { sidebar = artifact.content }
+        }
+        @Expect(overview.split("data-cjdoc-reference-symbol=\"" + memberId + "\"").size, 2)
+        @Expect(overview.contains("href=\"" + projection.symbolFileHref(member.id) + "\""))
+        @Expect(sidebar.contains("\"href\":\"${nestedPath}\",\"members\":[\"${memberId}\"]"))
+        @Expect(nestedPage.contains("id=\"" + symbolAnchor(member) + "\""))
     }
 
     @TestCase
@@ -145,7 +159,7 @@ class HtmlSidebarNavigationTest {
         let documentation = sidebarFixtureDocumentation(moduleId, "fixture",
             [owner, run])
         let projection = RenderProjection(documentation, buildApiRoutes: true)
-        let packagePath = packagePagePath(moduleId, "fixture")
+        let packagePath = "packages/fixture/index.html"
         let ownerPath = projection.symbolFileHref(owner.id)
         let html = renderSidebarHtml(projection, Some(packagePath),
             Some(owner), Some(ownerPath))
@@ -238,7 +252,7 @@ class HtmlSidebarIndexTest {
             [owner, second, run, stop])
         let projection = RenderProjection(documentation, buildApiRoutes: true)
         let script = renderSidebarIndexScript(projection, "en")
-        let packagePath = packagePagePath(moduleId, "fixture")
+        let packagePath = "packages/fixture/index.html"
 
         @Expect(script.startsWith("globalThis.__CJDOC_SIDEBAR_INDEX__={\"version\":3,"))
         @Expect(script.endsWith("}};\n"))

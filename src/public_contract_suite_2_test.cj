@@ -66,27 +66,36 @@ class PublicApiContractsSuite2 {
 
     @TestCase
     func htmlRoutesSamePackageNamePerModuleWithoutCollisions(): Unit {
-        let artifacts = api_render.HtmlDocumentationRenderer().render(samePackageAcrossModulesFixture())
-        var packageCount: Int64 = 0
-        var firstPath = ""
-        for (artifact in artifacts) {
-            if (!artifact.path.startsWith("html/packages/")) {
-                continue
-            }
-            packageCount++
-            if (firstPath.isEmpty()) {
-                firstPath = artifact.path
-            } else {
-                @Expect(artifact.path != firstPath)
-            }
-        }
-        @Expect(packageCount, 2)
+        let documentation = samePackageAcrossModulesFixture()
+        let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
         let index = artifactContent(artifacts, "html/index.html")
-        @Expect(index.contains("API overview"))
-        @Expect(!index.contains("visible declarations</p>"))
+        let first = documentation.declarations[0]
+        let second = documentation.declarations[1]
+        let canonical = HashSet<String>()
+        let aliases = HashSet<String>()
         for (artifact in artifacts where artifact.path.startsWith("html/packages/")) {
-            @Expect(index.contains(artifact.path[5..]))
+            let linked = "href=\"" + artifact.path[5..] + "\""
+            let showsFirst = artifact.content.contains("data-member-symbol-id=\"${first.id}\"")
+            let showsSecond = artifact.content.contains("data-member-symbol-id=\"${second.id}\"")
+            @Expect(showsFirst != showsSecond)
+            let moduleId = if (showsFirst) { first.moduleId } else { second.moduleId }
+            let identity = "package:${moduleId}:shared"
+            if (artifact.path.endsWith("/index.html")) {
+                let unique = canonical.add(identity)
+                @Expect(unique)
+                @Expect(artifact.content.contains("data-cjdoc-page-id=\"${identity}\""))
+                @Expect(index.contains(linked))
+            } else {
+                let unique = aliases.add(identity)
+                @Expect(unique)
+                @Expect(artifact.path.startsWith("html/packages/package-"))
+                @Expect(artifact.content.contains("data-cjdoc-package-alias-for=\"${identity}\""))
+                @Expect(!index.contains(linked))
+            }
         }
+        @Expect(canonical.size, 2)
+        @Expect(aliases.size, 2)
+        for (identity in canonical) { @Expect(aliases.contains(identity)) }
         let search = artifactContent(artifacts, "html/search-index.json")
         @Expect(search.contains("shared.first"))
         @Expect(search.contains("shared.second"))

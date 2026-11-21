@@ -113,6 +113,132 @@ async function routes(page, locale, transport) {
   return {home, package:pkg, api, guide:new URL('concepts/guides/first-catalogue.html',home).href};
 }
 
+async function expectCompactPackageLayout(page, narrow) {
+  const row = page.locator('main tr[data-member-name="requireFirstText"]');
+  await expect(row.locator('.cj-decl-table__link wbr')).toHaveCount(1);
+  const geometry = await row.evaluate(element => {
+    const name = element.querySelector('.cj-decl-table__name');
+    const summary = element.querySelector('.cj-decl-table__summary');
+    const migration = summary.querySelector('.cj-decl-table__replacement');
+    const code = name.querySelector('.cj-decl-table__link code');
+    const token = [...code.childNodes].find(node => node.nodeType === Node.TEXT_NODE &&
+      node.textContent.includes('TextCatalog)'));
+    const offset = token.textContent.indexOf('TextCatalog)');
+    const position = index => {
+      const range = document.createRange();
+      range.setStart(token, index);
+      range.setEnd(token, index + 1);
+      return range.getBoundingClientRect().top;
+    };
+    const summaryText = document.createRange();
+    summaryText.selectNodeContents(summary.firstChild);
+    return {
+      wordStarts: position(offset),
+      wordEnds: position(offset + 'TextCatalog'.length - 1),
+      closes: position(offset + 'TextCatalog'.length),
+      nameBottom: name.getBoundingClientRect().bottom,
+      summaryTop: summary.getBoundingClientRect().top,
+      summaryTextBottom: summaryText.getBoundingClientRect().bottom,
+      migrationTop: migration.getBoundingClientRect().top,
+      overflow: document.documentElement.scrollWidth - innerWidth,
+    };
+  });
+  expect(geometry.wordStarts).toBe(geometry.wordEnds);
+  expect(geometry.closes).toBe(geometry.wordEnds);
+  expect(geometry.migrationTop).toBeGreaterThanOrEqual(geometry.summaryTextBottom - 1);
+  expect(geometry.overflow).toBeLessThanOrEqual(1);
+  if (narrow) expect(geometry.summaryTop).toBeGreaterThanOrEqual(geometry.nameBottom - 1);
+}
+
+async function expectWholeOutlineParameter(link) {
+  await expect(link.locator('wbr')).toHaveCount(1);
+  const lines = await link.evaluate(element => {
+    const token = element.querySelector('wbr').nextSibling;
+    const rect = document.createRange();
+    const lineAt = offset => {
+      rect.setStart(token, offset);
+      rect.setEnd(token, offset + 1);
+      return rect.getBoundingClientRect().top;
+    };
+    return ['T', 'g', ')'].map(text => lineAt(token.data.indexOf(text)));
+  });
+  expect(lines).toEqual([lines[0], lines[0], lines[0]]);
+}
+
+test('package outline targets real declaration rows and tracks the reader position', async ({page}) => {
+  await page.setViewportSize({width:1365,height:768});
+  const {home} = await routes(page, 'zh-CN', 'root');
+  await page.goto(home);
+  await page.locator('.cj-package-index a').filter({hasText:'pocketkit.authoring'}).first().click();
+  const pkg = page.url();
+  // The package outline must exist from static markup, so it is checked before
+  // any reader interaction. The heading above it names the visible kinds.
+  const rows = page.locator('tr.cj-decl-table__row[data-cjdoc-member]');
+  const ids = await rows.evaluateAll(nodes => nodes.map(node => node.id));
+  expect(ids.length).toBeGreaterThan(1);
+  const entries = page.locator('[data-cjdoc-toc] .cj-toc__item--entry > a');
+  await expect(entries).toHaveCount(ids.length);
+  // The outline lists the visible rows in page order and names each by its
+  // primary link only, not by a badge, summary or migration action.
+  expect(await entries.evaluateAll(nodes => nodes.map(node => node.dataset.tocTarget))).toEqual(ids);
+  expect(await entries.allTextContents()).toEqual(
+    await rows.evaluateAll(nodes => nodes.map(node => node.querySelector('.cj-decl-table__link').textContent.trim())));
+  for (const label of await entries.allTextContents()) expect(label).not.toContain('已弃用');
+  await expect(page.locator('main table th[scope="col"]')).toHaveCount(2);
+  await expectCompactPackageLayout(page, false);
+  // Each target is the data row itself, so the reader lands on the visible
+  // declaration instead of a heading or a table ordinal.
+  expect(await page.evaluate(targets => targets.map(id => document.getElementById(id)?.tagName),
+    ids)).toEqual(ids.map(() => 'TR'));
+
+  const target = await rows.filter({has: page.locator('.cj-decl-table__link', {hasText:'firstTextOrEmpty'})})
+    .getAttribute('id');
+  expect(await page.locator('.cj-decl-table__kind').count()).toBe(0);
+  const link = page.locator(`[data-cjdoc-toc] [data-toc-target="${target}"]`);
+  await expectWholeOutlineParameter(link);
+  await link.click();
+  await expect(page).toHaveURL(new RegExp('#' + target + '$'));
+  await expect(page.locator(`#${target}`)).toBeInViewport();
+  await expect(link).toHaveAttribute('aria-current', 'location');
+  await expect(link).toHaveClass(/cj-toc__link--active/);
+
+  // Keyboard activation reaches the same anchor, without moving the primary
+  // declaration destination.
+  const second = ids.find(id => id !== target);
+  const secondLink = page.locator(`[data-cjdoc-toc] [data-toc-target="${second}"]`);
+  await secondLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp('#' + second + '$'));
+  await expect(secondLink).toHaveAttribute('aria-current', 'location');
+  await expect(page.locator(`#${second} .cj-decl-table__link`)).toHaveCount(1);
+  await page.goBack();
+  await expect(link).toHaveAttribute('aria-current', 'location');
+  await page.goForward();
+  await expect(secondLink).toHaveAttribute('aria-current', 'location');
+
+  // A deep link opened directly highlights the same entry in both views.
+  await page.goto(`${pkg}#${target}`);
+  await expect(link).toHaveAttribute('aria-current', 'location');
+  await page.setViewportSize({width:390,height:844});
+  await expectCompactPackageLayout(page, true);
+  const mobile = page.locator(`[data-cjdoc-mobile-toc] [data-toc-target="${target}"]`);
+  await page.locator('[data-cjdoc-mobile-toc] > summary').click();
+  await expect(mobile).toBeVisible();
+  await expect(mobile).toHaveText('firstTextOrEmpty(TextCatalog)');
+  await expectWholeOutlineParameter(mobile);
+  await expect(mobile).toHaveAttribute('aria-current', 'location');
+  const mobileSecond = page.locator(`[data-cjdoc-mobile-toc] [data-toc-target="${second}"]`);
+  await mobileSecond.press('Enter');
+  await expect(page).toHaveURL(new RegExp('#' + second + '$'));
+  await expect(mobileSecond).toHaveAttribute('aria-current', 'location');
+  await page.locator(`#${target} .cj-decl-table__link`).click();
+  const heading = page.locator('main h1');
+  const headingId = await heading.getAttribute('id');
+  const detailOutline = page.locator(`[data-cjdoc-mobile-toc] [data-toc-target="${headingId}"]`);
+  await expect(detailOutline).toHaveText('firstTextOrEmpty');
+  await expect(page.locator('main .cj-signature').first()).toContainText('@Deprecated');
+});
+
 test('localized parameter, return, and exception descriptions keep compact alignment', async ({page}) => {
   await page.setViewportSize({width: 1440, height: 900});
   const {api} = await routes(page, 'zh-CN', 'root');

@@ -11,6 +11,10 @@
     "qualifiedName": "reader_scale.longContract",
     "kind": "function"
   },
+  "package": {
+    "id": "cjdoc:package:cjdoc:module:v1:root:reader_scale",
+    "html": "packages/reader_scale/index.html"
+  },
   "locales": {
     "en": {
       "baseline": {

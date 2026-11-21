@@ -13,8 +13,16 @@ private func publicationForReading(documentation: DocumentationSet, locale: Stri
     projectPublicationDocumentation(selected, audience: audience)
 }
 
-internal let CJDOC_READ_PROJECTION = "cjdoc.read/2"
-private let LEGACY_READ_PROJECTION = "cjdoc.read/1"
+internal let CJDOC_READ_PROJECTION = "cjdoc.read/3"
+
+private func apiRouteProjectionForReading(readProjection: String): ApiRouteProjection {
+    match (readProjection) {
+        case "cjdoc.read/1" => Historical
+        case "cjdoc.read/2" => ReadableSymbols
+        case version where version == CJDOC_READ_PROJECTION => ReadablePackages
+        case _ => throw IllegalArgumentException("unsupported documentation reading projection")
+    }
+}
 
 private func readSnapshotContentId(encoded: String, revision: String, readProjection: String): String {
     let configuration = "\n{\"projection\":" + escapeJsonString(readProjection) +
@@ -49,9 +57,6 @@ public class DocumentationReadSnapshot {
 
     protected static func readPackaged(documentation: DocumentationSet, version: ?String,
         readProjection: String): DocumentationReadSnapshot {
-        if (readProjection != LEGACY_READ_PROJECTION && readProjection != CJDOC_READ_PROJECTION) {
-            throw IllegalArgumentException("unsupported documentation reading projection")
-        }
         DocumentationReadSnapshot(documentation, None, None, version, readProjection)
     }
 
@@ -67,7 +72,7 @@ public class DocumentationReadSnapshot {
         encodedDocumentation = encodeDocIr(this.documentation)
         snapshotId = readSnapshotContentId(encodedDocumentation, publicationRevision, readProjection)
         projection = RenderProjection(this.documentation, snapshotId: snapshotId, buildApiRoutes: true,
-            legacyApiRoutes: readProjection == LEGACY_READ_PROJECTION)
+            routeProjection: apiRouteProjectionForReading(readProjection))
         markdown = DeclarationMarkdownProjection(this.documentation, projection, this.locale)
         pageMarkdown = AgentPageMarkdownProjection(this.documentation, projection, this.locale)
     }

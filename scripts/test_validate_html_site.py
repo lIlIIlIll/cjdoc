@@ -67,7 +67,7 @@ def canonical_search_script() -> str:
     code = re.sub(r"(?m)^ *//[^\n]*", "", source)
     if "`" in code or "\\\n" in code:
         raise ValueError("the reader bundle must not contain template literals or continued string lines")
-    return source.replace("\n  ", "\n")
+    return source.replace("\n    ", "\n")
 
 
 def canonical_theme_bootstrap_script() -> str:
@@ -202,7 +202,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             }},
             "members": {canonical_id + ":member": {
                 "label": "example()", "kind": "function", "kindLabel": "function",
-                "anchor": "top",
+                "anchor": "top", "ownerId": None,
             }},
         }
         (root / "sidebar-index.js").write_text(
@@ -233,6 +233,216 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             encoding="utf-8", newline="\n",
         )
 
+
+    def write_package_pair(self, root: Path) -> tuple[Path, Path]:
+        """Write the readable package page and its compatibility body."""
+        directory = root / "packages" / "fixture"
+        directory.mkdir(parents=True)
+        identity = "package:fixture:example"
+        symbol = "cjdoc:v2:fixture:example"
+        anchor = "symbol-" + symbol.encode("utf-8").hex()
+        head = (
+            "<!doctype html><html lang=\"en\"><head>"
+            f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'
+            "<title>Package example</title>"
+        )
+        shell = (
+            '<header><button type="button" data-cjdoc-search-trigger'
+            ' data-cjdoc-root-prefix="../../" aria-haspopup="dialog"'
+            ' aria-expanded="false" hidden></button>'
+            '<button type="button" data-cjdoc-theme-toggle aria-haspopup="dialog"'
+            ' aria-expanded="false" hidden></button></header>'
+        )
+        table = (
+            '<section class="cj-decl-group"><h2 id="declarations"'
+            ' data-cjdoc-toc-role="group">Functions (1)</h2>'
+            '<table><tbody><tr class="cj-decl-table__row" id="' + anchor + '"'
+            ' data-cjdoc-member data-member-symbol-id="' + symbol + '"'
+            ' data-member-name="example" data-member-kind="function">'
+            '<td><a class="cj-decl-table__link" data-cjdoc-api-link'
+            ' href="../../index.html"><code>example()</code></a>'
+            '</td></tr></tbody></table></section>'
+        )
+        canonical = directory / "index.html"
+        canonical.write_text(
+            head
+            + '<link rel="canonical" href="../fixture/">'
+            + '<script src="../../theme-bootstrap.js"></script>'
+            + '<script defer src="../../search-index.js"></script>'
+            + '<script defer src="../../sidebar-index.js"></script>'
+            + '<script defer src="../../search.js"></script></head>'
+            + '<body data-cjdoc-route="api" data-cjdoc-page="package"'
+            f' data-cjdoc-page-id="{identity}">' + shell
+            + '<main id="cjdoc-main">' + table + '</main></body></html>',
+            encoding="utf-8", newline="\n",
+        )
+        alias = root / "packages" / "package-fixture.html"
+        alias_shell = shell.replace('data-cjdoc-root-prefix="../../"',
+                                    'data-cjdoc-root-prefix="../"')
+        alias.write_text(
+            head
+            + '<link rel="canonical" href="fixture/">'
+            + '<script src="../theme-bootstrap.js"></script>'
+            + '<script defer src="../symbol-alias.js"></script>'
+            + '<script defer src="../search-index.js"></script>'
+            + '<script defer src="../sidebar-index.js"></script>'
+            + '<script defer src="../search.js"></script></head>'
+            + '<body data-cjdoc-route="package-alias" data-cjdoc-page="package"'
+            f' data-cjdoc-package-alias-for="{identity}">' + alias_shell
+            + '<main id="cjdoc-main">'
+            + '<p><a data-cjdoc-alias-target href="fixture/index.html">Canonical</a></p>'
+            + table.replace('href="../../', 'href="../').replace('src="../../', 'src="../')
+            + '</main></body></html>',
+            encoding="utf-8", newline="\n",
+        )
+        return canonical, alias
+
+    def test_accepts_bound_package_compatibility_body(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            canonical, alias = self.write_package_pair(root)
+            result = self.validate(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("1 package pages, 1 compatibility aliases", result.stdout)
+
+    def test_reused_dependency_package_keeps_its_own_compatibility_body(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            mounts = [root / "dependencies" / instance for instance in ("first", "second")]
+            for mount in mounts:
+                mount.mkdir(parents=True)
+                self.write_site(mount)
+                self.write_package_pair(mount)
+                (mount / "agent").mkdir()
+                (mount / "agent" / "manifest.json").write_text("{}", encoding="utf-8")
+
+            result = self.validate(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("2 package pages, 2 compatibility aliases", result.stdout)
+
+            alias = mounts[0] / "packages" / "package-fixture.html"
+            alias.write_text(
+                alias.read_text(encoding="utf-8").replace(
+                    'data-cjdoc-alias-target href="fixture/index.html"',
+                    'data-cjdoc-alias-target href="../../second/packages/fixture/index.html"'),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("package alias target does not name its canonical body", result.stderr)
+
+    def test_rejects_package_without_compatibility_body(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            _, alias = self.write_package_pair(root)
+            alias.unlink()
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("canonical package page has no compatibility body", result.stderr)
+
+    def test_rejects_package_rows_without_anchors_even_if_bodies_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            anchor = "symbol-" + b"cjdoc:v2:fixture:example".hex()
+            for page in self.write_package_pair(root):
+                page.write_text(page.read_text(encoding="utf-8").replace(f' id="{anchor}"', ""),
+                                encoding="utf-8")
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("package declaration row must publish its SymbolId and stable anchor", result.stderr)
+
+    def test_rejects_package_alias_that_claims_generated_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            _, alias = self.write_package_pair(root)
+            alias.write_text(
+                alias.read_text(encoding="utf-8").replace(
+                    'data-cjdoc-package-alias-for="package:fixture:example"',
+                    'data-cjdoc-package-alias-for="package:fixture:example"'
+                    ' data-cjdoc-page-id="package:fixture:example"'),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must not carry generated page or symbol identity", result.stderr)
+
+    def test_rejects_package_alias_without_shared_alias_script(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            _, alias = self.write_package_pair(root)
+            alias.write_text(
+                alias.read_text(encoding="utf-8").replace(
+                    '<script defer src="../symbol-alias.js"></script>', ""),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("exact canonical script references", result.stderr)
+
+    def test_rejects_package_alias_targeting_another_page(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            _, alias = self.write_package_pair(root)
+            alias.write_text(
+                alias.read_text(encoding="utf-8").replace(
+                    'data-cjdoc-alias-target href="fixture/index.html"',
+                    'data-cjdoc-alias-target href="../index.html"'),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("package alias target does not name its canonical body", result.stderr)
+
+    def test_rejects_package_alias_that_drops_declarations(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            _, alias = self.write_package_pair(root)
+            symbol = "cjdoc:v2:fixture:example"
+            anchor = "symbol-" + symbol.encode("utf-8").hex()
+            alias.write_text(
+                alias.read_text(encoding="utf-8").replace(
+                    'id="' + anchor + '"', 'id="symbol-other"'),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must render every canonical declaration", result.stderr)
+
+    def test_rejects_package_page_that_links_a_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            canonical, _ = self.write_package_pair(root)
+            canonical.write_text(
+                canonical.read_text(encoding="utf-8").replace(
+                    'href="../../index.html"',
+                    'href="../../Fixture/"'),
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must address a generated file", result.stderr)
+
+    def test_rejects_member_owner_that_is_not_a_published_type(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            source = root / "sidebar-index.js"
+            prefix = "globalThis.__CJDOC_SIDEBAR_INDEX__="
+            sidebar = json.loads(source.read_text(encoding="utf-8")[len(prefix):-2])
+            sidebar["members"]["cjdoc:v2:fixture:example:member"]["ownerId"] = "cjdoc:v2:absent"
+            source.write_text(prefix + json.dumps(sidebar) + ";\n", encoding="utf-8")
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("member owner must name a published type", result.stderr)
 
     def test_accepts_well_formed_external_script_site(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
