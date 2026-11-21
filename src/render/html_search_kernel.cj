@@ -111,24 +111,32 @@ globalThis.cjdocSearch = (() => {
     return words;
   };
   const acronym = words => words.map(word => [...word][0] || "").join("");
-  const containsAll = (haystack, wanted) => wanted.length > 0 && wanted.every(token => haystack.includes(token));
-  const oneEditApart = (query, candidate) => {
-    const left = [...query];
-    const right = [...candidate];
-    if (Math.abs(left.length - right.length) > 1) return false;
-    let leftIndex = 0;
-    let rightIndex = 0;
-    let edits = 0;
-    while (leftIndex < left.length && rightIndex < right.length) {
-      if (left[leftIndex] === right[rightIndex]) { leftIndex += 1; rightIndex += 1; continue; }
-      edits += 1;
-      if (edits > 1) return false;
-      if (left.length === right.length) { leftIndex += 1; rightIndex += 1; }
-      else if (left.length > right.length) leftIndex += 1;
-      else rightIndex += 1;
+  const containsAll = (haystack, wanted) => {
+    if (!wanted.length) return false;
+    for (const token of wanted) if (!haystack.includes(token)) return false;
+    return true;
+  };
+  const pointWidth = point => point > 0xffff ? 2 : 1;
+  const sameSuffix = (left, li, right, ri) => {
+    if (left.length - li !== right.length - ri) return false;
+    while (li < left.length) if (left.charCodeAt(li++) !== right.charCodeAt(ri++)) return false;
+    return true;
+  };
+  const oneEditApart = (left, right) => {
+    let li = 0;
+    let ri = 0;
+    while (li < left.length && ri < right.length) {
+      const point = left.codePointAt(li);
+      if (point !== right.codePointAt(ri)) break;
+      li += pointWidth(point);
+      ri += pointWidth(point);
     }
-    if (leftIndex < left.length || rightIndex < right.length) edits += 1;
-    return edits === 1;
+    if (li === left.length) return ri < right.length && ri + pointWidth(right.codePointAt(ri)) === right.length;
+    if (ri === right.length) return li + pointWidth(left.codePointAt(li)) === left.length;
+    const nextLeft = li + pointWidth(left.codePointAt(li));
+    const nextRight = ri + pointWidth(right.codePointAt(ri));
+    return sameSuffix(left, nextLeft, right, nextRight) ||
+      sameSuffix(left, nextLeft, right, ri) || sameSuffix(left, li, right, nextRight);
   };
 
   const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -448,6 +456,7 @@ globalThis.cjdocSearch = (() => {
     const metadataText = [classification.group && classification.group.id,
       classification.group && classification.group.title,
       ...classification.tags.flatMap(tag => [tag.id, tag.title])].filter(Boolean).join("\n");
+    const nameWords = wordParts(name);
     return {
       raw: entry, snapshotId: entry.snapshotId, canonicalId: entry.canonicalId,
       snapshotBytes: snapshot.bytes, canonicalBytes: utf8Bytes(entry.canonicalId),
@@ -461,7 +470,8 @@ globalThis.cjdocSearch = (() => {
       identifierFold: fold([qualifiedName, name, ownerName].join("\n")),
       structuredFold: fold(structured + "\n" + metadataText),
       documentationFold: fold(entry.summary + "\n" + entry.body + "\n" + metadataText),
-      nameWords: wordParts(name), ownerWords: wordParts(ownerName), qualifiedWords: wordParts(qualifiedName)
+      nameWords, ownerWords: wordParts(ownerName),
+      nameAcronym: acronym(nameWords), qualifiedAcronym: acronym(wordParts(qualifiedName))
     };
   };
 
@@ -725,20 +735,18 @@ globalThis.cjdocSearch = (() => {
       if (!context || !context.filterProperties.has(property)) return false;
       return context.filterProperties.get(property).some(value => filterValueMatches(value, filter));
     }));
-  const filterAdmits = (facts, groupExposures, filters) => {
-    if (!filters.length) return {admitted: true, exposureIds: []};
-    const contextual = filters.filter(filter => filter.definition.context === "canonical-or-exposure");
-    const entryFilters = filters.filter(filter => filter.definition.context === "entry");
-    for (const filter of entryFilters) {
-      if (!contextAdmits(facts, [filter])) return {admitted: false, exposureIds: []};
-    }
-    if (!contextual.length) return {admitted: true, exposureIds: []};
+  const NO_EXPOSURES = Object.freeze([]);
+  const filterExposures = (facts, exposures, entryFilters, contextual) => {
+    if (!contextAdmits(facts, entryFilters)) return null;
+    if (!contextual.length) return NO_EXPOSURES;
     const canonicalAdmits = contextAdmits(facts, contextual);
-    const exposureIds = [];
-    for (const exposure of groupExposures) {
-      if (contextAdmits(exposure, contextual)) exposureIds.push(exposure.raw.id);
+    let matched = null;
+    for (const exposure of exposures) {
+      if (!contextAdmits(exposure, contextual)) continue;
+      if (!matched) matched = [];
+      matched.push(exposure.raw.id);
     }
-    return {admitted: canonicalAdmits || exposureIds.length > 0, exposureIds};
+    return matched || (canonicalAdmits ? NO_EXPOSURES : null);
   };
   const setPredicatesAdmit = (facts, predicates) => predicates.every(({definition, values}) => {
     if (!values.length) return true;
@@ -792,18 +800,42 @@ globalThis.cjdocSearch = (() => {
   // its declared level/score/reason. Precise scanning stops at the first match,
   // discovery accumulates every match, and only precise honours overload
   // selector variants.
-  const queryEvidence = (facts, exposures, query, prepared, mode, hasOverload = false) => {
-    if (!query) return [];
+  const planQuery = (query, wanted, prepared, mode, hasOverload) => {
     const precise = mode === "precise";
-    const wanted = tokens(query);
-    const foldedQuery = fold(query);
-    const matches = [];
+    const policy = prepared.contract.textPolicy;
+    const length = wanted.length === 1 ? runeCount(wanted[0]) : 0;
+    const editToken = length >= policy.minEditRunes && length <= policy.maxEditRunes ? wanted[0] : "";
+    const rules = [];
     for (const row of ruleRows(prepared, mode)) {
       const variant = row.primitive.endsWith("_with_selector");
       const primitive = variant ? row.primitive.slice(0, -"_with_selector".length) : row.primitive;
       if (precise && primitive !== "exact_symbol_id" && primitive !== "exact_symbol_key" &&
           primitive !== "concept_text" && hasOverload !== variant) continue;
-      let exposureIds = [""];
+      rules.push({primitive, level: row.level, score: row.score, reason: row.reason});
+    }
+    return {query, wanted, foldedQuery: fold(query), editToken, precise, rules};
+  };
+  const hasWordPrefix = (words, token) => {
+    for (const word of words) if (word.startsWith(token)) return true;
+    return false;
+  };
+  const matchesWordPrefixes = (facts, wanted) => {
+    if (!wanted.length) return false;
+    for (const token of wanted) {
+      if (!hasWordPrefix(facts.nameWords, token) && !hasWordPrefix(facts.ownerWords, token)) return false;
+    }
+    return true;
+  };
+  const matchesOneEdit = (facts, token) => {
+    if (!token || facts.concept) return false;
+    if (oneEditApart(token, facts.nameFold)) return true;
+    for (const word of facts.nameWords) if (oneEditApart(token, word)) return true;
+    return false;
+  };
+  const queryEvidence = (facts, exposures, plan) => {
+    const {query, wanted, foldedQuery, editToken, precise, rules} = plan;
+    let matches = null;
+    for (const {primitive, level, score, reason} of rules) {
       let matched = false;
       if (primitive === "exact_symbol_id") matched = !facts.concept && query === facts.canonicalId;
       else if (primitive === "exact_symbol_key") {
@@ -815,38 +847,39 @@ globalThis.cjdocSearch = (() => {
       } else if (primitive === "exact_owner_member") {
         matched = !facts.concept && !!facts.ownerName && query === facts.ownerName + "." + facts.name;
       } else if (primitive === "exact_alias") {
-        const aliases = facts.concept ? [] : exactAliasFacts(exposures, query);
-        if (aliases.length) { matched = true; exposureIds = aliases.map(exposure => exposure.raw.id); }
+        if (!facts.concept) {
+          for (const exposure of exposures) {
+            if (exposure.raw.name === query) {
+              if (!matches) matches = [];
+              matches.push({level, score, reason, exposureId: exposure.raw.id});
+            }
+          }
+          if (precise && matches) return matches;
+        }
+        continue;
       } else if (primitive === "ascii_fold_name") matched = !!facts.name && facts.nameFold === foldedQuery;
       else if (primitive === "name_prefix") matched = !!facts.name && facts.nameFold.startsWith(foldedQuery);
       else if (primitive === "qualified_prefix") {
         matched = !!facts.qualifiedName && facts.qualifiedFold.startsWith(foldedQuery);
       } else if (primitive === "all_token_word_prefix") {
-        const words = facts.nameWords.concat(facts.ownerWords);
-        matched = wanted.length > 0 && wanted.every(token => words.some(word => word.startsWith(token)));
+        matched = matchesWordPrefixes(facts, wanted);
       } else if (primitive === "acronym") {
         matched = !facts.concept && wanted.length === 1 &&
-          (acronym(facts.nameWords) === wanted[0] || acronym(facts.qualifiedWords) === wanted[0]);
+          (facts.nameAcronym === wanted[0] || facts.qualifiedAcronym === wanted[0]);
       } else if (primitive === "structured_text") {
         matched = !facts.concept && containsAll(precise ? facts.identifierFold : facts.structuredFold, wanted);
       } else if (primitive === "one_edit") {
-        const length = wanted.length === 1 ? runeCount(wanted[0]) : 0;
-        const policy = prepared.contract.textPolicy;
-        if (!facts.concept && wanted.length === 1 && length >= policy.minEditRunes &&
-            length <= policy.maxEditRunes) {
-          const choices = [facts.nameFold, ...facts.nameWords];
-          matched = choices.some(candidate => oneEditApart(wanted[0], candidate));
-        }
+        matched = matchesOneEdit(facts, editToken);
       } else if (primitive === "documentation_text") {
         matched = !facts.concept && containsAll(facts.documentationFold, wanted);
       } else if (primitive === "concept_text") {
         matched = facts.concept && containsAll(facts.documentationFold, wanted);
       }
       if (!matched) continue;
-      const evidenceRows = exposureIds.map(exposureId =>
-        ({level: row.level, score: row.score, reason: row.reason, exposureId}));
-      if (precise) return evidenceRows;
-      matches.push(...evidenceRows);
+      const evidence = {level, score, reason, exposureId: ""};
+      if (precise) return [evidence];
+      if (!matches) matches = [];
+      matches.push(evidence);
     }
     return matches;
   };
@@ -1065,43 +1098,47 @@ globalThis.cjdocSearch = (() => {
       return {unique: [], filterOnly, queryEmpty, hasNarrowing};
     }
     const hasOverload = overloadSelected(normalized);
+    const wanted = tokens(query);
+    const plan = filterOnly || selected ? null : planQuery(query, wanted, prepared, normalized.mode, hasOverload);
+    const entryFilters = normalizedResult.filters.filter(filter => filter.definition.context === "entry");
+    const contextual = normalizedResult.filters.filter(filter => filter.definition.context === "canonical-or-exposure");
+    const filterRow = filterOnly ? evidenceFrom(prepared, normalized.mode, "filter_only") : null;
+    const filterEvidence = filterRow ? [filterRow] : null;
     const scoped = [];
     for (const group of prepared.entries) {
       const facts = group.entry;
       if (restrictCanonicalIds && !restrictCanonicalIds.has(group.canonicalId)) continue;
       if (!moduleScopeAdmits(facts, prepared.modules, normalized)) continue;
       if (!selectorAdmits(facts, normalized)) continue;
-      const filterResult = filterAdmits(facts, group.exposures, normalizedResult.filters);
-      if (!filterResult.admitted ||
-          !setPredicatesAdmit(facts, normalizedResult.setPredicates)) continue;
+      const matches = entryFilters.length || contextual.length
+        ? filterExposures(facts, group.exposures, entryFilters, contextual) : NO_EXPOSURES;
+      if (matches === null || !setPredicatesAdmit(facts, normalizedResult.setPredicates)) continue;
       let evidence;
-      if (filterOnly) evidence = [evidenceFrom(prepared, normalized.mode, "filter_only")].filter(Boolean);
+      if (filterOnly) evidence = filterEvidence;
       else if (selected) {
         evidence = selectorEvidence(facts, group.exposures, normalized, prepared,
           normalized.mode, hasOverload);
-      } else evidence = queryEvidence(facts, group.exposures, query, prepared,
-        normalized.mode, hasOverload);
-      if (!evidence.length) continue;
+      } else evidence = queryEvidence(facts, group.exposures, plan);
+      if (!evidence || !evidence.length) continue;
       let best = evidence[0];
-      for (const candidate of evidence) if (compareEvidence(candidate, best) < 0) best = candidate;
-      const exposureIds = filterResult.exposureIds.slice();
-      for (const candidate of evidence) if (candidate.exposureId) exposureIds.push(candidate.exposureId);
+      let exposureIds = matches.length ? matches : null;
+      for (const candidate of evidence) {
+        if (candidate !== best && compareEvidence(candidate, best) < 0) best = candidate;
+        if (candidate.exposureId) {
+          if (!exposureIds) exposureIds = [];
+          exposureIds.push(candidate.exposureId);
+        }
+      }
+      if (exposureIds && exposureIds.length > 1) exposureIds = sortedUniqueStrings(exposureIds);
       const anchors = (best.reason === "documentation_text" || best.reason === "guide_text") && !facts.concept
-        ? sortedUniqueStrings(facts.sections.filter(value => containsAll(fold(value.text), tokens(query))
+        ? sortedUniqueStrings(facts.sections.filter(value => containsAll(fold(value.text), wanted)
           ).map(value => value.anchor)) : [];
-      scoped.push({group, evidence: best, exposureIds: sortedUniqueStrings(exposureIds),
+      scoped.push({group, evidence: best, exposureIds,
         anchor: anchors[0] || ""});
     }
     scoped.sort(compareCandidate);
-    const unique = [];
-    const seen = new Set();
-    for (const item of scoped) {
-      const key = item.group.snapshotId + SEP + item.group.canonicalId;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(item);
-    }
-    return {unique, filterOnly, queryEmpty, hasNarrowing};
+    // Index preparation already groups entries by their verified snapshot and canonical ID.
+    return {unique: scoped, filterOnly, queryEmpty, hasNarrowing};
   };
   const tagFacetRows = unique => {
     const counts = new Map();
@@ -1156,7 +1193,7 @@ globalThis.cjdocSearch = (() => {
     const page = unique.slice(offset, end);
     const items = page.map(item => ({snapshotId: item.group.snapshotId,
       canonicalId: item.group.canonicalId, score: item.evidence.score, reason: item.evidence.reason,
-      matchedExposureIds: item.exposureIds, anchor: item.anchor,
+      matchedExposureIds: item.exposureIds || [], anchor: item.anchor,
       classification: item.group.entry.classification}));
     const complete = end >= unique.length;
     const next = limit > 0 && !complete ? makeCursor(end, normalized, prepared) : null;

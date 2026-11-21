@@ -600,6 +600,13 @@ for (const invalid of ["\udc00", "\ud83d\ude00\ud800", "\ud800x\udc00"]) {
 const astralGuide = {...guide, name:"指南😀", body:"指南😀"};
 const astralIndex = {...guideIndex, entries: [...index.entries, astralGuide]};
 assert.equal(execute({query: "指南😀"}, astralIndex).items[0].canonicalId, "punctuation");
+for (const [left, right, match] of [
+  ["A😀B", "A界B", true], ["A😀界B", "A界B", true], ["A界B", "A😀界B", true],
+  ["😀😀界", "😀界", true], ["A😀", "A", true], ["", "😀", true],
+  ["A😀B", "A😀B", false], ["A😀界B", "A界😀B", false], ["A😀界B", "A朱B", false]
+]) {
+  assert.equal(api.oneEditApart(left, right), match, `${left} ↔ ${right}`);
+}
 for (const raw of [undefined, null, 42, {}]) {
   const rejected = api.parseQuery(raw, contract);
   assert.equal(rejected.errorCode, "invalid_unicode");
