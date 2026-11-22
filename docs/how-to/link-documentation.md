@@ -1,12 +1,12 @@
 # 把依赖 API 链接到独立发布的文档站
 
-为依赖库单独生成文档和符号索引，再用文档目录（catalog）和索引摘要把它们接入消费方站点，让消费方页面上的类型与相关链接跳到这份库文档。
+为依赖库单独生成文档和符号索引，再用文档目录（catalog）和索引摘要把它们接入消费方站点，让消费方页面上的类型与相关链接跳到这份库文档。页面接入之外，本页也说明怎么让源码入口指向仓库提交、怎么链接标准库文档。
 
 ## 什么时候用本页
 
 - 依赖库有自己的文档站，你希望消费方只链接过去，而不把库源码纳入本次文档。
 - 需要确认消费方链接到的确实是同一份库文档（用索引摘要固定内容），或者排查“链接没出现”“点开是 404”。
-- 只想链接标准库，或给源码加上指向 GitHub 提交的入口：看本页最后一节。
+- 只想链接标准库，或给源码加上指向 GitHub 提交的入口：看本页最后两节。
 
 只想把依赖源码一起生成进同一个站点时，用[选择输入](select-inputs.md)里的 `--include-path-dependencies`，不需要文档目录。
 
@@ -103,7 +103,7 @@ PY
 printf '%s\n' "$PIN"
 ```
 
-预期 `$TASK_ROOT/library-site/html/symbol-index.json` 存在，`$PIN` 是 64 位十六进制摘要。库重新生成后索引内容会变，需要重新计算摘要；不要复用旧值。
+**预期结果**：`$TASK_ROOT/library-site/html/symbol-index.json` 存在，`$PIN` 是 64 位十六进制摘要。库重新生成后索引内容会变，需要重新计算摘要；不要复用旧值。
 
 ## 第三步：登记库文档并生成消费方
 
@@ -131,7 +131,7 @@ cjdoc generate --project "$TASK_ROOT/consumer" \
 
 两个路径基准不同：catalog 里的 `index` 相对 **catalog 文件所在目录**解释，`--doc-source` 与 `--doc-inventory-pin` 的相对路径相对 **`--project` 指定的项目根**。本页都使用绝对路径以避免混淆。`--doc-source` 可以重复，也可以直接给一个含 `cjdoc-documents.json` 的目录。
 
-预期退出码为 `0`，终端仍可能出现 `CJDOC3008`（`unresolved semantic reference`）和 `CJDOC3041`（未解析类型链接）——这些 warning 表示语义引用没有绑定到本地声明，不表示外部链接没有生成。用 `docs.json` 确认：
+**预期结果**：退出码为 `0`。终端仍可能出现 `CJDOC3008`（`unresolved semantic reference`）和 `CJDOC3041`（未解析类型链接）；这些 warning 表示语义引用没有绑定到本地声明，不表示外部链接没有生成。用 `docs.json` 确认：
 
 ```bash
 python3 - "$TASK_ROOT/consumer-site/docs.json" <<'PY'
@@ -152,10 +152,10 @@ PY
 ```text
 documentSets: [('linklib', 'declared', './dependencies/linklib')]
 state: resolved matchLevel: exact
-url: ./dependencies/linklib/symbols/symbol-....html
+url: ./dependencies/linklib/linklib/Label/index.html
 ```
 
-`matchLevel` 为 `exact` 说明索引摘要与登记一致。pin 只校对索引文件的字节，不认证远端网站。
+`matchLevel` 为 `exact` 说明被消费的依赖身份、索引摘要与发布文档集身份互相符合。pin 只校对索引文件的字节，不认证远端网站，也不证明发布者的 API/ABI 真实。
 
 ## 第四步：放入依赖页面并沿链接检查
 
@@ -169,7 +169,7 @@ xdg-open "$TASK_ROOT/consumer-site/html/index.html"
 
 macOS 用 `open`，Windows PowerShell 用 `Start-Process` 打开同一个入口。
 
-在消费方的 `render` 页面点击参数类型 `linklib.Label`，再点击“另请参阅”里的 `linklib.Label`，两处都应打开库站点中的 `Label` 页面。发布时上传完整的 `consumer-site/html/`，包含 `dependencies/linklib/`；只传消费方页面会让链接 404。
+**预期结果**：在消费方的 `render` 页面点击参数类型 `linklib.Label`，再点击“另请参阅”里的 `linklib.Label`，两处都应打开库站点中的 `Label` 页面。发布时上传完整的 `consumer-site/html/`，包含 `dependencies/linklib/`；只传消费方页面会让链接 404。
 
 ## 可选：链接到自己仓库的源码
 
@@ -191,7 +191,9 @@ cjdoc generate --project . --format html \
   --output target/doc-source-links
 ```
 
-预期声明页面的源码入口指向 `https://github.com/<owner>/<repo>/blob/<revision>/<文件>#L<起>-L<止>`。三个选项只标出源码位置，不推送源码：`--repository-url` 与 `--repository-revision` 必须成对给出，`--repository-root` 必须是存在的目录，被引用的源码必须位于该目录内。
+**预期结果**：声明页面的源码入口指向 `https://github.com/<owner>/<repo>/blob/<revision>/<文件>#L<起>-L<止>`。三个选项只标出源码位置，不推送源码：`--repository-url` 与 `--repository-revision` 必须成对给出，`--repository-root` 必须是存在的目录，被引用的源码必须位于该目录内。这三个选项只对 `generate` 与 `serve` 有效。
+
+这类链接的来源状态是 `declared`：它声明了仓库与路径，但没有文件摘要，不像 `[[source.repositories]]` 加独立回执那样是 `verified`。
 
 ## 可选：链接标准库文档
 
@@ -225,7 +227,7 @@ cjdoc generate --project "$TASK_ROOT/stdlib" \
   --format html --stdlib-doc-version 1.2.0 --output "$TASK_ROOT/stdlib-site"
 ```
 
-预期 `ArrayList` 与 `String` 链接到 `https://cj-docs.gitcode.com/zh/1.2.0/libs/std/...`。版本参数只选择链接目录，不检查项目是否使用了完全相同的 SDK API。
+**预期结果**：`ArrayList` 与 `String` 链接到 `https://cj-docs.gitcode.com/zh/1.2.0/libs/std/...`。版本参数只选择链接目录，不检查项目是否使用了完全相同的 SDK API。
 
 不在列表里的版本必须同时给出 `--stdlib-doc-base-url`，例如 `--stdlib-doc-version 1.1.3 --stdlib-doc-base-url https://cj-docs.gitcode.com/zh/1.1.3/libs/std`；地址必须是 HTTPS 且以 `/libs/std` 结尾。两个选项只适用于 `generate`，也不要与站点发布标签 `--doc-version` 混淆；`render` 保留快照中的既有链接。
 
@@ -245,7 +247,7 @@ cjdoc generate --project "$TASK_ROOT/stdlib" \
 | `error: --stdlib-doc-base-url is required for this standard-library documentation version` | 版本不在内置列表 | 补 `--stdlib-doc-base-url` |
 | `error: --stdlib-doc-base-url must be HTTPS and end in /libs/std` | 地址不是 HTTPS 或后缀不对 | 使用形如 `https://cj-docs.gitcode.com/zh/<版本>/libs/std` 的地址 |
 
-规则细节见[状态与限制](../reference/states-and-limits.md)与[CLI 参考](../reference/cli.md)，维护者视角的契约说明见[跨文档链接设计](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/document-links.md)。
+规则细节见[状态与限制](../reference/states-and-limits.md)与 [CLI 参考](../reference/cli.md)，维护者视角的契约说明见[跨文档链接设计](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/document-links.md)。
 
 ## 下一步
 

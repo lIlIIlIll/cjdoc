@@ -59,13 +59,13 @@ cjdoc generate --project "$TASK_ROOT" \
 export MANIFEST="$TASK_ROOT/site/html/agent/manifest.json"
 ```
 
-预期 `$MANIFEST` 存在。它是本次快照的机器清单，`snapshotId` 形如 `cjdoc:snapshot:v1:<摘要>`；`--snapshot` 接受这份清单、输出根下的 `docs.json`，或组合站点的 `versions.json`。
+**预期结果**：`$MANIFEST` 存在，里面的 `snapshotId` 标识这份快照的内容。`--snapshot` 接受这份清单、输出根下的 `docs.json`，或组合站点的 `versions.json`。
 
 保存或发布时保留完整 `site/html/`：只复制 `agent/` 会丢失清单引用的文档文件。服务读取快照后内容固定，重新生成站点后要重新启动读取它的服务。
 
 ## 第二步：搜索并读取下一页
 
-先看有哪些匹配：从清单取 `snapshotId`，构造每页一项的搜索请求：
+先看有哪些匹配。从清单取 `snapshotId`，构造每页一项的搜索请求：
 
 ```bash
 python3 - "$MANIFEST" "$TASK_ROOT/request.json" <<'PY'
@@ -89,12 +89,14 @@ cjdoc query --snapshot "$MANIFEST" \
   --request "$TASK_ROOT/request.json" > "$TASK_ROOT/page-1.json"
 ```
 
-预期退出码 `0`，`page-1.json` 的 `status` 是 `ok`，`text` 以这样的行开头：
+**预期结果**：退出码 `0`，`page-1.json` 的 `status` 是 `ok`，`text` 以这样的行开头：
 
 ```text
-Documentation search: ok. Scope: cjdoc:snapshot:v1:<摘要> (zh-CN/external).
+Documentation search: ok. Scope: cjdoc:snapshot:v1:<标识> (zh-CN/external).
 Matched 3 declarations and guide pages; showing 1 from offset 0.
 ```
+
+`mode` 选 `discovery` 才会按相关度返回多个候选；默认的 `precise` 在多个候选同等匹配时返回 `ambiguous`，不会替你挑一个重载。
 
 把服务返回的 cursor 原样放进同一个请求再查一页：
 
@@ -117,7 +119,7 @@ cjdoc query --snapshot "$MANIFEST" \
   --request "$TASK_ROOT/page-2-request.json" > "$TASK_ROOT/page-2.json"
 ```
 
-两页显示不同的声明（`greet`，然后是 `greetAgain`），第二页 `offset` 为 `1`。`completeness.query.next` 为 `null` 表示已经读完；否则继续沿用同一请求，只替换 `cursor`。
+**预期结果**：两页显示不同的声明（`greet`，然后是 `greetAgain`），第二页 `offset` 为 `1`。`completeness.query.next` 为 `null` 表示已经读完；否则继续沿用同一请求，只替换 `cursor`。
 
 `snapshotId` 和 cursor 都原样传递，不要手写或解析其内部格式。改变查询、筛选、语言、`limit`、预算或输入快照后，删掉 cursor 从第一页重新查。
 
@@ -149,18 +151,18 @@ cjdoc query --snapshot "$MANIFEST" \
   --request "$TASK_ROOT/detail-request.json" > "$TASK_ROOT/detail.json"
 ```
 
-预期 `detail.json` 的 `status` 为 `ok`，`text` 包含小节 `## 签名`、`## 参数`、`## 返回值`，并给出 `public func greet(name: String): String` 与 `name` 的说明。结构化字段（`result`、`completeness`、`error`）用于判断缺项、预算省略和完整性，`text` 只是可读摘要。
+**预期结果**：`detail.json` 的 `status` 为 `ok`，`text` 包含 `## 签名`、`## 参数`、`## 返回值` 小节，并给出 `public func greet(name: String): String` 与 `name` 的说明。
 
-要确定某个库或包对应哪份文档，用 `resolve_docs`：
+`preset` 可以是 `summary`、`call`、`reference`，也可以用 `sections` 逐项选择。结构化字段（`result`、`completeness`、`error`）用于判断缺项、预算省略和完整性，`text` 只是可读摘要。
+
+要确定某个库或包对应哪份文档，用 `resolve_docs`，并直接把请求写到标准输入：
 
 ```bash
-cat > "$TASK_ROOT/resolve.json" <<'EOF'
-{"schemaVersion":"cjdoc.query-request/3","operation":"resolve_docs","query":"querydemo"}
-EOF
-cjdoc query --snapshot "$MANIFEST" --request "$TASK_ROOT/resolve.json"
+printf '%s\n' '{"schemaVersion":"cjdoc.query-request/3","operation":"resolve_docs","query":"querydemo"}' \
+  | cjdoc query --snapshot "$MANIFEST" --request -
 ```
 
-预期 `text` 首行为 `# resolve_docs: ok`，`selection` 里列出匹配的文档；多个候选时用响应里的范围与身份收窄请求，而不是按名字猜一个版本。
+**预期结果**：`text` 首行为 `# resolve_docs: ok`，`selection` 里列出匹配的文档。多个候选时用响应里的范围与身份收窄请求，而不是按名字猜一个版本。
 
 ## 第四步：把本地 MCP 服务加入客户端
 
@@ -181,7 +183,7 @@ codex mcp add cjdoc --env "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" -- \
 codex mcp list
 ```
 
-预期 `codex mcp add` 输出 `Added global MCP server 'cjdoc'.`，`codex mcp list` 里出现名为 `cjdoc` 的条目及其命令与参数。这只证明配置已登记，不证明服务已连接。启动客户端并确认 `cjdoc` 已连接、工具列表包含 `resolve_docs`、`search`、`get_symbol`；工具可见之后，才由客户端决定是否调用。
+**预期结果**：`codex mcp add` 输出 `Added global MCP server 'cjdoc'.`，`codex mcp list` 里出现名为 `cjdoc` 的条目及其命令与参数。这只证明配置已登记，不证明服务已连接。启动客户端并确认 `cjdoc` 已连接、工具列表包含 `resolve_docs`、`search`、`get_symbol`；工具可见之后，才由客户端决定是否调用。
 
 其它客户端使用相同的绝对 `command` 和三个 `args`。macOS 传 SDK 环境脚本设置的 `DYLD` 运行库变量；Windows 传原生 `PATH`，可执行文件与清单使用 Windows 原生绝对路径。客户端不继承你的终端环境时，要在服务配置里显式填写这些变量。
 
@@ -215,7 +217,9 @@ for line in p.stdout.splitlines():
 PY
 ```
 
-预期前两行类似 `server: {'name': 'cjdoc', 'version': '0.7.8'}`、`tools: ['resolve_docs', 'search', 'get_symbol']`，第三行 `isError: False status: ok`。`structuredContent` 是完整结果，`content[0].text` 只是其中的可读 `text`。
+**预期结果**：前两行类似 `server: {'name': 'cjdoc', 'version': '0.7.9'}`、`tools: ['resolve_docs', 'search', 'get_symbol']`，第三行 `isError: False status: ok`。`structuredContent` 是完整结果，`content[0].text` 只是其中的可读 `text`。
+
+`isError` 只对 `ok`、`ambiguous`、`not_found`、`source_incomplete` 为 `false`；其余查询状态仍是正常工具结果，只是带 `isError: true` 和完整的 `error` envelope，所以你能读到原因而不是猜协议错误。
 
 ## 失败时怎么办
 
@@ -228,10 +232,11 @@ PY
 | `stale_cursor`，退出码 `2` | cursor 与这次查询不一致；删除 cursor 从第一页重查 |
 | `invalid_request`，退出码 `2` | 字段不合法。例如 `maxBytes` 小于 1024 会得到 `Request does not satisfy cjdoc.query-request/3. Invalid field 'maxBytes'.` |
 | `scope_mismatch`，退出码 `2` | 请求的 `snapshotId` 不在本次加载的目录里，消息如 `The requested documentation scope is not loaded in this query catalog.`；改选快照 |
-| `budget_exceeded`、`resource_limit`、`unavailable`，退出码 `3` | 读具体原因。预算不足时按返回信息调整，硬资源限制或快照不可读不能靠反复续页解决 |
+| `budget_exceeded`、`resource_limit`、`unavailable`，退出码 `3` | 读具体原因。预算不足时按返回的 `requiredBytes` 调整；硬资源限制或快照不可读不能靠反复续页解决 |
 | `unavailable` 且 `scope.snapshots` 为空，退出码 `3` | `--snapshot` 指向的文件不存在或不是可读快照 |
-| MCP 报 `server is not ready; send initialize and notifications/initialized first` | 客户端在握手前调用了工具 | 按协议顺序先 `initialize`，再发 `notifications/initialized` |
-| MCP 进程直接退出并打印 `cjdoc mcp: An explicit frozen documentation input could not be loaded.` | 清单路径不可读 | 修正 `--snapshot` 参数；客户端日志里也能看到这条 |
+| 对静态搜索索引请求 `profile: full-ir` | HTML 站内静态索引只提供 `bounded-static`；改用默认 profile 或改查清单 |
+| MCP 报 `server is not ready; send initialize and notifications/initialized first` | 客户端在握手前调用了工具；按协议顺序先 `initialize`，再发 `notifications/initialized` |
+| MCP 进程直接退出并打印 `cjdoc mcp: An explicit frozen documentation input could not be loaded.` | 清单路径不可读；修正 `--snapshot` 参数，客户端日志里也能看到这条 |
 
 MCP 要分三层排查：进程启动或环境错误看客户端日志；JSON-RPC 错误看 `error` 对象；查询结果看 `structuredContent.status`。生命周期、资源限制和 `isError` 规则见[查询协议](../reference/query-protocol.md#本地-stdio-mcp)。
 

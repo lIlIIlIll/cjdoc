@@ -2,13 +2,21 @@
 
 选一个准备发布的 API，把说明里的输入、返回、异常和状态承诺与实现逐条对照，再用可运行示例锁定关键边界。覆盖率能找到缺项，但“已经写了说明”不代表说明正确。
 
+## 什么时候用本页
+
+- 一个 API 即将对外发布，说明里出现了“截断”“合并”“线程安全”之类需要兑现的承诺。
+- 想确认注释里的异常、默认值和边界描述与源码一致。
+- 要为一个边界补上能长期防回归的示例。
+
+只想找漏写的字段时，用[检查质量](check-quality.md)更快；本页关心的是写得对不对。
+
 ## 前提条件
 
 - 选一个你能读到实现的项目和 API；可以继续使用[生成第一个站点](../tutorials/first-site.md)里的 `docdemo/`。
 - 要运行本页示例，终端需能使用已安装的 `cjdoc` 和仓颉 SDK；示例运行环境要求见[检查示例](check-examples.md)。
 - 命令在项目根执行。
 
-## 逐项核对说明
+## 第一步：列出要核对的维度
 
 从读者实际会调用的函数或类型开始，对每个维度记录：说明在哪里、实现怎样处理、哪些仍需作者确认。
 
@@ -89,7 +97,7 @@ cjdoc check --project . --check-examples
 
 **预期结果**：`cjpm build` 打印 `cjpm build success`；`cjdoc check` 退出码 `0`，表示三个示例都编译、运行并匹配了各自的 `output`。
 
-## 用示例固定契约
+## 第二步：证明示例能挡住回归
 
 第三个示例必须捕获 `IllegalArgumentException`。把实现里的抛异常分支删掉后重新检查，实际输出会变成 `未抛出异常`，检查随即失败：
 
@@ -97,25 +105,29 @@ cjdoc check --project . --check-examples
 error[CJDOC3072]: @example '下界大于上界' output mismatch: expected 边界无效, got 未抛出异常
 ```
 
-命令退出码 `1`。这正是示例的价值：说明里的异常承诺一旦与实现脱节，检查就会挡住。
+命令退出码 `1`。这正是示例的价值：说明里的异常承诺一旦与实现脱节，检查就会挡住。验证完记得把抛异常分支改回去，重新跑一遍 `cjdoc check --project . --check-examples` 确认回到 `0`。
 
 出现 `CJDOC3072` 时对照实际输出与预期；出现编译或运行环境诊断时，按[检查示例](check-examples.md)处理。
 
-这三个例子覆盖了所列边界，不覆盖所有整数和所有环境。发布该函数的文档时重新生成站点，在 `clamp` 页面阅读注释与示例：
+## 第三步：在页面上复核读者看到的内容
+
+重新生成站点，在 `clamp` 页面阅读注释与示例：
 
 ```bash
 cjdoc generate --project . --format html
 ```
 
-**预期结果**：`target/doc/html/index.html` 中的 `clamp` 页面同时显示说明、`@throws` 和三个示例。
+**预期结果**：`target/doc/html/index.html` 中的 `clamp` 页面同时显示说明、`@throws` 和三个示例，示例代码与预期输出连着显示。页面展示的是作者写下的输出，不会带上本次运行的实际结果；要通过与否看 `--check-examples`。
 
-## 区分示例能验证的事实与作者承诺
+## 示例能验证的与作者仍需承诺的
 
 返回值、异常触发、状态变化可以为选定输入编写示例。并发安全、分配失败后的状态、资源释放责任和复杂度，通常还需要实现审查、专门测试或作者说明。没有相应依据时保留待确认项，不从方法名或单线程运行推导结论。
 
+这三个例子覆盖了所列边界，不覆盖所有整数和所有环境。
+
 检查译文时对照同一条逻辑说明，而不是只看有没有英文。缺译、歧义和来源不确定的含义见[状态与限制](../reference/states-and-limits.md)。
 
-维护 cjdoc 的 PocketKit 样例时，可以另外运行[维护者的读者契约复核](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/api-reading-audit.md#验证入口)；它不是核对你自己项目的前提。
+维护 cjdoc 自身的 PocketKit 样例时，可以另外运行[维护者的读者契约复核](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/api-reading-audit.md#验证入口)；它不是核对你自己项目的前提。
 
 ## 下一步
 

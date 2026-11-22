@@ -6,7 +6,7 @@
 
 - 发布新版本前想知道相对上一版新增、删除、改动了哪些 API。
 - 想让读者在一个站点里切换多个版本，或在 CI 里拒绝破坏性变化。
-- 只想重新渲染一份已有的快照、不重新扫描源码时，用[重渲染快照](render-snapshots.md)，不需要本页。
+- 只想重新渲染一份已有快照、不重新扫描源码时用[重渲染快照](render-snapshots.md)，不需要本页。
 
 ## 前提条件
 
@@ -58,7 +58,7 @@ cjdoc generate --project "$V2" --format html --format api-surface \
 
 预期每个输出根下有 `html/index.html` 和 `api-surface/api-surface.json`，两条命令都以 `0` 退出。demo 在 `cjdoc.toml` 的 `[coverage]` 里把 `symbols` 与 `parameters` 设为 `80`，`generate` 与 `check` 都会执行该门槛；默认受众 `external` 下两份源码满足它。
 
-两份快照要用相同的 `--audience` 和 `--cfg` 生成，否则后面的 `diff` 拒绝比较。也不要用 `--audience all` 重新生成：私有声明进入分母后覆盖率会不足（本页源码为 `77%`），命令报 `error: global symbols coverage 77% is below 80%` 并以 `1` 退出，得到的是另一份不可比的快照。
+两份快照必须用相同的 `--audience` 和 `--cfg` 生成，否则后面的 `diff` 拒绝比较。也不要随手用 `--audience all` 重新生成：私有声明进入分母后覆盖率会下降，可能触发 demo 的 80% 门槛并以 `1` 退出，得到的是另一份不可比的快照。
 
 ## 第三步：阅读差异
 
@@ -69,17 +69,7 @@ cjdoc diff \
   --format text
 ```
 
-预期输出开头两行给出项目、受众和各类差异计数，随后每个非 `unchanged` 条目一行：
-
-```text
-API diff pocketkit (external)
-comparison: resolved; breaking=1, potentially-breaking=0, additive=2, documentation-only=3, metadata-only=0
-additive: function ...::TextCatalog::function:nonEmpty#g0() (added); declaration added
-additive: function ...::TextCatalog::function:add#g0(Int64,Int64) (fallback); optional parameters added
-breaking: function ...::TextCatalog::function:legacyCount#g0() (removed); declaration removed
-documentation-only: function ...::TextCatalog::function:snapshot#g0() (exact); documentation changed
-...
-```
+开头列出项目、受众、比较状态和各类差异数量，之后列出变更条目。先找 `breaking`，例如这两份源码里 `TextCatalog.legacyCount` 的移除。再读 `potentially-breaking` 及每条的原因：当类型或返回契约不能可靠判定为等价时，即便新增参数本身是可选的，也要复核该条目。
 
 `demo-v2` 移除了 `TextCatalog.legacyCount`、新增了 `nonEmpty`、给 `add` 增加了可选参数，所以不会得到空差异。`--format` 默认 `text`；要保存完整报告供组合站点使用，改成 `--format json` 并重定向到文件：
 
@@ -90,7 +80,9 @@ cjdoc diff \
   --format json > "$WORK/v1-to-v2.json"
 ```
 
-两种调用等价：`cjdoc diff OLD NEW` 或上面显式写 `--baseline`/`--current`。
+两种调用等价：`cjdoc diff OLD NEW` 或显式写 `--baseline`/`--current`，但不能同时混用位置参数和选项。
+
+`comparison` 为 `resolved` 才表示差异已完整判定；收集不完整或字段无法解析时，报告不会把未知项写成“无变化”。
 
 ## 第四步：组合版本站点并补齐依赖页面
 
@@ -129,13 +121,13 @@ macOS 用 `open "$WORK/site/index.html"`，Windows 在 Git Bash 中用 `start ""
 
 预期：首页列出 `0.1.0`（stable）与 `0.2.0`（preview）并标出最新版本；从 `site/0.2.0/index.html` 切到 `0.1.0` 时，两份源码都有的符号落到 `0.1.0` 的对应页面；`site/0.2.0/` 下的符号页面里“另请参阅”链接打开 `site/0.2.0/dependencies/support-v1/` 下的依赖页面。
 
-回退行为属于选择器的正常结果，不是链接损坏：只在 0.2.0 存在的 `nonEmpty` 在目标版本会预先标注“此版本没有该符号”并打开仍存在的所属页面；所属页面也不存在、页面缺失时回到版本首页；章节缺失落到同一页页首；多语言站点缺少当前语言时退回该版本默认语言。
+回退行为属于选择器的正常结果，不是链接损坏：只在 0.2.0 存在的 `nonEmpty` 在目标版本会预先标注“此版本没有该符号”并打开仍存在的所属页面；所属页面也不存在时回到版本首页；章节缺失落到同一页页首；多语言站点缺少当前语言时退回该版本默认语言。
 
 `versions.json` 是组合清单，不代替目录里的实际页面：要确认某符号是否存在于某版本，直接打开该版本页面或其符号索引。发布时上传整个 `$WORK/site/`，版本选择器和 `latest/` 都依赖同级目录。
 
 ## 在 CI 里拒绝变化
 
-`diff` 默认只报告，不因差异失败。加拒绝选项后，报告仍输出到标准输出，退出码改变：
+`diff` 默认只报告，不因差异失败。加拒绝选项后，报告仍输出到标准输出，只改变退出码：
 
 ```bash
 cjdoc diff \
@@ -148,7 +140,7 @@ cjdoc diff \
   --deny-potentially-breaking-api
 ```
 
-对这两份快照，第一条以 `1` 退出（存在 `breaking`），第二条以 `0` 退出（没有 `potentially-breaking`）。两个选项各查各的分类，要同时拒绝两类就都写。
+存在 `breaking` 时第一条退出 `1`，存在 `potentially-breaking` 时第二条退出 `1`。两个选项各查各的分类，不要用其中一个代替另一个。两类都要拒绝时就都写，并且仍要查看 `comparison` 是否为 `resolved`。
 
 要求两份快照完全一致（连新增 API 和文档改动也算失败）时，用 `check` 的严格 baseline：
 
@@ -163,13 +155,14 @@ cjdoc check --project "$V2" --api-surface-baseline "$WORK/v1/api-surface/api-sur
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | `error: API diff inputs must match project, audience, and cfgProfile`，退出码 `2` | 两份快照的 project、受众或 cfg 不同 | 用相同的 `--audience`、`--cfg` 从两份源码重新生成快照再比较 |
+| `unsupported API surface schema 'cjdoc.doc-ir/18'`，退出码 `2` | 把 Doc IR（`docs.json`）当成 API 快照传给了 `diff` | 改用 `api-surface/api-surface.json` |
 | 外部参考显示“无外部参考” | 索引缺失、版本字段不符，或索引在生成前没有放进 demo | 重新生成 `support-v1`，覆盖两份 demo 的 `docs/support-symbol-index.json`，再生成两个版本 |
 | 依赖链接打不开 | 依赖 HTML 树没复制，或复制后又跑了 `compose` | 按配置的相对路径把完整 `support/html` 复制到版本根，复制后不要再 `compose` |
 | 切换版本后停在首页 | 目标版本缺少该页面、符号、语言或章节 | 正常回退；从该版本首页重新导航 |
 | `error: duplicate version id '0.1.0'`，退出码 `2` | 同一 ID 出现两次 | 每个版本用唯一 ID |
 | `error: version source has no index.html '<路径>'`，退出码 `2` | `--version` 指向了输出根而不是 `html/` | 改为 `.../v1/html` |
-| `error: --latest names an unknown version '9.9.9'` 或 `error: version metadata assignment names unknown version '9.9.9'` | 元数据选项引用了未出现的 ID | 先列出该 ID 的 `--version` |
-| `error: global symbols coverage 77% is below 80%`，退出码 `1` | 用了 `--audience all` 等改变了分母 | 按默认受众重新生成快照，不要放宽配置里的门槛 |
+| `error: --latest names an unknown version '9.9.9'` 或 `error: version metadata assignment names unknown version '9.9.9'` | 元数据选项引用了未出现的 ID | 先为该 ID 添加 `--version` |
+| `error: global symbols coverage … is below …`，退出码 `1` | 用了 `--audience all` 等改变了覆盖率分母 | 按默认受众重新生成快照，不要放宽配置里的门槛 |
 | 想再加一个版本 | `--version` 必须是独立源码生成出的 `html` 目录 | 用同一份源码换个 ID 只会得到内容相同的版本，不会让旧快照变成新源码 |
 
 ## 下一步

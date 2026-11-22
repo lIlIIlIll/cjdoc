@@ -24,13 +24,15 @@
 
 输入参数里的 `docs.json`、`request.json`、版本目录都要先由前面的命令生成。产物路径与 wire 版本见[产物参考](artifacts.md)。
 
+`check` 只写诊断到 stderr：拒绝 `--format`、`--output`、`--stdout`、`--locale`、`--force-owned`。`render` 只接受 `--input`、渲染选项与 `--max-doc-ir-mib`，拒绝项目、缓存、依赖与门槛类选项。
+
 ## 选项总表
 
 「适用命令」按解析器实际校验结果列出；命令不在此列时给出该选项会以 `2` 退出。带 `…` 的选项可重复。
 
 | 选项 | 取值 | 默认 | 适用命令 |
 |---|---|---|---|
-| `--project DIR` | 目录 | `.`；未写时视为 project 根 | generate、check、serve |
+| `--project DIR` | 目录 | `.`；未写时视为项目根 | generate、check、serve |
 | `--format NAME` | `json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index` | `json`；可重复、去重 | generate、render、serve；`diff` 只接受 `text`、`json` |
 | `--output DIR` | 目录 | generate/serve 为 `<project>/target/doc`，render 为 `target/doc` | generate、render、serve；compose 必填 |
 | `--stdout` | 标志 | 关闭 | generate、render |
@@ -92,13 +94,21 @@
 
 `--locale` 选择界面语言与已有作者译文，不翻译正文；它不改写 `zh-Hans`、`en-US` 之类的区域别名，非法值报 `--locale must be zh-CN or en`。省略时 generate 与 serve 使用 `[i18n]` 的 `default-language`（没有该表时为 `zh-CN`）；render 不读配置，始终从 `zh-CN` 开始，除非显式给出该选项。
 
-`--port` 与 `--open` 只影响 serve；其他命令接受这两个选项但不使用它们，退出码与不带时相同。
+`--port` 与 `--open` 只影响 serve。`render` 接受这两个选项但不使用；`diff` 拒绝它们，报 `diff accepts only input paths, --format, and API deny flags`。
+
+`--semantic` 对 render、diff、query、mcp、schema、versions compose 报 `semantic options are only valid for generate, check, and serve`。
 
 ## 生成和离线渲染的输出选项
 
 `--format` 可重复，重复值去重；没有 CLI 值也没有 `[output].formats` 时只输出 `json`。命令行给出一份格式列表时，它替换配置中的列表，不会与配置合并。`--output` 指定发布根，而不是 HTML 内层目录。多种格式共享一次源码捕获；只给 `--output` 而不给 `html` 时不会生成网页。
 
-`--stdout` 要求恰好一种 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`），且与 `--output`、`--force-owned`、`--all-languages` 互斥；`--format markdown --stdout` 或两种格式同用都报 `--stdout requires exactly one JSON-producing format`。结构化数据写 stdout，诊断写 stderr。目录输出属于 `--force-owned` 描述的所有权契约，不只是「覆盖已有文件」。
+| 场景 | 规则 |
+|---|---|
+| `--stdout` | 要求恰好一种 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`） |
+| `--stdout` 互斥 | `--output`、`--force-owned`、`--all-languages` |
+| 错误文本 | `--format markdown --stdout` 或两种格式同用报 `--stdout requires exactly one JSON-producing format` |
+| 输出分流 | 结构化数据写 stdout，诊断写 stderr |
+| 目录输出 | 受 `--force-owned` 描述的所有权契约约束，不只是「覆盖已有文件」 |
 
 `--max-doc-ir-mib` 的 CLI 值覆盖 `[limits].max-doc-ir-mib`；`render` 不读项目配置，用默认值或自己的选项。
 
@@ -111,9 +121,11 @@
 
 `--validation-report`、`--api-diff-report` 附加已存在的报告文件，不执行验证或重新比较；两者都要求 generate/render 的 HTML 目录输出，`--stdout` 下不可用。
 
+`--doc-version` 要求 `--format html`，并额外写出 `html/version.json`。
+
 ## 可选语义和高亮后端
 
-语义选项对 `generate`、`check`、`serve` 有效，用于 render、diff 等命令时报 `semantic options are only valid for generate, check, and serve`；高亮宿主选项仍只对 `generate`、`check` 有效，否则报 `highlight host options are only valid for generate and check`。
+语义选项对 `generate`、`check`、`serve` 有效；高亮宿主选项只对 `generate`、`check` 有效，否则报 `highlight host options are only valid for generate and check`。
 
 | 选项 | 取值与约束 | 默认 |
 |---|---|---|
@@ -130,16 +142,22 @@
 
 ## serve
 
-`cjdoc serve --project . --port 8080` 先做一次完整生成，然后在本机监听并监视输入。`--port` 默认 `8080`；`--open` 请求浏览器打开 `http://127.0.0.1:<port>/`，命令本身不等待页面。
+`cjdoc serve --project . --port 8080` 先做一次完整生成，然后在本机 `127.0.0.1` 监听并监视输入。`--port` 默认 `8080`，按十进制整数解析，没有单独的取值范围校验；`--open` 在首次构建完成后请求浏览器打开 `http://127.0.0.1:<port>/`，命令本身不等待页面，平台顺序为 `xdg-open`、`open`、`cmd.exe /c start`，失败时只在终端提示。
 
-- 服务根固定为输出目录下的 `html/`，即使还请求了其他格式。`--format`、`--output`、`--locale`、`--force-owned`、`--jobs`、`--audience`、`--lint-profile`、`--cfg`、依赖与缓存选项、`--repository-*`、`--require-language`、`--deny-warnings`、`--check-examples`、两个覆盖率门槛、`--api-surface-baseline`、`--max-doc-ir-mib`、`--agent-full`、字体选项可用。
-- `--semantic`、`--cjc`、`--chir-*` 与 generate/check 的同名选项一致，便于预览与正式站点使用相同语义设置；`--highlight-*`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible` 仍只对 generate/check 有效。
-- serve 同样读取 `[output]`、`[analysis]`、`[semantic]`：`[output].directory` 决定站点根，`[output].formats` 决定额外产物，`html` 始终生成。
-- `--doc-version`、`--all-languages`、`--validation-report`、`--api-diff-report` 不适用于 serve。`--stdout` 会被接受但不改变行为：serve 始终是站点预览，`--stdout` 与 `--format html` 同用仍报错。
-- 监视范围是项目内的 `.cj`、`.md`、`cjpm.toml`、`cjpm.lock`、`cjdoc.toml`；跳过隐藏项、`target/`、`.git/`、输出目录与缓存目录。保存后重建，浏览器需手动刷新。
-- 每次重建都按启动时的命令行重新读取 `cjdoc.toml`：改动的 `[analysis]`、`[semantic]` 等设置会生效，删除的键回到真实默认值，CLI 覆盖仍然优先。
-- 输出目录、缓存目录与监听端口在启动时确定，整个会话不变。重建时若解析出不同的输出或缓存位置，服务提示 `output or cache location changed; restart serve`，保留上一份成功站点；要换位置请重启。配置文件语法错误同样只提示并保留旧站点。
-- 重建失败时服务继续提供上一份成功站点；进程因输入错误退出后，修正输入再重启。`Ctrl+C` 停止。
+| 项目 | 规则 |
+|---|---|
+| 服务根 | 输出目录下的 `html/`，即使还请求了其他格式；`--format html` 总会补上 |
+| 可用的生成类选项 | `--format`、`--output`、`--locale`、`--force-owned`、`--jobs`、`--audience`、`--lint-profile`、`--cfg`、依赖与缓存选项、`--repository-*`、`--require-language`、`--deny-warnings`、`--check-examples`、两个覆盖率门槛、`--api-surface-baseline`、`--max-doc-ir-mib`、`--agent-full`、字体选项 |
+| 语义选项 | `--semantic`、`--cjc`、`--chir-*` 与 generate/check 一致，便于预览与正式站点使用相同设置 |
+| 不适用 | `--highlight-*`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible`、`--doc-version`、`--all-languages`、两个报告附加选项 |
+| `--stdout` | 被接受但不改变行为；与 `--format html` 同用仍报错 |
+| 配置来源 | `[output].directory` 决定站点根，`[output].formats` 决定额外产物，`[output].agent-full` 与字体键生效 |
+
+监视范围是项目内的 `.cj`、`.md`、`cjpm.toml`、`cjpm.lock`、`cjdoc.toml`；跳过隐藏项、`target/`、`.git/`、输出目录与缓存目录。保存后重建，浏览器需手动刷新。
+
+每次重建都按启动时的命令行重新读取 `cjdoc.toml`：改动的 `[analysis]`、`[semantic]` 等设置会生效，删除的键回到真实默认值，CLI 覆盖仍然优先。输出目录、缓存目录与监听端口在启动时确定，整个会话不变；重建时若解析出不同的输出或缓存位置，服务提示 `output or cache location changed; restart serve`，保留上一份成功站点。
+
+重建失败时服务继续提供上一份成功站点；进程因输入错误退出后，修正输入再重启。`Ctrl+C` 停止。
 
 状态接口 `http://127.0.0.1:<port>/__cjdoc/status.json` 返回 `cjdoc.serve-status/1`：
 
@@ -182,7 +200,7 @@ cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-ap
 
 `query` 和 `mcp` 接受 1–64 个 `--snapshot`，值可以是当前 `docs.json`、`agent/manifest.json` 或版本目录的 `versions.json`；它们不发现项目、不写输出、不联网。`query` 另需恰好一个 `--request`，`-` 表示从 stdin 读一个 UTF-8 JSON 对象；`mcp` 不接受 `--request`。请求、分页与域状态见[查询协议](query-protocol.md)。
 
-`cjdoc schema list` 列出全部可导出名字，`cjdoc schema <name>` 输出该名字对应的内容；未知名字报 `unknown schema '...'`（`2`）。各名字对应的 wire 版本见[产物参考](artifacts.md#schema-与-wire-版本)。
+`cjdoc schema list` 列出全部 28 个可导出名字，`cjdoc schema <name>` 输出该名字对应的内容；`cjdoc schema` 不带名字报 `schema requires exactly one schema name`，未知名字报 `unknown schema '...'`，都以 `2` 退出。各名字对应的 wire 版本见[产物参考](artifacts.md#schema-与-wire-版本)。
 
 ## 环境变量
 
@@ -205,7 +223,7 @@ cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-ap
 - 关闭型开关有对应的 `--no-agent-full`、`--no-include-path-dependencies`、`--no-include-cached-dependencies`，用于在项目中打开后用一次命令关闭；缓存方向由 `--cache-dir`、`--no-cache`、`--cache` 三者中最后出现的那个决定。
 - 配置中的相对路径按项目根解析，与调用目录无关；`--project` 指向的项目根不会因调用目录而改变。
 - `--max-doc-ir-mib` 覆盖配置；`--min-symbol-coverage`、`--min-parameter-coverage` 不覆盖 `[coverage]`，而是在配置门槛之外再加一套检查，两者都执行。
-- `--format` 重复去重；`--cache-dir` 与 `--no-cache` 按最后出现的那个生效。
+- `--format` 重复去重；`--cache-dir`、`--no-cache`、`--cache` 按最后出现的那个生效。
 - `--validation-report`、`--api-diff-report`、`--doc-source`、`--doc-inventory-pin`、`--require-language`、`--cfg`、`--dependency-source`、`--chir-import-path` 可重复，其含义是并列而不是覆盖。
 - 不要靠重复其他参数表达组合语义；除上述选项外重复给出不会产生新行为。
 

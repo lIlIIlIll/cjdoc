@@ -1,13 +1,13 @@
 # Catalogue and lifetime
 
-Use the PocketKit **0.2.0** teaching snapshot to store text, retain a snapshot, handle index errors, and close a reading session.
-These four exercises are this tutorial's tasks, not a list of the library's core tasks. The programs are verified with **Cangjie STS 1.2.0**.
+Use the PocketKit **0.2.0** snapshot to store text, keep a snapshot, handle index errors, and close a reading session.
+Each section provides one complete caller program and says what it must print.
 
 ## Set up the caller project
 
-Install Cangjie STS 1.2.0 and check that `cjc -v` and `cjpm -v` work. Obtain this repository's source,
-keeping `examples/pocketkit/demo-v2` and `examples/pocketkit/support-v1` in their relative locations.
-A caller needs the SDK and these library sources, but no cjdoc binary, stdx, or documentation-site reproduction.
+You need Cangjie STS 1.2.0: `cjc -v` and `cjpm -v` should both print a version.
+Obtain this repository's source and keep `examples/pocketkit/demo-v2` and `examples/pocketkit/support-v1`
+in their relative locations. A caller needs the SDK and these library sources, but no cjdoc binary, stdx, or site reproduction.
 
 Create `examples/pocketkit/guide-caller` and save the following as its `cjpm.toml`.
 The `pocketkit` static path dependency is relative to this manifest.
@@ -23,21 +23,21 @@ output-type = "executable"
 pocketkit = { path = "../demo-v2", output-type = "static" }
 ```
 
-Create a `src` directory inside the caller project, then save **one complete program** below as `examples/pocketkit/guide-caller/src/main.cj`.
-Replace `src/main.cj` separately for each exercise; do not concatenate the four programs.
-For each program, use `examples/pocketkit/guide-caller` as the working directory and run:
+Then create a `src` directory and save **one complete program** below as `examples/pocketkit/guide-caller/src/main.cj`.
+Replace `src/main.cj` separately for each task; do not concatenate the programs.
+Run from `examples/pocketkit/guide-caller`:
 
 ```sh
 cjpm run --build-args "--jobs 1"
 ```
 
-The build may print status lines first. A successful program must print that section's single `PASS guide-…` marker.
-A compilation or assertion failure is not success. These programs are single-threaded: `TextCatalog` and `TextReader`
-do not synchronize internally. Concurrent callers must arrange synchronization as described by the API author.
+The build may print status lines first. A successful run prints exactly that section's single `PASS guide-…` marker;
+a compilation or assertion failure is not success. These programs are single-threaded: `TextCatalog` and `TextReader`
+do not synchronize internally. Concurrent callers must arrange synchronization as the API author describes.
 
 ## Store and read text
 
-Create an empty catalogue and append unchanged text with the `String` overload. Indices start at zero.
+Create an empty catalogue, append unchanged text with the `String` overload, and read it back by index. Indices start at zero.
 
 | Precisely associated API | Use in this task |
 | --- | --- |
@@ -49,7 +49,7 @@ Create an empty catalogue and append unchanged text with the `String` overload. 
 | `size` | Check the entry count |
 
 Save this program as `src/main.cj`. It must print `PASS guide-store-read`.
-See [index error handling](#check-the-index) for the bounds and exceptions of indexed reads.
+A negative or out-of-range index throws; see [Check the index](#check-the-index) for that path.
 
 ```cangjie
 package guide_caller
@@ -72,7 +72,7 @@ main(): Int64 {
 
 ## Keep a snapshot
 
-A snapshot retains its original entries without sharing the catalogue's internal container.
+A snapshot keeps its entries without sharing the catalogue's internal container.
 After clearing, check that the catalogue is empty and every original snapshot entry remains.
 
 | Precisely associated API | Use in this task |
@@ -109,8 +109,9 @@ main(): Int64 {
 
 ## Check the index
 
-`at` raises `IllegalArgumentException` for a negative or out-of-range index. Use `tryAt`, which returns `None`, when absence is expected.
-The integer `add` overload defaults to decimal. An unsupported `radix` must be rejected without appending an entry.
+`at` raises `IllegalArgumentException` for a negative or out-of-range index. Use `tryAt`, which returns `None`,
+when absence is expected. The integer `add` overload defaults to decimal; an unsupported `radix` must be rejected
+without appending an entry.
 
 | Precisely associated API | Use in this task |
 | --- | --- |
@@ -160,10 +161,10 @@ main(): Int64 {
 
 ## Close the reading session
 
-The caller owns and must close the **in-memory session** returned by `openText`.
+`openText` returns an **in-memory session** that the caller owns and must close.
 It is not an OS file descriptor and holds no network connection or background thread.
 EOF returns `None` without closing. Repeated `close` is safe; `read` and `rewind` reject a closed session without reopening it.
-The `finally` block also closes the session if a check fails.
+The `finally` block closes the session even when a check fails.
 
 | Precisely associated API | Use in this task |
 | --- | --- |
@@ -213,7 +214,8 @@ main(): Int64 {
 }
 ```
 
-Guide execution evidence is recorded separately from source `@example` reports. Ordinary Markdown fences do not automatically become product doctests.
-The version switcher also offers the historical demo-v1 guide. Use that version's APIs there rather than applying these v2 programs to v1.
+To compare with the generated pages, open these declarations in the site's API reference.
+The version switcher also offers the historical demo-v1 guide; it uses that version's APIs,
+so do not apply these v2 programs to v1.
 
 [Back to the project introduction](../index.md)
