@@ -38,7 +38,7 @@ def _redact_reference_field_ids(declaration: dict, hidden: set[str]) -> None:
             field["fieldId"] = replacements[identity]
 
 
-def project(document: dict) -> dict:
+def project(document: dict, *, subjects: set[str] | None = None) -> dict:
     result = copy.deepcopy(document)
     declarations = {item["id"]: item for item in result["declarations"]}
     audience = result["configuration"]["audience"]
@@ -49,6 +49,8 @@ def project(document: dict) -> dict:
                 result[name] = []
 
     def directly_visible(item: dict) -> bool:
+        if subjects is not None and item["id"] not in subjects:
+            return False
         visibility = item["visibility"]
         return (audience == "all" or
                 audience == "external" and visibility in ("public", "protected") or

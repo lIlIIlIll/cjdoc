@@ -52,6 +52,8 @@ python scripts/build_showcase.py \
 源代码下载和完整离线 ZIP。专用 `cjdoc.toml` 纳入版本管理，展示构建直接使用该配置与原生 CLI。
 固定依赖索引来自同次构建的 `support-v1`，不隐式访问外部服务。
 
+cjdoc 自身的展示参考覆盖根包及公开的 `model`、`provider`、`quality`、`render`、`schema_data` 包。它从完整原生 Doc IR 选取这些入口及已解析的公开重导出，再由原生 `render` 生成 HTML、Markdown、索引和报告。仅模块内可见的实现不进入展示参考；普通 CLI、外部 `--project` 和 PocketKit 样本不使用这项筛选。
+
 只复现教学库核心页面时，可以下载源代码 ZIP，在解压根目录执行：
 
 ```sh
