@@ -1,5 +1,9 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.html.appendExternalDocumentationMarkdown
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr}
+import cjdoc.render.foundation.RenderTextBuffer
 import cjdoc.model.*
 import std.unittest.*
 import std.unittest.testmacro.*

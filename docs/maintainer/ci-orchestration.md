@@ -596,7 +596,7 @@ names the scenario, the check that represents it, and its observable outcome.
 | OPT-T04 any branch failure or cancellation | `scripts/test_ci_scripts.py`, `scripts/test_ci_stage.py` | required aggregate and publish do not succeed; original logs retained |
 | OPT-T05 first run, re-run of a failed job, full re-run | `scripts/ci_stage.py wallclock` classification, `tests/showcase_contract/test_browser_contract.py` | chosen attempt is explicit; first-failure history preserved |
 | OPT-T06 cold/warm/damaged/missing SDK and build caches | `scripts/test_install_cangjie_sdk.py`, `scripts/measure_sdk_install.py` dispatch 38216746376 | authentication and invalidation correct; no cross-test state |
-| OPT-T07 pre-existing output, symlinks, concurrent build/cancel | `scripts/test_ci_scripts.py`, `src/output_transaction*` tests | user data not overwritten; manifest not raced |
+| OPT-T07 pre-existing output, symlinks, concurrent build/cancel | `scripts/test_ci_scripts.py`, tests in `src/output/` | user data not overwritten; manifest not raced |
 | OPT-T08 native CLI / test build / provider static deps | `check.sh` stages `cli` and `provider`, `scripts/test_accept_dependency_public_api.py` | each consumes its real artifact; three-platform coverage kept |
 | OPT-T09 golden double generation, round-trip, real-repo no-cache twice | `check.sh` `cli` stage, `scripts/real_repository_smoke.py` | determinism/contract unchanged; no copy substitutes execution |
 | OPT-T10 support index, zh/en and two versions, diagnostics | `examples/pocketkit/reproduce.py` phases, `tests/showcase_contract/test_reproduce.py` | dependency order and native example-check provenance preserved |

@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.source.relativePathFromResolved
+import cjdoc.source.discovery.SyntaxSourceProvider
 import std.collection.*
 import std.env.*
 import std.fs.*

@@ -1,5 +1,7 @@
 package cjdoc.render
 
+import cjdoc.render.publication.projectPublicationDocumentation
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr, validateDocumentationSet, validateDocIrEncodingBudget}
 import cjdoc.model.*
 import std.collection.*
 import std.unittest.*

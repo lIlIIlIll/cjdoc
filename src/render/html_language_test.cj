@@ -1,5 +1,8 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.routes.{label, pageRootPrefix}
+import cjdoc.render.codec.encodeDocIr
 import cjdoc.model.*
 import markdown.{MarkdownEngine, MarkdownProfile, NodeKind, NodeRef}
 import std.unittest.*

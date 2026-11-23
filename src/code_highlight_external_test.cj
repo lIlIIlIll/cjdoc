@@ -1,5 +1,12 @@
 package cjdoc
 
+import cjdoc.highlight.{
+    CANGJIE_HIGHLIGHT_ENGINE, EXTERNAL_HIGHLIGHT_ENGINE, EXTERNAL_HIGHLIGHT_REVISION, CodeHighlight,
+    CodeHighlightState, HighlightExternalOptions, codeKindName, publicCodeHighlight,
+    validateExternalHighlightResponse}
+
+import cjdoc.digest.Sha256Digest
+import cjdoc.process.executeWithBoundedOutput
 import std.collection.*
 import std.env.*
 import std.fs.*

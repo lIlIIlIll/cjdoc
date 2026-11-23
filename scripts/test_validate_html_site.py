@@ -13,6 +13,8 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).with_name("validate_html_site.py")
+RENDER_SOURCES = SCRIPT.parent.parent / "src/render"
+BROWSER_SOURCES = RENDER_SOURCES / "browser"
 CSP = (
     "default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; "
     "base-uri 'none'; form-action 'none'"
@@ -44,26 +46,37 @@ def _decode_script_text(source: str) -> str:
 def _script_literal(path: Path, name: str, prefix: str = "") -> str:
     """Reproduce a static Cangjie literal, including its emitted newlines."""
     source = path.read_text(encoding="utf-8")
-    raw_marker = f'internal let {name} = {prefix}#"\n'
+    raw_marker = f'let {name} = {prefix}#"'
     if raw_marker in source:
-        return "\n" + source.split(raw_marker, 1)[1].split('\n"#', 1)[0] + "\n"
-    marker = f'internal let {name} = {prefix}"""\n'
+        return source.split(raw_marker, 1)[1].split('"#', 1)[0]
+    marker = f'let {name} = {prefix}"""\n'
     return _decode_script_text(source.split(marker, 1)[1].split('\n"""', 1)[0]) + "\n"
 
 
 def canonical_api_route_script() -> str:
-    return _script_literal(SCRIPT.parent.parent / "src/render/html_scripts.cj", "HTML_API_LINK_SCRIPT")
+    return _script_literal(BROWSER_SOURCES / "html_scripts.cj", "HTML_API_LINK_SCRIPT")
 
 
 def canonical_search_script() -> str:
     """Reproduce the canonical reader bundle, including packaging whitespace."""
-    render = SCRIPT.parent.parent / "src/render"
     source = (canonical_api_route_script()
-              + _script_literal(render / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
-              + _script_literal(render / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_SCRIPT")
-              + _script_literal(render / "html_scripts.cj", "HTML_SEARCH_CONTROLLER_SCRIPT")
-              + _script_literal(render / "html_script_reading.cj", "HTML_READING_SCRIPT")
-              + _script_literal(render / "html_script_language.cj", "LANGUAGE_NAVIGATION_SCRIPT"))
+              + _script_literal(BROWSER_SOURCES / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_PRIMITIVES_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_search_kernel_index.cj", "HTML_SEARCH_KERNEL_INDEX_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_search_kernel_matching.cj", "HTML_SEARCH_KERNEL_MATCHING_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_search_kernel_execution.cj",
+                                "HTML_SEARCH_KERNEL_EXECUTION_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_search_controller_setup.cj",
+                                "HTML_SEARCH_CONTROLLER_SETUP_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_search_controller_results.cj",
+                                "HTML_SEARCH_CONTROLLER_RESULTS_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_search_controller_interaction.cj",
+                                "HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_script_reading.cj", "HTML_READING_OUTLINE_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_script_reading_settings.cj", "HTML_READING_SETTINGS_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_script_reading_copy.cj", "HTML_READING_COPY_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_script_reading_members.cj", "HTML_READING_MEMBERS_SCRIPT")
+              + _script_literal(BROWSER_SOURCES / "html_script_language.cj", "LANGUAGE_NAVIGATION_SCRIPT"))
     code = re.sub(r"(?m)^ *//[^\n]*", "", source)
     if "`" in code or "\\\n" in code:
         raise ValueError("the reader bundle must not contain template literals or continued string lines")
@@ -71,13 +84,11 @@ def canonical_search_script() -> str:
 
 
 def canonical_theme_bootstrap_script() -> str:
-    return _script_literal(SCRIPT.parent.parent / "src/render/html_scripts.cj",
-                           "HTML_THEME_BOOTSTRAP_SCRIPT")
+    return _script_literal(BROWSER_SOURCES / "html_scripts.cj", "HTML_THEME_BOOTSTRAP_SCRIPT")
 
 
 def canonical_symbol_alias_script() -> str:
-    return _script_literal(SCRIPT.parent.parent / "src/render/html_routing.cj",
-                           "HTML_SYMBOL_ALIAS_SCRIPT")
+    return _script_literal(RENDER_SOURCES / "html/html_routing.cj", "HTML_SYMBOL_ALIAS_SCRIPT")
 
 
 class ValidateHtmlSiteTest(unittest.TestCase):

@@ -1,5 +1,10 @@
 package cjdoc.render
 
+import cjdoc.render.publication.projectDocumentationLanguage
+import cjdoc.render.html.{
+    HtmlTypeLinkIndex, HtmlWriter, RenderProjection, appendOwnerDocumentationContext,
+    documentationFieldAnchor, renderSymbolPage, visibleOwnerChain}
+import cjdoc.render.routes.{symbolAnchor, pageRootPrefix}
 import cjdoc.model.*
 import std.unittest.*
 import std.collection.*

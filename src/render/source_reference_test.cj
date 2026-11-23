@@ -1,5 +1,8 @@
 package cjdoc.render
 
+import cjdoc.render.routes.markdownSymbolPagePath
+import cjdoc.render.publication.{SourceReferenceProjection, sourceReferenceJson}
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr}
 import cjdoc.model.*
 import std.unittest.*
 import std.unittest.testmacro.*

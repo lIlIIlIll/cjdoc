@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.source.relativePathFromResolved
+import cjdoc.source.cache.ignoredDefaultToken
 import std.ast.*
 import std.collection.ArrayList
 import std.env.*
@@ -112,56 +114,6 @@ class SourcePipelineSuite4 {
             @Expect(multiline.parameters[0].defaultExpression.isSome(), true)
             let handler = declarationNamed(documentation, "Handler")
             @Expect(handler.kind, "class")
-        } finally {
-            let _ = removeIfExists(temporary, recursive: true)
-        }
-    }
-
-    @TestCase
-    func defaultTokenComparisonIgnoresNewlinesButRejectsChangedValues(): Unit {
-        let source = cangjieLex("1\n")
-        @Expect(cachedDefaultMatchesSourceTokens("1", source, 0, source.size), true)
-        @Expect(cachedDefaultMatchesSourceTokens("2", source, 0, source.size), false)
-        let closure = cangjieLex("{ value => value }")
-        @Expect(cachedDefaultMatchesSourceTokens("{\nvalue => value\n}", closure,
-            0, closure.size), true)
-        @Expect(cachedDefaultMatchesSourceTokens("{ value => 0 }", closure,
-            0, closure.size), false)
-    }
-
-    @TestCase
-    func bodylessMethodDoesNotConsumePropertyInitializer(): Unit {
-        let source = """
-            interface Recovery {
-                func missing(): Unit
-                let callback = { => 41 }
-            }
-            public func broken(): Unit { let value = ; }
-            """
-        let recovered = syntaxRecoverySource(source)
-        @Expect(recovered.contains("let callback = { => 41 }"), true)
-        @Expect(recovered.contains("let value = ;"), false)
-    }
-
-    @TestCase
-    func sourceParseWorkerRejectsNormalizedOutputTraversal(): Unit {
-        let temporary = Directory.createTemp(getTempDirectory())
-        try {
-            let workerRoot = temporary.join("worker")
-            Directory.create(workerRoot)
-            let sourcePath = workerRoot.join("source.cj")
-            let requestPath = workerRoot.join("request.bin")
-            let escapedPath = temporary.join("escaped.bin")
-            let sourceText = "package worker_safe\npublic func value(): Int64 { 1 }\n"
-            File.writeTo(sourcePath, sourceText.toArray())
-            let input = SourceInputFile(sourcePath.toString(), workerRoot.toString(),
-                "src/source.cj", SourceModule("worker-safe", "worker_safe", "root", ""),
-                sourceText.toArray().size)
-            writeSourceParseWorkerRequest(requestPath, sourcePath,
-                Path(workerRoot.toString() + "/../escaped.bin"), input, "worker_safe",
-                sourceParseWorkerCacheKey(sourceText))
-            @Expect(runSourceParseWorker(requestPath.toString()) != 0, true)
-            @Expect(exists(escapedPath), false)
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
         }

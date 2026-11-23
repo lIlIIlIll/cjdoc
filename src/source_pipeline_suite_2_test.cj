@@ -1,5 +1,8 @@
 package cjdoc
 
+import cjdoc.manifest.{
+    parseCjpmLock, parseCjpmManifest, parseCjpmPackageNameChecked, parseCjpmPathDependencies,
+    parseCjpmWorkspaceMembers}
 import cjdoc.render as api_render
 import std.collection.*
 import std.env.*

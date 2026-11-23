@@ -212,7 +212,8 @@ class ReaderUiTests(unittest.TestCase):
             def handle_starttag(self, tag: str, attrs: list) -> None:
                 if tag == "a": self.attrs = dict(attrs)
         anchor = Anchor(); anchor.feed(rendered)
-        native = (ROOT / "src/version_navigation.cj").read_text(encoding="utf-8").split('internal let VERSION_NAVIGATION_SCRIPT = #"', 1)[1].split('"#', 1)[0]
+        native = (ROOT / "src/versions/navigation.cj").read_text(encoding="utf-8").split(
+            'internal let VERSION_NAVIGATION_SCRIPT = #"', 1)[1].split('"#', 1)[0]
         harness = 'const attrs=' + json.dumps(anchor.attrs) + ''';
 const handlers={};const link={textContent:"demo-v1",hasAttribute:k=>Object.hasOwn(attrs,k),getAttribute:k=>attrs[k]??null,setAttribute:(k,v)=>attrs[k]=String(v),removeAttribute:k=>delete attrs[k]};
 global.document={documentElement:{lang:"en"},querySelectorAll:()=>[link]};global.location={hash:"#diagnostics",protocol:"https:"};global.addEventListener=(name,fn)=>handlers[name]=fn;

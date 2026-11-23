@@ -1,7 +1,20 @@
 package cjdoc
 
+import cjdoc.render.codec as render_codec
+
+import cjdoc.dependency.navigation.{
+    DependencyDocumentPolicy, DependencyNavigationInputs, bindDependencyNavigation, resolvePublicSemanticLinks}
+import cjdoc.binding.{DocumentationSet, SymbolDoc, ModuleDoc, renderableSymbolIds}
+import cjdoc.documentation.assets.LocalAssetCollector
+import cjdoc.documentation.markdown.{MarkdownGenerationContext, publicComment}
+import cjdoc.source.relativePathFromResolved
+import cjdoc.source.model.{SourceFileOrigin, TypeRef}
+import cjdoc.source.Diagnostic
+import cjdoc.dependency.navigation.{ExternalDocResolver, loadDependencyDocSources}
+import cjdoc.documentation.i18n.loadDocumentationLanguages
+import cjdoc.highlight.{HighlightExternalOptions, MAX_HIGHLIGHT_TOTAL_BYTES, highlightExternalOptions}
 import cjdoc.model as public_model
-import cjdoc.render as public_render
+import cjdoc.model.comparePublicDiagnostic
 import cjdoc.quality.*
 import cjdoc_chir_protocol.CJDOC_PRODUCT_VERSION
 import std.collection.*
@@ -180,6 +193,20 @@ internal class PublicProviderProjection {
     }
 }
 
+private func publicType(value: TypeRef, provider: String, providerState: String): public_model.TypeRef {
+    // A failed module transaction retains spellings, but not provider facts.
+    let state = if (providerState == "unavailable") { "unavailable" } else { value.state }
+    let canonical: ?String = if (providerState == "unavailable") { None } else { value.canonical }
+    let semanticProvider: ?String = if (state == "unavailable") { None } else { Some(provider) }
+    let arguments = ArrayList<public_model.TypeRef>()
+    for (argument in value.arguments) {
+        arguments.add(publicType(argument, provider, providerState))
+    }
+    public_model.TypeRef(value.kind, value.display,
+        public_model.SemanticType(state, canonical: canonical, provider: semanticProvider),
+        nullable: value.nullable, arguments: arguments.toArray())
+}
+
 internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
     providerStatesByModule: HashMap<String, String>, assetCollector: LocalAssetCollector,
     markdownContext: MarkdownGenerationContext, renderableIds: HashSet<String>): public_model.SymbolDoc {
@@ -224,8 +251,9 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         }, annotations: annotations.toArray(), typeRelationships: typeRelationships.toArray(),
         symbolRelationships: symbolRelationships.toArray(), documentation: match (value.documentation) {
             case Some(comment) => Some(
-                publicComment(comment, assetCollector, value.source.path, value.moduleId,
-                    declarationSource, value.id, markdownContext, renderableIds, sourceMapper))
+                publicComment(comment, assetCollector, value.source.path,
+                    declarationSource, value.id, markdownContext, renderableIds,
+                    { location => sourceMapper.capturedRange(value.moduleId, location) }))
             case None => None
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
@@ -253,7 +281,9 @@ internal class PublicDeclarationProjection {
         let declarations = ArrayList<public_model.SymbolDoc>()
         let assetCollector = LocalAssetCollector(documentation.sourceFileOrigins)
         let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode,
-            highlightLanguages: highlightLanguages, highlightBytes: highlightBytes,
+            allowLanguage: highlightLanguages.map({ config => { language: String => config.allowsLanguage(language) } }),
+            onError: highlightLanguages.map({ config => config.onError }).getOrDefault({ => "warn" }),
+            highlightBytes: highlightBytes,
             externalOptions: externalOptions)
         let renderableIds = renderableSymbolIds(documentation, audience)
         let hiddenContext = MarkdownGenerationContext(highlightMode: "off")
@@ -401,10 +431,18 @@ internal class PublicDiagnosticProjection {
     }
 }
 
+internal func loadRequestedDependencyDocSources(request: GenerationRequest): Array<ExternalDocResolver> {
+    let pins = request.documentInventoryPins
+    loadDependencyDocSources(request.projectRoot, request.documentSources, pins.size, { index =>
+        let pin = pins[index]
+        (pin.path, pin.sha256)
+    })
+}
+
 internal func publicDocumentation(documentation: DocumentationSet,
     request: GenerationRequest, highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
     capturePages!: Bool = false, externalResolvers!: ?Array<ExternalDocResolver> = None): public_model.DocumentationSet {
-    let inventorySnapshot = externalResolvers.getOrDefault({ => loadDependencyDocSources(request) })
+    let inventorySnapshot = externalResolvers.getOrDefault({ => loadRequestedDependencyDocSources(request) })
     let externalOptions = highlightExternalOptions(request.highlightAdapter, request.highlightNode)
     try {
         projectPublicDocumentation(documentation, request, highlightBytes, capturePages, externalOptions, inventorySnapshot)
@@ -471,7 +509,7 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     // Preserve all declarations/text without optional highlighting before the
     // existing fallback, if the stricter whole-document codec boundary is hit.
     if (canDropHighlights &&
-        !public_render.docIrFitsEncodedBudget(candidate, request.maxDocIrBytes)) {
+        !render_codec.docIrFitsEncodedBudget(candidate, request.maxDocIrBytes)) {
         return projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions, inventorySnapshot,
             retainedHighlightFailures: declarationProjection.markdownContext.highlightDiagnostics())
     }
@@ -481,10 +519,14 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     } else { candidate }
     // Only AST-admitted captured markers can establish a guide's dependency
     // context. Include navigation decisions in the final whole-document budget.
-    let bound = bindDependencyNavigation(result, request, documentation.sourceFileOrigins.toArray(),
-        externalResolvers: Some(inventorySnapshot))
+    let linkPolicy = DependencyDocumentPolicy(request.audience, linkLanguage: request.linkLanguage,
+        linkLanguageFallback: request.linkLanguageFallback, linkCompatible: request.linkCompatible)
+    let linkInputs = DependencyNavigationInputs(dependencyIdentityInputs(request), linkPolicy,
+        !request.documentSources.isEmpty() || request.buildContext.isSome(), request.lintProfile == "strict",
+        request.standardLibraryDocsVersion, request.standardLibraryDocsBaseUrl)
+    let bound = bindDependencyNavigation(result, linkInputs, documentation.sourceFileOrigins.toArray(), inventorySnapshot)
     if (!canDropHighlights) { return boundGeneratedDocumentation(bound, request) }
-    if (public_render.docIrFitsEncodedBudget(bound, request.maxDocIrBytes)) {
+    if (render_codec.docIrFitsEncodedBudget(bound, request.maxDocIrBytes)) {
         return bound
     }
     // Drop optional display metadata once before the bounded hard fallback;

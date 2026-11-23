@@ -1,7 +1,10 @@
 package cjdoc
 
+import cjdoc.cli.parseNewCli
+import cjdoc.documentation.i18n.coverage.withTranslationDiagnostics
 import cjdoc.model as api_model
 import cjdoc.render as api_render
+import std.collection.ArrayList
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -53,8 +56,7 @@ class I18nTranslationEdgeTest {
                 @Expect(report.translated, 5)
                 @Expect(report.unpaired, 1)
                 @Expect(report.percent, 83)
-                let checked = withTranslationDiagnostics(documentation,
-                    GenerationRequest(project.toString(), requiredLanguages: ["zh-CN"]))
+                let checked = withTranslationDiagnostics(documentation, project.toString(), ArrayList<String>(["zh-CN"]))
                 var rejected = false
                 for (diagnostic in checked.diagnostics where diagnostic.code == "CJDOC3111") { rejected = true }
                 @Expect(rejected)

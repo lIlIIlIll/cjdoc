@@ -1,5 +1,14 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.{RenderArtifact, escapeHtml}
+import cjdoc.render.html.{
+    HtmlAttr, HtmlWriter, TrustedHtml, documentationRouteHref, htmlAttr, htmlClass, htmlFlag,
+    htmlHref}
+import cjdoc.render.agent.DocumentationReportAttachment
+import cjdoc.render.routes.{label, selectedDocumentationPages, pageRootPrefix}
+import cjdoc.render.codec.{escapeJsonString, nullableString}
+import cjdoc.render.foundation.{
+    RenderArtifactCollector, RenderTextBuffer, RENDER_ARTIFACT_LIMIT, RenderArtifactStore}
 import cjdoc.model.*
 import std.collection.*
 

@@ -1,0 +1,336 @@
+protected package cjdoc.render.html
+
+import cjdoc.render.routes.label
+import cjdoc.model.*
+import std.collection.*
+import std.unittest.*
+import std.unittest.testmacro.*
+
+private func signatureHtml(body: (HtmlWriter) -> Unit): String {
+    let writer = HtmlWriter()
+    body(writer)
+    writer.toString()
+}
+
+private func signatureEscaped(value: String): String {
+    let writer = HtmlWriter()
+    writer.text(value)
+    writer.toString()
+}
+
+// Token spans are presentation only; unwrapping them proves the byte ranges
+// and the escaping of the underlying source text.
+private func unwrappedSignature(html: String): String {
+    var result = html
+    for (name in ["keyword", "type", "string", "number", "literal", "comment", "operator",
+        "punctuation", "function", "property", "meta"]) {
+        result = result.replace("<span class=\"cj-tok-${name}\">", "")
+    }
+    result.replace("</span>", "")
+}
+
+private func signatureTestTokens(): Array<String> {
+    let values: Array<(String, String)> = [
+        ("PUBLIC", "public"), ("FUNC", "func"), ("IDENTIFIER", "accept"), ("LPAREN", "("),
+        ("IDENTIFIER", "label"), ("NOT", "!"), ("COLON", ":"), ("IDENTIFIER", "String"),
+        ("ASSIGN", "="), ("STRING_LITERAL", "\"Token\""), ("COMMA", ","),
+        ("IDENTIFIER", "item"), ("NOT", "!"), ("COLON", ":"), ("IDENTIFIER", "Token"),
+        ("RPAREN", ")"), ("COLON", ":"), ("IDENTIFIER", "Token")
+    ]
+    let result = ArrayList<String>()
+    for ((kind, value) in values) { result.add("${kind}:${value.size}:${value}") }
+    result.toArray()
+}
+
+private func signatureTestHighlight(raw: String): CodeHighlight {
+    let start = raw.indexOf("= ").getOrThrow() + 2
+    let end = raw.indexOf(", item!").getOrThrow()
+    CodeHighlight("cangjie", contractFingerprint(raw), raw.size, "fixture", "1", "complete", None,
+        [CodeSpan(0, 6, "keyword"), CodeSpan(7, 11, "keyword"), CodeSpan(start, end, "string")])
+}
+
+private func signatureTestDocument(raw: String,
+    tokens!: Array<String> = signatureTestTokens(), highlight!: ?CodeHighlight = None): DocumentationSet {
+    let moduleId = "cjdoc:module:v1:signature-test"
+    let tokenId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asignature-test::fixture::class:Token#g0()"
+    let functionId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asignature-test::fixture::function:accept#g0(String,Token)"
+    let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0),
+        SourcePosition(1, raw.size + 1, raw.size))
+    let tokenType = TypeRef("named", "Token",
+        SemanticType("resolved", canonical: Some("fixture.Token")))
+    let token = SymbolDoc(tokenId, "class", "Token", "fixture.Token", "fixture", moduleId,
+        "public", source, "public class Token", SemanticInfo("partial", "ast"))
+    let subject = SymbolDoc(functionId, "function", "accept", "fixture.accept", "fixture", moduleId,
+        "public", source, raw, SemanticInfo("partial", "ast"),
+        parameters: [
+            ParameterDoc("label", TypeRef("named", "String", SemanticType("unavailable"))),
+            ParameterDoc("item", tokenType)
+        ],
+        returnType: Some(tokenType),
+        sourceApiSignature: SourceApiSignature("available", tokens: tokens), signatureHighlight: highlight)
+    DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("signature-test"),
+        ConfigurationSnapshot(lintProfile: "off"),
+        modules: [ModuleDoc(moduleId, "signature-test", "root", "", packageNames: ["fixture"])],
+        packages: [PackageDoc("fixture", moduleId, symbolIds: [tokenId, functionId])],
+        declarations: [token, subject])
+}
+
+private func constraintSignatureDocument(raw: String, values: Array<String>,
+    relationships: Array<TypeRelationship>, kind!: String = "function"): DocumentationSet {
+    let base = signatureTestDocument(raw)
+    let token = base.declarations[0]
+    let encoded = ArrayList<String>()
+    for (value in values) {
+        let tokenKind = match (value) {
+            case "public" => "PUBLIC"
+            case "func" => "FUNC"
+            case "class" => "CLASS"
+            case "where" => "WHERE"
+            case "(" => "LPAREN"
+            case ")" => "RPAREN"
+            case "{" => "LBRACE"
+            case "}" => "RBRACE"
+            case ":" => "COLON"
+            case "," => "COMMA"
+            case "<" => "LT"
+            case ">" => "GT"
+            case "<:" => "UPPERBOUND"
+            case "&" => "BITAND"
+            case "=" => "ASSIGN"
+            case _ => if (value.startsWith("\"")) { "STRING_LITERAL" } else { "IDENTIFIER" }
+        }
+        encoded.add("${tokenKind}:${value.size}:${value}")
+    }
+    let subject = SymbolDoc("cjdoc:v2:cjdoc%3Amodule%3Av1%3Asignature-test::fixture::" +
+        kind + ":accept#g2()", kind, "accept", "fixture.accept", "fixture", token.moduleId,
+        "public", token.source, raw, SemanticInfo("partial", "ast"),
+        genericParameters: ["T", "U"], typeRelationships: relationships,
+        sourceApiSignature: SourceApiSignature("available", tokens: encoded.toArray()))
+    DocumentationSet(base.generator, "complete", base.project, base.configuration,
+        modules: base.modules.toArray(), packages: [PackageDoc("fixture", token.moduleId,
+            symbolIds: [token.id, subject.id])], declarations: [token, subject])
+}
+
+@Test
+class HtmlSignatureMappingTest {
+    @TestCase
+    func genericBoundsDoNotStealSupertypeOrConstraintSubjectSpans(): Unit {
+        let raw = "public class accept<T,U> <: Token where T <: Token & Token, U <: Token"
+        let token = TypeRef("named", "Token", SemanticType("resolved", canonical: Some("fixture.Token")))
+        let documentation = constraintSignatureDocument(raw,
+            ["public", "class", "accept", "<", "T", ",", "U", ">", "<:", "Token",
+                "where", "T", "<:", "Token", "&", "Token", ",", "U", "<:", "Token"],
+            [TypeRelationship("genericConstraint", token), TypeRelationship("genericConstraint", token),
+                TypeRelationship("genericConstraint", token), TypeRelationship("superType", token)], kind: "class")
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Assert(spans.size, 4)
+        @Expect(spans[0].start, raw.indexOf("<: Token").getOrThrow() + "<: ".size)
+        @Expect(spans[1].start, raw.indexOf("where T <: Token").getOrThrow() + "where T <: ".size)
+        @Expect(spans[2].start, raw.indexOf("& Token").getOrThrow() + "& ".size)
+        @Expect(spans[3].end, raw.size)
+        for (span in spans) { @Expect(raw[span.start..span.end], "Token") }
+    }
+
+    @TestCase
+    func nestedGenericConstraintLinksSkipDefaultsAndBody(): Unit {
+        let raw = "public func accept<T,U>(label: String = \"Token\"): T where T <: Token<Token>, U <: Token"
+        let token = TypeRef("named", "Token", SemanticType("resolved", canonical: Some("fixture.Token")))
+        let nested = TypeRef("generic", "Token<Token>", token.semantic, arguments: [token])
+        let documentation = constraintSignatureDocument(raw,
+            ["public", "func", "accept", "<", "T", ",", "U", ">", "(", "label", ":", "String", "=",
+                "\"Token\"", ")", ":", "T", "where", "T", "<:", "Token", "<", "Token", ">", ",", "U", "<:", "Token"],
+            [TypeRelationship("genericConstraint", nested), TypeRelationship("genericConstraint", token)])
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Assert(spans.size, 3)
+        let boundsStart = raw.indexOf("where").getOrThrow()
+        for (span in spans) {
+            @Expect(span.start > boundsStart, true)
+            @Expect(raw[span.start..span.end], "Token")
+        }
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        @Expect(out.contains("&quot;<a"), false)
+        @Expect(out.contains("class=\"cj-type-link\""), true)
+
+        let body = constraintSignatureDocument("public func accept<T>() { where T <: Token }",
+            ["public", "func", "accept", "<", "T", ">", "(", ")", "{", "where", "T", "<:", "Token", "}"],
+            [TypeRelationship("genericConstraint", token)])
+        @Expect(linkedSignatureSpans(body.declarations[1],
+            HtmlTypeLinkIndex(body, RenderProjection(body, buildApiRoutes: true))).isEmpty(), true)
+    }
+
+
+    @TestCase
+    func signatureColourDistinguishesAbsentStaleAndValidHighlight(): Unit {
+        let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"
+        let prepared = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "cjdoc-cangjie-lexer", "1", "complete", None, [CodeSpan(0, 6, "comment")])
+        let stale = CodeHighlight("cangjie", contractFingerprint(raw + " "), raw.size + 1,
+            "cjdoc-cangjie-lexer", "1", "complete", None, [CodeSpan(0, 6, "comment")])
+        let disabled = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "fixture", "1", "plain", Some("disabled"), [])
+        let limited = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "fixture", "1", "plain", Some("resource-limit"), [])
+        let validHtml = "<span class=\"cj-tok-comment\">public</span>" + signatureEscaped(raw[6..])
+        let cases: Array<(?CodeHighlight, String)> = [
+            (None, signatureEscaped(raw)), (Some(stale), signatureEscaped(raw)),
+            (Some(prepared), validHtml), (Some(disabled), signatureEscaped(raw)),
+            (Some(limited), signatureEscaped(raw))
+        ]
+        var originalLinked = ""
+        for ((highlight, expected) in cases) {
+            let document = signatureTestDocument(raw, highlight: highlight)
+            let subject = document.declarations[1]
+            let out = signatureHtml({ w => appendSignatureTextHtml(w, subject) })
+            @Expect(out, expected)
+            let links = HtmlTypeLinkIndex(document, RenderProjection(document, buildApiRoutes: true))
+            let linked = signatureHtml({ w => appendLinkedSignatureHtml(w, subject, links, "../") })
+            let uncoloured = unwrappedSignature(linked)
+            if (originalLinked.isEmpty()) { originalLinked = uncoloured }
+            else { @Expect(uncoloured, originalLinked) }
+            if (let Some(value) <- highlight) {
+                if (!value.matchesSource(raw)) {
+                    // Stale metadata loses only its own colouring; the type links come
+                    // from the declaration model and must still be rendered, while no
+                    // witness colour may stand in for the untrusted ranges.
+                    @Expect(linked.contains("class=\"cj-type-link\""))
+                    @Expect(linked.contains("cj-tok-"), false)
+                    continue
+                }
+            }
+            @Expect(linked.contains("class=\"cj-type-link\""))
+            @Expect(linked.contains("cj-tok-comment"), expected.contains("cj-tok-comment"))
+            @Expect(!linked.contains("cj-tok-keyword"))
+            @Expect(!linked.contains("cj-tok-type"))
+            @Expect(!linked.contains("cj-tok-string"))
+        }
+    }
+
+    @TestCase
+    func persistedDisplaySpansMergeInsideExistingTypeLinks(): Unit {
+        let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"
+        let literalStart = raw.indexOf("\"Token\"").getOrThrow()
+        let prepared = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "cjdoc-cangjie-lexer", "1", "complete", None,
+            [CodeSpan(0, 6, "keyword"), CodeSpan(7, 11, "keyword"),
+                CodeSpan(literalStart, literalStart + 7, "string")])
+        let document = signatureTestDocument(raw, highlight: Some(prepared))
+        let links = HtmlTypeLinkIndex(document, RenderProjection(document, buildApiRoutes: true))
+        let html = signatureHtml({ w => appendLinkedSignatureHtml(w, document.declarations[1], links, "../") })
+        @Expect(html.contains("<span class=\"cj-tok-string\">&quot;Token&quot;</span>"), true)
+        @Expect(html.contains("class=\"cj-type-link\""), true)
+        @Expect(!html.contains("&quot;<a"), true)
+        @Expect(unwrappedSignature(html).contains("&quot;Token&quot;"), true)
+        let staleDocument = signatureTestDocument(raw + " ", highlight: Some(prepared))
+        let stale = signatureHtml({ w => appendSignatureTextHtml(w, staleDocument.declarations[1]) })
+        @Expect(stale, signatureEscaped(raw + " "))
+    }
+
+    @TestCase
+    func persistedCommentSpansDoNotDependOnSkippedWitnessTrivia(): Unit {
+        let raw = "public /* nested /* inner */ end */ func accept(label!: String = \"Token\", item!: Token): Token"
+        let commentStart = raw.indexOf("/*").getOrThrow()
+        let commentEnd = raw.indexOf(" func").getOrThrow()
+        let prepared = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "cjdoc-cangjie-lexer", "2", "complete", None,
+            [CodeSpan(0, 6, "keyword"), CodeSpan(commentStart, commentEnd, "comment")])
+        let document = signatureTestDocument(raw, highlight: Some(prepared))
+        let out = signatureHtml({ w => appendSignatureTextHtml(w, document.declarations[1]) })
+        @Expect(unwrappedSignature(out), signatureEscaped(raw))
+        @Expect(out.contains("<span class=\"cj-tok-comment\">/* nested /* inner */ end */</span>"), true)
+    }
+
+    @TestCase
+    func namedParameterAndReturnLinksNeverSelectDefaultLiteral(): Unit {
+        let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"
+        let documentation = signatureTestDocument(raw, highlight: Some(signatureTestHighlight(raw)))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Expect(spans.size, 2)
+        @Expect(raw[spans[0].start..spans[0].end], "Token")
+        @Expect(spans[0].start,
+            raw.indexOf("item!: Token").getOrThrow() + "item!: ".size)
+        @Expect(spans[1].end, raw.size)
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        @Expect(out.contains("&quot;Token&quot;"), true)
+        @Expect(out.contains("&quot;<a"), false)
+        @Expect(out.contains("<span class=\"cj-tok-keyword\">func</span>"), true)
+        @Expect(out.contains("<span class=\"cj-tok-string\">&quot;Token&quot;</span>"), true)
+        @Expect(out.contains("class=\"cj-type-link\""), true)
+    }
+
+    @TestCase
+    func commentsAndTriviaDoNotCreateTypeLinks(): Unit {
+        let raw = "public /* Token /* nested */ */ func accept(label!: String = \"Token\",\n" +
+            "/* item!: Token */ item! : Token): Token // Token"
+        let documentation = signatureTestDocument(raw)
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Expect(spans.size, 2)
+        @Expect(spans[0].start,
+            raw.indexOf("item! : Token").getOrThrow() + "item! : ".size)
+    }
+
+    @TestCase
+    func commaDefaultLiteralHighlightsWithoutBecomingAParameterSeparator(): Unit {
+        let raw = "public func accept(label!: String = \",\", item!: Token): Token"
+        let tokens = ArrayList<String>(signatureTestTokens())
+        tokens[9] = "STRING_LITERAL:3:\",\""
+        let documentation = signatureTestDocument(raw, tokens: tokens.toArray(),
+            highlight: Some(signatureTestHighlight(raw)))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Expect(spans.size, 2)
+        @Expect(raw[spans[0].start..spans[0].end], "Token")
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        let html = out
+        @Expect(html.contains("<span class=\"cj-tok-keyword\">public</span>"), true)
+        @Expect(html.contains("<span class=\"cj-tok-keyword\">func</span>"), true)
+        @Expect(html.contains("<span class=\"cj-tok-string\">&quot;,&quot;</span>"), true)
+        @Expect(html.contains("class=\"cj-type-link\""), true)
+    }
+
+    @TestCase
+    func sourceLiteralMarkupIsEscapedWhenHighlighted(): Unit {
+        let literal = "\"<img src=x onerror=alert(1)>\""
+        let raw = "public func accept(label!: String = " + literal + ", item!: Token): Token"
+        let tokens = ArrayList<String>(signatureTestTokens())
+        tokens[9] = "STRING_LITERAL:${literal.size}:${literal}"
+        let documentation = signatureTestDocument(raw, tokens: tokens.toArray(),
+            highlight: Some(signatureTestHighlight(raw)))
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, documentation.declarations[1], links, "../") })
+        let html = out
+        @Expect(html.contains("<img"), false)
+        @Expect(html.contains("&lt;img src=x onerror=alert(1)&gt;"), true)
+        @Expect(html.contains("<span class=\"cj-tok-string\">"), true)
+    }
+
+    @TestCase
+    func staleTokenWitnessFailsClosed(): Unit {
+        let raw = "public func accept(label!: String = \"different\", item!: Token): Token"
+        let documentation = signatureTestDocument(raw)
+        let subject = documentation.declarations[1]
+        @Expect(alignedSignatureTokens(subject).isEmpty(), true)
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        @Expect(linkedSignatureSpans(subject, links).isEmpty(), true)
+        let out = signatureHtml({ w => appendLinkedSignatureHtml(w, subject, links, "../") })
+        @Expect(out, signatureEscaped(raw))
+    }
+
+    @TestCase
+    func utf8LiteralKeepsByteOffsetsWithoutSearchingItsContent(): Unit {
+        let original = "public func accept(label!: String = \"Token\", item!: Token): Token"
+        let raw = original.replace("\"Token\"", "\"中文 Token : ()\"")
+        let tokens = ArrayList<String>(signatureTestTokens())
+        let literal = "\"中文 Token : ()\""
+        tokens[9] = "STRING_LITERAL:${literal.size}:${literal}"
+        let documentation = signatureTestDocument(raw, tokens: tokens.toArray())
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation, buildApiRoutes: true))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Expect(spans.size, 2)
+        @Expect(spans[0].start,
+            raw.indexOf("item!: Token").getOrThrow() + "item!: ".size)
+    }
+}

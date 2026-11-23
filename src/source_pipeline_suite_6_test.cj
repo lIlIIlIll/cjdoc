@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.render as api_render
+import cjdoc.source.cfg.isExactWhenAnnotation
 import std.collection.*
 import std.env.*
 import std.fs.*

@@ -1,5 +1,9 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.html.{HtmlTypeLinkIndex, RenderProjection}
+import cjdoc.render.routes.{historicalSymbolPagePath, label, pageRootPrefix}
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr}
 import cjdoc.model.*
 import std.collection.*
 import std.unittest.*

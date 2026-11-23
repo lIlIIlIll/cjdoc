@@ -1,5 +1,18 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.{RenderArtifact, RenderResourceLimitException}
+import cjdoc.render.search.searchStaticProfileName
+import cjdoc.render.routes.markdownPackagePagePath
+import cjdoc.render.reading.readerRelationshipLabel
+import cjdoc.render.html.{
+    HtmlTypeLinkIndex, RenderProjection, renderStandaloneMarkdownHtml, renderSymbolAlias, renderSymbolPage}
+import cjdoc.render.agent.{DocumentationReadSnapshot, buildDocumentationSearchProjection}
+import cjdoc.render.routes.{
+    htmlStableSlug, stableFileHash, symbolPagePath, symbolReadablePagePath, label,
+    docBlockAnchor, pageRootPrefix}
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr, validateDocumentationSet}
+import cjdoc.render.foundation.{
+    RenderArtifactCollector, validateRenderArtifactBudgetForTest, escapeHtmlWithRenderLimitForTest}
 import cjdoc.model.*
 import std.collection.*
 import std.fs.*

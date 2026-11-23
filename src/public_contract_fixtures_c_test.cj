@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.binding.makeSymbolId
 import cjdoc.model as api_model
 import cjdoc.provider as api_provider
 import std.collection.*

@@ -1,0 +1,536 @@
+protected package cjdoc.documentation.comments
+
+import cjdoc.source.SourceLocation
+import markdown.{MarkdownEngine, MarkdownProfile, NodeKind, NodeRef, SourceSpan}
+import std.collection.*
+import std.sort.*
+
+protected func cleanDocLines(raw: String): ArrayList<String> {
+    var content = raw.trimAscii()
+    if (content.startsWith("/**")) { content = content.removePrefix("/**") }
+    if (content.endsWith("*/")) { content = content.removeSuffix("*/") }
+    let result = ArrayList<String>()
+    for (sourceLine in content.split("\n")) {
+        var line = sourceLine.trimAsciiEnd()
+        var prefix: Int64 = 0
+        while (prefix < line.size && (line[prefix] == b' ' || line[prefix] == b'\t')) {
+            prefix++
+        }
+        if (prefix < line.size && line[prefix] == b'*') {
+            line = line[prefix + 1..]
+            if (line.startsWith(" ")) { line = line.removePrefix(" ") }
+        } else {
+            // Preserve indentation after the conventional leading `*`: four
+            // spaces are semantically significant for Markdown code blocks.
+            // Unstarred block comments retain the historical normalization.
+            line = line.trimAsciiStart()
+        }
+        if (!result.isEmpty() || !line.isEmpty()) { result.add(line) }
+    }
+    while (!result.isEmpty() && result[result.size - 1].isEmpty()) { result.remove(at: result.size - 1) }
+    return result
+}
+
+protected func splitSubject(rest: String): (String, String) {
+    let parts = rest.trimAscii().split(" ", 2, removeEmpty: true)
+    if (parts.size == 0) { return ("", "") }
+    if (parts.size == 1) { return (parts[0], "") }
+    return (parts[0], parts[1].trimAscii())
+}
+
+protected func splitReferenceSubject(rest: String): (String, String) {
+    let value = rest.trimAscii()
+    if (value.isEmpty()) { return ("", "") }
+    var roundDepth: Int64 = 0
+    var squareDepth: Int64 = 0
+    var angleDepth: Int64 = 0
+    var braceDepth: Int64 = 0
+    var index: Int64 = 0
+    while (index < value.size) {
+        match (value[index]) {
+            case b'(' => roundDepth++
+            case b')' => if (roundDepth > 0) { roundDepth-- }
+            case b'[' => squareDepth++
+            case b']' => if (squareDepth > 0) { squareDepth-- }
+            case b'<' => angleDepth++
+            case b'>' =>
+                if (angleDepth > 0 && !(index > 0 && value[index - 1] == b'-')) { angleDepth-- }
+            case b'{' => braceDepth++
+            case b'}' => if (braceDepth > 0) { braceDepth-- }
+            case b' ' | b'\t' | b'\r' | b'\n' =>
+                if (roundDepth == 0 && squareDepth == 0 && angleDepth == 0 && braceDepth == 0) {
+                    return (value[..index], value[index..].trimAscii())
+                }
+            case _ => ()
+        }
+        index++
+    }
+    (value, "")
+}
+
+// Splits the trailing `{...}` directive group off an `@example` line.
+// The group is returned verbatim, braces included: this parser must not interpret
+// it, because a malformed block has to reach the example gate and be reported as
+// CJDOC3033 rather than be silently reinterpreted as part of the title.
+protected func splitExampleDirectives(rest: String): (String, String) {
+    let value = rest.trimAscii()
+    if (value.isEmpty()) { return (value, "") }
+    var candidate: ?Int64 = None
+    var depth: Int64 = 0
+    var quoted = false
+    var escaped = false
+    var index: Int64 = 0
+    while (index < value.size) {
+        let byte = value[index]
+        if (depth == 0) {
+            if (byte == b'{' && (index == 0 ||
+                value[index - 1] == b' ' || value[index - 1] == b'\t')) {
+                candidate = Some(index)
+                depth = 1
+            }
+        } else if (quoted) {
+            if (escaped) {
+                escaped = false
+            } else if (byte == b'\\') {
+                escaped = true
+            } else if (byte == b'"') {
+                quoted = false
+            }
+        } else {
+            match (byte) {
+                case b'"' => quoted = true
+                case b'{' => depth++
+                case b'}' =>
+                    depth--
+                    if (depth == 0) {
+                        if (value[index + 1..].trimAscii().isEmpty()) {
+                            let start = candidate.getOrThrow()
+                            return (value[..start].trimAscii(), value[start..])
+                        }
+                        candidate = None
+                    }
+                case _ => ()
+            }
+        }
+        index++
+    }
+    match (candidate) {
+        case Some(start) => (value[..start].trimAscii(), value[start..])
+        case None => (value, "")
+    }
+}
+
+private func behaviorContractName(tagText: String): ?String {
+    for (name in ["precondition", "postcondition", "invariant", "performance", "state",
+        "concurrency", "platform", "compatibility", "error"]) {
+        if (tagText == "@" + name || tagText.startsWith("@" + name + " ")) {
+            return Some(name)
+        }
+    }
+    None
+}
+
+private func replacementTagLine(text: String): Bool {
+    text == "@replacement" || text.startsWith("@replacement ") ||
+        text.startsWith("@replacement\t") || text.startsWith("@replacement[")
+}
+
+private func deprecationTagLine(text: String): Bool {
+    text == "@deprecated" || text.startsWith("@deprecated ")
+}
+
+private func isStructuredDocTag(tagText: String): Bool {
+    tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t") ||
+        tagText.startsWith("@group[") ||
+        tagText == "@tag" || tagText.startsWith("@tag ") || tagText.startsWith("@tag\t") ||
+        tagText.startsWith("@tag[") ||
+        tagText.startsWith("@param ") ||
+        tagText == "@return" || tagText.startsWith("@return ") ||
+        tagText.startsWith("@throws ") ||
+        tagText == "@see" || tagText.startsWith("@see ") ||
+        tagText.startsWith("@since ") ||
+        deprecationTagLine(tagText) ||
+        replacementTagLine(tagText) ||
+        tagText.startsWith("@author ") || tagText.startsWith("@version ") ||
+        tagText == "@example" || tagText.startsWith("@example ") ||
+        behaviorContractName(tagText).isSome() || admonitionTagHead(tagText).isSome()
+}
+
+protected func rawJoinLines(lines: ArrayList<String>): String {
+    let builder = StringBuilder()
+    var index: Int64 = 0
+    while (index < lines.size) {
+        if (index > 0) { builder.append("\n") }
+        builder.append(lines[index])
+        index++
+    }
+    builder.toString()
+}
+
+protected class MarkdownBlockStructure {
+    let topLevelParagraphs: ArrayList<SourceSpan>
+    let available: Bool
+    let protectedInline: ArrayList<SourceSpan>
+
+    init(topLevelParagraphs: ArrayList<SourceSpan>, available: Bool,
+        protectedInline!: ArrayList<SourceSpan> = ArrayList<SourceSpan>()) {
+        this.topLevelParagraphs = topLevelParagraphs
+        this.available = available
+        this.protectedInline = protectedInline
+    }
+}
+
+// Structured tags are recognized only in top-level Markdown paragraphs. This
+// deliberately delegates fenced/indented/list/blockquote structure to the same
+// GFM parser used by the public adapter instead of maintaining a second fence
+// state machine with subtly different CommonMark rules.
+protected func markdownBlockStructure(source: String): MarkdownBlockStructure {
+    try {
+        let parsed = MarkdownEngine.builder().profile(MarkdownProfile.gfmModernV1()).
+            build().parse(source)
+        let children = parsed.document.root().children()
+        let paragraphs = ArrayList<SourceSpan>()
+        let protectedInline = ArrayList<SourceSpan>()
+        let pending = ArrayList<NodeRef>()
+        var index: Int64 = 0
+        while (index < children.size) {
+            let child = children[index]
+            match (child.kind) {
+                case NodeKind.Paragraph =>
+                    if (let Some(span) <- child.span) { paragraphs.add(span) }
+                    pending.add(child)
+                case _ => ()
+            }
+            index++
+        }
+        var work: Int64 = 0
+        while (!pending.isEmpty()) {
+            if (work >= 100000) { throw IllegalArgumentException("Markdown tag-boundary work limit") }
+            work++
+            let node = pending[pending.size - 1]
+            pending.remove(at: pending.size - 1)
+            match (node.kind) {
+                case NodeKind.CodeSpan => if (let Some(span) <- node.span) { protectedInline.add(span) }
+                case _ => ()
+            }
+            let descendants = node.children()
+            var descendant: Int64 = 0
+            while (descendant < descendants.size) { pending.add(descendants[descendant]); descendant++ }
+        }
+        sort(protectedInline, lessThan: { left, right => left.startByte < right.startByte })
+        MarkdownBlockStructure(paragraphs, true, protectedInline: protectedInline)
+    } catch (_: Exception) {
+        // Malformed or resource-rejected Markdown must not promote apparent
+        // tags out of unknown block structure.
+        MarkdownBlockStructure(ArrayList<SourceSpan>(), false)
+    }
+}
+
+protected func topLevelParagraphLines(lines: ArrayList<String>,
+    structure: MarkdownBlockStructure): Array<Bool> {
+    let eligible = Array<Bool>(lines.size, repeat: false)
+    if (!structure.available) { return eligible }
+    var paragraphIndex: Int64 = 0
+    var lineStart: Int64 = 0
+    var lineIndex: Int64 = 0
+    var protectedIndex: Int64 = 0
+    while (lineIndex < lines.size) {
+        let lineEnd = lineStart + lines[lineIndex].size
+        while (paragraphIndex < structure.topLevelParagraphs.size &&
+            structure.topLevelParagraphs[paragraphIndex].endByte <= lineStart) {
+            paragraphIndex++
+        }
+        if (paragraphIndex < structure.topLevelParagraphs.size) {
+            let span = structure.topLevelParagraphs[paragraphIndex]
+            eligible[lineIndex] = lineStart < span.endByte && lineEnd > span.startByte
+        }
+        var leading = lineStart
+        for (byte in lines[lineIndex].toArray()) {
+            if (byte != b' ' && byte != b'\t') { break }
+            leading++
+        }
+        while (protectedIndex < structure.protectedInline.size &&
+            structure.protectedInline[protectedIndex].endByte <= leading) { protectedIndex++ }
+        if (protectedIndex < structure.protectedInline.size) {
+            let span = structure.protectedInline[protectedIndex]
+            if (leading >= span.startByte && leading < span.endByte) { eligible[lineIndex] = false }
+        }
+        lineStart = lineEnd + 1
+        lineIndex++
+    }
+    eligible
+}
+
+protected func splitMarkdownBody(body: ArrayList<String>): (String, String) {
+    let source = rawJoinLines(body).trimAscii()
+    if (source.isEmpty()) { return ("", "") }
+    let structure = markdownBlockStructure(source)
+    if (!structure.topLevelParagraphs.isEmpty()) {
+        let paragraph = structure.topLevelParagraphs[0]
+        if (paragraph.startByte >= 0 && paragraph.endByte > paragraph.startByte &&
+            paragraph.endByte <= source.size) {
+            let before = source[..paragraph.startByte].trimAscii()
+            let after = source[paragraph.endByte..].trimAscii()
+            let description = if (before.isEmpty()) {
+                after
+            } else if (after.isEmpty()) {
+                before
+            } else {
+                "${before}\n\n${after}"
+            }
+            return (source[paragraph.startByte..paragraph.endByte].trimAscii(), description)
+        }
+    }
+    if (structure.available) {
+        // A document containing only non-paragraph blocks has no prose summary;
+        // retain every block as description instead of promoting a heading,
+        // list, or code block into the summary field.
+        return ("", source)
+    }
+    // Fail soft while preserving the complete prose if Markdown parsing does
+    // not provide a trustworthy first-block boundary.
+    (source, "")
+}
+
+private class DocCommentParseState {
+    let body = ArrayList<String>()
+    let params = ArrayList<DocTag>()
+    let examples = ArrayList<DocTag>()
+    let admonitions = ArrayList<DocTag>()
+    let contracts = ArrayList<DocTag>()
+    let throwsTags = ArrayList<DocTag>()
+    let seeTags = ArrayList<DocTag>()
+    let replacements = ArrayList<DocTag>()
+    let authors = ArrayList<String>()
+    var returns: ?DocTag = None
+    var returnTagCount: Int64 = 0
+    var since: ?String = None
+    var deprecated: ?DocTag = None
+    var version: ?String = None
+    var currentTag: ?DocTag = None
+    var currentAdmonition: ?DocTag = None
+    var currentExample: ?DocTag = None
+
+    private func appendExampleText(example: DocTag, line: String): Unit {
+        example.description = if (example.description.isEmpty()) {
+            line
+        } else {
+            example.description + "\n" + line
+        }
+    }
+
+    func consumeExampleLine(line: String, tagEligible: Bool): Bool {
+        match (currentExample) {
+            case Some(example) =>
+                if (tagEligible && isStructuredDocTag(line.trimAscii())) {
+                    currentExample = None
+                    false
+                } else {
+                    appendExampleText(example, line)
+                    true
+                }
+            case None => false
+        }
+    }
+
+    func consumeDeprecationProse(line: String, tagEligible: Bool): Bool {
+        if (let Some(tag) <- currentTag) {
+            if (tag.name != "deprecated" || (tagEligible && line.trimAscii().startsWith("@"))) {
+                return false
+            }
+            tag.description += "\n" + line
+            return true
+        }
+        false
+    }
+
+    func appendBodyLine(line: String): Unit {
+        body.add(line)
+        currentTag = None
+        currentAdmonition = None
+    }
+    private func appendBodyBoundary(): Unit {
+        if (!body.isEmpty() && !body[body.size - 1].isEmpty()) { body.add("") }
+    }
+
+    func consumeStructuredTag(line: String, tagText: String, source: ?SourceLocation): Bool {
+        if (!tagText.startsWith("@")) { return false }
+        currentTag = None
+        currentAdmonition = None
+        if (let Some(head) <- admonitionTagHead(tagText)) {
+            appendBodyBoundary()
+            if (head.error.isNone()) {
+                let tag = DocTag(head.level, "", head.rest, entryId: head.entryId)
+                admonitions.add(tag)
+                currentAdmonition = Some(tag)
+            } else {
+                // Invalid prompt headers remain ordinary body text. The
+                // localized pass attaches their precise diagnostic.
+                body.add(line)
+            }
+            return true
+        }
+        if (tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t")) {
+            let (subject, description) = splitSubject(tagText.removePrefix("@group").replace("\t", " "))
+            // A group is shared, single-line presentation metadata, not prose.
+            contracts.add(DocTag("group", subject, description))
+        } else if (tagText.startsWith("@tag[")) {
+            // The localized parser owns qualifier diagnostics; shared metadata
+            // must never fall back into ordinary prose or a tag continuation.
+            ()
+        } else if (tagText == "@tag" || tagText.startsWith("@tag ") || tagText.startsWith("@tag\t")) {
+            // A declaration tag is one line. Surplus arguments are kept in the
+            // description so validation can diagnose them instead of silently
+            // treating the extra words as another tag or as prose.
+            let line = declarationTagLine(tagText.removePrefix("@tag").replace("\t", " "))
+            contracts.add(DocTag("tag", line.id, line.rest))
+        } else if (replacementTagLine(tagText)) {
+            let (subject, remainder) = match (localizedTagHead(tagText)) {
+                case Some(head) =>
+                    if (head.error.isSome()) { ("", tagText) } else { splitReferenceSubject(head.rest) }
+                case None => ("", tagText)
+            }
+            replacements.add(DocTag("replacement", subject, remainder, source: source))
+        } else if (tagText.startsWith("@param ")) {
+            let (subject, description) = splitSubject(tagText.removePrefix("@param "))
+            let tag = DocTag("param", subject, description)
+            params.add(tag)
+            currentTag = tag
+        } else if (tagText == "@return" || tagText.startsWith("@return ")) {
+            let description = if (tagText == "@return") {
+                ""
+            } else {
+                tagText.removePrefix("@return ").trimAscii()
+            }
+            let tag = DocTag("return", "", description)
+            returns = tag
+            returnTagCount++
+            currentTag = tag
+        } else if (tagText.startsWith("@throws ")) {
+            let (subject, description) = splitSubject(tagText.removePrefix("@throws "))
+            let tag = DocTag("throws", subject, description)
+            throwsTags.add(tag)
+            currentTag = tag
+        } else if (tagText == "@see" || tagText.startsWith("@see ")) {
+            let rest = if (tagText == "@see") { "" } else { tagText.removePrefix("@see ") }
+            let (subject, description) = splitReferenceSubject(rest)
+            let tag = DocTag("see", subject, description)
+            seeTags.add(tag)
+            currentTag = tag
+        } else if (tagText == "@example" || tagText.startsWith("@example ")) {
+            let (title, directives) = splitExampleDirectives(tagText.removePrefix("@example"))
+            let tag = DocTag("example", title, "")
+            tag.directives = directives
+            examples.add(tag)
+            currentExample = Some(tag)
+        } else if (let Some(name) <- behaviorContractName(tagText)) {
+            let rest = tagText.removePrefix("@" + name).trimAscii()
+            let subject = ""
+            let description = rest
+            let tag = DocTag(name, subject, description)
+            contracts.add(tag)
+            currentTag = tag
+        } else if (tagText.startsWith("@since ")) {
+            since = tagText.removePrefix("@since ").trimAscii()
+        } else if (deprecationTagLine(tagText)) {
+            let tag = DocTag("deprecated", "", tagText.removePrefix("@deprecated").trimAscii())
+            deprecated = Some(tag)
+            currentTag = Some(tag)
+        } else if (tagText.startsWith("@author ")) {
+            authors.add(tagText.removePrefix("@author ").trimAscii())
+        } else if (tagText.startsWith("@version ")) {
+            version = tagText.removePrefix("@version ").trimAscii()
+        } else {
+            body.add(line)
+        }
+        true
+    }
+
+    func consumeTagContinuation(line: String, tagText: String): Unit {
+        match ((currentTag, currentAdmonition)) {
+            case (Some(tag), _) =>
+                if (!tagText.isEmpty()) {
+                    tag.description = if (tag.description.isEmpty()) {
+                        tagText
+                    } else {
+                        tag.description + "\n" + tagText
+                    }
+                } else {
+                    appendBodyLine(line)
+                }
+            case (None, Some(tag)) =>
+                if (tagText.startsWith("@")) {
+                    currentAdmonition = None
+                    appendBodyBoundary()
+                    body.add(line)
+                } else if (!line.trimAscii().isEmpty()) {
+                    tag.description = if (tag.description.isEmpty()) { line }
+                        else { tag.description + "\n" + line }
+                } else {
+                    appendBodyLine(line)
+                }
+            case _ => body.add(line)
+        }
+    }
+
+    func toDocComment(raw: String): DocComment {
+        let (summary, description) = splitMarkdownBody(body)
+        let parsed = DocComment(raw, summary, description)
+        parsed.params.add(all: params)
+        parsed.examples.add(all: examples)
+        parsed.admonitions.add(all: admonitions)
+        parsed.returns = returns
+        parsed.returnTagCount = returnTagCount
+        parsed.throwsTags.add(all: throwsTags)
+        parsed.see.add(all: seeTags)
+        parsed.replacements.add(all: replacements)
+        parsed.contracts.add(all: contracts)
+        parsed.since = since
+        parsed.deprecated = deprecated.map({ tag => tag.description.trimAscii() })
+        parsed.authors.add(all: authors)
+        parsed.version = version
+        parsed
+    }
+}
+
+protected func parseDocComment(raw: String): DocComment {
+    parseDocCommentAt(raw, None<SourceLocation>)
+}
+
+protected func parseDocCommentAt(raw: String, source: ?SourceLocation): DocComment {
+    let lines = cleanDocLines(raw)
+    let state = DocCommentParseState()
+    let rows: Array<LocalizedCommentLineMap> =
+        if (source.isSome() && raw.contains("@replacement")) { localizedCommentRows(raw) } else { [] }
+    let structure = markdownBlockStructure(rawJoinLines(lines))
+    let tagEligible = topLevelParagraphLines(lines, structure)
+    var lineIndex: Int64 = 0
+    while (lineIndex < lines.size) {
+        let line = lines[lineIndex]
+        if (state.consumeExampleLine(line, tagEligible[lineIndex])) {
+            lineIndex++
+            continue
+        }
+        if (state.consumeDeprecationProse(line, tagEligible[lineIndex])) {
+            lineIndex++
+            continue
+        }
+        if (!tagEligible[lineIndex]) {
+            state.appendBodyLine(line)
+            lineIndex++
+            continue
+        }
+        let tagText = line.trimAscii()
+        let tagSource: ?SourceLocation =
+            if (replacementTagLine(tagText)) { localizedLineRange(source, rows, lineIndex) } else { None }
+        if (state.consumeStructuredTag(line, tagText, tagSource)) {
+            lineIndex++
+            continue
+        }
+        state.consumeTagContinuation(line, tagText)
+        lineIndex++
+    }
+    let comment = state.toDocComment(raw)
+    comment.commentSource = source
+    comment
+}

@@ -1,5 +1,10 @@
 package cjdoc
 
+import cjdoc.dependency.identity.{DependencyIdentityCapture, dependencyObservedIdentity}
+import cjdoc.source.discovery.SourceDirectoryBudget
+import cjdoc.source.{MAX_SOURCE_DIRECTORY_DEPTH, readAuxiliaryFileBoundedSnapshot}
+import cjdoc.filesystem.{BoundedFileRead, readFileBounded, readFileBoundedSnapshot, readTextBounded}
+import cjdoc.manifest.MAX_MANIFEST_ADAPTER_BYTES
 import cjdoc.model as api_model
 import cjdoc.render as api_render
 import std.collection.*
@@ -243,7 +248,8 @@ class DependencyIdentityTest {
             File.writeTo(manifest, original.toArray())
             let documentation = identityTestGenerate(root)
             let diagnostics = ArrayList<api_model.Diagnostic>()
-            let capture = DependencyIdentityCapture(documentation, GenerationRequest(root.toString()), Some(diagnostics))
+            let inputs = dependencyIdentityInputs(GenerationRequest(root.toString()))
+            let capture = DependencyIdentityCapture(documentation, inputs, Some(diagnostics))
             // Return the first stable text, then replace it before the source
             // tree is observed. The version now comes from the same observation
             // as the identity, so the digest comparison rejects the divergence

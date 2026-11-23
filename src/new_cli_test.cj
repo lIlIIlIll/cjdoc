@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.cli.{parseNewCli, schemaTextForCli}
+import cjdoc.output.{prepareOutputAndCacheDirectories, withOutputPublication}
 import cjdoc.model as public_model
 import cjdoc.render as api_render
 import cjdoc.schema_data.*
@@ -20,26 +22,6 @@ class NewCliRegressionTest {
         @ExpectThrows[IllegalArgumentException](schemaTextForCli("doc-ir-v15"))
         @ExpectThrows[IllegalArgumentException](schemaTextForCli("api-surface-v2"))
         @ExpectThrows[IllegalArgumentException](schemaTextForCli("doctest-results"))
-    }
-
-    @TestCase
-    func namedValuesSplitOnlyTheFirstEqualsSign(): Unit {
-        let (dependency, path) = splitNamedValue("dep=C:\\sdk=preview\\pkg", "--dependency-source")
-        @Expect(dependency, "dep")
-        @Expect(path, "C:\\sdk=preview\\pkg")
-
-        let (name, value) = splitNamedValue("feature=target=linux", "--cfg")
-        @Expect(name, "feature")
-        @Expect(value, "target=linux")
-    }
-
-    @TestCase
-    func runtimeErrorsDoNotIncludeCommandUsage(): Unit {
-        let parseError = cliErrorText("unknown option", true)
-        let runtimeError = cliErrorText("missing input file", false)
-        @Expect(parseError.contains("usage:"), true)
-        @Expect(runtimeError, "error: missing input file")
-        @Expect(runtimeError.contains("usage:"), false)
     }
 
     @TestCase
@@ -70,56 +52,6 @@ class NewCliRegressionTest {
         @Expect(runCli(["check", "--deny-breaking-api"]), 2)
         @Expect(runCli(["generate", "--deny-potentially-breaking-api"]), 2)
         @Expect(runCli(["render", "--input", "missing.json", "--deny-breaking-api"]), 2)
-    }
-
-    @TestCase
-    func diffParsesApiDenyFlagsAndRejectsGenerationOnlyOptions(): Unit {
-        let strict = parseNewCli(["diff", "--baseline", "old.json", "--current", "new.json",
-            "--deny-breaking-api", "--format", "json"])
-        @Expect(strict.denyBreakingApi, true)
-        @Expect(strict.diffFormat, "json")
-        let potential = parseNewCli(["diff", "old.json", "new.json",
-            "--deny-potentially-breaking-api"])
-        @Expect(potential.denyPotentiallyBreakingApi, true)
-        @ExpectThrows[IllegalArgumentException](parseNewCli([
-            "diff", "old.json", "new.json", "--check-examples"]))
-        @ExpectThrows[IllegalArgumentException](parseNewCli([
-            "diff", "old.json", "new.json", "--semantic", "source"]))
-        @ExpectThrows[IllegalArgumentException](parseNewCli([
-            "diff", "old.json", "new.json", "--doc-version", "v1"]))
-        @ExpectThrows[IllegalArgumentException](parseNewCli([
-            "diff", "old.json", "new.json", "--stdlib-doc-version", "1.2.0"]))
-        @ExpectThrows[IllegalArgumentException](parseNewCli([
-            "diff", "old.json", "new.json", "--stdlib-doc-base-url",
-            "https://docs.example.test/1.2.0/libs/std"]))
-    }
-
-    @TestCase
-    func checkExamplesIsAnExplicitGenerationOption(): Unit {
-        let options = parseNewCli(["check", "--check-examples"])
-        @Expect(options.checkExamples, true)
-        @ExpectThrows[IllegalArgumentException](parseNewCli([
-            "render", "--input", "docs.json", "--check-examples"]))
-    }
-
-    @TestCase
-    func chirOptionsAreExplicitAndCommandScoped(): Unit {
-        let options = parseNewCli(["generate", "--semantic", "chir", "--cjc", "custom-cjc",
-            "--chir-worker", "custom-worker", "--chir-import-path", "dep-a",
-            "--chir-import-path", "dep-b"])
-        @Expect(options.semanticMode, "chir")
-        @Expect(options.cjcExecutable, "custom-cjc")
-        @Expect(options.chirWorkerExecutable, Some("custom-worker"))
-        @Expect(options.chirImportPaths.toArray(), ["dep-a", "dep-b"])
-        // CHIR is the command-line default, so compiler/worker options need no
-        // explicit --semantic, while source mode still rejects them.
-        @Expect(parseNewCli(["generate", "--cjc", "custom-cjc"]).semanticMode, "chir")
-        @Expect(parseNewCli(["generate", "--chir-worker", "worker"]).semanticMode, "chir")
-        @ExpectThrows[IllegalArgumentException](parseNewCli([
-            "generate", "--semantic", "source", "--chir-worker", "worker"]))
-        // serve shares the semantic switch; offline and analysis commands do not.
-        @Expect(parseNewCli(["serve", "--semantic", "source"]).semanticMode, "source")
-        @ExpectThrows[IllegalArgumentException](parseNewCli(["render", "--semantic", "chir"]))
     }
 
     @TestCase
@@ -195,10 +127,10 @@ class NewCliRegressionTest {
         let output = parent.join("site")
         let announced = [false]
         try {
-            @ExpectThrows(completeLockedOutputCommand(output.toString(), { _ =>
+            @ExpectThrows(withOutputPublication(output.toString(), false, { _ =>
                 File.writeTo(parent.join(".cjdoc-output-parent.lock/owner.json"), "{}".toArray())
                 0
-            }, { => announced[0] = true }))
+            }, afterRelease: { => announced[0] = true }))
             @Expect(announced[0], false)
             @Expect(exists(parent.join(".cjdoc-output-parent.lock")))
         } finally { let _ = removeIfExists(parent, recursive: true) }
@@ -239,9 +171,9 @@ class CliOutputSpoolTest {
             @Expect(File.readFrom(output.join("html/index.html")), accepted)
             @Expect(File.readFrom(output.join("CNAME")), "docs.example.test\n".toArray())
             // The rejected spool and its lock state must not survive.
-            @Expect(!exists(parent.join(OUTPUT_LOCK_NAME)))
-            @Expect(!exists(parent.join(OUTPUT_PREPARING_NAME)))
-            @Expect(!exists(parent.join(OUTPUT_TRANSACTION_NAME)))
+            @Expect(!exists(parent.join(".cjdoc-output-parent.lock")))
+            @Expect(!exists(parent.join(".cjdoc-output-transaction.preparing")))
+            @Expect(!exists(parent.join(".cjdoc-output-transaction.txn")))
         } finally { let _ = removeIfExists(parent, recursive: true) }
     }
 
@@ -249,27 +181,18 @@ class CliOutputSpoolTest {
     func rendererResourceFallbackRestartsFromAnEmptySpool(): Unit {
         let parent = createNewCliTestTempDirectory()
         let output = parent.join("site")
-        let handle = acquireOutputLock(output)
-        var actionError: ?Exception = None
         try {
-            let spool = OutputArtifactSpool(handle)
-            spool.appendArtifacts([
-                api_render.RenderArtifact("stale.html", "text/html", "<p>stale</p>")])
-            let fallback = renderArtifactsIntoWithCommandFallback(spool,
-                cliSpoolInputDocumentation(), ["json"],
-                Some(GenerationRequest("unused", lintProfile: "off")),
-                injectResourceLimitForTest: true)
-            @Expect(fallback.project.name, "resource-limited")
-            @Expect(fallback.apiCollectionState, "unavailable")
-            @Expect(fallback.diagnostics[0].code, "CJDOC3027")
-            let files = spool.seal()
-            @Expect(files.size, 1)
-            @Expect(files[0].path, "docs.json")
-            writeOwnedSpoolWithLockHeld(output.toString(), spool, handle)
-            ensureOutputLockCurrent(handle)
-        } catch (error: Exception) { actionError = Some(error) }
-        finishOutputLock(handle, actionError)
-        try {
+            @Expect(withOutputPublication(output.toString(), false, { publication =>
+                let store = publication.begin()
+                let _ = store.addText("stale.html", "text/html", "<p>stale</p>")
+                let fallback = renderArtifactsIntoWithCommandFallback(store, { => publication.restart() },
+                    cliSpoolInputDocumentation(), ["json"], Some(GenerationRequest("unused", lintProfile: "off")),
+                    injectResourceLimitForTest: true)
+                @Expect(fallback.project.name, "resource-limited")
+                @Expect(fallback.apiCollectionState, "unavailable")
+                @Expect(fallback.diagnostics[0].code, "CJDOC3027")
+                0
+            }), 0)
             @Expect(!exists(output.join("stale.html")))
             let published = api_render.decodeDocIr(
                 String.fromUtf8(File.readFrom(output.join("docs.json"))))

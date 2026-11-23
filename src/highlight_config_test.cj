@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.cli.parseNewCli
 import std.env.*
 import std.fs.*
 import std.unittest.*

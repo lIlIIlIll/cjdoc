@@ -1,11 +1,15 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.escapeHtml
+import cjdoc.render.publication.projectDocumentationLanguage
+import cjdoc.render.html.{RenderProjection, documentationFieldAnchor}
+import cjdoc.render.routes.{
+    htmlStableSlug, packagePageIdentity, symbolAnchor, selectedDocumentationPages, pageRootPrefix,
+    documentationSectionAnchor, docBlockAnchor, routeKey}
+import cjdoc.render.codec.escapeJsonString
+import cjdoc.render.foundation.RenderTextBuffer
 import cjdoc.model.*
 import std.collection.*
-
-internal func packagePageIdentity(pkg: PackageDoc): String {
-    "package:${pkg.moduleId}:${pkg.name}"
-}
 
 internal class PublishedLanguageRoute {
     let language: String

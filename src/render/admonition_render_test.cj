@@ -1,5 +1,10 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.search.{DocumentationSearchProjection, SearchProjectedEntry, searchStaticProfileName}
+import cjdoc.render.html.{RenderProjection, renderStandaloneMarkdownHtml}
+import cjdoc.render.agent.{DocumentationReadSnapshot, buildDocumentationSearchProjection}
+import cjdoc.render.routes.label
 import cjdoc.model.*
 import std.collection.*
 import std.unittest.*

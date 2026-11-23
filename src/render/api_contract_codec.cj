@@ -1,5 +1,11 @@
 package cjdoc.render
 
+import cjdoc.render.html.RenderProjection
+import cjdoc.render.routes.label
+import cjdoc.render.codec.{
+    validateTypedDocumentationSet, fail, jsonArrayValues, strictObject, required,
+    optionalDocumentationLanguage, appendSearchJsonString}
+import cjdoc.render.foundation.RenderTextBuffer
 import cjdoc.model.*
 import std.collection.*
 import std.sort.*

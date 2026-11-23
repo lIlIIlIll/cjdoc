@@ -1,5 +1,8 @@
 package cjdoc
 
+import cjdoc.source.discovery.SyntaxSourceProvider
+import cjdoc.source.{MAX_SOURCE_AUXILIARY_BYTES, MAX_SOURCE_AUXILIARY_WORK}
+import cjdoc.digest.Sha256Digest
 import cjdoc.model as api_model
 import std.collection.*
 import std.env.*

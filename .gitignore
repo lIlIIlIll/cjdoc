@@ -13,6 +13,10 @@
 /probes/ast_parser/probe_ast_parser
 /probes/chir_loader/local_chir_loader
 
+# Cangjie implementation sources, not generated output.
+!/src/output/
+!/src/output/*.cj
+
 # The user's global Git ignore excludes JSON; these are project sources.
 !/AGENTS.md
 !/docs/schema/*.json

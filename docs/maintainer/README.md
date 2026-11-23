@@ -39,6 +39,28 @@
 | 调查记录 | [../research/](../research/) | CHIR、`std.ast`、高亮边界等时间点调查记录 |
 | 发布 schema | [../schema/](../schema/) | 当前发布的 25 个 schema 文件，由 `scripts/update_schemas.sh` 从构建产物同步 |
 
+## 源码入口
+
+根包 `cjdoc` 保留公开入口和应用组装；实现子包不导入根包。先从职责表定位实现：只依赖本包的单测放在实现旁边；覆盖公开类型、wire 或多个模块的契约测试留在对应入口。
+
+| 要改的行为 | 源码入口 |
+|---|---|
+| 产品入口、生成请求和流水线组装 | [`src/main.cj`](../../src/main.cj)、[`public_request.cj`](../../src/public_request.cj)、[`public_engine.cj`](../../src/public_engine.cj)、[`pipeline.cj`](../../src/pipeline.cj) |
+| 命令参数、帮助、配置和传输 | [`src/cli/`](../../src/cli/)；[`cli_runner.cj`](../../src/cli_runner.cj) 连接命令与公开引擎 |
+| 清单、lockfile、有界读取与路径检查 | [`src/manifest/`](../../src/manifest/)、[`src/filesystem/`](../../src/filesystem/)、[`src/digest/`](../../src/digest/) |
+| 输出锁、spool、提交与恢复 | [`src/output/`](../../src/output/)；命令通过 `publication.cj` 的事务入口发布 |
+| 源码发现、AST 前端、缓存与源文件来源 | [`src/source/`](../../src/source/) 的 `discovery/`、`frontend/`、`cache/`、`provenance/`；`model/` 持有声明和快照，`lexing/` 持有源码 token 和位置 |
+| AST fallback、CHIR 与 provider 生命周期 | [`src/semantic/`](../../src/semantic/) 持有语义事实和 fallback；`semantic/chir/` 负责 worker 和结构化结果；[`src/provider/`](../../src/provider/) 是公开 SPI |
+| 声明绑定、SymbolId、重导出 | [`src/binding/`](../../src/binding/)；消费源码与语义事实，持有绑定后的文档模型 |
+| 依赖身份、跨文档链接和标准库路由 | [`src/dependency/`](../../src/dependency/) 的 `identity/`、`graph/`、`navigation/`；内置路由在 [`src/stdlib_docs/`](../../src/stdlib_docs/) |
+| 注释、国际化、概念页与资源 | [`src/documentation/`](../../src/documentation/) 的 `comments/`、`i18n/`、`pages/`、`markdown/`、`assets/` 和 `metadata/` |
+| 示例、代码高亮、质量与 API diff | [`src/examples/`](../../src/examples/)、[`src/highlight/`](../../src/highlight/)、[`src/quality/`](../../src/quality/) |
+| 冻结快照、查询执行和结果组装 | [`src/query/`](../../src/query/)；CLI 和 MCP 传输在 `src/cli/`，[`query_api.cj`](../../src/query_api.cj) 保留公开请求与结果契约 |
+| 多版本读取、选择、导航和发布合成 | [`src/versions/`](../../src/versions/)；`src/cli/compose_versions.cj` 调用合成和事务入口 |
+| Doc IR 与 schema | [`src/model/`](../../src/model/)、[`src/schema_data/`](../../src/schema_data/)、[`src/render/codec/`](../../src/render/codec/) |
+| 发布投影、HTML、Markdown、搜索与 Agent | [`src/render/`](../../src/render/) 的 `publication/`、`html/`、`markdown/`、`search/`、`agent/` 和 `browser/`；HTML 负责发布索引，搜索包负责请求、匹配、过滤和排序。`routes/` 和 `reading/` 持有两种呈现共用的路由与阅读规则，`foundation/` 持有有界 buffer 和产物存储契约 |
+
+浏览器脚本变更用 `scripts/test_validate_html_site.py` 核对发布时的脚本字节。
 
 ## 验收记录
 

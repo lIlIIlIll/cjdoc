@@ -96,7 +96,7 @@ Normal EOF exits 0. I/O failure exits 2 with a bounded static stderr diagnostic.
 
 ## Maintainer notes: Cangjie integration
 
-src/code_highlight_external.cj must start this optional worker only when explicitly
+The Cangjie adapter in [`src/highlight/`](../../src/highlight/) must start this optional worker only when explicitly
 configured. It must never install npm packages or make generation depend on Node
 for the built-in Cangjie path. Send canonical allowed languages and original
 source with a unique id; bound request size and response reads independently.

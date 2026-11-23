@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.documentation.assets.LocalAssetCollector
+import cjdoc.source.model.SourceFileOrigin
 import cjdoc.model as api_model
 import cjdoc.render as api_render
 import std.fs.*
