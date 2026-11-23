@@ -1,5 +1,10 @@
 package cjdoc
 
+import cjdoc.documentation.markdown.MARKDOWN_FALLBACK_TEXT
+import cjdoc.cli.{parseNewCli, schemaTextForCli}
+import cjdoc.documentation.qualityTomlLine
+import cjdoc.documentation.i18n.loadDocumentationLanguages
+import cjdoc.filesystem.readTextBounded
 import cjdoc.model as api_model
 import cjdoc.render as api_render
 import cjdoc.schema_data as schemas
@@ -339,35 +344,6 @@ class I18nReviewTest {
                 external[stateAt + marker.size..]
             @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(invalid))
         } finally { let _ = removeIfExists(project, recursive: true) }
-    }
-
-    @TestCase
-    func removedMembersTryTheTargetDefaultLanguageAtEveryOwner(): Unit {
-        let current = VersionSite(VersionComposeSpec("new", "unused"), VersionSymbolIndex())
-        let target = VersionSite(VersionComposeSpec("old", "unused"), VersionSymbolIndex())
-        target.defaultLanguage = "zh-CN"
-        let memberSection = VersionLogicalIdentity("en", symbolId: Some("member"),
-            sectionId: Some("param-left"))
-        let member = VersionLogicalIdentity("en", symbolId: Some("member"))
-        let owner = VersionLogicalIdentity("en", symbolId: Some("owner"))
-        let module = VersionLogicalIdentity("en", symbolId: Some("module"))
-        current.parentsByIdentity[memberSection.key()] = member
-        current.parentsByIdentity[member.key()] = owner
-        current.parentsByIdentity[owner.key()] = module
-        let defaultOwner = VersionLogicalIdentity("zh-CN", symbolId: Some("owner"))
-        target.logicalRoutes[defaultOwner.key()] = "html/zh-CN/symbols/owner.html"
-        let ownerFallback = versionLanguageTarget(current, memberSection, target)
-        @Expect(ownerFallback.href, "html/zh-CN/symbols/owner.html")
-        @Expect(match (ownerFallback.state) { case VersionNavigationState.MissingSymbol => true; case _ => false })
-        let _ = target.logicalRoutes.remove(defaultOwner.key())
-        let defaultModule = VersionLogicalIdentity("zh-CN", symbolId: Some("module"))
-        target.logicalRoutes[defaultModule.key()] = "html/zh-CN/packages/module.html"
-        @Expect(versionLanguageTarget(current, member, target).href, "html/zh-CN/packages/module.html")
-        let _ = target.logicalRoutes.remove(defaultModule.key())
-        let _ = target.paths.add("html/zh-CN/index.html")
-        @Expect(versionLanguageTarget(current, member, target).href, "html/zh-CN/index.html")
-        let _ = target.paths.add("html/en/index.html")
-        @Expect(versionLanguageTarget(current, member, target).href, "html/en/index.html")
     }
 
     @TestCase

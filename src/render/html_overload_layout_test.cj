@@ -1,6 +1,13 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.html.RenderProjection
+import cjdoc.render.routes.{
+    ApiHtmlRoutes, ApiRouteProjection, apiHtmlFileHref, docBlockAnchor, historicalPackagePagePath,
+    historicalSymbolPagePath, label, pageRootPrefix, portableFileNameKey, symbolAnchor, symbolReadablePagePath}
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr}
 import cjdoc.model.*
+import cjdoc.render.browser.HTML_READER_BUNDLE
 import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -176,7 +183,7 @@ class HtmlOverloadContractLayoutTest {
             "data-cjdoc-member-filter", "data-cjdoc-member-origin",
             "data-cjdoc-members-expand", "data-cjdoc-members-collapse",
             "data-cjdoc-copy-link", "data-cjdoc-copy-status"]) {
-            @Expect(HTML_SEARCH_SCRIPT.contains(hook), true)
+            @Expect(HTML_READER_BUNDLE.contains(hook), true)
         }
     }
 
@@ -342,17 +349,17 @@ class HtmlOverloadContractLayoutTest {
         let docs = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
             ProjectInfo("route-allocation"), ConfigurationSnapshot(lintProfile: "off"),
             pages: [page("guide", "packages/guide/index.html"), page("file", "packages/blocked")])
-        let forward = ArrayList<ProjectedPackage>()
-        let backward = ArrayList<ProjectedPackage>()
+        let forward = ArrayList<PackageDoc>()
+        let backward = ArrayList<PackageDoc>()
         for (i in 0..cases.size) {
             let (moduleId, name) = cases[i]
-            forward.add(ProjectedPackage(PackageDoc(name, moduleId)))
+            forward.add(PackageDoc(name, moduleId))
             let (reversedId, reversedName) = cases[cases.size - i - 1]
-            backward.add(ProjectedPackage(PackageDoc(reversedName, reversedId)))
+            backward.add(PackageDoc(reversedName, reversedId))
         }
-        let routes = { packages: ArrayList<ProjectedPackage>, projection: ApiRouteProjection =>
+        let routes = { packages: ArrayList<PackageDoc>, projection: ApiRouteProjection =>
             ApiHtmlRoutes(docs, ArrayList<SymbolDoc>(), HashMap<String, ArrayList<SymbolDoc>>(),
-                packages, projection)
+                packages.toArray(), projection)
         }
         let current = routes(forward, ReadablePackages)
         let reversed = routes(backward, ReadablePackages)

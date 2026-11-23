@@ -59,7 +59,7 @@ copied local assets. Chinese and English structural labels are supported.
 
 ## Evidence on Hand
 
-The repository contains the HTML renderer in `src/render/renderers.cj`, renderer
+The repository contains the HTML renderer in `src/render/html/`, renderer
 safety tests in `src/render/renderer_safety_test.cj`, HTML validation scripts in
 `scripts/validate_html_site.py` and `scripts/test_validate_html_site.py`, and
 fixtures under `tests/fixtures/projects/`, current goldens under `tests/fixtures/golden-v16/`, and no frozen legacy Doc IR migrations.

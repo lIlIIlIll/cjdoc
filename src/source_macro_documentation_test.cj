@@ -1,5 +1,9 @@
 package cjdoc
 
+import cjdoc.source.discovery.SyntaxSourceProvider
+import cjdoc.source.cache.validateCachedParameterDefaults
+import cjdoc.source.model.{SourceParameter, SourceDeclaration}
+import cjdoc.source.SourceLocation
 import cjdoc.render as api_render
 import std.env.*
 import std.fs.*

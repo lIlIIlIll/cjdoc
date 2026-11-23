@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.semantic.chir.{chirCompactSpelling, chirTypeRefFromNodes}
+import cjdoc.source.cfg.compilerBuiltinCfgAssignment as compilerBuiltinCfgValue
 import std.env.*
 import std.fs.*
 import std.unittest.*

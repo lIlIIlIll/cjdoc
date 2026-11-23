@@ -1,6 +1,9 @@
 package cjdoc
 
+import cjdoc.examples.memoryBoundedCommand
 import cjdoc.model as public_model
+import cjdoc.source.cfg.CfgProfile
+import cjdoc.source.cfg.compilerBuiltinCfgAssignment as compilerBuiltinCfgValue
 import std.collection.*
 import std.env.*
 import std.fs.*

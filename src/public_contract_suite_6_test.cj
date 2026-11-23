@@ -1,5 +1,9 @@
 package cjdoc
 
+import cjdoc.binding.sortDocumentationDeterministically
+import cjdoc.binding.DocumentationSet
+import cjdoc.source.Diagnostic
+import cjdoc.source.SourceLocation
 import cjdoc.model as api_model
 import cjdoc.render as api_render
 import std.collection.*

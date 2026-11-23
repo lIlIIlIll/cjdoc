@@ -21,15 +21,16 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from showcase_build import homepage
-from showcase_build.integration import (copy_composed_publication, install_output,
-                                        pin_documentation_links, publish_compatibility,
-                                        publish_examples)
+from showcase_build.integration import (cjdoc_reference_subjects, copy_composed_publication,
+                                        install_output, pin_documentation_links,
+                                        publish_compatibility, publish_examples)
 from showcase_build.manifest import roots
 from showcase_build.navigation import mount
 from showcase_build.packaging import copy_sources, source_archive
 from showcase_contract.site import ContractError, HtmlDocument, Site
 from report_views.reports import UtilityRegion, native_check_view, quality_view
 from report_views.pages import Sections, publish as publish_report_pages
+from publication_ir import project as publication_projection
 
 
 class BuildIntegrationTests(unittest.TestCase):
@@ -97,6 +98,43 @@ class BuildIntegrationTests(unittest.TestCase):
         result = {"locales": {"en": {"generated": {"demo-v2": demo}, "diff": diff}},
                   "checks": checks}
         return repo, site, current, result
+
+    def test_cjdoc_reference_keeps_resolved_facade_exposures_and_not_other_implementation(self) -> None:
+        def symbol(identity, package, visibility="public", *, owner=None, module="root"):
+            return {"id": identity, "packageName": package, "moduleId": module,
+                    "visibility": visibility, "ownerId": owner}
+
+        def reexport(identity, state):
+            return {"kind": "single", "state": state, "bindings": [{"targetSymbolIds": [identity]}]}
+
+        hidden, facade = "cjdoc.render.foundation", "cjdoc.render"
+        ir = {
+            "configuration": {"audience": "external"},
+            "modules": [{"id": "root", "role": "root"}, {"id": "dep", "role": "dependency"}],
+            "packages": [
+                {"name": facade, "moduleId": "root", "symbolIds": ["entry"], "reExports": [
+                    reexport("exported", "resolved"), {"kind": "single", "state": "unavailable", "bindings": []}]},
+                {"name": hidden, "moduleId": "root", "symbolIds": ["exported", "its_hook",
+                    "its_private_field", "helper", "not_proven"], "reExports": []},
+            ],
+            "declarations": [
+                symbol("entry", facade),
+                symbol("same_package_name_in_dependency", facade, module="dep"),
+                symbol("exported", hidden),
+                symbol("its_hook", hidden, "protected", owner="exported"),
+                symbol("its_private_field", hidden, "private", owner="exported"),
+                symbol("helper", hidden, "protected"),
+                symbol("not_proven", hidden),
+            ],
+            "diagnostics": [{"symbolId": "helper"}, {"symbolId": "its_hook"}],
+            "assets": [],
+        }
+        published = publication_projection(ir, subjects=cjdoc_reference_subjects(ir))
+        self.assertEqual([row["id"] for row in published["declarations"]], ["entry", "exported", "its_hook"])
+        self.assertEqual(published["declarations"][-1]["visibility"], "protected")
+        self.assertEqual(published["packages"][0]["reExports"][0], reexport("exported", "resolved"))
+        self.assertEqual(published["packages"][0]["reExports"][1]["bindings"], [])
+        self.assertEqual(published["diagnostics"], [{"symbolId": "its_hook"}])
 
     def test_compatibility_publication_preserves_nested_links_and_pins_only_copied_docs(self) -> None:
         repo, site, current, result = self.compatibility_fixture()

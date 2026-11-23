@@ -1,5 +1,10 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.html.RenderProjection
+import cjdoc.render.agent.DocumentationReadSnapshot
+import cjdoc.render.routes.pageRootPrefix
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr, jsonArrayValues}
 import cjdoc.model.*
 import std.collection.*
 import std.unittest.*

@@ -14,17 +14,16 @@
 
 ## 架构边界
 
-- `src/source_frontend.cj`：项目发现、lexer/`std.ast`、源码声明和 doc comment 收集。
-- `src/semantic_provider.cj`：内部 AST fallback semantic model。
-- `src/provider/`：公开 provider SPI；定义内置与外部 provider 的生命周期和语义契约。
-- `src/chir_provider.cj`：可选内置 CHIR provider；把结构化语义结果保守地绑定回源码声明。
-- `src/chir_worker.cj`：通过配置的 Cangjie compiler 生成 raw CHIR，并用 `stdx.chir` 结构化读取；禁止解析 CHIR 文本。
-- `src/documentation_binder.cj`：SourceDecl 与 semantic declaration 绑定、SymbolId。
-- `src/model/`：公开 Doc IR；renderer 的唯一输入。
-- `src/render/`：严格 JSON codec、Markdown/HTML/search renderer；禁止 import `std.ast` 或 provider 实现。
-- `src/public_api.cj`：公开 facade 与 internal/public model adapter。
-- `src/new_cli.cj`：CLI 与命令编排。
-- `src/output_transaction.cj`：输出所有权、锁、事务与崩溃恢复。
+- `src/source/`：项目发现、lexer/`std.ast`、源码声明、注释与缓存。
+- `src/semantic/`：内部 AST fallback 与保守的 CHIR 结构化补充；不能覆盖源码真值。
+- `src/provider/`：公开 provider SPI 与生命周期。`tools/chir-worker/` 调用仓颉编译器并用 `stdx.chir` 读取结构化结果，禁止解析 CHIR 文本。
+- `src/binding/`：源码声明与语义模型绑定、SymbolId、重导出。
+- `src/dependency/`：依赖身份与跨文档导航。
+- `src/model/`：公开 Doc IR；renderer 的唯一输入。`src/render/` 的 codec、发布与呈现实现不得导入 `std.ast` 或 provider 实现。
+- `src/main.cj`、`src/public_*.cj`：公开入口、内部/公开模型适配和应用组装。实现子包不反向导入根包。
+- `src/cli/` 负责参数、命令及传输；`src/query/` 负责冻结快照与只读查询。
+- `src/output/`：输出所有权、锁、spool、事务提交与崩溃恢复。`src/versions/` 负责读取已有发布和多版本合成。
+- `src/manifest/`：仓颉项目清单、锁文件和共用 TOML 扫描；`src/filesystem/` 和 `src/digest/` 提供有界读取、安全路径和摘要。
 
 必须保持：注释来自源码；SourceDecl 是 comment 与 semantic provider 的桥；SymbolId 不依赖行号；unavailable/partial/ambiguous 必须显式；可选 CHIR 失败时保留 AST/source fallback；renderer 只读 Doc IR；unsupported source 不得导致整个生成器崩溃。
 
@@ -179,6 +178,16 @@ CHIR capability Gate 只有 G1–G7 全部实测 PASS 才能升级为 authoritat
 - 缺陷意见应明确触发条件、违反的契约、实际影响和关键代码路径；区分可从代码证明的错误与未经验证的推测，不把纯风格建议当作正确性缺陷。
 - 同根因的边界或对称反例尽可能合并到同一条意见；可访问历史 Review Thread 时，先检查是否已报告或已修复。新发现的真实缺陷仍必须指出，不能为了减少线程数而隐瞒问题。
 - 区分本 PR 引入或加重的问题与独立的范围外改进；后者可建议单独建 Issue，不能将当前 PR 的真实阻塞缺陷仅因发现较晚就降级。
+
+### 重构评审：何时要求修改
+
+本节适用于独立重构，以及功能或修复 PR 中实际改动的代码。未触及的风格欠账不作为本 PR 的合入条件。
+
+1. **先看哪项维护任务变容易了。** 独立重构只需指出一项可从差异核对的收益，例如改一条规则由两处变为一处。收益已清楚就不要求作者另作说明；少八行、多一个辅助函数，或跨过 80／120 行建议线，本身都不是收益或缺陷。功能 PR 不要求另写重构收益说明。
+2. **只集中必须同步修改的规则。** 假设目录和搜索都不得公开私有声明，但公开声明的历史名称只能被搜索。私有性规则应只有一个定义，是否展示历史名称由各入口决定。评审 `isVisible(entry, forSearch)` 时，判断它是否让原本独立的修改互相牵连，不因布尔参数本身要求修改。若两处确实必须随同一规则一起变，就可以集中维护。
+3. **用已知需求区分阻塞意见和个人建议。** 即使测试全绿，也可指出：“原来只需理解或修改 A；本 PR 后还必须理解或修改 B；原因是……”只要能从调用关系或差异核对这项新增负担，就可要求解除耦合，无须等到输出出错。仅凭命名偏好、行数、假想需求或本 PR 无关的旧问题，不作阻塞。若作者证明无需连带理解或修改 B，就撤回这条意见。
+4. **只补行为缺口所需的证据。** 私有函数原样搬移，调用关系与错误顺序均不变，差异即可作为等价证据，不必加测试。若重排分支可能影响空输入或失败路径，指出一个能区分对错的输入及预期结果。已有用例能区分就引用，否则要求针对性用例或用相同输入对照前后结果。全套 CI 通过不能替代缺失的边界证据。
+5. **分清待说明的收益和实际行为变更。** 独立重构说不清收益时，请作者说明具体用途再批准，不把它称为回归。前后输出确实不同时，不能按“行为不变”批准；若新行为符合契约，按修复评审，明确旧、新结果并给出能区分两者的证据。修复和其余搬移可以放在同一 PR，只要能分别核对，不要求拆 PR 或采用特定提交结构。
 
 ## Review 反馈处理与收敛
 

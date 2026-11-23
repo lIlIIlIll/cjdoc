@@ -1,0 +1,629 @@
+protected package cjdoc.dependency.navigation
+
+import cjdoc.dependency.graph.{DependencyGraphIndex, DependencyNavigationWork}
+import cjdoc.dependency.identity.{DependencyIdentityInputs, captureDependencyIdentities}
+import cjdoc.source.model.SourceFileOrigin
+import cjdoc.model as link_model
+import cjdoc.model.{scopedGenericParameter, scopedGenericReference}
+import cjdoc.stdlib_docs.{defaultStandardLibraryDocsVersion, hasBuiltInStandardLibraryDocsBase,
+    hasStandardLibraryDocPackage, hasStandardLibraryDocTarget, isValidStandardLibraryDocsVersion,
+    standardLibraryTypeNavigation}
+import std.collection.*
+import std.sort.*
+
+protected struct DependencyNavigationInputs {
+    let identity: DependencyIdentityInputs
+    let policy: DependencyDocumentPolicy
+    let reportUnresolved: Bool
+    let strict: Bool
+    let standardLibraryDocsVersion: ?String
+    let standardLibraryDocsBaseUrl: ?String
+
+    protected init(identity: DependencyIdentityInputs, policy: DependencyDocumentPolicy,
+        reportUnresolved: Bool, strict: Bool, standardLibraryDocsVersion: ?String,
+        standardLibraryDocsBaseUrl: ?String) {
+        this.identity = identity
+        this.policy = policy
+        this.reportUnresolved = reportUnresolved
+        this.strict = strict
+        this.standardLibraryDocsVersion = standardLibraryDocsVersion
+        this.standardLibraryDocsBaseUrl = standardLibraryDocsBaseUrl
+    }
+}
+
+private func dependencyQualifiedName(symbol: link_model.SymbolDoc): String {
+    if (symbol.qualifiedName.startsWith(symbol.packageName + ".")) { return symbol.qualifiedName }
+    symbol.packageName + "." + symbol.qualifiedName
+}
+
+internal class DependencyNavigationBinder {
+    let documentation: link_model.DocumentationSet
+    let inputs: DependencyNavigationInputs
+    let dependencies: Array<link_model.DependencyInstance>
+    let resolvers: Array<ExternalDocResolver>
+    let documentSets = ArrayList<link_model.DocumentSetIdentity>()
+    let diagnostics = ArrayList<link_model.Diagnostic>()
+    private let local = HashMap<String, ArrayList<link_model.SymbolDoc>>()
+    private let symbols = HashMap<String, link_model.SymbolDoc>()
+    private let sources = HashMap<String, SourceFileOrigin>()
+    private let external = HashMap<String, ArrayList<(ExternalDocResolver, ExternalDocEntry)>>()
+    private let dependenciesByName = HashMap<String, ArrayList<link_model.DependencyInstance>>()
+    private let moduleNames = HashMap<String, String>()
+    private let authoritativeModules = HashSet<String>()
+    private let importCandidates = HashMap<String, Array<String>>()
+    private let importIndexes = HashMap<String, DependencyImportIndex>()
+    private let typeShapes = HashMap<String, ?DependencyTypeShape>()
+    private let work = DependencyNavigationWork()
+    private let actualGraph: DependencyGraphIndex
+    private let documentPolicy: DependencyDocumentPolicy
+    private let decisionReasons = HashMap<String, HashMap<String, String>>()
+
+    init(documentation: link_model.DocumentationSet, inputs: DependencyNavigationInputs,
+        origins: Array<SourceFileOrigin>, loaded: Array<ExternalDocResolver>) {
+        this.documentation = documentation; this.inputs = inputs
+        documentPolicy = inputs.policy
+        let (capturedDependencies, graph) = captureDependencyIdentities(documentation, inputs.identity,
+            diagnostics: Some(diagnostics), origins: origins, navigationWork: Some(work))
+        dependencies = capturedDependencies
+        actualGraph = graph
+        for (dependency in dependencies) {
+            let nameKey = dependency.moduleId + "|" + dependency.name
+            match (dependenciesByName.get(nameKey)) {
+                case Some(values) => values.add(dependency)
+                case None => dependenciesByName[nameKey] = ArrayList<link_model.DependencyInstance>([dependency])
+            }
+            let packageName = actualGraph.sourcePackage(dependency.componentModuleId)
+            if (!packageName.isEmpty() && packageName != dependency.name) {
+                let packageKey = dependency.moduleId + "|" + packageName
+                match (dependenciesByName.get(packageKey)) {
+                    case Some(values) => values.add(dependency)
+                    case None => dependenciesByName[packageKey] = ArrayList<link_model.DependencyInstance>([dependency])
+                }
+            }
+        }
+        sort(loaded, lessThan: { left, right =>
+            left.baseUrl + "|" + left.fingerprint < right.baseUrl + "|" + right.fingerprint
+        }, stable: true)
+        resolvers = loaded
+        for (module in documentation.modules) {
+            moduleNames[module.id] = module.name
+            if (let Some(actual) <- dependencyFor(module.id, module.name)) {
+                if (!actual.identity.isEmpty() && actual.componentModuleId == module.id) { let _ = authoritativeModules.add(module.id) }
+            }
+        }
+        for (origin in origins) { sources[origin.moduleId + "|" + origin.logicalPath] = origin }
+        for (symbol in documentation.declarations) {
+            symbols[symbol.id] = symbol
+            for (key in [symbol.id, dependencyQualifiedName(symbol)]) {
+                match (local.get(key)) {
+                    case Some(values) => values.add(symbol)
+                    case None => local[key] = ArrayList<link_model.SymbolDoc>([symbol])
+                }
+            }
+        }
+        let seenDocumentSets = HashSet<String>()
+        for (resolver in resolvers where resolver.state != "available") {
+            if (diagnostics.size < 4096) {
+                diagnostics.add(link_model.Diagnostic("warning", "CJDOC2312",
+                    "documentation source: " + resolver.reason))
+            }
+        }
+        var count: Int64 = 0
+        for (resolver in resolvers where resolver.state == "available") {
+            for (documentSet in resolver.documentSets) {
+                if (seenDocumentSets.add(documentSet.id)) { documentSets.add(documentSet) }
+            }
+            for ((key, entries) in resolver.entries) {
+                count += entries.size
+                if (count > 100000) { throw IllegalArgumentException("external navigation entry budget exceeded") }
+                for (entry in entries) {
+                    match (external.get(key)) {
+                        case Some(values) => values.add((resolver, entry))
+                        case None => external[key] = ArrayList<(ExternalDocResolver, ExternalDocEntry)>([(resolver, entry)])
+                    }
+                }
+            }
+        }
+        sort(documentSets, lessThan: { left, right =>
+            left.id + "|" + left.baseUrl + "|" + left.indexIdentity <
+                right.id + "|" + right.baseUrl + "|" + right.indexIdentity
+        }, stable: true)
+    }
+    private func decisionReason(set: link_model.DocumentSetIdentity, level: String, dependency: Bool): String {
+        let key = if (level == "manual" && !dependency) { "documentation-only" } else { level }
+        if (let Some(variants) <- decisionReasons.get(set.id)) {
+            if (let Some(value) <- variants.get(key)) { return value }
+        }
+        if (!work.consumeBytes(set.apiVersion.size + set.documentationRevision.size + set.revision.size + set.language.size)) { return "" }
+        let out = StringBuilder()
+        out.append(match (key) {
+            case "exact" => "independent inventory SHA-256 pin and observed source dependency graph match the published API identity/coverage; catalog base URL is a display choice, not authenticated hosting or API/ABI attestation"
+            case "compatible" => "explicit scoped API/build-context mapping; compatibility and catalog hosting are user declarations, not attested"
+            case "documentation-only" => "explicit documentation-only reference; no project dependency is asserted; publisher API correspondence and catalog hosting remain unverified"
+            case _ => "publisher API correspondence or source-graph binding remains unverified; catalog base URL is an unverified display choice"
+        })
+        out.append("; apiVersion (publisher package declaration)="); out.append(if (set.apiVersion.isEmpty()) { "unknown" } else { set.apiVersion })
+        out.append("; documentationRevision="); out.append(if (set.documentationRevision.isEmpty()) { "unknown" } else { set.documentationRevision })
+        out.append("; API source revision="); out.append(if (set.revision.isEmpty()) { "unknown" } else { set.revision })
+        out.append("; document language="); out.append(if (set.language.isEmpty()) { "unknown" } else { set.language })
+        let result = out.toString()
+        match (decisionReasons.get(set.id)) {
+            case Some(variants) => variants[key] = result
+            case None => decisionReasons[set.id] = HashMap<String, String>([(key, result)])
+        }
+        result
+    }
+
+
+    private func visible(symbol: link_model.SymbolDoc): Bool {
+        var current: ?link_model.SymbolDoc = Some(symbol)
+        while (let Some(value) <- current) {
+            if ((documentPolicy.audience == "external" && value.visibility != "public" && value.visibility != "protected") ||
+                (documentPolicy.audience == "package" && value.visibility == "private")) { return false }
+            current = match (value.ownerId) { case Some(id) => symbols.get(id); case None => None }
+        }
+        true
+    }
+
+    func resolveLocalReference(owner: link_model.SymbolDoc, id: String): link_model.TypeNavigation {
+        if (let Some(target) <- symbols.get(id)) {
+            if (!visible(target)) {
+                return link_model.TypeNavigation("unavailable", "none", "target excluded by documentation audience")
+            }
+            if (localAllowed(owner.moduleId, target)) {
+                return link_model.TypeNavigation("resolved", "exact", "authoritative target in selected module dependency context",
+                    symbolKey: target.id, url: semanticLinkLocalUrl(target.id))
+            }
+        }
+        referenceResult(owner, link_model.TypeNavigation("unavailable", "none", "local reference does not belong to the selected module dependency identity"))
+    }
+
+    private func referenceResult(owner: link_model.SymbolDoc, decision: link_model.TypeNavigation): link_model.TypeNavigation {
+        if (decision.state != "resolved" && visible(owner) && diagnostics.size < 4096 &&
+            decision.reason != "target excluded by documentation audience" &&
+            inputs.reportUnresolved) {
+            diagnostics.add(link_model.Diagnostic(if (inputs.strict) { "error" } else { "warning" },
+                "CJDOC2311", "documentation reference: " + decision.reason,
+                source: Some(owner.source), symbolId: Some(owner.id)))
+        }
+        decision
+    }
+
+    private func dependencyFor(moduleId: String, library: String): ?link_model.DependencyInstance {
+        var found: ?link_model.DependencyInstance = None
+        let values = match (dependenciesByName.get(moduleId + "|" + library)) {
+            case Some(entries) => entries
+            case None => return None
+        }
+        for (dependency in values) {
+            if (let Some(previous) <- found) {
+                if (previous.instanceId != dependency.instanceId || previous.state != dependency.state) { return None }
+            }
+            found = Some(dependency)
+        }
+        found
+    }
+
+    private func localAllowed(moduleId: String, candidate: link_model.SymbolDoc): Bool {
+        if (candidate.moduleId == moduleId) { return true }
+        let name = match (moduleNames.get(candidate.moduleId)) { case Some(value) => value; case None => return false }
+        let actual = dependencyFor(candidate.moduleId, name)
+        if (actual.isNone()) { return false }
+        let right = actual.getOrThrow()
+        let packageName = actualGraph.sourcePackage(right.componentModuleId)
+        let selected = dependencyFor(moduleId, if (packageName.isEmpty()) { name } else { packageName })
+        if (let Some(left) <- selected) {
+            if (left.identity.isEmpty() || left.identity != right.identity ||
+                (left.state != "observed" && left.state != "verified") ||
+                (right.state != "observed" && right.state != "verified")) { return false }
+            if (actualGraph.context(left.componentModuleId, work).conflicted) { return false }
+            return left.componentModuleId == candidate.moduleId ||
+                actualGraph.binding(actualGraph, left.componentModuleId, candidate.moduleId, work) == "matched"
+        }
+        false
+    }
+
+    func genericReference(owner: link_model.SymbolDoc, target: String): Bool {
+        scopedGenericReference(owner, target, symbols)
+    }
+
+    private func cachedTypeShape(spelling: String): ?DependencyTypeShape {
+        match (typeShapes.get(spelling)) {
+            case Some(shape) => return shape
+            case None => ()
+        }
+        let shape = if (work.consumeBytes(spelling.size)) { dependencyTypeShape(spelling) } else { None<DependencyTypeShape> }
+        typeShapes[spelling] = shape
+        shape
+    }
+
+    // CHIR's canonical spelling includes generic arguments and modal suffixes.
+    // Navigation selects the declaration head; the semantic spelling stays intact.
+    private func canonicalNavigationName(identity: String): String {
+        if (let Some(shape) <- cachedTypeShape(identity)) {
+            if (shape.kind == "primitive") { return "std.core." + shape.head }
+            if (shape.kind == "named" || shape.kind == "generic") { return shape.head }
+        }
+        identity
+    }
+
+    private func candidateNames(owner: link_model.SymbolDoc, name: String): Array<String> {
+        let names = ArrayList<String>()
+        names.add(owner.packageName + "." + name)
+        var scope: ?link_model.SymbolDoc = Some(owner)
+        while (let Some(current) <- scope) {
+            names.add(dependencyQualifiedName(current) + "." + name)
+            scope = match (current.ownerId) { case Some(id) => symbols.get(id); case None => None }
+        }
+        let sourceKey = owner.moduleId + "|" + owner.source.path
+        if (let Some(origin) <- sources.get(sourceKey)) {
+            let key = sourceKey + "|" + name
+            let candidates = match (importCandidates.get(key)) {
+                case Some(values) => values
+                case None =>
+                    let index = match (importIndexes.get(sourceKey)) {
+                        case Some(value) => value
+                        case None =>
+                            let value = DependencyImportIndex(origin, work)
+                            importIndexes[sourceKey] = value
+                            value
+                    }
+                    let values: Array<String> = if (let Some(shape) <- cachedTypeShape(name)) {
+                        if (shape.kind == "named" || shape.kind == "generic") { index.candidates(shape.head, work) } else { [] }
+                    } else { [] }
+                    importCandidates[key] = values
+                    values
+            }
+            for (candidate in candidates) {
+                if (!names.contains(candidate)) { names.add(candidate) }
+            }
+        }
+        names.toArray()
+    }
+    private func standardImportDisambiguatesCoreTarget(imports: Array<String>,
+        implicitCoreName: String, docsVersion: String, sourceKey: String, head: String): Bool {
+        if (!isValidStandardLibraryDocsVersion(docsVersion)) { return false }
+        var foundStandardImport = false
+        for (candidate in imports where candidate != implicitCoreName) {
+            if (!candidate.startsWith("std.")) { return false }
+            if (!hasStandardLibraryDocTarget(docsVersion, candidate,
+                baseUrlOverride: inputs.standardLibraryDocsBaseUrl)) {
+                let index = match (importIndexes.get(sourceKey)) {
+                    case Some(value) => value
+                    case None => return false
+                }
+                let packageName = match (index.wildcardPackage(head, candidate, work)) {
+                    case Some(value) => value
+                    case None => return false
+                }
+                // A wildcard synthesizes names, not declarations. An absent entry
+                // in a known std documentation package must not invent a conflict.
+                // This selects a manual documentation route, never a canonical type.
+                if (!hasStandardLibraryDocPackage(packageName)) { return false }
+            }
+            foundStandardImport = true
+        }
+        foundStandardImport
+    }
+
+    private func selectedStandardLibraryDocsVersion(moduleId: String): ?String {
+        if (let Some(version) <- inputs.standardLibraryDocsVersion) { return Some(version) }
+        var selected = ""
+        var found = false
+        for (dependency in dependencies where dependency.moduleId == moduleId && dependency.kind == "std") {
+            if (dependency.state == "conflict") { return None }
+            if (!dependency.version.isEmpty()) {
+                if (dependency.state != "verified" && dependency.state != "observed") { return None }
+                if (found && selected != dependency.version) { return None }
+                selected = dependency.version
+                found = true
+            }
+        }
+        if (!found) { return Some(defaultStandardLibraryDocsVersion()) }
+        if (isValidStandardLibraryDocsVersion(selected) &&
+            (hasBuiltInStandardLibraryDocsBase(selected) || inputs.standardLibraryDocsBaseUrl.isSome())) {
+            return Some(selected)
+        }
+        None
+    }
+
+
+    private func resolve(moduleId: String, packageName: String, names: Array<String>, explicit!: Bool = false,
+        typesOnly!: Bool = false, genericArity!: Int64 = -1, sourceAmbiguity!: Bool = false,
+        sourceHeader!: String = ""): link_model.TypeNavigation {
+        var localTarget: ?link_model.SymbolDoc = None
+        var blocked = false
+        for (name in names) {
+            if (let Some(candidates) <- local.get(name)) {
+                for (candidate in candidates where localAllowed(moduleId, candidate)) {
+                    if (!work.take() || (!sourceHeader.isEmpty() && !work.consumeBytes(candidate.headerSpelling.size))) {
+                        return link_model.TypeNavigation("unavailable", "none", "navigation matching work budget exceeded")
+                    }
+                    if (typesOnly && !["class", "struct", "enum", "interface", "typeAlias"].contains(candidate.kind)) { continue }
+                    if (typesOnly && genericArity >= 0 && candidate.genericParameters.size != genericArity) { continue }
+                    if (!visible(candidate)) { blocked = true; continue }
+                    if (!sourceHeader.isEmpty() && candidate.headerSpelling != sourceHeader) { continue }
+                    if (let Some(previous) <- localTarget) {
+                        if (previous.id != candidate.id) {
+                            return link_model.TypeNavigation("ambiguous", "none", "multiple authoritative local targets")
+                        }
+                    }
+                    localTarget = Some(candidate)
+                }
+            }
+        }
+        if (let Some(target) <- localTarget) {
+            if (sourceAmbiguity && (target.moduleId != moduleId || target.packageName != packageName)) {
+                return link_model.TypeNavigation("unavailable", "none", "source imports cannot exclude an implicit std.core conflict; qualify the type or use a canonical provider")
+            }
+            return link_model.TypeNavigation("resolved", "exact", "authoritative target in selected module dependency context",
+                symbolKey: target.id, url: semanticLinkLocalUrl(target.id))
+        }
+        if (blocked) { return link_model.TypeNavigation("unavailable", "none", "target excluded by documentation audience") }
+        if (sourceAmbiguity) {
+            return link_model.TypeNavigation("unavailable", "none", "source imports cannot exclude an implicit std.core conflict; qualify the type or use a canonical provider")
+        }
+        var choice: ?DependencyDocumentChoice = None
+        var reason = if (sourceHeader.isEmpty()) { "no documentation symbol in the selected module dependency context" }
+            else { "no matching source-header witness for this exact guide selector" }
+        for (name in names) {
+            let candidates = match (external.get(name)) {
+                case Some(values) => values
+                case None => continue
+            }
+            for ((resolver, entry) in candidates) {
+                let set = entry.documentSet
+                if (!work.take() || !work.consumeBytes(entry.symbolKey.size + entry.name.size + entry.url.size +
+                    set.identity.size + set.moduleId.size + set.library.size + set.target.size + set.cfg.size + set.language.size +
+                    if (sourceHeader.isEmpty()) { 0 } else { entry.sourceHeader.size })) {
+                    return link_model.TypeNavigation("unavailable", "none", "navigation matching work budget exceeded")
+                }
+                if (dependencyDocumentShapeExcluded(documentPolicy, entry, typesOnly: typesOnly,
+                    genericArity: genericArity, sourceHeader: sourceHeader)) { continue }
+                let dependency = dependencyFor(moduleId, set.library)
+                var compatible = false
+                var instanceMapping = false
+                var binding = "unavailable"
+                if (let Some(value) <- dependency) {
+                    if (!work.consumeBytes(value.identity.size + value.target.size + value.cfg.size)) {
+                        return link_model.TypeNavigation("unavailable", "none", "navigation matching work budget exceeded")
+                    }
+                    let evidenceRejection = dependencyDocumentEvidenceRejection(documentPolicy, set, dependency,
+                        authoritativeModules)
+                    if (!evidenceRejection.isEmpty()) { reason = evidenceRejection; continue }
+                    var conflicted = false
+                    if (!value.componentModuleId.isEmpty()) {
+                        conflicted = actualGraph.context(value.componentModuleId, work).conflicted
+                    }
+                    let (rejection, accepted, mapping, bindingRequired) =
+                        assessDependencyDocumentCompatibility(documentPolicy, set, value,
+                            resolver.compatibilityMappings, sourceContextConflicted: conflicted)
+                    if (!rejection.isEmpty()) { reason = rejection; continue }
+                    compatible = accepted
+                    instanceMapping = mapping
+                    if (bindingRequired) {
+                        if (let Some(publishedGraph) <- resolver.sourceGraph) {
+                            binding = publishedGraph.binding(actualGraph, value.componentModuleId, set.moduleId, work)
+                        }
+                    }
+                } else {
+                    let evidenceRejection = dependencyDocumentEvidenceRejection(documentPolicy, set, dependency,
+                        authoritativeModules,
+                        packageScopeAmbiguous: dependenciesByName.contains(moduleId + "|" + set.library),
+                        explicit: explicit, typesOnly: typesOnly)
+                    if (!evidenceRejection.isEmpty()) { reason = evidenceRejection; continue }
+                }
+                let (ratingRejection, level, score) = rateDependencyDocumentCandidate(documentPolicy, set,
+                    dependency, compatible: compatible, instanceMapping: instanceMapping, sourceBinding: binding,
+                    inventoryPinned: resolver.inventoryPinned, priority: resolver.priority)
+                if (!ratingRejection.isEmpty()) { reason = ratingRejection; continue }
+                choice = Some(chooseDependencyDocumentCandidate(choice, resolver, entry,
+                    if (let Some(value) <- dependency) { value.instanceId } else { "" },
+                    dependency.isSome(), level, score))
+            }
+        }
+        match (choice) {
+            case None => ()
+            case Some(value) =>
+                if (value.ambiguous) {
+                    return link_model.TypeNavigation("ambiguous", "none", "conflicting equal-priority documentation targets")
+                }
+                // Documentation-only sets keep their distinct decision wording.
+                let reason = decisionReason(value.entry.documentSet, value.level, value.dependencyBacked)
+                if (reason.isEmpty()) {
+                    return link_model.TypeNavigation("unavailable", "none", "navigation metadata work budget exceeded")
+                }
+                return link_model.TypeNavigation("resolved", value.level, reason,
+                    dependencyInstanceId: value.dependencyInstanceId, documentSetId: value.entry.documentSet.id,
+                    indexIdentity: value.resolver.fingerprint, symbolKey: value.entry.symbolKey, url: value.entry.url,
+                    apiIdentity: value.entry.documentSet.identity, language: value.entry.documentSet.language)
+        }
+        if (explicit && sourceHeader.isEmpty()) {
+            var url = ""
+            for (resolver in resolvers where resolver.format == "cjdoc.symbol-index/1" && resolver.state == "available") {
+                for (name in names) {
+                    let (candidate, duplicate) = resolver.matchTarget(name)
+                    if (duplicate || (!url.isEmpty() && !candidate.isEmpty() && url != candidate)) {
+                        return link_model.TypeNavigation("ambiguous", "none", "ambiguous manual legacy documentation reference")
+                    }
+                    if (!candidate.isEmpty()) { url = candidate }
+                }
+            }
+            if (!url.isEmpty()) {
+                return link_model.TypeNavigation("resolved", "manual", "legacy /1 explicit reference has no dependency identity evidence", url: url)
+            }
+        }
+        link_model.TypeNavigation("unresolved", "none", reason)
+    }
+
+    func resolveReference(owner: link_model.SymbolDoc, target: String, importScope!: Bool = true,
+        preferredLocalId!: ?String = None): link_model.TypeNavigation {
+        if (genericReference(owner, target)) {
+            return link_model.TypeNavigation("unavailable", "none", "reference denotes a generic parameter in declaration scope")
+        }
+        if (let Some(id) <- preferredLocalId) {
+            if (let Some(candidate) <- symbols.get(id)) {
+                if (localAllowed(owner.moduleId, candidate)) { return resolveLocalReference(owner, id) }
+            }
+        }
+        let opening = target.indexOf("(").getOrDefault({ => target.size })
+        let base = target[..opening]
+        let signature = target[opening..].replace(" ", "").replace("\t", "")
+        let names = ArrayList<String>([target])
+        if (importScope) {
+            for (candidate in candidateNames(owner, base)) {
+                let value = candidate + signature
+                if (!names.contains(value)) { names.add(value) }
+            }
+        }
+        referenceResult(owner, resolve(owner.moduleId, owner.packageName, names.toArray(), explicit: true))
+    }
+
+    // A page has a real module context, not a fabricated declaration. Guide
+    // selectors retain their exact source-spelling contract from local binding.
+    func resolvePageReference(moduleId: String, target: String, selector: String,
+        source: String, line: Int64, preferredLocalId!: ?String = None): link_model.TypeNavigation {
+        if (moduleId.isEmpty()) {
+            return link_model.TypeNavigation("unavailable", "none", "guide has no unambiguous documented module context")
+        }
+        let header = if (selector.startsWith("signature:")) { selector.removePrefix("signature:") } else { "" }
+        if ((selector.startsWith("signature:") && header.isEmpty()) ||
+            !work.consumeBytes(target.size + header.size + moduleId.size)) {
+            return link_model.TypeNavigation("unavailable", "none", "guide selector is empty or exceeds navigation work budget")
+        }
+        let names = ArrayList<String>([target])
+        if (target.startsWith("id:")) { names.add(target.removePrefix("id:")) }
+        if (let Some(id) <- preferredLocalId) {
+            if (let Some(symbol) <- symbols.get(id)) {
+                if (localAllowed(moduleId, symbol) && (header.isEmpty() || symbol.headerSpelling == header)) {
+                    if (!names.contains(symbol.id)) { names.add(symbol.id) }
+                }
+            }
+        }
+        let decision = resolve(moduleId, "", names.toArray(), explicit: true, sourceHeader: header)
+        if (decision.state != "resolved" && decision.reason != "target excluded by documentation audience" &&
+            diagnostics.size < 4096 && inputs.reportUnresolved) {
+            let location = source + if (line > 0) { ":" + line.toString() } else { "" }
+            diagnostics.add(link_model.Diagnostic(if (inputs.strict) { "error" } else { "warning" },
+                "CJDOC2311", "guide " + location + " in module " + moduleId + ": " + decision.reason))
+        }
+        decision
+    }
+
+    private func sameSourceShape(left: DependencyTypeShape, right: DependencyTypeShape): Bool {
+        if (left.kind != right.kind || left.head != right.head || left.nullable != right.nullable ||
+            left.children.size != right.children.size) { return false }
+        for (index in 0..left.children.size) {
+            if (!sameSourceShape(left.children[index], right.children[index])) { return false }
+        }
+        true
+    }
+
+    private func unboundStructure(typeRef: link_model.TypeRef, depth: Int64): link_model.TypeRef {
+        if (depth >= link_model.DOC_IR_MAX_TYPE_DEPTH) { return typeRef }
+        let arguments = ArrayList<link_model.TypeRef>()
+        for (child in typeRef.arguments) { arguments.add(unboundStructure(child, depth + 1)) }
+        link_model.TypeRef(typeRef.kind, typeRef.spelling, typeRef.semantic, nullable: typeRef.nullable,
+            arguments: arguments.toArray(), navigation: Some(link_model.TypeNavigation("unavailable", "none",
+                "source and provider structured type roles could not be correlated")))
+    }
+
+    func bindType(owner: link_model.SymbolDoc, typeRef: link_model.TypeRef,
+        depth!: Int64 = 0, sourceShape!: ?DependencyTypeShape = None): link_model.TypeRef {
+        if (depth >= link_model.DOC_IR_MAX_TYPE_DEPTH) { return typeRef }
+        let shape = if (sourceShape.isSome()) { sourceShape } else { cachedTypeShape(typeRef.spelling) }
+        if (shape.isNone()) {
+            return link_model.TypeRef(typeRef.kind, typeRef.spelling, typeRef.semantic, nullable: typeRef.nullable,
+                arguments: typeRef.arguments.toArray(), navigation: Some(link_model.TypeNavigation("unavailable", "none", "unsupported source type structure")))
+        }
+        let value = shape.getOrThrow()
+        if (!typeRef.arguments.isEmpty()) {
+            var aligned = typeRef.arguments.size == value.children.size
+            if (aligned) {
+                for (position in 0..typeRef.arguments.size) {
+                    let actual = cachedTypeShape(typeRef.arguments[position].spelling)
+                    if (actual.isNone() || !sameSourceShape(actual.getOrThrow(), value.children[position])) {
+                        aligned = false; break
+                    }
+                }
+            }
+            if (!aligned) { return unboundStructure(typeRef, depth) }
+        }
+        let arguments = ArrayList<link_model.TypeRef>()
+        var index: Int64 = 0
+        for (child in value.children) {
+            if (index < typeRef.arguments.size) {
+                // Preserve the complete provider subtree, not merely its head
+                // semantic record: nested generic grandchildren are evidence.
+                arguments.add(bindType(owner, typeRef.arguments[index], depth: depth + 1, sourceShape: Some(child)))
+            } else {
+                arguments.add(bindType(owner, link_model.TypeRef(child.kind, child.spelling,
+                    if (typeRef.semantic.provider.isSome()) {
+                        link_model.SemanticType("partial", provider: typeRef.semantic.provider)
+                    } else { link_model.SemanticType("unavailable") },
+                    nullable: child.nullable), depth: depth + 1, sourceShape: Some(child)))
+            }
+            index++
+        }
+        let parameter = scopedGenericParameter(owner, value.head, symbols)
+        let provider = typeRef.semantic.provider.getOrDefault({ => "" })
+        let canonical = typeRef.semantic.state == "resolved" && !provider.isEmpty() &&
+            provider != "ast" && provider != "source" && typeRef.semantic.canonical.isSome()
+        var decision: ?link_model.TypeNavigation = None
+        if (!parameter && (value.kind == "named" || value.kind == "generic" || canonical)) {
+            let names = ArrayList<String>(candidateNames(owner, value.head))
+            if (canonical) {
+                if (let Some(identity) <- typeRef.semantic.canonical) {
+                    names.clear(); names.add(canonicalNavigationName(identity))
+                }
+            }
+            if (!canonical && value.head.startsWith("std.") && !names.contains(value.head)) {
+                names.add(value.head)
+            }
+            let docsVersion = selectedStandardLibraryDocsVersion(owner.moduleId)
+            var sourceAmbiguity = false
+            var standardImportAmbiguity = false
+            if (!canonical && !value.head.contains(".")) {
+                let sourceKey = owner.moduleId + "|" + owner.source.path
+                let key = sourceKey + "|" + value.head
+                let implicitCoreName = "std.core." + value.head
+                if (let Some(imports) <- importCandidates.get(key)) {
+                    sourceAmbiguity = imports.size > 1 && imports.contains(implicitCoreName)
+                    if (sourceAmbiguity) {
+                        standardImportAmbiguity = standardImportDisambiguatesCoreTarget(imports,
+                            implicitCoreName, docsVersion.getOrDefault({ => "" }),
+                            sourceKey, value.head)
+                    }
+                }
+            }
+            var navigation = resolve(owner.moduleId, owner.packageName, names.toArray(),
+                typesOnly: true, sourceAmbiguity: sourceAmbiguity && !standardImportAmbiguity,
+                genericArity: value.children.size)
+            // Only scoped resolution may suppress the fallback; unrelated inventory
+            // entries and declarations rejected by arity are not binding evidence.
+            if (navigation.state == "unresolved") {
+                if (let Some(version) <- docsVersion) {
+                    if (let Some(pinned) <- standardLibraryTypeNavigation(version, names.toArray(),
+                        baseUrlOverride: inputs.standardLibraryDocsBaseUrl)) {
+                        navigation = pinned
+                    }
+                }
+            }
+            decision = Some(navigation)
+            if (navigation.state != "resolved" && diagnostics.size < 4096 && visible(owner) &&
+                inputs.reportUnresolved) {
+                diagnostics.add(link_model.Diagnostic(if (inputs.strict) { "error" } else { "warning" },
+                    "CJDOC2310", "type '" + value.head + "': " + navigation.reason,
+                    source: Some(owner.source), symbolId: Some(owner.id)))
+            }
+        } else if (!parameter && value.kind == "primitive") {
+            if (let Some(version) <- selectedStandardLibraryDocsVersion(owner.moduleId)) {
+                decision = standardLibraryTypeNavigation(version, ["std.core." + value.head],
+                    baseUrlOverride: inputs.standardLibraryDocsBaseUrl)
+            }
+        }
+        let kind = if (parameter) { "typeParameter" } else if (["primitive", "optional", "tuple", "function"].contains(value.kind)) { value.kind } else { typeRef.kind }
+        link_model.TypeRef(kind, typeRef.spelling, typeRef.semantic, nullable: typeRef.nullable || value.nullable,
+            arguments: arguments.toArray(), navigation: decision)
+    }
+}

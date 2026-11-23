@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.documentation.comments.parseDocComment
+
 import cjdoc.model as api_model
 import std.collection.*
 import std.unittest.*

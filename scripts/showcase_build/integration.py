@@ -19,6 +19,11 @@ from .parallel import BranchRunner
 from publication_ir import project as publication_projection
 
 FORMATS = ("html", "json", "markdown", "api-surface", "coverage", "symbol-index")
+# The cjdoc showcase is its consumer reference, not an implementation inventory.
+CJDOC_REFERENCE_PACKAGES = frozenset({
+    "cjdoc", "cjdoc.model", "cjdoc.provider", "cjdoc.quality", "cjdoc.render",
+    "cjdoc.schema_data",
+})
 USER_DOCUMENTATION_DIRECTORIES = ("getting-started", "tutorials", "how-to", "reference")
 PUBLICATION_ASSET_FILES = {
     "brand": ("mark.svg", "lockup-light.svg", "lockup-dark.svg", "favicon.svg", "favicon.ico"),
@@ -72,16 +77,53 @@ def copy_tree(repo: Path, source: Path, destination: Path,
         copy_file(path, output)
 
 
+def cjdoc_reference_subjects(document: dict) -> set[str]:
+    roots = {module["id"] for module in document["modules"] if module["role"] == "root"}
+    declarations = {item["id"]: item for item in document["declarations"]}
+    exposed = set()
+    for package in document["packages"]:
+        if package["moduleId"] in roots and package["name"] in CJDOC_REFERENCE_PACKAGES:
+            for reexport in package["reExports"]:
+                if reexport["state"] == "resolved":
+                    for binding in reexport["bindings"]:
+                        exposed.update(binding["targetSymbolIds"])
+    selected = set()
+    for identity, item in declarations.items():
+        if item["moduleId"] in roots and item["packageName"] in CJDOC_REFERENCE_PACKAGES:
+            selected.add(identity)
+            continue
+        # A reexported type's members need the canonical detail page too.
+        while item:
+            if item["id"] in exposed:
+                selected.add(identity)
+                break
+            item = declarations.get(item["ownerId"])
+    return selected
+
+
 def generate_api(binary: Path, project: Path, output: Path, provenance: dict, repo: Path,
                  runner=subprocess) -> None:
     command = [str(binary), "generate", "--project", str(project)]
+    if project == repo:
+        capture = output.with_name("api-author")
+        capture_command = command + [
+            "--format", "json", "--output", str(capture), "--no-cache",
+            "--repository-url", provenance["repository"], "--repository-revision",
+            provenance["revision"], "--repository-root", str(project),
+        ]
+        print("+ " + " ".join(capture_command), flush=True)
+        runner.run(capture_command, cwd=repo, check=True)
+        author = load_json(capture / "docs.json")
+        publication = publication_projection(author, subjects=cjdoc_reference_subjects(author))
+        reference = capture / "reference.json"
+        reference.write_bytes(canonical_json(publication))
+        command = [str(binary), "render", "--input", str(reference)]
+    else:
+        command += ["--no-cache"]
     for name in FORMATS:
         command += ["--format", name]
     command += ["--output", str(output), "--locale", "en", "--doc-version", "main",
-                "--agent-full", "--no-cache"]
-    if project == repo:
-        command += ["--repository-url", provenance["repository"], "--repository-revision",
-                    provenance["revision"], "--repository-root", str(project)]
+                "--agent-full"]
     print("+ " + " ".join(command), flush=True)
     runner.run(command, cwd=repo, check=True)
 

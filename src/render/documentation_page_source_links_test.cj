@@ -1,5 +1,8 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.routes.label
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr}
 import cjdoc.model.*
 import std.collection.*
 import std.unittest.*

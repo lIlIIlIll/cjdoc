@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.filesystem.readTextBounded
 import cjdoc.model.normalizeCodeLanguage
 import std.collection.*
 import std.fs.*

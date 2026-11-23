@@ -1,5 +1,8 @@
 package cjdoc.render
 
+import cjdoc.render.html.{ProjectedModule, ProjectedPackage, RenderProjection}
+import cjdoc.render.codec.{validateTypedDocumentationSet, appendSearchJsonString}
+import cjdoc.render.foundation.RenderTextBuffer
 import cjdoc.model.*
 import std.collection.*
 import std.sort.*

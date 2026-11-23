@@ -1,5 +1,10 @@
 package cjdoc.render
 
+import cjdoc.render.html.{
+    HtmlWriter, RenderProjection, appendHtmlSidebar, renderSidebarIndexScript, sidebarPackageLabels,
+    sidebarPageIsCurrent}
+import cjdoc.render.routes.{symbolAnchor, label}
+import cjdoc.render.codec.validateDocumentationSet
 import cjdoc.model.*
 import std.collection.*
 import std.unittest.*

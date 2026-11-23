@@ -1,5 +1,6 @@
 package cjdoc.render
 
+import cjdoc.render.html.{HtmlWriter, appendDocumentationContractsHtml}
 import cjdoc.model.*
 import std.unittest.*
 import std.unittest.testmacro.*

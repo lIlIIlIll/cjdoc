@@ -1,5 +1,9 @@
 package cjdoc
 
+import cjdoc.highlight.{CodeHighlight, CodeHighlightState, CodeKind, CodeSpan,
+    MAX_HIGHLIGHT_BLOCK_BYTES, MAX_HIGHLIGHT_SPANS_PER_BLOCK, codeKindName,
+    highlightByteBoundary, highlightCode}
+
 import cjdoc.render as api_render
 import std.collection.*
 import std.unittest.*

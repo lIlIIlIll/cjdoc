@@ -1,0 +1,60 @@
+protected package cjdoc.semantic
+
+import cjdoc.source.model.{TypeRef, SourceSnapshot}
+private func astTypeRef(spelling: String): TypeRef {
+    if (spelling.isEmpty()) {
+        return TypeRef("", state: "unavailable")
+    }
+    return TypeRef(spelling, state: "partial")
+}
+
+// SyntaxSemanticProvider exposes source-level facts without type checking.
+// Type spellings remain partial source facts until CHIR is explicitly enabled.
+protected class SyntaxSemanticProvider <: SemanticProvider {
+    public func providerName(): String { "syntax" }
+    public func providerVersion(): String { "1" }
+
+    public func analyze(source: SourceSnapshot): SemanticResult {
+        let result = SemanticResult()
+        for (module in source.modules) {
+            let moduleResult = ModuleSemanticResult(module.id, providerName(), providerVersion(),
+                SemanticCapabilities(true, true, true, false, false, symbolRelationships: true))
+            for (declaration in source.declarations) {
+                if (declaration.moduleId != module.id) { continue }
+                let semantic = SemanticDeclaration(
+                declaration.sourceKey,
+                declaration.kind,
+                declaration.name,
+                declaration.packageName,
+                declaration.moduleId,
+                declaration.ownerSourceKey,
+                declaration.visibility,
+                "partial",
+                providerName(),
+                isContainer: declaration.isContainer,
+                enumNonExhaustive: declaration.enumNonExhaustive
+            )
+                semantic.genericParameters.add(all: declaration.genericParameters)
+                for (parameter in declaration.parameters) {
+                    semantic.parameters.add(SemanticParameter(parameter.name,
+                        astTypeRef(parameter.typeSpelling)))
+                }
+                if (let Some(spelling) <- declaration.returnTypeSpelling) {
+                    semantic.returnType = Some(astTypeRef(spelling))
+                }
+                semantic.annotations.add(all: declaration.annotations)
+                for (relationship in declaration.relationships) {
+                    semantic.relationships.add(TypeRelationship(relationship.kind,
+                        astTypeRef(relationship.targetSpelling)))
+                }
+                for (relationship in declaration.symbolRelationships) {
+                    semantic.symbolRelationships.add(SymbolRelationship(relationship.kind,
+                        relationship.targetDisplay, "unavailable"))
+                }
+                moduleResult.declarations.add(semantic)
+            }
+            result.modules.add(moduleResult)
+        }
+        return result
+    }
+}

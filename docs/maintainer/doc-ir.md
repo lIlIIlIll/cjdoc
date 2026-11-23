@@ -10,6 +10,8 @@ Doc IR 是 renderer 的唯一输入：源码声明、注释和位置先由 front
 - 根字段 `apiCollectionState` 取 `resolved`、`partial` 或 `unavailable`，独立于展示用的 `status`。它在 source/provider 绑定后、highlight/lint/i18n/导航处理前采集；呈现错误不会把已采集的 API 改成不完整。
 - `generator.toolchain` 自动生成时为空字符串：运行时 `cjc --version`、`--cjc` 或包装器变量都不能认证真正链接的 parser SDK 构建。目标项目的 compiler/std/stdx 身份由构建记录（`--build-context`）单独绑定，见 [document-links.md](document-links.md)。
 
+源码定位见 [`src/render/codec/`](../../src/render/codec/)：编码先按出现次数核算预算；校验再按顺序检查模块和包归属、声明及引用、资产和页面。修改校验阶段时保留首个失败的诊断顺序。
+
 ## 公共 schema 命令
 
 ```bash
@@ -35,8 +37,8 @@ cjdoc schema source-provenance
 
 1. 提升 `cjdoc.doc-ir/N` 版本（破坏性变更必须提升；decoder 保持 current-only）。
 2. `src/model/doc_ir_documentation.cj`、`src/model/doc_ir_metadata.cj` 及相关的 `src/model/doc_ir_*.cj` 类型。
-3. JSON encoder/decoder：`src/render/json_encode.cj`、`src/render/json_decode.cj` 及拆分出的 `json_decode_*.cj`；保持严格行为（未知属性、重复键、类型与引用约束都拒绝）。
-4. schema source：`src/schema_data/schema_v18.cj`、共享 schema 和 `src/schema_data/agent_schemas.cj`、`query_schemas.cj`、`language_artifact_schemas.cj` 等发布契约。
+3. JSON encoder/decoder：实现位于 `src/render/codec/`，公开入口仍在 `cjdoc.render`。保持严格行为（未知属性、重复键、类型与引用约束都拒绝）。
+4. schema source：`src/schema_data/schema_v18.cj` 按发布顺序组装根 schema、外部导航、声明与文档注释；对应定义在 `schema_v18_*.cj`。独立发布契约按文件维护，例如 `agent_schemas.cj`、`query_schemas.cj`（请求）、`query_result_schema.cj`（结果）和 `language_artifact_schemas.cj`。
 5. 重新构建后运行 `bash scripts/update_schemas.sh`，把构建产物同步到 `docs/schema/`。
 6. 更新 public-contract tests 与相应单测；不要为了让测试变绿而放宽 strict codec 或手改期望产物。
 7. 运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v18/`，再检查 diff。golden 不手改；更新脚本自己生成并校验。

@@ -1,5 +1,8 @@
 package cjdoc.render
 
+import cjdoc.render.html.RenderProjection
+import cjdoc.render.codec.appendSearchJsonString
+import cjdoc.render.foundation.{RenderTextBuffer, RenderArtifactStore}
 import cjdoc.model.*
 import cjdoc.quality.*
 

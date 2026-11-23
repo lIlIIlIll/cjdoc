@@ -1,0 +1,109 @@
+protected package cjdoc.render.html
+
+import cjdoc.render.reading.genericTypeDisplaySpelling
+import cjdoc.render.routes.label
+import cjdoc.render.foundation.RenderTextBuffer
+import cjdoc.model.*
+
+// An extension is a declaration, not a new type definition. Its reader title
+// must identify the declaration while preserving the exact source/IR spelling
+// for signatures, symbol identity, and navigation.
+internal func readerSymbolName(symbol: SymbolDoc): String {
+    if (symbol.kind == "extend") { return genericTypeDisplaySpelling(symbol.name) }
+    symbol.name
+}
+
+// Generic parameter names are captured from the AST in Doc IR, not inferred
+// from a signature. Extensions already name their target, not a new type.
+internal func readerDeclarationName(symbol: SymbolDoc): String {
+    if (symbol.genericParameters.isEmpty()) { return readerSymbolName(symbol) }
+    match (symbol.kind) {
+        case "class" | "struct" | "interface" | "enum" | "typeAlias" | "function" => ()
+        case _ => return readerSymbolName(symbol)
+    }
+    let out = RenderTextBuffer()
+    out.append(symbol.name)
+    out.append("<")
+    var first = true
+    for (parameter in symbol.genericParameters) {
+        if (!first) { out.append(", ") }; first = false
+        out.append(parameter)
+    }
+    out.append(">")
+    out.toString()
+}
+
+internal func readerSymbolTitle(symbol: SymbolDoc, locale: String): String {
+    let name = readerSymbolName(symbol)
+    if (symbol.kind == "extend") { return "${label(locale, "Extension", "扩展")} ${name}" }
+    name
+}
+
+internal func readerQualifiedName(symbol: SymbolDoc): String {
+    if (symbol.kind == "extend") {
+        return genericTypeDisplaySpelling(symbol.qualifiedName)
+    }
+    symbol.qualifiedName
+}
+
+internal func reverseTypeUsageLabel(kind: String, locale: String): String {
+    match (kind) {
+        case "parameter" => label(locale, "Uses this type in a parameter", "在参数类型中使用此类型")
+        case "field" => label(locale, "Uses this type in a field or property", "在字段或属性类型中使用此类型")
+        case "return" => label(locale, "Uses this type in a return type", "在返回类型中使用此类型")
+        case "superType" => label(locale, "Uses this type in a parent-type clause", "在父类型声明中使用此类型")
+        case "extensionTarget" => label(locale, "Uses this type in an extension target", "在扩展目标中使用此类型")
+        case "genericConstraint" => label(locale, "Uses this type in a generic constraint", "在泛型约束中使用此类型")
+        case _ => label(locale, "References this type (relationship: ${kind})", "引用此类型（关系：${kind}）")
+    }
+}
+
+internal func htmlStateLabel(state: String, locale: String): String {
+    if (locale != "zh-CN") { return state }
+    match (state) {
+        case "resolved" => "已解析"
+        case "partial" => "部分解析"
+        case "unavailable" => "未提供"
+        case "ambiguous" => "不明确"
+        case "complete" => "完整"
+        case "incomplete" => "不完整"
+        case "error" => "错误"
+        case "warning" => "警告"
+        case "info" => "提示"
+        case _ => state
+    }
+}
+
+internal func htmlReferenceStateLabel(state: String, locale: String): String {
+    match (state) {
+        case "ambiguous" => label(locale, "Documentation link is ambiguous", "文档链接不明确")
+        case "resolved" => label(locale, "Documentation link resolved", "文档链接已解析")
+        case _ => label(locale, "Documentation link unavailable", "暂无文档链接")
+    }
+}
+
+internal func htmlContextLabel(symbol: SymbolDoc): String {
+    let out = RenderTextBuffer()
+    out.append(symbol.name)
+    if (!symbol.genericParameters.isEmpty()) {
+        out.append("<")
+        var first = true
+        for (parameter in symbol.genericParameters) {
+            if (!first) { out.append(", ") }; first = false
+            out.append(parameter)
+        }
+        out.append(">")
+    }
+    if (symbol.kind == "function" || symbol.kind == "constructor" || symbol.kind == "macro") {
+        out.append("(")
+        var first = true
+        for (parameter in symbol.parameters) {
+            if (!first) { out.append(", ") }; first = false
+            // Context labels are reader-facing, unlike the original TypeRef and
+            // source signature. Keep generic trivia consistent with the type table.
+            out.append(genericTypeDisplaySpelling(parameter.typeRef.spelling))
+        }
+        out.append(")")
+    }
+    out.toString()
+}

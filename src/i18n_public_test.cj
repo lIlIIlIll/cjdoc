@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.documentation.i18n.loadDocumentationLanguages
 import cjdoc.render as api_render
 import cjdoc.model as api_model
 import std.env.*

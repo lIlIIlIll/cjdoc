@@ -1,5 +1,15 @@
 package cjdoc
 
+import cjdoc.render.codec as render_codec
+
+import cjdoc.binding.{DocumentationSet, SymbolDoc}
+import cjdoc.documentation.assets.LocalAssetCollector
+import cjdoc.documentation.markdown.{MarkdownGenerationContext, publicMarkdown}
+import cjdoc.highlight.{HighlightGenerationBudget, MAX_HIGHLIGHT_BLOCK_BYTES, MAX_HIGHLIGHT_SPANS_PER_BLOCK, MAX_HIGHLIGHT_TOTAL_PREPARED_BYTES, MAX_HIGHLIGHT_TOTAL_SPANS}
+import cjdoc.source.model.SourceFileOrigin
+import cjdoc.source.Diagnostic
+import cjdoc.source.SourceLocation
+import cjdoc.documentation.comments.{DocComment, DocTag}
 import cjdoc.model as api_model
 import cjdoc.render as api_render
 import std.collection.*
@@ -137,7 +147,7 @@ class CodeHighlightBudgetTest {
             @Expect(symbol.headerSpelling, signature)
             @Expect(symbol.signatureHighlight.isNone())
         }
-        @Expect(api_render.docIrFitsEncodedBudget(result, api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES))
+        @Expect(render_codec.docIrFitsEncodedBudget(result, api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES))
         var budgetWarnings: Int64 = 0
         for (diagnostic in result.diagnostics) {
             @Expect(diagnostic.code != "CJDOC3027")

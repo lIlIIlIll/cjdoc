@@ -2,6 +2,7 @@ package cjdoc
 
 import cjdoc.model as standard_library_model
 import cjdoc.render as standard_library_render
+import cjdoc.stdlib_docs.standardLibraryTypeNavigation
 import std.env.*
 import std.fs.*
 import std.unittest.*

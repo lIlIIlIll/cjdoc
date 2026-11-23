@@ -1,5 +1,8 @@
 package cjdoc
 
+import cjdoc.documentation.assets.LocalAssetCollector
+import cjdoc.documentation.markdown.{MarkdownGenerationContext, publicMarkdown}
+import cjdoc.source.model.SourceFileOrigin
 import cjdoc.model as public_model
 import cjdoc.render as api_render
 import std.collection.*

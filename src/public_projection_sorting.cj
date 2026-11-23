@@ -1,7 +1,11 @@
 package cjdoc
 
+import cjdoc.render.codec as render_codec
+
+import cjdoc.highlight.retainedHighlightBackendDiagnostics
+import cjdoc.semantic.SemanticBindingStats
+import cjdoc.binding.DocumentationSet
 import cjdoc.model as public_model
-import cjdoc.render as public_render
 import cjdoc_chir_protocol.CJDOC_PRODUCT_VERSION
 import std.collection.*
 
@@ -34,100 +38,6 @@ internal func remapDiagnosticCode(code: String): String {
         case "CJDOC1025" => "CJDOC3025"
         case _ => code
     }
-}
-
-internal func comparePublicString(left: String, right: String): Int64 {
-    if (left < right) {
-        return -1
-    }
-    if (right < left) {
-        return 1
-    }
-    0
-}
-
-internal func comparePublicInt(left: Int64, right: Int64): Int64 {
-    if (left < right) {
-        return -1
-    }
-    if (right < left) {
-        return 1
-    }
-    0
-}
-
-internal func comparePublicOptionalString(left: ?String, right: ?String): Int64 {
-    if (left.isNone()) {
-        return if (right.isNone()) {
-            0
-        } else {
-            -1
-        }
-    }
-    if (right.isNone()) {
-        return 1
-    }
-    comparePublicString(left.getOrThrow(), right.getOrThrow())
-}
-
-internal func comparePublicSource(left: ?public_model.SourceRange, right: ?public_model.SourceRange): Int64 {
-    if (left.isNone()) {
-        return if (right.isNone()) {
-            0
-        } else {
-            -1
-        }
-    }
-    if (right.isNone()) {
-        return 1
-    }
-    let leftValue = left.getOrThrow()
-    let rightValue = right.getOrThrow()
-    var compared = comparePublicString(leftValue.path, rightValue.path)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicInt(leftValue.start.line, rightValue.start.line)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicInt(leftValue.start.column, rightValue.start.column)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicInt(leftValue.start.byteOffset, rightValue.start.byteOffset)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicInt(leftValue.end.line, rightValue.end.line)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicInt(leftValue.end.column, rightValue.end.column)
-    if (compared != 0) {
-        return compared
-    }
-    comparePublicInt(leftValue.end.byteOffset, rightValue.end.byteOffset)
-}
-
-internal func comparePublicDiagnostic(left: public_model.Diagnostic, right: public_model.Diagnostic): Int64 {
-    var compared = comparePublicSource(left.source, right.source)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicString(left.code, right.code)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicString(left.severity, right.severity)
-    if (compared != 0) {
-        return compared
-    }
-    compared = comparePublicString(left.message, right.message)
-    if (compared != 0) {
-        return compared
-    }
-    comparePublicOptionalString(left.symbolId, right.symbolId)
 }
 
 internal class FinalSemanticStateSummary {
@@ -184,7 +94,7 @@ internal func aggregateProviderState(binding: SemanticBindingStats, summary: Fin
 protected func boundGeneratedDocumentation(candidate: public_model.DocumentationSet,
     request: GenerationRequest, force!: Bool = false): public_model.DocumentationSet {
     if (!force &&
-        public_render.docIrFitsEncodedBudget(candidate, request.maxDocIrBytes)) {
+        render_codec.docIrFitsEncodedBudget(candidate, request.maxDocIrBytes)) {
         return candidate
     }
     // Generation must return a valid, renderable value even when a hostile or
@@ -208,7 +118,7 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
         fallback.appendDiagnostic(diagnostic)
     }
     if (fallback.documentationRevision.isEmpty() ||
-        public_render.docIrFitsEncodedBudget(fallback, request.maxDocIrBytes)) {
+        render_codec.docIrFitsEncodedBudget(fallback, request.maxDocIrBytes)) {
         return fallback
     }
     // Optional publication provenance cannot make the resource fallback itself

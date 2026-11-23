@@ -1,5 +1,9 @@
 package cjdoc.render
 
+import cjdoc.render.foundation.RenderArtifact
+import cjdoc.render.html.RenderProjection
+import cjdoc.render.routes.pageRootPrefix
+import cjdoc.render.codec.{decodeDocIr, encodeDocIr}
 import cjdoc.model.*
 import std.unittest.*
 import std.unittest.testmacro.*

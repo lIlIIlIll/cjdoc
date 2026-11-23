@@ -1,6 +1,8 @@
 package cjdoc
 
+import cjdoc.cli.schemaTextForCli
 import cjdoc.model.*
+import cjdoc.query.{queryDecodeResponse, queryErrorNode, queryString}
 import cjdoc.model as api_model
 import cjdoc.schema_data as query_schema
 import std.collection.*

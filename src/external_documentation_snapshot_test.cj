@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.render.routes as routes_render
+
 import cjdoc.model as api_model
 import cjdoc.render as api_render
 import std.env.*
@@ -49,7 +51,7 @@ private func externalSnapshotArtifact(artifacts: Array<api_render.RenderArtifact
 private func externalSnapshotMarkdown(artifacts: Array<api_render.RenderArtifact>,
     symbol: api_model.SymbolDoc): String {
     // Unlike the HTML search address, Markdown still uses the historical file.
-    let legacy = api_render.symbolPagePath(symbol)
+    let legacy = routes_render.symbolPagePath(symbol)
     externalSnapshotArtifact(artifacts, "markdown/" + legacy.removeSuffix(".html") + ".md")
 }
 

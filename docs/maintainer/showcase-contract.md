@@ -52,6 +52,8 @@ python scripts/build_showcase.py \
 源代码下载和完整离线 ZIP。专用 `cjdoc.toml` 纳入版本管理，展示构建直接使用该配置与原生 CLI。
 固定依赖索引来自同次构建的 `support-v1`，不隐式访问外部服务。
 
+cjdoc 自身的展示参考覆盖根包及公开的 `model`、`provider`、`quality`、`render`、`schema_data` 包。它从完整原生 Doc IR 选取这些入口及已解析的公开重导出，再由原生 `render` 生成 HTML、Markdown、索引和报告。仅模块内可见的实现不进入展示参考；普通 CLI、外部 `--project` 和 PocketKit 样本不使用这项筛选。
+
 只复现教学库核心页面时，可以下载源代码 ZIP，在解压根目录执行：
 
 ```sh
@@ -93,8 +95,8 @@ HTML/Markdown 概念索引保留作者链接，不作为 cjdoc 手册改写。
 
 | 管线 | 本次示例配置与该 revision 的原生限制 |
 | --- | --- |
-| 原生 `{run}` | `src/example_runner.cj` 限时 10,000 ms、内存 2,048 MiB；stdout、stderr 各保留前 65,536 bytes，并继续排空、统计真实总量。任一流超过上限产生 `CJDOC3075`；时间上限会终止进程树并产生 `CJDOC3073`，不是仅截断后算通过。 |
-| 原生指令示例的编译诊断 | `src/bounded_process.cj` 的编译子进程默认限时 120,000 ms，stdout、stderr 各仅保留前 8,192 bytes，同时排空其余输出；正常退出保留实际退出码，超时终止并返回 124。`src/example_compiler.cj` 还将展示的诊断正文按 8,192-byte 预算截断并追加说明。此处是诊断保留/显示预算，不是 `{run}` 的 64 KiB 结果上限。 |
+| 原生 `{run}` | [`src/examples/`](../../src/examples/) 的运行逻辑限时 10,000 ms、内存 2,048 MiB；stdout、stderr 各保留前 65,536 bytes，并继续排空、统计真实总量。任一流超过上限产生 `CJDOC3075`；时间上限会终止进程树并产生 `CJDOC3073`，不是仅截断后算通过。 |
+| 原生指令示例的编译诊断 | 子进程监督器对编译默认限时 120,000 ms，stdout、stderr 各仅保留前 8,192 bytes，同时排空其余输出；正常退出保留实际退出码，超时终止并返回 124。示例编译逻辑还将展示的诊断正文按 8,192-byte 预算截断并追加说明。此处是诊断保留/显示预算，不是 `{run}` 的 64 KiB 结果上限。 |
 
 以上限制来自本次仓库 revision 的原生实现，不能通过展示 TOML 调整。普通 `generate`/`check` 不会隐式执行示例；`--check-examples` 的诊断和退出码才是检查结果，不生成逐例执行报告。SDK 版本、生成器哈希及实际命令另见 `build.json`、下载清单和 `check-modes/native-check.json`。
 

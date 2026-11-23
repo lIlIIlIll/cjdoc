@@ -2,6 +2,7 @@ package cjdoc
 
 import cjdoc.model.*
 import cjdoc.model as bounds_model
+import cjdoc.query.{queryDecodeResponse, queryEncodedProjectionMatches, queryString}
 import cjdoc.render as bounds_render
 import std.collection.*
 import std.unittest.*

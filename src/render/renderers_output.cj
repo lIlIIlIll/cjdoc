@@ -1,77 +1,16 @@
 package cjdoc.render
 
 import cjdoc.model.*
+import cjdoc.render.agent.{DocumentationReadSnapshot, DocumentationReportAttachment, appendAgentReadableArtifacts,
+    appendSymbolIndexArtifacts, buildDocumentationSearchProjection}
+import cjdoc.render.codec.{docIrFitsEncodedBudget, validateTypedDocumentationSet}
+import cjdoc.render.foundation.{RenderArtifact, RenderArtifactCollector, RenderArtifactStore, RenderResourceLimitException}
+import cjdoc.render.html.{HtmlFontOptions, RenderProjection, appendCapturedPageArtifacts, appendHtmlArtifacts,
+    renderValidationHtml}
+import cjdoc.render.markdown.site.appendMarkdownSiteArtifacts
+import cjdoc.render.publication.projectDocumentationLanguage
+import cjdoc.render.search.searchStaticProfileName
 import std.collection.*
-
-/**
- * Optional CSS font-family lists for the generated HTML site. Each value is a
- * comma-separated list of family names (letters, digits, spaces, `_`, `-`,
- * optionally double-quoted), at most 256 bytes; anything else is rejected so
- * the value can never break out of its declaration.
- */
-public struct HtmlFontOptions {
-    public let sans: ?String
-    public let mono: ?String
-
-    public init(sans!: ?String = None, mono!: ?String = None) {
-        for ((value, option) in [(sans, "--html-font-sans"), (mono, "--html-font-mono")]) {
-            if (let Some(list) <- value) {
-                if (!isValidHtmlFontFamilyList(list)) {
-                    throw IllegalArgumentException("invalid ${option} value")
-                }
-            }
-        }
-        this.sans = sans
-        this.mono = mono
-    }
-}
-
-private let HTML_FONT_FAMILY_LIST_LIMIT: Int64 = 256
-
-private func htmlFontNameByte(byte: Byte): Bool {
-    (byte >= b'A' && byte <= b'Z') || (byte >= b'a' && byte <= b'z') ||
-        (byte >= b'0' && byte <= b'9') || byte == b' ' || byte == b'_' || byte == b'-'
-}
-
-private func validHtmlFontFamily(family: String): Bool {
-    let quoted = family.size >= 2 && family.startsWith("\"") && family.endsWith("\"")
-    let name = if (quoted) { family[1..family.size - 1] } else { family }
-    if (name.isEmpty() || name.startsWith(" ") || name.endsWith(" ")) { return false }
-    for (byte in name.toArray()) {
-        if (!htmlFontNameByte(byte)) { return false }
-    }
-    true
-}
-
-// Only the space character may separate list items; other whitespace (tabs,
-// newlines) is rejected rather than silently trimmed into the stylesheet.
-private func trimSpaces(value: String): String {
-    var start: Int64 = 0
-    var end = value.size
-    while (start < end && value[start] == b' ') { start++ }
-    while (end > start && value[end - 1] == b' ') { end-- }
-    value[start..end]
-}
-
-public func isValidHtmlFontFamilyList(value: String): Bool {
-    if (value.isEmpty() || value.size > HTML_FONT_FAMILY_LIST_LIMIT) { return false }
-    for (part in value.split(",")) {
-        if (!validHtmlFontFamily(trimSpaces(part))) { return false }
-    }
-    true
-}
-
-// Appended last so it overrides the default stacks, while the reader's own
-// data-cj-font preference (higher specificity) still wins in the browser.
-internal func renderHtmlStylesheet(fonts: HtmlFontOptions): String {
-    let out = RenderTextBuffer()
-    out.append(HTML_TOKENS_STYLE)
-    out.append(HTML_LAYOUT_STYLE)
-    out.append(HTML_COMPONENT_STYLE)
-    if (let Some(sans) <- fonts.sans) { out.append(":root{--cj-font-sans:${sans};}\n") }
-    if (let Some(mono) <- fonts.mono) { out.append(":root{--cj-font-mono:${mono};}\n") }
-    out.toString()
-}
 
 public class HtmlDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "html" } }
@@ -80,67 +19,6 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
         let locale = documentation.readingLanguage.getOrDefault({ => "en" })
         renderDocumentationFormatsWithOptions(documentation, ["html"], locale: locale)
     }
-}
-
-internal func appendHtmlArtifacts(artifacts: RenderArtifactStore,
-    documentation: DocumentationSet, snapshot: DocumentationReadSnapshot, projection: RenderProjection,
-    locale!: String = "en", docVersion!: ?String = None,
-    htmlFonts!: HtmlFontOptions = HtmlFontOptions(), mountedApi!: ?LanguageArtifactStore = None): Unit {
-        let index = projection.visibleIndex
-        let typeLinkIndex = HtmlTypeLinkIndex(documentation, projection)
-        let projectedAssets = projectAssets(documentation, projection,
-            pages: selectedDocumentationPages(documentation, locale))
-        let assetLookup = buildAssetLookup(projectedAssets)
-        validateHtmlRouting(projection, projectedAssets)
-        let searchIndex = renderSearchIndex(snapshot)
-        let searchSignatures = renderSearchSignatureIndex(documentation, projection)
-        let _ = artifacts.addText("html/index.html", "text/html; charset=utf-8",
-            renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
-        let _ = artifacts.addText("html/search-index.json", "application/json", searchIndex)
-        let _ = artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
-            renderSearchIndexScript(searchIndex, searchSignatures))
-        let _ = artifacts.addText("html/sidebar-index.js", "text/javascript; charset=utf-8",
-            renderSidebarIndexScript(projection, locale))
-        let _ = artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8",
-            HTML_THEME_BOOTSTRAP_SCRIPT)
-        let _ = artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
-            HTML_READER_BUNDLE)
-        let _ = artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8",
-            HTML_SYMBOL_ALIAS_SCRIPT)
-        let _ = artifacts.addText("html/style.css", "text/css; charset=utf-8",
-            renderHtmlStylesheet(htmlFonts))
-        for (pkg in projection.packages) {
-            let canonical = projection.packageFile(pkg.source.moduleId, pkg.source.name)
-            let legacy = historicalPackagePagePath(pkg.source.moduleId, pkg.source.name)
-            for (file in [canonical, legacy]) {
-                let _ = artifacts.addText("html/" + file, "text/html; charset=utf-8",
-                    renderPackagePage(documentation, projection, pkg, file, locale: locale, docVersion: docVersion))
-            }
-        }
-        let routes = projection.apiRoutes.getOrThrow()
-        for (symbol in projection.visibleSymbols) {
-            let pageFile = routes.filePath(symbol.id).getOrThrow()
-            for (alias in [symbolPagePath(symbol), symbolReadablePagePath(symbol)]) {
-                let _ = artifacts.addText("html/" + alias, "text/html; charset=utf-8",
-                    renderSymbolAlias(symbol, locale, alias, pageFile, projection.unprefixedApiLocale))
-            }
-            let _ = artifacts.addText("html/" + pageFile, "text/html; charset=utf-8",
-                renderSymbolPage(documentation, projection, index, symbol, assetLookup,
-                    typeLinkIndex, locale: locale, docVersion: docVersion))
-            if (let Some(store) <- mountedApi) {
-                store.addMountedApiPage(pageFile, renderSymbolPage(documentation, projection, index, symbol,
-                    assetLookup, typeLinkIndex, locale: locale, docVersion: docVersion, mounted: true))
-            }
-        }
-        for (choice in routes.selectionPages) {
-            let _ = artifacts.addText("html/" + choice.file, "text/html; charset=utf-8",
-                renderApiSelectionPage(documentation, projection, choice, locale, docVersion))
-            if (let Some(store) <- mountedApi) {
-                store.addMountedApiPage(choice.file,
-                    renderApiSelectionPage(documentation, projection, choice, locale, docVersion, mounted: true))
-            }
-        }
-        appendAssetArtifacts(artifacts, projectedAssets, "html")
 }
 
 internal func appendApiSurfaceArtifacts(artifacts: RenderArtifactStore,
@@ -200,334 +78,6 @@ public class DocumentationCoverageRenderer <: DocumentationRenderer {
     }
 }
 
-internal func markdownPackagePagePath(moduleId: String, name: String): String {
-    "packages/package-${boundedHtmlSlug(routeKey(moduleId, name))}.md"
-}
-
-/**
- * Partition member declarations by their rendered section title, in the same
- * reading order the HTML member page uses, so both surfaces pick the same
- * heading depth for a role.
- */
-internal func memberSectionCategories(symbols: ArrayList<SymbolDoc>):
-    ArrayList<(String, ArrayList<SymbolDoc>)> {
-    let groups = HashMap<String, ArrayList<SymbolDoc>>()
-    for (symbol in symbols) {
-        let title = memberSectionTitle(symbol)
-        match (groups.get(title)) {
-            case Some(values) => values.add(symbol)
-            case None => groups[title] = ArrayList<SymbolDoc>([symbol])
-        }
-    }
-    let ordered = ArrayList<(String, ArrayList<SymbolDoc>)>()
-    for (title in MEMBER_SECTION_TITLES) {
-        match (groups.get(title)) {
-            case Some(values) => ordered.add((title, values))
-            case None => continue
-        }
-    }
-    ordered
-}
-
-internal func markdownSymbolPagePath(symbol: SymbolDoc): String {
-    "symbols/symbol-${boundedHtmlSlug(symbol.id)}.md"
-}
-
-internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
-    assetLookup: HashMap<String, String>, heading: String, locale: String,
-    pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
-    projection: RenderProjection): Unit {
-    let anchor = symbolAnchor(symbol)
-    out.append("<a id=\"${anchor}\"></a>\n")
-    out.append("${heading} ")
-    if (isContainerDeclaration(symbol)) { out.append("[") }
-    appendMarkdownCodeSpan(out, symbol.qualifiedName)
-    if (isContainerDeclaration(symbol)) {
-        out.append("](${markdownRelativeDestination(markdownSymbolPagePath(symbol), pagePath)})")
-    }
-    out.append("\n\n")
-    appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
-    appendDeclarationClassificationMarkdown(out, projection.catalog.classificationFor(symbol), locale)
-    appendMarkdownTypeDetails(out, symbol, pagePath, symbolIndex, locale)
-    match (symbol.documentation) {
-        case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
-            locale: locale, pagePath: pagePath, symbolIndex: Some(symbolIndex),
-            headingPrefix: heading + "#", headingBase: heading.size + 1,
-            headingAnchorPrefix: anchor)
-        case None => ()
-    }
-    out.append("- "); appendEscapedMarkdownText(out, "${symbol.kind} · ${symbol.visibility}")
-    out.append("\n- "); appendMarkdownCodeSpan(out,
-        "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
-    out.append("\n")
-    appendSourceReferenceEvidenceMarkdown(out,
-        projection.sourceReferences.project(symbol.moduleId, symbol.source), locale)
-    out.append("\n")
-}
-
-internal func nestedAssetLookup(assets: ArrayList<AssetDoc>): HashMap<String, String> {
-    let lookup = HashMap<String, String>()
-    for (asset in assets) {
-        let path = "../${assetOutputPath(asset)}"
-        lookup["id:${asset.id}"] = path
-        lookup["path:${asset.sourcePath}"] = path
-    }
-    lookup
-}
-
-private func appendMarkdownExposureSource(out: RenderTextBuffer,
-    sourceReferences: SourceReferenceProjection, moduleId: String,
-    source: SourceRange, locale: String): Unit {
-    match (sourceReferences.project(moduleId, source).url) {
-        case Some(url) =>
-            match (markdownLinkDestination(url)) {
-                case Some(destination) =>
-                    out.append(" · [")
-                    appendEscapedMarkdownText(out,
-                        label(locale, "Exposure source", "暴露位置"))
-                    out.append("](${destination})")
-                case None => ()
-            }
-        case None => ()
-    }
-}
-
-internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactStore,
-    documentation: DocumentationSet, locale: String): Unit {
-    validateTypedDocumentationSet(documentation)
-    let projection = RenderProjection(documentation)
-    let projectedAssets = projectAssets(documentation, projection,
-        pages: selectedDocumentationPages(documentation, locale))
-    let assetLookup = nestedAssetLookup(projectedAssets)
-    let topLevelByPackage = groupTopLevelByPackage(projection)
-    let membersByOwner = groupMembersByOwner(projection)
-    let index = RenderTextBuffer()
-    index.append("# "); appendEscapedMarkdownText(index, documentation.project.name)
-    index.append(" "); appendEscapedMarkdownText(index, label(locale, "API documentation", "API 文档"))
-    index.append("\n\n## ${label(locale, "Packages", "包")}\n\n")
-    for (pkg in projection.packages) {
-        index.append("- ["); appendEscapedMarkdownText(index, pkg.source.name)
-        index.append("](${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)})\n")
-    }
-    appendCapturedPageMarkdownNavigation(index, documentation, locale)
-    let _ = artifacts.addText("markdown/index.md", "text/markdown; charset=utf-8", index.toString())
-    for (pkg in projection.packages) {
-        let out = RenderTextBuffer()
-        out.append("# ${label(locale, "Package", "包")} "); appendMarkdownCodeSpan(out, pkg.source.name)
-        out.append("\n\n[${label(locale, "Home", "首页")}](../index.md)\n\n")
-        if (!pkg.source.reExports.isEmpty()) {
-            out.append("## ${label(locale, "Re-exports", "公开重导出")}\n\n")
-            for (reExport in pkg.source.reExports) {
-                if (reExport.kind == "packageAlias") {
-                    out.append("- "); appendMarkdownCodeSpan(out, reExport.alias.getOrThrow())
-                    if (reExport.state == "resolved") {
-                        out.append(" → ${label(locale, "package", "包")} ")
-                    } else { out.append(" · ") }
-                    appendMarkdownCodeSpan(out, reExport.targetPackageName)
-                    out.append(" · "); appendEscapedMarkdownText(out,
-                        "${reExport.kind} · ${reExport.state}")
-                    appendMarkdownExposureSource(out, projection.sourceReferences,
-                        pkg.source.moduleId, reExport.source, locale)
-                    out.append("\n")
-                    continue
-                }
-                if (reExport.bindings.isEmpty()) {
-                    out.append("- "); appendMarkdownCodeSpan(out, reExport.targetPackageName)
-                    out.append(" · "); appendEscapedMarkdownText(out,
-                        "${reExport.kind} · ${reExport.state}")
-                    appendMarkdownExposureSource(out, projection.sourceReferences,
-                        pkg.source.moduleId, reExport.source, locale)
-                    out.append("\n")
-                    continue
-                }
-                for (binding in reExport.bindings) {
-                    out.append("- "); appendMarkdownCodeSpan(out, binding.exposedName)
-                    out.append(" → ")
-                    var firstTarget = true
-                    for (targetId in binding.targetSymbolIds) {
-                        if (!firstTarget) { out.append(", ") }; firstTarget = false
-                        match (projection.visibleIndex.get(targetId)) {
-                            case Some(target) =>
-                                out.append("["); appendMarkdownCodeSpan(out, target.qualifiedName)
-                                let targetPath = if (isContainerDeclaration(target)) {
-                                    "../${markdownSymbolPagePath(target)}"
-                                } else {
-                                    "../${markdownPackagePagePath(target.moduleId, target.packageName)}"
-                                }
-                                out.append("](${targetPath})")
-                            case None => appendMarkdownCodeSpan(out, targetId)
-                        }
-                    }
-                    out.append(" · "); appendEscapedMarkdownText(out, reExport.state)
-                    appendMarkdownExposureSource(out, projection.sourceReferences,
-                        pkg.source.moduleId, reExport.source, locale)
-                    out.append("\n")
-                }
-            }
-            out.append("\n")
-        }
-        out.append("## ${label(locale, "Declarations", "声明")}\n\n")
-        match (topLevelByPackage.get(routeKey(pkg.source.moduleId, pkg.source.name))) {
-            case Some(symbols) =>
-                let roles = partitionDeclarationGroups(symbols, projection.catalog)
-                let grouped = hasGroupedDeclarations(roles)
-                if (grouped) {
-                    prepareDeclarationGroupAnchors(roles, pkg.source.moduleId,
-                        pkg.source.name, None)
-                    let kindAliases = HashSet<String>()
-                    for (symbol in symbols) {
-                        let (alias, _) = packageDeclarationHeading(
-                            packageDeclarationCategory(symbol.kind), locale)
-                        if (kindAliases.add(alias)) {
-                            out.append("<a id=\"${escapeHtml(alias)}\"></a>\n")
-                        }
-                    }
-                }
-                for (role in roles) {
-                    if (grouped) { appendGroupedDeclarationMarkdown(out, role, "###", locale) }
-                    let categories = packageDeclarationCategories(role.symbols)[0]
-                    let layout = declarationGroupLayout(categories.size, 3)
-                    let mixed = grouped && layout.showKindHeading
-                    let entryLevel = if (!grouped) { "###" }
-                        else if (layout.entryParentLevel == 3) { "####" } else { "#####" }
-                    let pagePath = markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)
-                    for (category in categories) {
-                        let kindId = packageDeclarationHeading(category[0], locale)[0]
-                        if (grouped) {
-                            let kindAnchor = role.kindPrefix + kindId
-                            out.append("<a id=\"${escapeHtml(kindAnchor)}\"></a>\n")
-                        }
-                        if (mixed) {
-                            // The kind heading is the parent of each
-                            // declaration heading, mirroring the HTML tree.
-                            out.append("#### ")
-                            appendEscapedMarkdownText(out,
-                                packageDeclarationHeading(category[0], locale)[1])
-                            out.append("\n\n")
-                        }
-                        for (symbol in category[1]) {
-                            if (!grouped && isContainerDeclaration(symbol)) {
-                                out.append("- ["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
-                                out.append("](../${markdownSymbolPagePath(symbol)})\n")
-                                continue
-                            }
-                            appendMarkdownSiteSymbol(out, symbol, assetLookup, entryLevel, locale,
-                                pagePath, projection.visibleIndex, projection)
-                            appendExternalDocumentationMarkdown(out, documentation, symbol, locale,
-                                pagePath, headingPrefix: entryLevel + "#")
-                        }
-                    }
-                }
-            case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
-        }
-        let _ = artifacts.addText("markdown/${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)}",
-            "text/markdown; charset=utf-8", out.toString())
-    }
-    for (symbol in projection.visibleSymbols where isContainerDeclaration(symbol)) {
-        let out = RenderTextBuffer()
-        out.append("<a id=\"${symbolAnchor(symbol)}\"></a>\n")
-        out.append("# "); appendMarkdownCodeSpan(out, symbol.qualifiedName)
-        out.append("\n\n[${label(locale, "Package", "包")} ")
-        appendMarkdownCodeSpan(out, symbol.packageName)
-        out.append("](../${markdownPackagePagePath(symbol.moduleId, symbol.packageName)})\n\n")
-        appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
-        appendDeclarationClassificationMarkdown(out,
-            projection.catalog.classificationFor(symbol), locale)
-        appendMarkdownTypeDetails(out, symbol, markdownSymbolPagePath(symbol),
-            projection.visibleIndex, locale)
-        match (symbol.documentation) {
-            case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
-                locale: locale, pagePath: markdownSymbolPagePath(symbol),
-                symbolIndex: Some(projection.visibleIndex), headingAnchorPrefix: symbolAnchor(symbol))
-            case None => ()
-        }
-        out.append("- ${label(locale, "Location", "位置")}: ")
-        appendMarkdownCodeSpan(out, "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
-        out.append("\n")
-        appendSourceReferenceEvidenceMarkdown(out,
-            projection.sourceReferences.project(symbol.moduleId, symbol.source), locale)
-        out.append("\n")
-        appendExternalDocumentationMarkdown(out, documentation, symbol, locale, markdownSymbolPagePath(symbol))
-        match (membersByOwner.get(symbol.id)) {
-            case Some(members) => if (!members.isEmpty()) {
-                out.append("## ${label(locale, "Members", "成员")}\n\n")
-                let roles = partitionDeclarationGroups(members, projection.catalog)
-                let grouped = hasGroupedDeclarations(roles)
-                if (grouped) {
-                    prepareDeclarationGroupAnchors(roles, symbol.moduleId, symbol.packageName,
-                        Some(symbol.id))
-                }
-                let kindIdsByGroup = HashMap<String, HashSet<String>>()
-                for (role in roles) {
-                    for (category in memberSectionCategories(role.symbols)) {
-                        let kindId = memberSectionAnchor(category[0])
-                        match (kindIdsByGroup.get(role.id)) {
-                            case Some(values) => let _ = values.add(kindId)
-                            case None =>
-                                let values = HashSet<String>()
-                                let _ = values.add(kindId)
-                                kindIdsByGroup[role.id] = values
-                        }
-                    }
-                }
-                let kindAliases = HashSet<String>()
-                for (role in roles) {
-                    if (grouped) { appendGroupedDeclarationMarkdown(out, role, "###", locale) }
-                    let categories = memberSectionCategories(role.symbols)
-                    let ownKindIds = HashSet<String>()
-                    for (category in categories) {
-                        let _ = ownKindIds.add(memberSectionAnchor(category[0]))
-                    }
-                    if (grouped && (role.isPrimary || role.id.isEmpty())) {
-                        match (kindIdsByGroup.get(role.id)) {
-                            case Some(values) =>
-                                for (title in MEMBER_SECTION_TITLES) {
-                                    let kindId = memberSectionAnchor(title)
-                                    if (!values.contains(kindId)) { continue }
-                                    if (role.isPrimary && !ownKindIds.contains(kindId)) {
-                                        out.append("<a id=\"${escapeHtml(role.kindPrefix + kindId)}\"></a>\n")
-                                    }
-                                    if (kindAliases.add(kindId)) {
-                                        out.append("<a id=\"${escapeHtml(kindId)}\"></a>\n")
-                                    }
-                                }
-                            case None => ()
-                        }
-                    }
-                    let layout = declarationGroupLayout(categories.size, 3)
-                    let mixed = grouped && layout.showKindHeading
-                    let entryLevel = if (!grouped) { "###" }
-                        else if (layout.entryParentLevel == 3) { "####" } else { "#####"}
-                    for (category in categories) {
-                        let kindId = memberSectionAnchor(category[0])
-                        if (grouped) {
-                            let kindAnchor = role.kindPrefix + kindId
-                            out.append("<a id=\"${escapeHtml(kindAnchor)}\"></a>\n")
-                        }
-                        if (mixed) {
-                            out.append("#### ")
-                            appendEscapedMarkdownText(out, memberSectionLabel(category[0], locale))
-                            out.append("\n\n")
-                        }
-                        for (member in category[1]) {
-                            appendMarkdownSiteSymbol(out, member, assetLookup,
-                                entryLevel, locale,
-                                markdownSymbolPagePath(symbol), projection.visibleIndex,
-                                projection)
-                            appendExternalDocumentationMarkdown(out, documentation, member, locale,
-                                markdownSymbolPagePath(symbol), headingPrefix: entryLevel + "#")
-                        }
-                    }
-                }
-            }
-            case None => ()
-        }
-        let _ = artifacts.addText("markdown/${markdownSymbolPagePath(symbol)}",
-            "text/markdown; charset=utf-8", out.toString())
-    }
-    appendAssetArtifacts(artifacts, projectedAssets, "markdown")
-}
-
 /**
  * Render every requested format into the caller's artifact store. This is the
  * single renderer chain: the public array entry points wrap it with an in-memory
@@ -566,7 +116,7 @@ internal func renderDocumentationLocaleInto(artifacts: RenderArtifactStore,
     // Search and Agent companions share one captured reader snapshot. HTML keeps
     // the source view: publication pruning removes asset and hidden-target context.
     let htmlProjection = htmlSnapshot.map({ snapshot =>
-        RenderProjection(localized, snapshotId: snapshot.snapshotId, apiRoutes: snapshot.projection.apiRoutes,
+        RenderProjection(localized, snapshotId: snapshot.snapshotId, apiRoutes: snapshot.htmlRoutes(),
             unprefixedApiLocale: if (mountedApi.isSome()) { locale } else { "" })
     })
     for (format in formats) {
@@ -574,8 +124,12 @@ internal func renderDocumentationLocaleInto(artifacts: RenderArtifactStore,
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => appendMarkdownSiteArtifacts(artifacts, localized, locale)
             case "html" => match (htmlSnapshot) {
-                case Some(context) => appendHtmlArtifacts(artifacts, localized, context, htmlProjection.getOrThrow(),
-                    locale: locale, docVersion: docVersion, htmlFonts: htmlFonts, mountedApi: mountedApi)
+                case Some(context) =>
+                    let mountPage = mountedApi.map({ store => { file: String, content: String => store.addMountedApiPage(file, content) } })
+                    appendHtmlArtifacts(artifacts, localized,
+                        { => buildDocumentationSearchProjection(context, searchStaticProfileName()) },
+                        htmlProjection.getOrThrow(),
+                        locale: locale, docVersion: docVersion, htmlFonts: htmlFonts, mountPage: mountPage)
                 case None => throw IllegalArgumentException(
                     "HTML rendering requires its captured reader snapshot")
             }

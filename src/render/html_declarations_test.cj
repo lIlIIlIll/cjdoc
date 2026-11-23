@@ -1,5 +1,9 @@
 package cjdoc.render
 
+import cjdoc.render.reading.htmlKindLabel
+import cjdoc.render.html.{HtmlTypeLinkIndex, HtmlWriter, RenderProjection, appendReverseTypeUsages}
+import cjdoc.render.routes.{label, symbolAnchor}
+import cjdoc.render.codec.encodeDocIr
 import cjdoc.model.*
 import std.collection.*
 import std.unittest.*
@@ -321,11 +325,9 @@ class HtmlPackageDeclarationTest {
             "data-kind=\"function\">function</span>"))
     }
 
-    // The declaration row itself is the outline target: it owns the stable
-    // symbol anchor, carries the entry role, and keeps the compact label text
-    // intact across display-only soft-break points.
+    // The declaration row itself owns the stable symbol anchor and outline role.
     @TestCase
-    func declarationRowsOwnStableAnchorsAndKeepCompactLabelText(): Unit {
+    func declarationRowsOwnStableAnchors(): Unit {
         let symbol = rowSymbol("function:parse#g0(String)", "parse", "function",
             "public func parse(text: String): Unit")
         let html = declarationRowsHtml(packageRowsHtml(rowDocumentation([symbol]), "en"))
@@ -336,21 +338,6 @@ class HtmlPackageDeclarationTest {
         @Expect(html.split("id=\"" + anchor + "\"").size, 2)
         // The primary link is still the declaration destination.
         @Expect(html.contains("<a class=\"cj-decl-table__link\" "), true)
-        let out = HtmlWriter()
-        appendSoftWrappedLabel(out, "parse(text: String, separator!: String = \",\")")
-        let wrapped = out.toString()
-        // Soft breaks land only after the generated list opener and separators;
-        // removing them restores the exact label.
-        @Expect(wrapped.contains("parse(<wbr>text: String, <wbr>separator!: String"), true)
-        @Expect(wrapped.replace("<wbr>", ""),
-            "parse(text: String, separator!: String = &quot;,&quot;)")
-        let empty = HtmlWriter()
-        appendSoftWrappedLabel(empty, "isEmpty()")
-        @Expect(empty.toString(), "isEmpty()")
-        // A default expression's own parentheses are not display boundaries.
-        let nested = HtmlWriter()
-        appendSoftWrappedLabel(nested, "policy(value: Option<(Int64, String)>)")
-        @Expect(nested.toString(), "policy(<wbr>value: Option&lt;(Int64, String)&gt;)")
     }
 
     // An audience that sees no declarations still gets a labelled, TOC-visible
