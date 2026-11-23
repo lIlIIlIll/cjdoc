@@ -30,11 +30,9 @@ private func searchFieldMatches(actual: String, actualFolded: String,
         case Some(value) => value
         case None => ""
     }
-    match (primitive) {
-        case "exact_string_equal" => actual == filter.value
-        case "ascii_fold_contains" => actualFolded.contains(filter.foldedValue)
-        case _ => false
-    }
+    // STS 1.2's Windows mock build rejects some String literal patterns here.
+    if (primitive == "exact_string_equal") { return actual == filter.value }
+    primitive == "ascii_fold_contains" && actualFolded.contains(filter.foldedValue)
 }
 
 protected class SearchFilterMatch {
@@ -90,31 +88,32 @@ private func searchContextFiltersPresent(filters: ArrayList<SearchFilter>): Bool
 private func searchEntryPropertyMatches(facts: SearchPreparedEntry,
     property: String, filter: SearchFilter): Bool {
     let entry = facts.entry
-    match (property) {
-        case "ownerName" =>
-            !entry.ownerName.isEmpty() &&
-                searchFieldMatches(entry.ownerName, facts.ownerNameFolded, filter)
-        case "ownerQualifiedName" =>
-            !entry.ownerQualifiedName.isEmpty() &&
-                searchFieldMatches(entry.ownerQualifiedName, facts.ownerQualifiedNameFolded, filter)
-        case "parameterTypes" =>
-            var index: Int64 = 0
-            while (index < entry.parameterTypes.size) {
-                if (searchFieldMatches(entry.parameterTypes[index],
-                    facts.parameterTypesFolded[index], filter)) { return true }
-                index++
-            }
-            false
-        case "returnType" =>
-            !entry.returnType.isEmpty() &&
-                searchFieldMatches(entry.returnType, facts.returnTypeFolded, filter)
-        case "returnCanonical" =>
-            !entry.returnCanonical.isEmpty() &&
-                searchFieldMatches(entry.returnCanonical, facts.returnCanonicalFolded, filter)
-        case "kind" =>
-            !entry.kind.isEmpty() && searchFieldMatches(entry.kind, facts.kindFolded, filter)
-        case _ => false
+    if (property == "ownerName") {
+        return !entry.ownerName.isEmpty() &&
+            searchFieldMatches(entry.ownerName, facts.ownerNameFolded, filter)
     }
+    if (property == "ownerQualifiedName") {
+        return !entry.ownerQualifiedName.isEmpty() &&
+            searchFieldMatches(entry.ownerQualifiedName, facts.ownerQualifiedNameFolded, filter)
+    }
+    if (property == "parameterTypes") {
+        var index: Int64 = 0
+        while (index < entry.parameterTypes.size) {
+            if (searchFieldMatches(entry.parameterTypes[index],
+                facts.parameterTypesFolded[index], filter)) { return true }
+            index++
+        }
+        return false
+    }
+    if (property == "returnType") {
+        return !entry.returnType.isEmpty() &&
+            searchFieldMatches(entry.returnType, facts.returnTypeFolded, filter)
+    }
+    if (property == "returnCanonical") {
+        return !entry.returnCanonical.isEmpty() &&
+            searchFieldMatches(entry.returnCanonical, facts.returnCanonicalFolded, filter)
+    }
+    property == "kind" && !entry.kind.isEmpty() && searchFieldMatches(entry.kind, facts.kindFolded, filter)
 }
 
 private func searchEntryFilterAdmits(facts: SearchPreparedEntry,

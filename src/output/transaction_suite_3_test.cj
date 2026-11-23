@@ -2,6 +2,7 @@ protected package cjdoc.output
 
 import cjdoc.digest.Sha256Digest
 import cjdoc.render.*
+import std.collection.ArrayList
 @When[os == "Linux"]
 import std.env.{getProcessId}
 import std.fs.*
@@ -121,6 +122,25 @@ class OutputTransactionSuite3 {
             @Expect(!exists(fixedPreparingDirectory(parent)))
             @Expect(!exists(fixedTransactionDirectory(parent)))
         } finally { let _ = removeIfExists(parent, recursive: true) }
+    }
+
+    @TestCase
+    func longUtf8ArtifactNamesFitWhenTheirSerializedManifestFits(): Unit {
+        let budget = OutputArtifactPathBudget()
+        let prefix = String.fromUtf8(Array<Byte>(205, repeat: b'a'))
+        let digest = Sha256Digest.digest("")
+        let files = ArrayList<OwnedOutputFile>()
+        for (index in 0..6500) {
+            let path = "目录/${prefix}-${index}.html"
+            let allowance = budget.check(path)
+            budget.commit(path, allowance)
+            files.add(OwnedOutputFile(path, digest))
+        }
+        let serialized = outputManifest(files.toArray())
+        let parsed = parseOwnedManifest(serialized)
+        @Expect(parsed.directories, ["目录"])
+        @Expect(parsed.files.size, 6500)
+        @Expect(parsed.files[6499].path, "目录/${prefix}-6499.html")
     }
 
     @TestCase

@@ -14,8 +14,9 @@ internal func prepareOutputTransaction(root: Path, nextFiles: Array<OwnedOutputF
     previousFiles: Array<PreviousOutputFile>, initialRootExisted: Bool,
     faults: TransactionFaultController, lock: OutputLockHandle): Path {
     let parent = root.parent
-    let manifestBytes = outputManifest(nextFiles).toArray()
-    if (manifestBytes.size > OUTPUT_MANIFEST_LIMIT) {
+    let manifestBytes = try {
+        outputManifest(nextFiles).toArray()
+    } catch (_: RenderResourceLimitException) {
         throw IllegalArgumentException("cjdoc output manifest exceeds limit")
     }
     ensureOutputLockCurrent(lock)

@@ -3,6 +3,7 @@ protected package cjdoc.output
 import cjdoc.filesystem.{ensureNoSymbolicLinkAncestors, ensureRegularNonSymlink}
 import cjdoc.digest.{Sha256Digest, StreamingSha256, isSha256}
 import cjdoc.render.*
+import cjdoc.render.foundation.RenderTextBuffer
 import std.collection.*
 import std.fs.*
 import std.sort.*
@@ -87,10 +88,25 @@ internal func ensureSafeExistingAncestors(root: Path, relativePath: String): Uni
     }
 }
 
+// JSON leaves UTF-8 unchanged except for ASCII controls, quote and backslash.
+private func manifestPathBytes(path: String): Int64 {
+    var size = path.size + 2
+    for (index in 0..path.size) {
+        let byte = path[index]
+        if (byte == b'"' || byte == b'\\' || byte == 0x08 || byte == 0x0C ||
+            byte == 0x0A || byte == 0x0D || byte == 0x09) {
+            size++
+        } else if (byte < 0x20) {
+            size += 5
+        }
+    }
+    size
+}
+
 internal func ownedDirectoriesForFiles(files: Array<OwnedOutputFile>): Array<String> {
     let directories = ArrayList<String>()
     let seen = HashSet<String>()
-    var manifestWorstCase: Int64 = 0
+    var directoryBytes: Int64 = 0
     for (file in files) {
         let parts = file.path.split("/")
         let prefix = StringBuilder()
@@ -100,12 +116,13 @@ internal func ownedDirectoriesForFiles(files: Array<OwnedOutputFile>): Array<Str
             prefix.append(parts[index])
             let directory = prefix.toString()
             if (seen.add(directory)) {
-                let pathBytes = directory.toArray().size
-                if (pathBytes > (OUTPUT_MANIFEST_LIMIT - manifestWorstCase - 32) / 6) {
+                let entryBytes = manifestPathBytes(directory) + "\n    ".size +
+                    (if (directories.isEmpty()) { 0 } else { 1 })
+                if (entryBytes > OUTPUT_MANIFEST_LIMIT - directoryBytes) {
                     throw IllegalArgumentException(
                         "owned output directories cannot fit the output manifest limit")
                 }
-                manifestWorstCase += pathBytes * 6 + 32
+                directoryBytes += entryBytes
                 if (directories.size >= OUTPUT_ENTRY_LIMIT) {
                     throw IllegalArgumentException(
                         "owned output directories exceed ${OUTPUT_ENTRY_LIMIT} entries")
@@ -232,7 +249,7 @@ internal func parseOwnedFileEntries(entries: JsonArray, description: String): Ar
 internal class OutputArtifactPathBudget {
     private let ordinals = HashMap<String, Int64>()
     private let paths = ArrayList<String>()
-    private var manifestWorstCase: Int64 = 256
+    private var manifestFileBytes: Int64 = 0
     private var treeWorstCaseEntries: Int64 = 1
 
     func check(path: String): (Int64, Int64) {
@@ -242,21 +259,24 @@ internal class OutputArtifactPathBudget {
         if (!isSafeOutputPath(path) || ordinals.contains(path)) {
             throw IllegalArgumentException("duplicate or unsafe render artifact '${path}'")
         }
-        let pathBytes = path.size
-        if (pathBytes > (OUTPUT_MANIFEST_LIMIT - manifestWorstCase - 128) / 6) {
+        // Charge the actual UTF-8/JSON file row, including its fixed SHA-256.
+        // The writer separately bounds the complete manifest with its directories.
+        let entryBytes = manifestPathBytes(path) + "\n    {\"path\": ".size +
+            ", \"sha256\": \"".size + 64 + "\"}".size + (if (paths.isEmpty()) { 0 } else { 1 })
+        if (entryBytes > OUTPUT_MANIFEST_LIMIT - manifestFileBytes) {
             throw IllegalArgumentException("render artifacts cannot fit the output manifest limit")
         }
         let pathEntries = path.split("/").size
         if (pathEntries > OUTPUT_ENTRY_LIMIT - treeWorstCaseEntries) {
             throw IllegalArgumentException("render artifacts exceed staged tree entry limit")
         }
-        (pathBytes * 6 + 128, pathEntries)
+        (entryBytes, pathEntries)
     }
 
     func commit(path: String, allowance: (Int64, Int64)): Unit {
         ordinals[path] = paths.size
         paths.add(path)
-        manifestWorstCase += allowance[0]
+        manifestFileBytes += allowance[0]
         treeWorstCaseEntries += allowance[1]
     }
 
@@ -285,7 +305,7 @@ internal func ensurePlannedTreeEntryBudget(paths: Array<String>, description: St
 
 internal func outputManifest(files: Array<OwnedOutputFile>): String {
     let directories = ownedDirectoriesForFiles(files)
-    let out = StringBuilder()
+    let out = RenderTextBuffer(limit: OUTPUT_MANIFEST_LIMIT)
     out.append("{\n  \"schemaVersion\": \"${OUTPUT_MANIFEST_SCHEMA}\",\n")
     out.append("  \"digestAlgorithm\": \"${OUTPUT_DIGEST_ALGORITHM}\",\n")
     out.append("  \"directories\": [")
