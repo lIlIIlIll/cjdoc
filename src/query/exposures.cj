@@ -16,7 +16,7 @@ private func queryCapturedSourceRange(node: JsonNode): query_model.SourceRange {
 }
 
 
-protected func queryCapturedImportContexts(raw: JsonObject,
+internal func queryCapturedImportContexts(raw: JsonObject,
     snapshot: query_render.DocumentationReadSnapshot): JsonArray {
     let contexts = JsonNode.array()
     let packages = raw.get("packages").getOrThrow().asArray()
@@ -46,7 +46,7 @@ protected func queryCapturedImportContexts(raw: JsonObject,
     contexts
 }
 
-protected func queryBuildExposureIndex(document: QueryDocument): Unit {
+internal func queryBuildExposureIndex(document: QueryDocument): Unit {
     let contexts = document.input.importContexts
     for (index in 0..contexts.size()) {
         let context = contexts[index].asObject()
@@ -83,7 +83,7 @@ protected func queryBuildExposureIndex(document: QueryDocument): Unit {
     }
 }
 
-protected func queryCapturedRelations(input: QuerySnapshotInput,
+internal func queryCapturedRelations(input: QuerySnapshotInput,
     symbol: query_model.SymbolDoc): JsonObject {
     let captured = input.symbolNodes[symbol.id]
     let value = JsonNode.object()

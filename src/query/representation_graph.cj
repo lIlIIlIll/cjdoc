@@ -8,7 +8,7 @@ import yjson.*
 
 // A hash-valid package must also describe exactly the captured publication's
 // representation graph. Arbitrary or missing routes cannot become citations.
-protected func validateQueryRepresentationGraph(manifest: JsonObject,
+internal func validateQueryRepresentationGraph(manifest: JsonObject,
     snapshot: query_render.DocumentationReadSnapshot, resources: HashSet<String>): Unit {
     let expected = JsonNode.parse(agent_render.agentRepresentationMappings(snapshot)).asArray()
     let actual = manifest.get("representations").getOrThrow()

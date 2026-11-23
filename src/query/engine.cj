@@ -127,7 +127,7 @@ protected class QueryExecution {
  * Canonical catalog identity: a digest over each source identity and its frozen
  * content, in load order. It names content, never a host path.
  */
-protected func documentationQueryCatalogId(inputs: ArrayList<QuerySnapshotInput>): String {
+internal func documentationQueryCatalogId(inputs: ArrayList<QuerySnapshotInput>): String {
     let out = StringBuilder()
     out.append("cjdoc.query-catalog/1")
     for (input in inputs) {
@@ -299,7 +299,7 @@ protected class QueryDocument {
     }
 }
 
-protected func queryAppendEdge(index: HashMap<String, ArrayList<QueryEdge>>, key: String,
+internal func queryAppendEdge(index: HashMap<String, ArrayList<QueryEdge>>, key: String,
     edge: QueryEdge): Unit {
     match (index.get(key)) {
         case Some(values) => values.add(edge)
@@ -366,7 +366,7 @@ private func queryBuildRelationshipIndex(document: QueryDocument): Unit {
     }
 }
 
-protected func queryRelationshipReason(state: String): String {
+internal func queryRelationshipReason(state: String): String {
     match (state) {
         case "resolved" => "captured resolved relationship"
         case "partial" => "captured partially resolved relationship"
@@ -377,7 +377,7 @@ protected func queryRelationshipReason(state: String): String {
 }
 
 /** Snapshot selection; narrowing a scope never widens it. */
-protected func querySelectSnapshots(inputs: ArrayList<QuerySnapshotInput>,
+internal func querySelectSnapshots(inputs: ArrayList<QuerySnapshotInput>,
     request: JsonObject): ArrayList<QuerySnapshotInput> {
     let snapshotId = queryString(request, "snapshotId")
     let result = ArrayList<QuerySnapshotInput>()
@@ -415,7 +415,7 @@ private func querySelectContextSnapshots(inputs: ArrayList<QuerySnapshotInput>,
     result
 }
 
-protected func queryFailureResult(request: JsonObject, inputs: ArrayList<QuerySnapshotInput>,
+internal func queryFailureResult(request: JsonObject, inputs: ArrayList<QuerySnapshotInput>,
     catalogId: String, status: String, code: String, message: String): String {
     let error = queryErrorNode(code, message, Option<Int64>.None, Option<Int64>.None)
     let text = "Documentation query failed: ${status}. ${message}"

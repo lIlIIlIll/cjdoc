@@ -55,7 +55,7 @@ protected class ExtensionIdentityPlan {
 // semantic member identity, and source-order ordinal among equivalent blocks
 // in that file. It deliberately excludes source coordinates, so inserting
 // blank lines does not perturb SymbolIds.
-protected func extensionIdentityPlan(symbols: ArrayList<SymbolDoc>, topology: IdentityTopology,
+internal func extensionIdentityPlan(symbols: ArrayList<SymbolDoc>, topology: IdentityTopology,
     genericScopes: Array<IdentityGenericScope>, semanticIdentityScopes: Array<String>,
     emptyBlockDiscriminators: Array<String>): ExtensionIdentityPlan {
     let baseNames = Array<String>(symbols.size, repeat: "")
@@ -108,7 +108,7 @@ protected func extensionIdentityPlan(symbols: ArrayList<SymbolDoc>, topology: Id
     ExtensionIdentityPlan(baseNames, blockDiscriminators, ownerNeedsDiscriminator)
 }
 
-protected func finalizeIdentities(symbols: ArrayList<SymbolDoc>, topology: IdentityTopology): Unit {
+internal func finalizeIdentities(symbols: ArrayList<SymbolDoc>, topology: IdentityTopology): Unit {
     topology.apply(symbols)
     let genericScopes = identityGenericScopes(symbols, topology)
     let emptyBlockDiscriminators = Array<String>(symbols.size, repeat: "")
@@ -174,7 +174,7 @@ protected func finalizeIdentities(symbols: ArrayList<SymbolDoc>, topology: Ident
     }
 }
 
-protected func finalizeIdentities(symbols: ArrayList<SymbolDoc>): Unit {
+internal func finalizeIdentities(symbols: ArrayList<SymbolDoc>): Unit {
     finalizeIdentities(symbols, identityTopologyForSymbols(symbols))
 }
 
@@ -182,7 +182,7 @@ protected func finalizeIdentities(symbols: ArrayList<SymbolDoc>): Unit {
 // truth. Only a resolved canonical type can replace the source spelling in a
 // SymbolId; partial/unavailable/ambiguous provider spellings retain source
 // overload identity.
-protected func copySemanticIdentityToDoc(source: SourceDeclaration, semantic: SemanticDeclaration): SymbolDoc {
+internal func copySemanticIdentityToDoc(source: SourceDeclaration, semantic: SemanticDeclaration): SymbolDoc {
     let symbol = SymbolDoc(source.kind, source.name, source.packageName, source.moduleId, semantic.visibility,
         source.source, source.sourceSignature, isContainer: source.isContainer, semanticState: semantic.state,
         semanticProvider: semantic.provider, canonicalSignature: semantic.canonicalSignature,
@@ -212,7 +212,7 @@ protected func copySemanticIdentityToDoc(source: SourceDeclaration, semantic: Se
     symbol
 }
 
-protected func identityProjection(sourceDeclarations: ArrayList<SourceDeclaration>,
+internal func identityProjection(sourceDeclarations: ArrayList<SourceDeclaration>,
     semanticBySource: HashMap<String, SemanticDeclaration>, provider: String, useProviderSemantics: Bool,
     topology: IdentityTopology): ArrayList<SymbolDoc> {
     let projected = ArrayList<SymbolDoc>()

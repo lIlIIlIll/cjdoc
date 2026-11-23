@@ -398,7 +398,7 @@ private func resolutionResultText(request: JsonObject, page: QueryResolutionPage
     text.toString()
 }
 
-protected func resolveDocumentationQuery(inputs: ArrayList<QuerySnapshotInput>, request: JsonObject,
+internal func resolveDocumentationQuery(inputs: ArrayList<QuerySnapshotInput>, request: JsonObject,
     catalogId: String): JsonObject {
     let (contexts, contextCaptured) = resolveDependencyContexts(inputs, request)
     let contextRequested = resolveContextRequested(request)

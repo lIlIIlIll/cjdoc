@@ -31,16 +31,43 @@ protected class StreamingSha256 {
     private var pendingSize: Int64 = 0
     private var inputSize: Int64 = 0
 
+    internal static func digestText(text: String): String {
+        let digest = StreamingSha256()
+        digest.inputSize = text.size
+        let fullBytes = text.size - text.size % 64
+        var start: Int64 = 0
+        while (start < fullBytes) {
+            for (index in 0..16) {
+                let offset = start + index * 4
+                digest.words[index] = (UInt32(text[offset]) << 24) |
+                    (UInt32(text[offset + 1]) << 16) |
+                    (UInt32(text[offset + 2]) << 8) | UInt32(text[offset + 3])
+            }
+            digest.compressWords()
+            start += 64
+        }
+        digest.pendingSize = text.size - fullBytes
+        for (index in 0..digest.pendingSize) { digest.pending[index] = text[fullBytes + index] }
+        digest.finish()
+    }
+
     protected func update(buffer: Array<Byte>, count: Int64): Unit {
         if (count < 0 || count > buffer.size) {
             throw IllegalArgumentException("invalid streaming digest input length")
         }
         inputSize += count
-        for (index in 0..count) {
-            pending[pendingSize] = buffer[index]
+        var offset: Int64 = 0
+        while (offset < count) {
+            if (pendingSize == 0 && count - offset >= 64) {
+                processBlock(buffer, offset)
+                offset += 64
+                continue
+            }
+            pending[pendingSize] = buffer[offset]
+            offset++
             pendingSize++
             if (pendingSize == 64) {
-                processBlock()
+                processBlock(pending, 0)
                 pendingSize = 0
             }
         }
@@ -52,7 +79,7 @@ protected class StreamingSha256 {
         pendingSize++
         if (pendingSize > 56) {
             while (pendingSize < 64) { pending[pendingSize] = 0; pendingSize++ }
-            processBlock()
+            processBlock(pending, 0)
             pendingSize = 0
         }
         while (pendingSize < 56) { pending[pendingSize] = 0; pendingSize++ }
@@ -62,18 +89,22 @@ protected class StreamingSha256 {
             pendingSize++
             shift -= 8
         }
-        processBlock()
+        processBlock(pending, 0)
         pendingSize = 0
         shaHex([h0, h1, h2, h3, h4, h5, h6, h7])
     }
 
-    private func processBlock(): Unit {
+    private func processBlock(input: Array<Byte>, start: Int64): Unit {
         for (index in 0..16) {
-            let offset = index * 4
-            words[index] = (UInt32(pending[offset]) << 24) |
-                (UInt32(pending[offset + 1]) << 16) |
-                (UInt32(pending[offset + 2]) << 8) | UInt32(pending[offset + 3])
+            let offset = start + index * 4
+            words[index] = (UInt32(input[offset]) << 24) |
+                (UInt32(input[offset + 1]) << 16) |
+                (UInt32(input[offset + 2]) << 8) | UInt32(input[offset + 3])
         }
+        compressWords()
+    }
+
+    private func compressWords(): Unit {
         for (index in 16..64) {
             let s0 = shaRotateRight(words[index - 15], 7) ^
                 shaRotateRight(words[index - 15], 18) ^ (words[index - 15] >> 3)

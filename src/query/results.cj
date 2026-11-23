@@ -21,26 +21,26 @@ protected let QUERY_SELECTED_SECTIONS: Array<String> = ["signature", "parameters
     "contracts", "examples", "description", "relations", "source", "diagnostics",
     "validation", "diff"]
 
-protected func queryClamp(value: Int64, minimum: Int64, maximum: Int64): Int64 {
+internal func queryClamp(value: Int64, minimum: Int64, maximum: Int64): Int64 {
     if (value < minimum) { return minimum }
     if (value > maximum) { return maximum }
     value
 }
 
 /** A detached copy of one captured identity object, encoded by its canonical codec. */
-protected func queryDocumentSetNode(identity: query_model.DocumentSetIdentity): JsonObject {
+internal func queryDocumentSetNode(identity: query_model.DocumentSetIdentity): JsonObject {
     let out = StringBuilder()
     render_codec.appendDocumentSetIdentity(out, identity)
     querySnapshotJson(out.toString())
 }
 
-protected func queryDependencyNode(dependency: query_model.DependencyInstance): JsonObject {
+internal func queryDependencyNode(dependency: query_model.DependencyInstance): JsonObject {
     let out = StringBuilder()
     render_codec.appendDependencyInstance(out, dependency)
     querySnapshotJson(out.toString())
 }
 
-protected func queryModuleFor(input: QuerySnapshotInput,
+internal func queryModuleFor(input: QuerySnapshotInput,
     moduleId: String): ?query_model.ModuleDoc {
     input.snapshot.moduleFor(moduleId)
 }
@@ -53,13 +53,13 @@ protected func queryModuleFor(input: QuerySnapshotInput,
  * several captured instances is reported as ambiguous instead of choosing one by
  * traversal order.
  */
-protected func queryDependencyState(input: QuerySnapshotInput,
+internal func queryDependencyState(input: QuerySnapshotInput,
     moduleId: String): (?query_model.DependencyInstance, String) {
     input.snapshot.moduleDependencyState(moduleId)
 }
 
 /** Captured document-set identity for a declaration's producer module. */
-protected func queryDocumentSetFor(input: QuerySnapshotInput,
+internal func queryDocumentSetFor(input: QuerySnapshotInput,
     moduleId: String): ?query_model.DocumentSetIdentity {
     match (input.scopeForModule(moduleId)) {
         case Some(scope) => Some(scope.original)
@@ -67,7 +67,7 @@ protected func queryDocumentSetFor(input: QuerySnapshotInput,
     }
 }
 
-protected func queryIdentityNode(input: QuerySnapshotInput, symbolId: ?String,
+internal func queryIdentityNode(input: QuerySnapshotInput, symbolId: ?String,
     pageId: ?String, ownerId!: ?String = None): JsonObject {
     let identity = JsonNode.object()
     identity.put("snapshotId", JsonNode.string(input.snapshot.snapshotId))
@@ -123,31 +123,14 @@ protected func queryIdentityNode(input: QuerySnapshotInput, symbolId: ?String,
 }
 
 /** The same portable key the published symbol inventory uses. */
-protected func queryPortableSymbolKey(symbol: query_model.SymbolDoc): String {
+internal func queryPortableSymbolKey(symbol: query_model.SymbolDoc): String {
     let parameters = ArrayList<String>()
     for (parameter in symbol.parameters) { parameters.add(parameter.typeRef.spelling) }
     query_model.portableSymbolKey(symbol.packageName, symbol.qualifiedName, symbol.kind,
         symbol.genericParameters.size, parameterTypes: parameters.toArray())
 }
 
-/** A captured source location without inventing a repository URL. */
-protected func querySourceRangeNode(source: query_model.SourceRange): JsonObject {
-    let node = JsonNode.object()
-    node.put("path", JsonNode.string(source.path))
-    let start = JsonNode.object()
-    start.put("line", JsonNode.int64(source.start.line))
-    start.put("column", JsonNode.int64(source.start.column))
-    start.put("byteOffset", JsonNode.int64(source.start.byteOffset))
-    let end = JsonNode.object()
-    end.put("line", JsonNode.int64(source.end.line))
-    end.put("column", JsonNode.int64(source.end.column))
-    end.put("byteOffset", JsonNode.int64(source.end.byteOffset))
-    node.put("start", start)
-    node.put("end", end)
-    node
-}
-
-protected func querySourceNode(snapshotId: String, kind: String, path: ?String,
+internal func querySourceNode(snapshotId: String, kind: String, path: ?String,
     url: ?String, state: String): JsonObject {
     let node = JsonNode.object()
     node.put("snapshotId", JsonNode.string(snapshotId))
@@ -158,7 +141,7 @@ protected func querySourceNode(snapshotId: String, kind: String, path: ?String,
     node
 }
 
-protected func queryReportNode(kind: String, state: String, snapshotId: String,
+internal func queryReportNode(kind: String, state: String, snapshotId: String,
     report: ?JsonObject): JsonObject {
     let node = JsonNode.object()
     node.put("kind", JsonNode.string(kind))
@@ -185,7 +168,7 @@ protected func queryReportNode(kind: String, state: String, snapshotId: String,
  * A report is evidence only when it was attached to this frozen snapshot; a
  * code block or a diagnostic never becomes a passing receipt here.
  */
-protected func queryEvidenceReport(input: QuerySnapshotInput, kind: String): JsonObject {
+internal func queryEvidenceReport(input: QuerySnapshotInput, kind: String): JsonObject {
     for (index in 0..input.attachments.size()) {
         let node = input.attachments[index]
         if (node.kind() != JsonKind.Object) { continue }
@@ -221,13 +204,13 @@ protected func queryOmission(section: String, reason: String, next: ?JsonNode): 
     node
 }
 
-protected func queryEmptyFacetsNode(): JsonObject {
+internal func queryEmptyFacetsNode(): JsonObject {
     let facets = JsonNode.object()
     facets.put("tags", JsonNode.array())
     facets
 }
 
-protected func queryResultNode(items: ArrayList<JsonObject>, relations: ArrayList<JsonObject>,
+internal func queryResultNode(items: ArrayList<JsonObject>, relations: ArrayList<JsonObject>,
     reports: ArrayList<JsonObject>, facets: JsonObject): JsonObject {
     let node = JsonNode.object()
     let itemArray = JsonNode.array()
@@ -243,7 +226,7 @@ protected func queryResultNode(items: ArrayList<JsonObject>, relations: ArrayLis
     node
 }
 
-protected func querySnapshotNode(input: QuerySnapshotInput): JsonObject {
+internal func querySnapshotNode(input: QuerySnapshotInput): JsonObject {
     let node = JsonNode.object()
     node.put("snapshotId", JsonNode.string(input.snapshot.snapshotId))
     node.put("sourceSnapshotId", JsonNode.string(input.sourceSnapshotId))
@@ -256,7 +239,7 @@ protected func querySnapshotNode(input: QuerySnapshotInput): JsonObject {
     node
 }
 
-protected func queryScopeNode(request: JsonObject, inputs: ArrayList<QuerySnapshotInput>,
+internal func queryScopeNode(request: JsonObject, inputs: ArrayList<QuerySnapshotInput>,
     catalogId: String): JsonObject {
     let scope = JsonNode.object()
     let requested = JsonNode.object()
@@ -273,7 +256,7 @@ protected func queryScopeNode(request: JsonObject, inputs: ArrayList<QuerySnapsh
     scope
 }
 
-protected func queryApiCollectionNode(inputs: ArrayList<QuerySnapshotInput>): JsonArray {
+internal func queryApiCollectionNode(inputs: ArrayList<QuerySnapshotInput>): JsonArray {
     let values = JsonNode.array()
     let seen = HashSet<String>()
     for (input in inputs) {
@@ -303,7 +286,7 @@ protected func queryErrorNode(code: String, message: String, requiredBytes: ?Int
     node
 }
 
-protected func queryRetryNode(maxBytes: Int64, detail: String): JsonObject {
+internal func queryRetryNode(maxBytes: Int64, detail: String): JsonObject {
     let node = JsonNode.object()
     node.put("maxBytes", JsonNode.int64(maxBytes))
     node.put("detail", JsonNode.string(detail))
@@ -317,7 +300,7 @@ protected func queryRetryNode(maxBytes: Int64, detail: String): JsonObject {
  * readable text; the builder never re-derives evidence, so the CLI, MCP and the
  * parent's resolve path cannot disagree about the same query.
  */
-protected func newDocumentationQueryResponse(request: JsonObject, status: String,
+internal func newDocumentationQueryResponse(request: JsonObject, status: String,
     inputs: ArrayList<QuerySnapshotInput>, catalogId: String,
     selection!: ?JsonObject = None, result!: ?JsonObject = None,
     completeness!: ?JsonObject = None, text!: String = "",
@@ -354,7 +337,7 @@ protected func newDocumentationQueryResponse(request: JsonObject, status: String
     envelope
 }
 
-protected func queryDefaultCompleteness(inputs: ArrayList<QuerySnapshotInput>): JsonObject {
+internal func queryDefaultCompleteness(inputs: ArrayList<QuerySnapshotInput>): JsonObject {
     let completeness = JsonNode.object()
     completeness.put("apiCollection", queryApiCollectionNode(inputs))
     let query = JsonNode.object()
@@ -379,7 +362,7 @@ protected func queryDefaultCompleteness(inputs: ArrayList<QuerySnapshotInput>): 
     completeness
 }
 
-protected func queryCompletenessNode(inputs: ArrayList<QuerySnapshotInput>, outcome: QueryOutcome): JsonObject {
+internal func queryCompletenessNode(inputs: ArrayList<QuerySnapshotInput>, outcome: QueryOutcome): JsonObject {
     let completeness = JsonNode.object()
     completeness.put("apiCollection", queryApiCollectionNode(inputs))
     let query = JsonNode.object()
@@ -422,7 +405,7 @@ protected func queryCompletenessNode(inputs: ArrayList<QuerySnapshotInput>, outc
  * limit that applied and whether any entry was truncated. Absent coverage is
  * null, so a caller never reads a missing projection as complete.
  */
-protected func queryCoverageNode(coverage: ?search_engine.SearchCoverage): JsonNode {
+internal func queryCoverageNode(coverage: ?search_engine.SearchCoverage): JsonNode {
     match (coverage) {
         case Some(value) =>
             let node = JsonNode.object()
@@ -439,7 +422,7 @@ protected func queryCoverageNode(coverage: ?search_engine.SearchCoverage): JsonN
     }
 }
 
-protected func querySourcesNode(values: ArrayList<JsonObject>): JsonArray {
+internal func querySourcesNode(values: ArrayList<JsonObject>): JsonArray {
     let array = JsonNode.array()
     for (value in values) { array.add(value) }
     array
@@ -493,7 +476,7 @@ protected class QueryOutcome {
     }
 }
 
-protected func querySectionList(values: Array<String>): ArrayList<String> {
+internal func querySectionList(values: Array<String>): ArrayList<String> {
     ArrayList<String>(values)
 }
 

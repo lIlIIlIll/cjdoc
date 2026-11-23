@@ -10,7 +10,7 @@ protected let MAX_REEXPORTS: Int64 = 100000
 protected let MAX_REEXPORT_BINDINGS: Int64 = 100000
 protected let MAX_REEXPORT_LOOKUP_WORK: Int64 = 1000000
 
-protected func reExportPackageKey(moduleId: String, packageName: String): String {
+internal func reExportPackageKey(moduleId: String, packageName: String): String {
     "${moduleId}\n${packageName}"
 }
 
@@ -193,7 +193,7 @@ protected class PendingReExport {
     }
 }
 
-protected func pendingReExport(index: ReExportLookupIndex, source: SourceReExport): PendingReExport {
+internal func pendingReExport(index: ReExportLookupIndex, source: SourceReExport): PendingReExport {
     let prefix = joinedImportPath(source.prefixPaths)
     if (source.kind != "alias") {
         let selected = index.select(source.moduleId, prefix, source.organization)
@@ -228,7 +228,7 @@ protected class ReExportBindingResult {
     var missing = false
 }
 
-protected func addResolvedBinding(result: ReExportBindingResult, surface: ReExportPackageSurface,
+internal func addResolvedBinding(result: ReExportBindingResult, surface: ReExportPackageSurface,
     sourceName: String, exposedName: String): Unit {
     match (surface.names.get(sourceName)) {
         case Some(ids) => result.bindings.add(ReExportBinding(exposedName, targetSymbolIds: ids.toArray()))
@@ -236,7 +236,7 @@ protected func addResolvedBinding(result: ReExportBindingResult, surface: ReExpo
     }
 }
 
-protected func bindingsForPending(pending: PendingReExport,
+internal func bindingsForPending(pending: PendingReExport,
     surfaces: HashMap<String, ReExportPackageSurface>): ReExportBindingResult {
     let result = ReExportBindingResult()
     let target = match (pending.targetPackage) {
@@ -271,14 +271,14 @@ protected func bindingsForPending(pending: PendingReExport,
     result
 }
 
-protected func reExportSourceLess(left: SourceReExport, right: SourceReExport): Bool {
+internal func reExportSourceLess(left: SourceReExport, right: SourceReExport): Bool {
     if (left.source.path != right.source.path) { return left.source.path < right.source.path }
     if (left.normalizedSpec != right.normalizedSpec) { return left.normalizedSpec < right.normalizedSpec }
     if (left.source.startLine != right.source.startLine) { return left.source.startLine < right.source.startLine }
     left.source.startColumn < right.source.startColumn
 }
 
-protected func appendReExportDiagnostic(documentation: DocumentationSet, pending: PendingReExport): Unit {
+internal func appendReExportDiagnostic(documentation: DocumentationSet, pending: PendingReExport): Unit {
     match (pending.state) {
         case "ambiguous" => documentation.diagnostics.add(Diagnostic("warning", "CJDOC1030",
             "public import '${pending.source.normalizedSpec}' is ambiguous or collides with an existing exposure",
@@ -290,7 +290,7 @@ protected func appendReExportDiagnostic(documentation: DocumentationSet, pending
     }
 }
 
-protected func addReExportWatcher(watchers: HashMap<String, ArrayList<Int64>>,
+internal func addReExportWatcher(watchers: HashMap<String, ArrayList<Int64>>,
     key: String, index: Int64): Unit {
     match (watchers.get(key)) {
         case Some(values) => if (!values.contains(index)) { values.add(index) }
@@ -298,11 +298,11 @@ protected func addReExportWatcher(watchers: HashMap<String, ArrayList<Int64>>,
     }
 }
 
-protected func enqueueReExport(queue: ArrayList<Int64>, queued: HashSet<Int64>, index: Int64): Unit {
+internal func enqueueReExport(queue: ArrayList<Int64>, queued: HashSet<Int64>, index: Int64): Unit {
     if (queued.add(index)) { queue.add(index) }
 }
 
-protected func enqueueReExportWatchers(queue: ArrayList<Int64>, queued: HashSet<Int64>,
+internal func enqueueReExportWatchers(queue: ArrayList<Int64>, queued: HashSet<Int64>,
     watchers: HashMap<String, ArrayList<Int64>>, key: String): Unit {
     match (watchers.get(key)) {
         case Some(values) => for (index in values) { enqueueReExport(queue, queued, index) }
@@ -310,7 +310,7 @@ protected func enqueueReExportWatchers(queue: ArrayList<Int64>, queued: HashSet<
     }
 }
 
-protected func resolveReExports(documentation: DocumentationSet, source: SourceSnapshot): Unit {
+internal func resolveReExports(documentation: DocumentationSet, source: SourceSnapshot): Unit {
     if (source.reExports.size > MAX_REEXPORTS) {
         documentation.diagnostics.add(Diagnostic("warning", "CJDOC1031",
             "public import resolution exceeded the configured work budget"))

@@ -34,7 +34,7 @@ protected class IdentityTopology {
     }
 }
 
-protected func identityTopologyForSymbols(symbols: ArrayList<SymbolDoc>): IdentityTopology {
+internal func identityTopologyForSymbols(symbols: ArrayList<SymbolDoc>): IdentityTopology {
     let ownerIndices = Array<Int64>(symbols.size, repeat: -1)
     var index: Int64 = 0
     while (index < symbols.size) {
@@ -44,7 +44,7 @@ protected func identityTopologyForSymbols(symbols: ArrayList<SymbolDoc>): Identi
     IdentityTopology(ownerIndices)
 }
 
-protected func identityTopologyForSources(sourceDeclarations: ArrayList<SourceDeclaration>): IdentityTopology {
+internal func identityTopologyForSources(sourceDeclarations: ArrayList<SourceDeclaration>): IdentityTopology {
     let sourceIndexByKey = HashMap<String, Int64>()
     var index: Int64 = 0
     while (index < sourceDeclarations.size) {
@@ -100,7 +100,7 @@ protected class IdentityGenericScope {
     }
 }
 
-protected func identityGenericScopes(symbols: ArrayList<SymbolDoc>, topology: IdentityTopology): Array<IdentityGenericScope> {
+internal func identityGenericScopes(symbols: ArrayList<SymbolDoc>, topology: IdentityTopology): Array<IdentityGenericScope> {
     let root = IdentityGenericScope(None, [])
     let scopes = Array<IdentityGenericScope>(symbols.size, repeat: root)
     let computed = Array<Bool>(symbols.size, repeat: false)
@@ -138,12 +138,12 @@ protected func identityGenericScopes(symbols: ArrayList<SymbolDoc>, topology: Id
     scopes
 }
 
-protected func identityIdentifierByte(value: UInt8): Bool {
+internal func identityIdentifierByte(value: UInt8): Bool {
     (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') || (value >= b'0' && value <= b'9') || value ==
         b'_' || value >= 0x80u8
 }
 
-protected func alphaNormalizedIdentitySpelling(value: String, scope: IdentityGenericScope): String {
+internal func alphaNormalizedIdentitySpelling(value: String, scope: IdentityGenericScope): String {
     let normalized = normalizeTypeSpelling(value)
     let bytes = normalized.toArray()
     let builder = StringBuilder()
@@ -172,7 +172,7 @@ protected func alphaNormalizedIdentitySpelling(value: String, scope: IdentityGen
     builder.toString()
 }
 
-protected func identityOwnerName(symbol: SymbolDoc, scope: IdentityGenericScope): String {
+internal func identityOwnerName(symbol: SymbolDoc, scope: IdentityGenericScope): String {
     if (symbol.kind == "extend") {
         alphaNormalizedIdentitySpelling(symbol.name, scope)
     } else {
@@ -180,14 +180,14 @@ protected func identityOwnerName(symbol: SymbolDoc, scope: IdentityGenericScope)
     }
 }
 
-protected func privateFileScope(symbol: SymbolDoc): String {
+internal func privateFileScope(symbol: SymbolDoc): String {
     "::file:" + percentEscapeSymbolPart(symbol.source.path)
 }
 
 // Cache the owner path including each symbol. Every owner edge is traversed
 // once; constructing the cached strings is proportional to the prefixes that
 // are necessarily emitted into SymbolId and qualifiedName.
-protected func ensureOwnerPrefixes(symbols: ArrayList<SymbolDoc>, index: Int64, identityScopes: Array<String>,
+internal func ensureOwnerPrefixes(symbols: ArrayList<SymbolDoc>, index: Int64, identityScopes: Array<String>,
     qualifiedSuffixes: Array<String>, computed: Array<Bool>, visiting: Array<Int64>,
     genericScopes: Array<IdentityGenericScope>, extensionBlockDiscriminators: Array<String>): Unit {
     if (index < 0 || index >= symbols.size || computed[index]) {
@@ -245,7 +245,7 @@ protected func ensureOwnerPrefixes(symbols: ArrayList<SymbolDoc>, index: Int64, 
     }
 }
 
-protected func ownerIdentityScope(symbols: ArrayList<SymbolDoc>, index: Int64, identityScopes: Array<String>,
+internal func ownerIdentityScope(symbols: ArrayList<SymbolDoc>, index: Int64, identityScopes: Array<String>,
     extensionBlockDiscriminators: Array<String>): String {
     let symbol = symbols[index]
     if (symbol.ownerIndex >= 0 && symbol.ownerIndex < symbols.size) {
@@ -262,7 +262,7 @@ protected func ownerIdentityScope(symbols: ArrayList<SymbolDoc>, index: Int64, i
     ""
 }
 
-protected func identityType(typeRef: TypeRef): String {
+internal func identityType(typeRef: TypeRef): String {
     match (typeRef.canonical) {
         case Some(canonical) =>
             if (typeRef.state == "resolved") {
@@ -291,7 +291,7 @@ private func identityTypeIdentity(canonical: String, arguments: ArrayList<TypeRe
     builder.toString()
 }
 
-protected func memberIdentity(symbol: SymbolDoc, scope: IdentityGenericScope): String {
+internal func memberIdentity(symbol: SymbolDoc, scope: IdentityGenericScope): String {
     let builder = StringBuilder()
     builder.append(symbol.kind)
     builder.append(":")
@@ -311,7 +311,7 @@ protected func memberIdentity(symbol: SymbolDoc, scope: IdentityGenericScope): S
     return builder.toString()
 }
 
-protected func extendIdentityName(symbols: ArrayList<SymbolDoc>, extendIndex: Int64, topology: IdentityTopology,
+internal func extendIdentityName(symbols: ArrayList<SymbolDoc>, extendIndex: Int64, topology: IdentityTopology,
     genericScopes: Array<IdentityGenericScope>): String {
     let members = ArrayList<String>()
     let directMembers = match (topology.membersByOwner.get(extendIndex)) {

@@ -31,7 +31,7 @@ private class QuerySourceLoadBudget {
     }
 }
 
-protected func queryResourcePath(path: String): Unit {
+internal func queryResourcePath(path: String): Unit {
     if (!isSafeOutputPath(path) || path.contains("#") || path.contains("?")) {
         throw DocumentationQueryException("unavailable", "unsafe_resource_path", "A packaged resource path is not normalized and relative.")
     }
@@ -272,7 +272,7 @@ protected func loadDocumentationQueryModels(models: Array<query_model.Documentat
     result
 }
 
-protected func projectDocumentationQuerySources(inputs: ArrayList<QuerySnapshotInput>, request: JsonObject): ArrayList<QuerySnapshotInput> {
+internal func projectDocumentationQuerySources(inputs: ArrayList<QuerySnapshotInput>, request: JsonObject): ArrayList<QuerySnapshotInput> {
     let result = ArrayList<QuerySnapshotInput>()
     let ids = HashSet<String>()
     let language = queryString(request, "language")

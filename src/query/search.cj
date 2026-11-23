@@ -33,7 +33,7 @@ protected class QueryMatch {
  * captured evidence excludes the candidate instead of being reinterpreted, and an
  * unknown captured value never matches a requested one.
  */
-protected func queryScopeAdmits(documentSet: ?query_model.DocumentSetIdentity,
+internal func queryScopeAdmits(documentSet: ?query_model.DocumentSetIdentity,
     dependency: ?query_model.DependencyInstance, request: JsonObject): Bool {
     let documentSetId = queryString(request, "documentSetId")
     if (!documentSetId.isEmpty()) {
@@ -119,7 +119,7 @@ private func queryScopeCfgAdmits(documentSet: ?query_model.DocumentSetIdentity,
     known
 }
 
-protected func queryModuleIdMatches(input: QuerySnapshotInput, moduleId: String,
+internal func queryModuleIdMatches(input: QuerySnapshotInput, moduleId: String,
     request: JsonObject): Bool {
     let requested = queryString(request, "moduleId")
     if (requested.isEmpty()) { return true }
@@ -130,12 +130,12 @@ protected func queryModuleIdMatches(input: QuerySnapshotInput, moduleId: String,
     }
 }
 
-protected func queryPackageMatches(symbol: query_model.SymbolDoc, request: JsonObject): Bool {
+internal func queryPackageMatches(symbol: query_model.SymbolDoc, request: JsonObject): Bool {
     let requested = queryString(request, "packageName")
     requested.isEmpty() || symbol.packageName == requested
 }
 
-protected func queryKindMatches(symbol: query_model.SymbolDoc, request: JsonObject): Bool {
+internal func queryKindMatches(symbol: query_model.SymbolDoc, request: JsonObject): Bool {
     let requested = queryString(request, "kind")
     requested.isEmpty() || symbol.kind == requested
 }
@@ -164,7 +164,7 @@ protected class QueryCandidate {
 }
 
 /** Search through the shared projection executor, then reattach captured DTOs. */
-protected func querySearch(projection: QueryProjection, request: JsonObject,
+internal func querySearch(projection: QueryProjection, request: JsonObject,
     contentBinding: String): QueryOutcome {
     let outcome = QueryOutcome("ok", "catalog")
     if (queryBool(request, "latest") && !queryAnyLatest(projection.inputs)) {
@@ -293,19 +293,19 @@ protected func querySearch(projection: QueryProjection, request: JsonObject,
 }
 
 /** Request defaults are sourced from the exported search contract. */
-protected func querySearchMode(request: JsonObject): String {
+internal func querySearchMode(request: JsonObject): String {
     let value = queryString(request, "mode")
     if (value.isEmpty()) { return search_engine.searchContractString("defaultMode") }
     value
 }
 
-protected func querySearchProfile(request: JsonObject): String {
+internal func querySearchProfile(request: JsonObject): String {
     search_engine.searchRequestProfile(queryString(request, "profile"))
 }
 
 
 /** Request filters use the shared field/op mappings and canonical byte order. */
-protected func querySearchFilters(request: JsonObject): ArrayList<search_engine.SearchFilter> {
+internal func querySearchFilters(request: JsonObject): ArrayList<search_engine.SearchFilter> {
     let filters = ArrayList<search_engine.SearchFilter>()
     match (request.get("filters")) {
         case Some(node) =>
@@ -341,20 +341,20 @@ private func querySearchCoverageFromNode(node: JsonNode): ?search_engine.SearchC
         queryBool(value, "bodyComplete"), queryInt(value, "truncatedEntries")))
 }
 
-protected func queryAnyLatest(inputs: ArrayList<QuerySnapshotInput>): Bool {
+internal func queryAnyLatest(inputs: ArrayList<QuerySnapshotInput>): Bool {
     for (input in inputs) { if (input.isLatest) { return true } }
     false
 }
 
 
-protected func querySourceComplete(inputs: ArrayList<QuerySnapshotInput>): Bool {
+internal func querySourceComplete(inputs: ArrayList<QuerySnapshotInput>): Bool {
     for (input in inputs) {
         if (input.documentation.apiCollectionState != "resolved") { return false }
     }
     true
 }
 
-protected func querySearchItem(candidate: QueryCandidate): JsonObject {
+internal func querySearchItem(candidate: QueryCandidate): JsonObject {
     let item = JsonNode.object()
     let matchNode = JsonNode.object()
     matchNode.put("score", JsonNode.int64(candidate.relevance.score))
@@ -409,13 +409,13 @@ private func queryDisplayExcerpt(value: String, maximumScalars: Int64): String {
     query_render.searchTextExcerpt(text, maximum: maximumScalars)
 }
 
-protected func querySignature(symbol: query_model.SymbolDoc): ?String {
+internal func querySignature(symbol: query_model.SymbolDoc): ?String {
     if (symbol.headerSpelling.trimAscii().isEmpty()) { return None }
     Some(queryDisplayExcerpt(symbol.headerSpelling,
         search_engine.searchContractInteger("signatureDisplayLimit")))
 }
 
-protected func querySymbolSummary(symbol: query_model.SymbolDoc): ?String {
+internal func querySymbolSummary(symbol: query_model.SymbolDoc): ?String {
     match (symbol.documentation) {
         case Some(comment) =>
             if (!comment.summary.trimAscii().isEmpty()) {
@@ -431,7 +431,7 @@ protected func querySymbolSummary(symbol: query_model.SymbolDoc): ?String {
     }
 }
 
-protected func querySymbolRepresentations(input: QuerySnapshotInput, symbol: query_model.SymbolDoc): JsonObject {
+internal func querySymbolRepresentations(input: QuerySnapshotInput, symbol: query_model.SymbolDoc): JsonObject {
     let node = JsonNode.object()
     node.put("html", JsonNode.string(input.snapshot.symbolHtmlPath(symbol.id).getOrThrow()))
     node.put("markdown", JsonNode.string(routes_render.agentDeclarationMarkdownPath(symbol)))
@@ -439,7 +439,7 @@ protected func querySymbolRepresentations(input: QuerySnapshotInput, symbol: que
     node
 }
 
-protected func queryPageRepresentations(page: query_model.DocumentationPage): JsonObject {
+internal func queryPageRepresentations(page: query_model.DocumentationPage): JsonObject {
     let node = JsonNode.object()
     node.put("html", JsonNode.string(page.route))
     node.put("markdown", JsonNode.string(routes_render.agentPageMarkdownPath(page)))
@@ -461,10 +461,10 @@ protected func queryPageSource(page: query_model.DocumentationPage): JsonObject 
 }
 
 // Exposure is a captured re-export fact; it never becomes overload resolution.
-protected func querySymbolExposures(document: QueryDocument, symbol: query_model.SymbolDoc): JsonArray {
+internal func querySymbolExposures(document: QueryDocument, symbol: query_model.SymbolDoc): JsonArray {
     document.exposures.get(symbol.id).getOrDefault({ => JsonNode.array() })
 }
-protected func queryMatchedSymbolExposures(document: QueryDocument,
+internal func queryMatchedSymbolExposures(document: QueryDocument,
     symbol: query_model.SymbolDoc, matchedExposureIds: ArrayList<String>): JsonArray {
     let result = JsonNode.array()
     if (matchedExposureIds.isEmpty()) { return result }
@@ -480,7 +480,7 @@ protected func queryMatchedSymbolExposures(document: QueryDocument,
     result
 }
 
-protected func querySearchText(outcome: QueryOutcome, candidates: ArrayList<QueryCandidate>,
+internal func querySearchText(outcome: QueryOutcome, candidates: ArrayList<QueryCandidate>,
     inputs: ArrayList<QuerySnapshotInput>): String {
     let out = StringBuilder()
     out.append("Documentation search: ${outcome.status}. Scope: ${queryScopeSummary(inputs)}.\n")
@@ -540,7 +540,7 @@ protected func querySearchText(outcome: QueryOutcome, candidates: ArrayList<Quer
     out.toString()
 }
 
-protected func queryScopeSummary(inputs: ArrayList<QuerySnapshotInput>): String {
+internal func queryScopeSummary(inputs: ArrayList<QuerySnapshotInput>): String {
     let out = StringBuilder()
     var first = true
     for (input in inputs) {

@@ -6,7 +6,7 @@ import cjdoc.source.lexing.sourceApiSignatureTokens
 import cjdoc.source.model.{SourceDeclaration, SourceModule, SourcePackage, TypeRef}
 import std.collection.*
 
-protected func copyModule(source: SourceModule): ModuleDoc {
+internal func copyModule(source: SourceModule): ModuleDoc {
     let module = ModuleDoc(source.id, source.name, source.role, source.sourcePrefix,
         organization: source.organization)
     module.packageNames.add(all: source.packageNames)
@@ -14,13 +14,13 @@ protected func copyModule(source: SourceModule): ModuleDoc {
     return module
 }
 
-protected func copyPackage(source: SourcePackage): PackageDoc {
+internal func copyPackage(source: SourcePackage): PackageDoc {
     let pkg = PackageDoc(source.name, source.moduleId)
     pkg.sourceFiles.add(all: source.sourceFiles)
     return pkg
 }
 
-protected func typeRefFromSourceSpelling(spelling: String): TypeRef {
+internal func typeRefFromSourceSpelling(spelling: String): TypeRef {
     TypeRef(spelling, state: if (spelling.isEmpty()) {
         "unavailable"
     } else {
@@ -28,7 +28,7 @@ protected func typeRefFromSourceSpelling(spelling: String): TypeRef {
     })
 }
 
-protected func semanticFallback(source: SourceDeclaration, provider: String, state: String): SemanticDeclaration {
+internal func semanticFallback(source: SourceDeclaration, provider: String, state: String): SemanticDeclaration {
     let semantic = SemanticDeclaration(source.sourceKey, source.kind, source.name, source.packageName, source.moduleId,
         source.ownerSourceKey, source.visibility, state, provider, isContainer: source.isContainer,
         enumNonExhaustive: source.enumNonExhaustive)
@@ -53,21 +53,21 @@ protected func semanticFallback(source: SourceDeclaration, provider: String, sta
     return semantic
 }
 
-protected func recordContractViolation(documentation: DocumentationSet, stats: SemanticBindingStats, message: String,
+internal func recordContractViolation(documentation: DocumentationSet, stats: SemanticBindingStats, message: String,
     source!: ?SourceLocation = None): Unit {
     stats.contractViolations++
     documentation.diagnostics.add(Diagnostic("warning", "CJDOC2017", message, source: source))
 }
 
-protected func validSemanticState(state: String): Bool {
+internal func validSemanticState(state: String): Bool {
     state == "resolved" || state == "partial" || state == "unavailable" || state == "ambiguous"
 }
 
-protected func validVisibility(visibility: String): Bool {
+internal func validVisibility(visibility: String): Bool {
     visibility == "public" || visibility == "protected" || visibility == "internal" || visibility == "private"
 }
 
-protected func sanitizeTypeRef(sourceDisplay: String, semantic: TypeRef, capabilities: SemanticCapabilities,
+internal func sanitizeTypeRef(sourceDisplay: String, semantic: TypeRef, capabilities: SemanticCapabilities,
     documentation: DocumentationSet, stats: SemanticBindingStats, source: SourceLocation): TypeRef {
     if (!validSemanticState(semantic.state)) {
         recordContractViolation(documentation, stats,
@@ -106,7 +106,7 @@ protected func sanitizeTypeRef(sourceDisplay: String, semantic: TypeRef, capabil
         nullable: semantic.nullable, arguments: arguments.toArray())
 }
 
-protected func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDeclaration,
+internal func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDeclaration,
     moduleResult: ModuleSemanticResult, documentation: DocumentationSet, stats: SemanticBindingStats): ?SemanticDeclaration {
     if (semantic.kind != source.kind || semantic.name != source.name || semantic.packageName != source.packageName ||
         semantic.moduleId != source.moduleId || semantic.isContainer != source.isContainer ||
@@ -271,7 +271,7 @@ protected func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDec
     return Some(sanitized)
 }
 
-protected func resolveSymbolRelationshipSourceKeys(symbols: ArrayList<SymbolDoc>, omittedIndices: HashSet<Int64>,
+internal func resolveSymbolRelationshipSourceKeys(symbols: ArrayList<SymbolDoc>, omittedIndices: HashSet<Int64>,
     idsBySourceKey: HashMap<String, String>): Unit {
     var index: Int64 = 0
     while (index < symbols.size) {
@@ -294,7 +294,7 @@ protected func resolveSymbolRelationshipSourceKeys(symbols: ArrayList<SymbolDoc>
     }
 }
 
-protected func copySemanticToDoc(source: SourceDeclaration, semantic: SemanticDeclaration): SymbolDoc {
+internal func copySemanticToDoc(source: SourceDeclaration, semantic: SemanticDeclaration): SymbolDoc {
     let symbol = SymbolDoc(semantic.kind, semantic.name, semantic.packageName, semantic.moduleId, semantic.visibility,
         source.source, source.sourceSignature, isContainer: semantic.isContainer, semanticState: semantic.state,
         semanticProvider: semantic.provider, canonicalSignature: semantic.canonicalSignature,

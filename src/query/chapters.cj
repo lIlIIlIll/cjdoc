@@ -8,7 +8,7 @@ import yjson.*
 
 // Structured chapters retain the frozen Doc IR records. In particular, binding
 // syntax stays in sourceApiSignature rather than being guessed from a header.
-protected func queryChapters(symbol: query_model.SymbolDoc, selected: ArrayList<String>,
+internal func queryChapters(symbol: query_model.SymbolDoc, selected: ArrayList<String>,
     input: QuerySnapshotInput, mandatory: ArrayList<String>): ArrayList<QueryChapter> {
     let chapters = ArrayList<QueryChapter>()
     let raw = input.symbolNodes[symbol.id]

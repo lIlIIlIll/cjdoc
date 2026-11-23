@@ -47,7 +47,7 @@
 |---|---|
 | 产品入口、生成请求和流水线组装 | [`src/main.cj`](../../src/main.cj)、[`public_request.cj`](../../src/public_request.cj)、[`public_engine.cj`](../../src/public_engine.cj)、[`pipeline.cj`](../../src/pipeline.cj) |
 | 命令参数、帮助、配置和传输 | [`src/cli/`](../../src/cli/)；[`cli_runner.cj`](../../src/cli_runner.cj) 连接命令与公开引擎 |
-| 清单、lockfile、有界读取与路径检查 | [`src/manifest/`](../../src/manifest/)、[`src/filesystem/`](../../src/filesystem/)、[`src/digest/`](../../src/digest/) |
+| 清单、lockfile、有界读取与路径检查 | [`src/manifest/`](../../src/manifest/)、[`src/filesystem/`](../../src/filesystem/)；[`src/digest/`](../../src/digest/) 统一实现文件流、契约指纹与发布校验使用的 SHA-256 |
 | 输出锁、spool、提交与恢复 | [`src/output/`](../../src/output/)；命令通过 `publication.cj` 的事务入口发布 |
 | 源码发现、AST 前端、缓存与源文件来源 | [`src/source/`](../../src/source/) 的 `discovery/`、`frontend/`、`cache/`、`provenance/`；`model/` 持有声明和快照，`lexing/` 持有源码 token 和位置 |
 | AST fallback、CHIR 与 provider 生命周期 | [`src/semantic/`](../../src/semantic/) 持有语义事实和 fallback；`semantic/chir/` 负责 worker 和结构化结果；[`src/provider/`](../../src/provider/) 是公开 SPI |

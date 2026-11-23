@@ -40,7 +40,7 @@ protected class QueryRelationRequest {
     }
 }
 
-protected func queryRelationRequest(request: JsonObject): QueryRelationRequest {
+internal func queryRelationRequest(request: JsonObject): QueryRelationRequest {
     let object = match (request.get("relations")) {
         case Some(value) => value.asObject()
         case None => JsonNode.object()
@@ -98,7 +98,7 @@ protected class QueryRelationBuild {
  * item's own snapshot and document-set identity. At the depth, count or byte
  * boundary the build records an explicit omission plus a real continuation.
  */
-protected func queryRelations(catalog: QueryCatalog, root: QueryDocument,
+internal func queryRelations(catalog: QueryCatalog, root: QueryDocument,
     rootSymbol: query_model.SymbolDoc, request: JsonObject, budgetBytes: Int64,
     startingOffset: Int64, catalogId: String): QueryRelationBuild {
     let build = QueryRelationBuild()

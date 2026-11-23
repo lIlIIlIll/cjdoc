@@ -167,7 +167,8 @@ protected class RenderProjection {
     }
 
     protected init(documentation: DocumentationSet, snapshotId!: String = "",
-        buildApiRoutes!: Bool = false, routeProjection!: ApiRouteProjection = ReadablePackages,
+        buildApiRoutes!: Bool = false,
+        routeProjection!: ApiRouteProjection = ApiRouteProjection.ReadablePackages,
         apiRoutes!: ?ApiHtmlRoutes = None, unprefixedApiLocale!: String = "") {
         this.documentation = documentation
         this.snapshotId = snapshotId

@@ -230,7 +230,3 @@ protected func hasTopLevelAdmonitionTag(raw: String): Bool {
 protected func requiresNonAdmonitionLocalizedComment(raw: String): Bool {
     requiresLocalizedFeature(raw, false)
 }
-
-internal func requiresLocalizedComment(raw: String): Bool {
-    requiresLocalizedFeature(raw, true)
-}

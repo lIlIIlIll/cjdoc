@@ -158,10 +158,6 @@ internal func parseCjpmPackageMetadataWithBudget(manifest: String,
     fields
 }
 
-func parseCjpmPackageName(manifest: String): ?String {
-    parseCjpmPackageNameChecked(manifest).value
-}
-
 protected func parseCjpmPackageNameChecked(manifest: String,
     maxBytes!: Int64 = MAX_MANIFEST_ADAPTER_BYTES,
     maxWork!: Int64 = MAX_MANIFEST_ADAPTER_WORK): CjpmPackageNameView {

@@ -16,24 +16,6 @@ private func searchApplyMatchedExposures(evidence: SearchEvidence,
         lessThan: { left, right => searchUtf8ByteLess(left, right) }, stable: true)
 }
 
-/** Execute a single projection through the same JSON contract as native search. */
-protected func executeDocumentationSearch(projection: DocumentationSearchProjection,
-    request: JsonObject): JsonObject {
-    let set = SearchProjectionSet()
-    set.add(projection)
-    executeDocumentationSearchAcross(set, request)
-}
-
-/** Execute a request across snapshots as one globally ranked/paged candidate set. */
-protected func executeDocumentationSearchAcross(set: SearchProjectionSet,
-    request: JsonObject): JsonObject {
-    executeDocumentationSearchAcross(set, request, None, None, 0)
-}
-
-/**
- * Native bridge overload supplies source-admitted identities, filter-only
- * eligibility, and a cursor-validated offset while using the same JSON matcher.
- */
 protected func executeDocumentationSearchAcross(set: SearchProjectionSet,
     request: JsonObject, admitted: ?HashSet<String>, filterOnly: ?Bool,
     offset: Int64): JsonObject {

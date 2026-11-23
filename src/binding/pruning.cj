@@ -6,7 +6,7 @@ import cjdoc.source.cfg.isExactWhenAnnotation
 import cjdoc.source.model.SourceSnapshot
 import std.collection.*
 
-protected func isConditionallyOwned(source: SourceSnapshot, symbols: ArrayList<SymbolDoc>, index: Int64): Bool {
+internal func isConditionallyOwned(source: SourceSnapshot, symbols: ArrayList<SymbolDoc>, index: Int64): Bool {
     var current = index
     var remaining = symbols.size + 1
     while (current >= 0 && current < source.declarations.size && current < symbols.size && remaining > 0) {
@@ -21,7 +21,7 @@ protected func isConditionallyOwned(source: SourceSnapshot, symbols: ArrayList<S
     return false
 }
 
-protected func isOmittedByIndexOrOwner(symbols: ArrayList<SymbolDoc>, index: Int64, omittedIndices: HashSet<Int64>): Bool {
+internal func isOmittedByIndexOrOwner(symbols: ArrayList<SymbolDoc>, index: Int64, omittedIndices: HashSet<Int64>): Bool {
     var current = index
     var remaining = symbols.size + 1
     while (current >= 0 && current < symbols.size && remaining > 0) {
@@ -34,7 +34,7 @@ protected func isOmittedByIndexOrOwner(symbols: ArrayList<SymbolDoc>, index: Int
     false
 }
 
-protected func expandOmittedDescendants(symbols: ArrayList<SymbolDoc>, omittedIndices: HashSet<Int64>): Unit {
+internal func expandOmittedDescendants(symbols: ArrayList<SymbolDoc>, omittedIndices: HashSet<Int64>): Unit {
     let childrenByOwner = HashMap<Int64, ArrayList<Int64>>()
     var index: Int64 = 0
     while (index < symbols.size) {
@@ -69,7 +69,7 @@ protected func expandOmittedDescendants(symbols: ArrayList<SymbolDoc>, omittedIn
     }
 }
 
-protected func duplicatePrunePlan(documentation: DocumentationSet, source: SourceSnapshot): HashSet<Int64> {
+internal func duplicatePrunePlan(documentation: DocumentationSet, source: SourceSnapshot): HashSet<Int64> {
     let groups = HashMap<String, ArrayList<Int64>>()
     let duplicateIds = ArrayList<String>()
     var index: Int64 = 0
@@ -142,7 +142,7 @@ protected func duplicatePrunePlan(documentation: DocumentationSet, source: Sourc
     omittedIndices
 }
 
-protected func getDocPackage(documentation: DocumentationSet, moduleId: String, name: String): PackageDoc {
+internal func getDocPackage(documentation: DocumentationSet, moduleId: String, name: String): PackageDoc {
     for (pkg in documentation.packages) {
         if (pkg.moduleId == moduleId && pkg.name == name) {
             return pkg
@@ -153,7 +153,7 @@ protected func getDocPackage(documentation: DocumentationSet, moduleId: String, 
     return pkg
 }
 
-protected func survivingIdentityMaps(source: SourceSnapshot, symbols: ArrayList<SymbolDoc>, omittedIndices: HashSet<Int64>): (HashMap<String,
+internal func survivingIdentityMaps(source: SourceSnapshot, symbols: ArrayList<SymbolDoc>, omittedIndices: HashSet<Int64>): (HashMap<String,
     String>, HashSet<String>, HashMap<String, String>) {
     let idsBySourceKey = HashMap<String, String>()
     let survivingIds = HashSet<String>()
@@ -170,7 +170,7 @@ protected func survivingIdentityMaps(source: SourceSnapshot, symbols: ArrayList<
     (idsBySourceKey, survivingIds, moduleBySymbolId)
 }
 
-protected func recordLateRelationshipViolation(documentation: DocumentationSet, symbol: SymbolDoc, targetId: String): Unit {
+internal func recordLateRelationshipViolation(documentation: DocumentationSet, symbol: SymbolDoc, targetId: String): Unit {
     for (binding in documentation.semanticBindings) {
         if (binding.moduleId == symbol.moduleId && binding.provider == symbol.semanticProvider) {
             binding.contractViolations++
@@ -197,7 +197,7 @@ protected class PendingProviderDiagnostic {
     }
 }
 
-protected func appendProviderDiagnostics(documentation: DocumentationSet, pending: ArrayList<PendingProviderDiagnostic>,
+internal func appendProviderDiagnostics(documentation: DocumentationSet, pending: ArrayList<PendingProviderDiagnostic>,
     moduleBySymbolId: HashMap<String, String>): Unit {
     for (entry in pending) {
         let diagnostic = entry.diagnostic
@@ -220,7 +220,7 @@ protected func appendProviderDiagnostics(documentation: DocumentationSet, pendin
     }
 }
 
-protected func sanitizeDanglingReferences(documentation: DocumentationSet, omittedIndices: HashSet<Int64>,
+internal func sanitizeDanglingReferences(documentation: DocumentationSet, omittedIndices: HashSet<Int64>,
     survivingIds: HashSet<String>): Unit {
     var index: Int64 = 0
     while (index < documentation.symbols.size) {
@@ -258,7 +258,7 @@ protected func sanitizeDanglingReferences(documentation: DocumentationSet, omitt
     }
 }
 
-protected func removeOmittedSymbols(documentation: DocumentationSet, omittedIndices: HashSet<Int64>): Unit {
+internal func removeOmittedSymbols(documentation: DocumentationSet, omittedIndices: HashSet<Int64>): Unit {
     var index = documentation.symbols.size - 1
     while (index >= 0) {
         if (omittedIndices.contains(index)) {
@@ -268,7 +268,7 @@ protected func removeOmittedSymbols(documentation: DocumentationSet, omittedIndi
     }
 }
 
-protected func rebuildPackageSymbolIds(documentation: DocumentationSet): Unit {
+internal func rebuildPackageSymbolIds(documentation: DocumentationSet): Unit {
     for (pkg in documentation.packages) {
         var index = pkg.symbolIds.size - 1
         while (index >= 0) {

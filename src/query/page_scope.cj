@@ -4,7 +4,7 @@ import cjdoc.model as query_model
 import std.collection.*
 import yjson.*
 
-protected func queryCapturedPageModules(documentation: query_model.DocumentationSet,
+internal func queryCapturedPageModules(documentation: query_model.DocumentationSet,
     pages: Array<query_model.DocumentationPage>): HashMap<String, ?String> {
     let packageModules = HashMap<String, ?String>()
     for (packageDoc in documentation.packages) {
@@ -31,7 +31,7 @@ protected func queryCapturedPageModules(documentation: query_model.Documentation
     result
 }
 
-protected func queryPageAdmitted(input: QuerySnapshotInput, page: query_model.DocumentationPage,
+internal func queryPageAdmitted(input: QuerySnapshotInput, page: query_model.DocumentationPage,
     request: JsonObject): Bool {
     let kind = queryString(request, "kind")
     if (!kind.isEmpty() && kind != "concept") { return false }

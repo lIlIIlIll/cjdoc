@@ -18,12 +18,12 @@ protected class QueryDocumentScope {
     }
 }
 
-protected func querySnapshotJson(text: String): JsonObject {
+internal func querySnapshotJson(text: String): JsonObject {
     JsonNode.parse(text, config: JsonReadOptions(maxInputBytes: QUERY_MAX_BYTES,
         maxStringBytes: QUERY_MAX_BYTES, maxBufferedValueBytes: QUERY_MAX_BYTES, maxDepth: 128)).asObject()
 }
 
-protected func queryOptionalString(value: JsonObject, key: String): ?String {
+internal func queryOptionalString(value: JsonObject, key: String): ?String {
     match (value.get(key)) {
         case Some(node) => if (node.isNull) { None } else { Some(node.asString()) }
         case None => None
@@ -146,7 +146,7 @@ protected class QuerySnapshotInput {
     }
 }
 
-protected func queryNavigationEvidenceKey(instance: String, identity: String, index: String): String {
+internal func queryNavigationEvidenceKey(instance: String, identity: String, index: String): String {
     instance + "\n" + identity + "\n" + index
 }
 
@@ -178,7 +178,7 @@ private func queryPageKey(id: String, source: String, language: ?String): String
     id + "\n" + source + "\n" + language.getOrDefault({ => "" })
 }
 
-protected func querySnapshotMatches(input: QuerySnapshotInput, request: JsonObject): Bool {
+internal func querySnapshotMatches(input: QuerySnapshotInput, request: JsonObject): Bool {
     let snapshotId = queryString(request, "snapshotId")
     if (!snapshotId.isEmpty() && snapshotId != input.snapshot.snapshotId && snapshotId != input.sourceSnapshotId) { return false }
     let audience = queryString(request, "audience")

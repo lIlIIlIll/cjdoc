@@ -34,7 +34,7 @@ protected class QueryChapter {
     }
 }
 
-protected func querySelectedSections(request: JsonObject): ArrayList<String> {
+internal func querySelectedSections(request: JsonObject): ArrayList<String> {
     let result = ArrayList<String>()
     if (let Some(values) <- request.get("sections")) {
         let array = values.asArray()
@@ -89,7 +89,7 @@ private func queryMandatorySections(request: JsonObject, selected: ArrayList<Str
  * a unit beyond the documented 64 MiB resource limit is `resource_limit`; an
  * optional chapter that does not fit is `budget_omitted` with its own reason.
  */
-protected func queryGetSymbol(projection: QueryProjection, request: JsonObject,
+internal func queryGetSymbol(projection: QueryProjection, request: JsonObject,
     catalogId: String): QueryOutcome {
     let outcome = QueryOutcome("ok", "declaration")
     outcome.limit = 1

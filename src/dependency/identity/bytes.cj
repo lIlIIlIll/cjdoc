@@ -148,8 +148,3 @@ protected func dependencyObservedIdentity(path: String, source: Bool,
     }
     "sha256:" + Sha256Digest.digest(inventory.toString())
 }
-
-// Local paths and timestamps never participate in the portable content identity.
-internal func dependencySourceIdentity(root: String): String {
-    dependencyObservedIdentity(root, true)
-}

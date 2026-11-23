@@ -30,7 +30,7 @@ protected func queryString(value: JsonObject, key: String, fallback!: String = "
     }
 }
 
-protected func queryInt(value: JsonObject, key: String, fallback!: Int64 = 0): Int64 {
+internal func queryInt(value: JsonObject, key: String, fallback!: Int64 = 0): Int64 {
     match (value.get(key)) { case Some(node) => node.asInt64(); case None => fallback }
 }
 
@@ -38,7 +38,7 @@ protected func queryBool(value: JsonObject, key: String, fallback!: Bool = false
     match (value.get(key)) { case Some(node) => node.asBool(); case None => fallback }
 }
 
-protected func queryStrings(value: JsonObject, key: String): Array<String> {
+internal func queryStrings(value: JsonObject, key: String): Array<String> {
     let result = ArrayList<String>()
     if (let Some(node) <- value.get(key)) {
         let values = node.asArray()
@@ -47,11 +47,11 @@ protected func queryStrings(value: JsonObject, key: String): Array<String> {
     result.toArray()
 }
 
-protected func queryNullable(value: ?String): JsonNode {
+internal func queryNullable(value: ?String): JsonNode {
     match (value) { case Some(text) => JsonNode.string(text); case None => JsonNode.nullValue }
 }
 
-protected func queryCanonical(value: JsonNode): String {
+internal func queryCanonical(value: JsonNode): String {
     match (value) {
         case object: JsonObject =>
             let keys = ArrayList<String>()

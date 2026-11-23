@@ -7,17 +7,6 @@ import cjdoc.render.foundation.{
     appendMarkdownCodeSpan}
 import cjdoc.model.*
 import std.collection.*
-import cjdoc.render.codec.appendExternalDocumentation
-
-internal func appendSearchExternalDocumentation(out: RenderTextBuffer, documentation: DocumentationSet,
-    symbolId: String): Unit {
-    let references = ArrayList<ExternalDocumentationReference>()
-    for (value in documentation.externalDocumentation where value.symbolId == symbolId) { references.add(value) }
-    if (references.isEmpty()) { return }
-    let data = StringBuilder()
-    appendExternalDocumentation(data, references, includeSymbolId: false)
-    out.append(", \"externalDocs\": " + data.toString())
-}
 
 private func externalReferenceIdentity(value: ExternalDocumentationReference): String {
     value.name + "|" + value.state + "|" + value.reason + "|" + value.version + "|" +

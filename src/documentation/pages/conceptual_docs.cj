@@ -221,61 +221,6 @@ private func conceptualCollectBindings(page: ConceptualPage,
     }
 }
 
-
-// A sentinel that survives Markdown rendering as a plain paragraph, so the
-// rendered page can replace it with the matching binding chip. It carries no
-// author-visible text and never derives a target from a heading or a name.
-
-protected func conceptualInlineBindingSentinel(index: Int64): String {
-    "cjdoc-inline-binding-" + index.toString()
-}
-
-protected func conceptualMarkdownWithoutBindings(markdown: String,
-    sentinels!: Bool = true): String {
-    let out = StringBuilder()
-    var fence = ""
-    var bindingIndex: Int64 = 0
-    for (rawLine in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
-        let line = rawLine.trimAscii()
-        if (!fence.isEmpty()) {
-            if (conceptualFenceCloses(rawLine, fence)) { fence = "" }
-            out.append(rawLine)
-            out.append("\n")
-            continue
-        }
-        let opening = conceptualFenceMarker(rawLine)
-        if (!opening.isEmpty()) {
-            fence = opening
-            out.append(rawLine)
-            out.append("\n")
-            continue
-        }
-        if (rawLine.startsWith("    ") || rawLine.startsWith("\t")) {
-            out.append(rawLine)
-            out.append("\n")
-            continue
-        }
-        if (line.startsWith("<!-- cjdoc-bind ") && line.endsWith(" -->")) {
-            let target = conceptualBindingAttribute(line, "target")
-            // Mirror the collector exactly: a marker without a target, or one
-            // beyond the binding cap, produces no binding and so no placeholder.
-            if (!target.isEmpty() && bindingIndex < CONCEPTUAL_BINDING_LIMIT) {
-                if (sentinels) {
-                    // A bare block keeps the placeholder out of an adjacent
-                    // paragraph without breaking an enclosing table or list.
-                    out.append(conceptualInlineBindingSentinel(bindingIndex))
-                    out.append("\n")
-                }
-                bindingIndex++
-            }
-            continue
-        }
-        out.append(rawLine)
-        out.append("\n")
-    }
-    out.toString()
-}
-
 protected func conceptualVisibleForAudience(symbol: public_model.SymbolDoc,
     documentation: public_model.DocumentationSet): Bool {
     var current: ?public_model.SymbolDoc = Some(symbol)
@@ -459,19 +404,6 @@ private func conceptualSlug(value: String): String {
     while (slug.endsWith("-")) { slug = slug.removeSuffix("-") }
     if (slug.isEmpty()) { slug = "page" }
     slug
-}
-
-protected func conceptualSymbolSlug(value: String): String {
-    let digits = "0123456789abcdef"
-    let out = StringBuilder()
-    if (value.isEmpty()) { return "root" }
-    for (byte in value.toArray()) {
-        let high = Int64((byte >> 4) & 0x0Fu8)
-        let low = Int64(byte & 0x0Fu8)
-        out.append(digits[high..high + 1])
-        out.append(digits[low..low + 1])
-    }
-    out.toString()
 }
 
 private func conceptualStableHash(value: String): String {

@@ -408,33 +408,3 @@ private func appendTagSubjectHtml(w: HtmlWriter, tag: DocTag,
     w.close("code")
     if (destination.isSome()) { w.close("a") }
 }
-
-internal func appendSymbolArticle(w: HtmlWriter,
-    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    linkTitle!: Bool = false,
-    locale!: String = "en"): Unit {
-    let isMember = symbol.ownerId.isSome()
-    let tocRole = if (isMember) { "member" } else { "api" }
-    w.open("article", attrs: [htmlClass("cj-symbol-entry"), htmlAttr("id", symbolAnchor(symbol))])
-    w.open("h3", attrs: [htmlClass("cj-symbol-entry__title"),
-        htmlAttr("data-cjdoc-toc-role", tocRole),
-        htmlAttr("data-cjdoc-toc-label", htmlContextLabel(symbol))])
-    if (linkTitle) {
-        w.open("a", attrs: [htmlHref(SafeUrl.siteRoute(typeLinkIndex.projection.publicSymbolHref(rootPrefix, symbol.id)))])
-        w.textElement("code", readerQualifiedName(symbol))
-        w.close("a")
-    } else {
-        w.textElement("code", readerQualifiedName(symbol))
-    }
-    w.close("h3")
-    w.newline()
-    appendSymbolMetadata(w, index, symbol, rootPrefix, assetLookup, typeLinkIndex, locale: locale)
-    appendDocumentationHtml(w, index, symbol, rootPrefix, assetLookup,
-        typeLinkIndex, headingBase: 2, locale: locale)
-    appendReaderRelationships(w, index, symbol, rootPrefix, typeLinkIndex, locale,
-        headingTag: "h3")
-    appendReverseTypeUsages(w, typeLinkIndex, symbol, rootPrefix, locale)
-    w.close("article")
-    w.newline()
-}

@@ -3,7 +3,7 @@ protected package cjdoc.query
 import std.collection.*
 import yjson.*
 
-protected func queryChapterBytes(chapter: QueryChapter): Int64 {
+internal func queryChapterBytes(chapter: QueryChapter): Int64 {
     let structured = chapter.value.toJson().size
     var bytes = chapter.rendered.size + if (QUERY_REPORT_SECTIONS.contains(chapter.name)) {
         structured * 2
@@ -14,7 +14,7 @@ protected func queryChapterBytes(chapter: QueryChapter): Int64 {
     bytes
 }
 
-protected func queryRejectRequiredBudget(outcome: QueryOutcome, required: Int64,
+internal func queryRejectRequiredBudget(outcome: QueryOutcome, required: Int64,
     maximum: Int64): Bool {
     if (required <= maximum && required <= QUERY_MAX_BYTES) { return false }
     let resource = required > QUERY_MAX_BYTES
@@ -40,7 +40,7 @@ protected func queryRejectRequiredBudget(outcome: QueryOutcome, required: Int64,
     true
 }
 
-protected func queryBudgetOptionalChapters(outcome: QueryOutcome, chapters: ArrayList<QueryChapter>,
+internal func queryBudgetOptionalChapters(outcome: QueryOutcome, chapters: ArrayList<QueryChapter>,
     required: Int64, maximum: Int64): Int64 {
     var used = required
     for (chapter in chapters) {
@@ -58,11 +58,11 @@ protected func queryBudgetOptionalChapters(outcome: QueryOutcome, chapters: Arra
     used
 }
 
-protected func queryChapterIncluded(chapter: QueryChapter): Bool {
+internal func queryChapterIncluded(chapter: QueryChapter): Bool {
     chapter.state != "budget_omitted" && chapter.state != "resource_limit"
 }
 
-protected func queryChapterResult(chapter: QueryChapter): JsonObject {
+internal func queryChapterResult(chapter: QueryChapter): JsonObject {
     let state = if (chapter.state == "resource_limit") { "unavailable" } else { chapter.state }
     querySection(chapter.name, state, if (queryChapterIncluded(chapter)) {
         chapter.value

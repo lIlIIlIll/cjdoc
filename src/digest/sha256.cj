@@ -1,14 +1,14 @@
 protected package cjdoc.digest
 
-import cjdoc.model.*
-
 protected class Sha256Digest {
     protected static func digest(value: String): String {
-        contractFingerprint(value)
+        StreamingSha256.digestText(value)
     }
 
     protected static func digestBytes(input: Array<Byte>): String {
-        contractFingerprintBytes(input)
+        let digest = StreamingSha256()
+        digest.update(input, input.size)
+        digest.finish()
     }
 }
 

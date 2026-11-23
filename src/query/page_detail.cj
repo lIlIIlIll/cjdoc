@@ -8,7 +8,7 @@ import yjson.*
 
 private let QUERY_PAGE_SECTIONS: Array<String> = ["description", "source", "validation", "diff"]
 
-protected func queryFillPage(outcome: QueryOutcome, input: QuerySnapshotInput,
+internal func queryFillPage(outcome: QueryOutcome, input: QuerySnapshotInput,
     page: query_model.DocumentationPage, request: JsonObject): Unit {
     outcome.scope = "page"
     outcome.limit = 1

@@ -8,7 +8,7 @@ import yjson.*
 // Agent payload bytes have manifest digests. HTML chrome belongs to the
 // existing site/version transaction, so record its actual in-bundle availability
 // without parsing HTML or pretending those bytes are part of the Doc IR hash.
-protected func validateQueryHtmlRepresentations(root: Path, manifest: JsonObject): Unit {
+internal func validateQueryHtmlRepresentations(root: Path, manifest: JsonObject): Unit {
     let canonicalRoot = canonicalize(root).toString()
     let paths = HashSet<String>()
     let representations = manifest.get("representations").getOrThrow().asArray()

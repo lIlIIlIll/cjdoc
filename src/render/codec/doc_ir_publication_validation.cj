@@ -35,7 +35,7 @@ internal func validateDocumentationAssets(documentation: DocumentationSet): Hash
         } catch (_: IllegalArgumentException) {
             domainFail("$.assets[${index}]", "invalid or oversized local image asset")
         }
-        if (asset.id != "sha256-${docIrSha256Bytes(decoded)}") {
+        if (asset.id != "sha256-${contractFingerprintBytes(decoded)}") {
             domainFail("$.assets[${index}].id", "asset id does not match SHA-256 content digest")
         }
         if (decoded.size > DOC_IR_MAX_TOTAL_ASSET_BYTES - totalAssetBytes) {

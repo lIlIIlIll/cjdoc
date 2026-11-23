@@ -348,7 +348,7 @@ private func resolveProviderReverseRelations(documentation: DocumentationSet,
     }
 }
 
-protected func resolveNavigationRelations(source: SourceSnapshot, documentation: DocumentationSet,
+internal func resolveNavigationRelations(source: SourceSnapshot, documentation: DocumentationSet,
     idsBySourceKey: HashMap<String, String>, omittedIndices: HashSet<Int64>): Unit {
     resolveSourceTypeRelations(source, documentation, idsBySourceKey, omittedIndices)
     resolveOverrideRelations(documentation, omittedIndices)

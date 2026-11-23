@@ -5,7 +5,7 @@ import cjdoc.schema_data.*
 import yjson.*
 import yjson_algorithms.*
 
-protected func validateQueryVersionCatalog(catalog: JsonObject): Unit {
+internal func validateQueryVersionCatalog(catalog: JsonObject): Unit {
     // Keep the published schema frozen. Its lookahead-based path constraint is
     // checked below instead of being passed to the bounded linear regex engine.
     let definition = JsonNode.parse(VERSIONS_SCHEMA).asObject()

@@ -8,7 +8,7 @@ import yjson.*
 
 // Attachments are recorded evidence, not instructions. Loading or querying a
 // report never invokes its compiler, runner, diff command or claimed executable.
-protected func loadDocumentationQueryReports(manifest: JsonObject,
+internal func loadDocumentationQueryReports(manifest: JsonObject,
     snapshot: query_render.DocumentationReadSnapshot, contents: HashMap<String, String>): JsonArray {
     let result = JsonNode.array()
     let kinds = HashSet<String>()
@@ -133,7 +133,7 @@ private func queryBindApiDiffReport(input: QuerySnapshotInput, report: JsonObjec
     "attached"
 }
 
-protected func bindDocumentationQueryReports(inputs: ArrayList<QuerySnapshotInput>): Unit {
+internal func bindDocumentationQueryReports(inputs: ArrayList<QuerySnapshotInput>): Unit {
     for (input in inputs) {
         for (index in 0..input.attachments.size()) {
             let entry = input.attachments[index].asObject()
