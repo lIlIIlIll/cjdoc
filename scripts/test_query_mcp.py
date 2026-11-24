@@ -618,7 +618,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--binary", type=Path, required=True,
                         help="compiled cjdoc executable that implements `mcp` and `query`")
     parser.add_argument("--snapshot", type=Path, action="append", required=True,
-                        help="Doc IR v17 snapshot or machine manifest (repeatable)")
+                        help="current Doc IR snapshot or machine manifest (repeatable)")
     parser.add_argument("--timeout", type=float, default=TIMEOUT,
                         help="seconds to wait for one protocol response or process exit")
     parser.add_argument("--search-cases", type=Path,
