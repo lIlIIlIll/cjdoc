@@ -16,6 +16,10 @@ import tempfile
 import unittest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+from sts_compile_override import OPTION, UNIT_OPTION  # noqa: E402
+
 SCRIPT = PROJECT_ROOT / "scripts/verify_build_invocations.py"
 LOGGER = PROJECT_ROOT / "scripts/log_invocation.py"
 
@@ -24,7 +28,7 @@ def run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, *args], capture_output=True, text=True, timeout=300)
 
 
-def record(option: str = "-O2 --fno-chir-function-inlining", argv: list[str] | None = None,
+def record(option: str = OPTION, argv: list[str] | None = None,
            package: str = "cjdoc") -> str:
     return json.dumps({
         "schemaVersion": "cjdoc.sts-invocation/1",
@@ -45,7 +49,7 @@ class InvocationVerificationTests(unittest.TestCase):
     def write(self, *lines: str) -> None:
         self.log.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
 
-    def check(self, since: int = 0, expect: str = "-O2 --fno-chir-function-inlining") -> subprocess.CompletedProcess[str]:
+    def check(self, since: int = 0, expect: str = OPTION) -> subprocess.CompletedProcess[str]:
         return run([str(SCRIPT), "--log", str(self.log), "--since", str(since),
                     f"--expect-compile-option={expect}"])
 
@@ -55,7 +59,7 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["builds"], 1)
-        self.assertEqual(payload["option"], "-O2 --fno-chir-function-inlining")
+        self.assertEqual(payload["option"], OPTION)
 
     def test_invocations_before_the_offset_are_ignored(self) -> None:
         self.write(record(argv=["test"]), record(argv=["build", "--jobs", "1"]))
@@ -126,14 +130,14 @@ class InvocationVerificationTests(unittest.TestCase):
         manifest.write_text('[package]\n  name = "cjdoc"\n  cjdoc-test = true\n',
                             encoding="utf-8")
         result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
-                      "--option=-O2 --fno-chir-function-inlining", "--", "build", "--jobs", "1"])
+                      f"--option={OPTION}", "--", "build", "--jobs", "1"])
         self.assertEqual(result.returncode, 0, result.stderr)
         entry = json.loads(self.log.read_text().splitlines()[0])
         self.assertEqual(entry["schemaVersion"], "cjdoc.sts-invocation/1")
         # The package comes from the manifest, so an auxiliary project is not
         # mislabelled as the root package.
         self.assertEqual(entry["package"], "cjdoc")
-        self.assertEqual(entry["option"], "-O2 --fno-chir-function-inlining")
+        self.assertEqual(entry["option"], OPTION)
         self.assertEqual(entry["argv"], ["build", "--jobs", "1"])
         self.assertIsNone(entry["binary"])
 
@@ -142,7 +146,7 @@ class InvocationVerificationTests(unittest.TestCase):
         manifest.write_text('[package]\n  name = "cjdoc_chir_worker"\n  cjdoc-test = true\n',
                             encoding="utf-8")
         result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
-                      "--option=-O2 --fno-chir-function-inlining", "--", "build", "--jobs", "1"])
+                      f"--option={OPTION}", "--", "build", "--jobs", "1"])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.log.read_text().splitlines()[0])["package"],
                          "cjdoc_chir_worker")
@@ -178,7 +182,7 @@ class InvocationVerificationTests(unittest.TestCase):
         binary.write_bytes(b"replaced")
         import hashlib
         self.write(json.dumps({
-            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": "-O2 --fno-chir-function-inlining",
+            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": OPTION,
             "argv": ["build", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
             "binary": {"sha256": hashlib.sha256(b"original").hexdigest(), "size": 8},
         }, sort_keys=True))
@@ -192,7 +196,7 @@ class InvocationVerificationTests(unittest.TestCase):
         binary.write_bytes(b"built")
         import hashlib
         line = json.dumps({
-            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": "-O2 --fno-chir-function-inlining",
+            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": OPTION,
             "argv": ["build", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
             "binary": {"sha256": hashlib.sha256(b"built").hexdigest(), "size": 5},
         }, sort_keys=True)
@@ -220,7 +224,7 @@ class InvocationVerificationTests(unittest.TestCase):
         self.write(record(), record(option="-O1", argv=["test", "--jobs", "1"]))
         result = self.check()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["option"], "-O2 --fno-chir-function-inlining")
+        self.assertEqual(json.loads(result.stdout)["option"], OPTION)
 
     def test_a_failed_product_build_cannot_vouch_for_a_stale_binary(self) -> None:
         failed = json.loads(record())
@@ -242,7 +246,7 @@ class InvocationVerificationTests(unittest.TestCase):
         manifest = Path(self.temporary.name) / "cjpm.toml"
         manifest.write_text('[package]\nname = "cjdoc"\n')
         result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
-                      "--option=-O2 --fno-chir-function-inlining", "--", "run", "--", "generate"])
+                      f"--option={OPTION}", "--", "run", "--", "generate"])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.log.read_text())["argv"], ["run", "--", "generate"])
 

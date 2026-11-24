@@ -173,7 +173,8 @@ compiler or dispatch another workflow.
 LLVM-text audit before publishing the exact bitcode bytes.
 
 The provider fixture's `cjpm run` retains the product's `--jobs 1`,
-`-O2 --fno-chir-function-inlining` policy and adds only `-V --save-temps` with a
+`-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated` policy and adds
+only `-V --save-temps` with a
 unique owned directory under `RUNNER_TEMP`. Both the root dependency and fixture
 entry use the same manifest override path. Ordinary product builds/runs and the
 unit-only `-O1` exception remain unchanged. SDK selection, workflow files, cache

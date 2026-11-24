@@ -42,7 +42,10 @@ RECEIPT_SCHEMA = "cjdoc.release-candidate/2"
 GATE_SCHEMA = "cjdoc.release-gate/4"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
 WORKER_PACKAGE = "cjdoc_chir_worker"
-REQUIRED_COMPILE_OPTIONS = ["-O2", "--fno-chir-function-inlining"]
+# Literal, like `release_build_parameters.REQUIRED_OPTION`: the receipt must reject
+# a build whose applied flags drifted, so it cannot share the policy constant.
+REQUIRED_COMPILE_OPTIONS = ["-O2", "--fno-chir-function-inlining", "-Woff", "unused",
+                            "-Woff", "deprecated"]
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 

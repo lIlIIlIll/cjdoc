@@ -11,6 +11,24 @@ Other platforms have not established a unit pass under either O2 configuration.
 This is a selected phase policy, never a retry after failure.
 `scripts/with_sts_cjpm.sh` applies the option and restores the manifests from a trap.
 
+Both phases additionally suppress the `unused` and `deprecated` warning groups.
+Every warning STS 1.2 emits for this tree today falls into one of those two
+groups, and most of them cannot be fixed here: 25 come from inside the pinned
+`yjson` dependency, 16 are test-only helpers that a product build never reaches,
+726 on macOS are mock variables synthesized inside the `@Test` macro, and 42 are
+`std.posix` fd calls (`openat`, `O_NOFOLLOW`, `lseek`, ...) whose replacement
+`std.fs` API cannot express the descriptor-relative, no-symlink walk that
+`src/filesystem/bounded_read.cj` requires. Suppressing them removed 86% of the
+build log without hiding any report the compiler still produces: `parser`,
+`semantics`, `apilevel-check`, `unsupport-compile-source`, `package-import` and
+`interpreter` stay enabled, which is why `all` is not used here.
+
+The suppression is part of the manifest override, so `cjpm` applies it to every
+package it compiles -- cjdoc and its dependencies alike. That is the accepted
+cost: a newly dead symbol or a newly deprecated API call in this repository will
+not announce itself in the build log, so review and the lint stage are the only
+remaining signal for those two groups.
+
 This module owns that rewrite so the wrapper and the CI-08.3 uniformity check
 share one definition. The package name is read from each manifest and checked
 against `KNOWN_PACKAGES`, never supplied by the caller: deriving it from a path
@@ -35,9 +53,14 @@ from pathlib import Path, PurePath, PureWindowsPath
 
 sys.dont_write_bytecode = True
 
-OPTION = "-O2 --fno-chir-function-inlining"
+# `cjpm` splits this value itself on spaces; each flag/value pair stays two tokens.
+WARNING_SUPPRESSION = ("-Woff", "unused", "-Woff", "deprecated")
+PRODUCT_OPTIMISATION = "-O2 --fno-chir-function-inlining"
+UNIT_OPTIMISATION = "-O1"
+OPTION = " ".join((PRODUCT_OPTIMISATION, *WARNING_SUPPRESSION))
 PRODUCT_OPTIONS = tuple(OPTION.split())
-UNIT_OPTION = "-O1"
+UNIT_OPTION = " ".join((UNIT_OPTIMISATION, *WARNING_SUPPRESSION))
+UNIT_OPTIONS = tuple(UNIT_OPTION.split())
 UNIT_REASON = "sts-1.2-linux-unit-plain-and-noinline-compiler-ice13"
 PRODUCT_REASON = "sts-1.2-doc-ir-gc-no-chir-function-inlining"
 # Set for one provider-fixture product invocation by the native compiler capture.

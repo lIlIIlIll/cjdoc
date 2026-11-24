@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 import release_build_parameters as params  # noqa: E402
+from sts_compile_override import OPTION  # noqa: E402
 
 SCRIPT = PROJECT_ROOT / "scripts/release_build_parameters.py"
 MODULE = "scripts/sts_compile_override.py"
@@ -67,19 +68,21 @@ class BuildParameterTests(unittest.TestCase):
             with self.subTest(platform=platform):
                 result = self.run_check(platform)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(json.loads(result.stdout)["effectiveCompileOption"], "-O2 --fno-chir-function-inlining")
+                self.assertEqual(json.loads(result.stdout)["effectiveCompileOption"], OPTION)
 
 
     @requires_shell
     def test_a_changed_shared_option_is_refused(self) -> None:
-        self.edit(MODULE, 'OPTION = "-O2 --fno-chir-function-inlining"', 'OPTION = "-O1"')
+        self.edit(MODULE, 'PRODUCT_OPTIMISATION = "-O2 --fno-chir-function-inlining"',
+                  'PRODUCT_OPTIMISATION = "-O1"')
         result = self.run_check()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O1", result.stderr)
 
     @requires_shell
     def test_plain_o2_is_refused_when_the_required_extra_flag_is_missing(self) -> None:
-        self.edit(MODULE, 'OPTION = "-O2 --fno-chir-function-inlining"', 'OPTION = "-O2"')
+        self.edit(MODULE, 'PRODUCT_OPTIMISATION = "-O2 --fno-chir-function-inlining"',
+                  'PRODUCT_OPTIMISATION = "-O2"')
         result = self.run_check()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--fno-chir-function-inlining", result.stderr)
@@ -115,7 +118,7 @@ class BuildParameterTests(unittest.TestCase):
             + shlex.quote(sys.executable) + ' - "$@" <<\'PY\'\n'
             "import json, os, pathlib, sys, tomllib\n"
             "package = tomllib.loads(pathlib.Path('cjpm.toml').read_text())['package']\n"
-            "assert package['override-compile-option'] == '-O2 --fno-chir-function-inlining'\n"
+            f"assert package['override-compile-option'] == {OPTION!r}\n"
             "with open(os.environ['CJDOC_PROBE_OBSERVED'], 'a') as output:\n"
             "    output.write(json.dumps(sys.argv[1:]) + '\\n')\n"
             "raise SystemExit(37)\nPY\n", encoding="utf-8")
@@ -132,7 +135,7 @@ class BuildParameterTests(unittest.TestCase):
         self.assertEqual(result.returncode, 37, result.stderr)
         self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
         self.assertEqual(len(observed.read_text().splitlines()), 1)
-        self.assertEqual(json.loads(log.read_text().strip())['option'], '-O2 --fno-chir-function-inlining')
+        self.assertEqual(json.loads(log.read_text().strip())['option'], OPTION)
 
     def test_a_missing_wrapper_is_refused(self) -> None:
         (self.repo / WRAPPER).unlink()

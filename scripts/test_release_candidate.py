@@ -18,6 +18,7 @@ from scripts import package_release
 from scripts import release_candidate_receipt
 from scripts import verify_release_package
 from scripts.release_tools_test_support import PROJECT_ROOT, SDK_SHA256, ReleaseToolsTestSupport
+from scripts.sts_compile_override import OPTION
 
 STDX_SHA256 = "2" * 64
 PLATFORM = "linux-x64"
@@ -66,7 +67,7 @@ class ReleaseCandidateFixture(ReleaseToolsTestSupport):
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return self.manifest_path
 
-    def invocation_log(self, *, option="-O2 --fno-chir-function-inlining", policy_sha=None,
+    def invocation_log(self, *, option=OPTION, policy_sha=None,
                        worker_digest: str | None = None):
         path = self.repo / "target/sts-invocations.jsonl"
         script_root = self.repo / "scripts"

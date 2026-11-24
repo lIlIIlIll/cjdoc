@@ -21,6 +21,7 @@ import highlight_acceptance
 import highlight_ci
 import highlight_process
 import test_release_transaction
+from sts_compile_override import OPTION
 
 from highlight_process import (ObservedProcess, assert_stopped, observe_cancel_targets,
                                cleanup_observed, _darwin_executable)
@@ -152,7 +153,7 @@ class HighlightCiContractTest(unittest.TestCase):
                 "package": "highlight_host_fixture",
                 "phase": "product-build",
                 "reason": "sts-1.2-doc-ir-gc-no-chir-function-inlining",
-                "option": "-O2 --fno-chir-function-inlining",
+                "option": OPTION,
                 "exitCode": 1,
                 "argv": ["private argument"],
                 "workspace": r"C:\Users\example-user\workspace",
@@ -365,12 +366,12 @@ class HighlightHostBuildTest(unittest.TestCase):
                     self.assertEqual(Path(record["argv"][-1]).resolve(), target)
                     self.assertEqual(Path(record["cwd"]), fixture)
                     self.assertEqual(record["sidecar"], sidecar)
-                    self.assertEqual(record["options"], ["-O2 --fno-chir-function-inlining", "-O2 --fno-chir-function-inlining"])
+                    self.assertEqual(record["options"], [OPTION, OPTION])
                     for path, contents in manifests.items():
                         self.assertEqual(path.read_bytes(), contents)
                     receipt = json.loads((work / "invocations.jsonl").read_text(encoding="utf-8"))
                     self.assertEqual(receipt["package"], "highlight_host_fixture")
-                    self.assertEqual(receipt["option"], "-O2 --fno-chir-function-inlining")
+                    self.assertEqual(receipt["option"], OPTION)
 
 
 class HighlightNoNodeEnvironmentTest(unittest.TestCase):

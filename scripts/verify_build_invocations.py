@@ -15,7 +15,7 @@ be recorded. What is required is stricter and still simple:
   so a later build that replaced it is detected even though it was recorded.
 
 Usage: verify_build_invocations.py --log FILE --binary PATH [--since OFFSET]
-                                   [--expect-compile-option "-O2 --fno-chir-function-inlining"]
+                                   [--expect-compile-option REQUIRED_OPTION]
 """
 
 from __future__ import annotations
@@ -28,6 +28,11 @@ import shlex
 import sys
 
 sys.dont_write_bytecode = True
+
+# Pinned expectation, deliberately independent of `sts_compile_override.OPTION`:
+# the verifier must reject a build whose applied option drifted, which it cannot
+# do if both values come from the same constant.
+REQUIRED_OPTION = "-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated"
 
 SCHEMA = "cjdoc.sts-invocation/1"
 CHUNK = 1 << 20
@@ -140,7 +145,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--since", type=int, default=0)
-    parser.add_argument("--expect-compile-option", default="-O2 --fno-chir-function-inlining")
+    parser.add_argument("--expect-compile-option", default=REQUIRED_OPTION)
     parser.add_argument("--binary", type=Path)
     parser.add_argument("--expect-command", default="cjpm build --jobs 1",
                         help="the command the release vouches for, space separated")

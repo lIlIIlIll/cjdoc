@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import native_compiler_capture as capture_module
 import native_compiler_payload as payload_module
 from native_compiler_capture import NativeCompilerCapture
+from sts_compile_override import OPTION as PRODUCT_OPTION, PRODUCT_OPTIONS
 
 PRODUCT_REASON = "sts-1.2-doc-ir-gc-no-chir-function-inlining"
 WINDOWS_LLC_FAILURE = (
@@ -97,7 +98,7 @@ class _Fixture:
         record = {
             "package": "provider_plugin_fixture",
             "option": option if option is not None else (
-                f'-O2 --fno-chir-function-inlining -V --save-temps "{diagnostics}"'),
+                f'{PRODUCT_OPTION} -V --save-temps "{diagnostics}"'),
             "policySha256": "0" * 64,
             "wrapperSha256": "1" * 64,
             "phase": phase,
@@ -314,8 +315,7 @@ class FailedStageTest(CaptureTestCase):
         self.assertEqual(record["sdk"]["matchesPrepare"], True)
         self.assertEqual(sorted(record["sdk"]["binaries"]),
                          sorted(capture_module.SDK_BINARIES))
-        self.assertEqual(record["compileOptions"]["product"],
-                         ["-O2", "--fno-chir-function-inlining"])
+        self.assertEqual(record["compileOptions"]["product"], list(PRODUCT_OPTIONS))
         self.assertEqual(record["compileOptions"]["diagnostics"][:2],
                          ["-V", "--save-temps"])
         self.assertTrue(record["compileOptions"]["diagnosticsDirMatchesCapture"])

@@ -26,6 +26,7 @@ from scripts import verify_repository_inputs
 from scripts import worktree_identity
 from scripts.release_package_contracts import API_COMMENT_SKILL_FILES
 from scripts.showcase_inputs import source_inputs
+from scripts.sts_compile_override import PRODUCT_OPTIONS
 from scripts.verify_repository_inputs import (
     CURRENT_GOLDEN_VERSION,
     GOLDEN_NAMES,
@@ -179,7 +180,7 @@ class ReleaseToolsTestSupport:
                           "compilerVersion": f"Cangjie Compiler: {sdk_version}", "cjpmVersion": sdk_version,
                           "stdxDigest": "b" * 64, "toolchainFingerprint": "c" * 64},
             "build": {"command": ["cjpm", "build", "--jobs", "1"],
-                      "effectiveCompileOptions": ["-O2", "--fno-chir-function-inlining"],
+                      "effectiveCompileOptions": list(PRODUCT_OPTIONS),
                       "buildConfigurationSha256": "d" * 64},
             "binary": {"path": "target/release/bin/main",
                        "sha256": main_digest,
