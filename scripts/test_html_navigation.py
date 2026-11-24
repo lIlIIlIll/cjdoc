@@ -4,25 +4,12 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 import unittest
 
-from test_validate_html_site import (canonical_api_route_script, canonical_search_script,
+from test_validate_html_site import (canonical_api_route_script, canonical_sidebar_script,
                                      canonical_theme_bootstrap_script)
-
-
-def extract_between(script: str, start: str, following: str, prelude: bool = True) -> str:
-    """Slice the emitted JavaScript through the brace before the next statement."""
-    opening = re.search(r"(?m)^[ \t]*" + re.escape(start), script)
-    assert opening is not None, start
-    closing = re.compile(r"(?m)^([ \t]*\};)\n\n[ \t]*" + re.escape(following))
-    end = closing.search(script, opening.end())
-    assert end is not None, following
-    shared = ('const isChinese = false;\nconst root = "";\nconst apiRoot = root;\n'
-              'const currentId = "";\nconst currentPage = "";\n')
-    return (shared if prelude else "") + script[opening.start():end.end(1)] + "\n"
 
 
 DOM_PRELUDE = r"""
@@ -166,6 +153,15 @@ const build = (tag, className, attrs = {}) => {
   for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
   return node;
 };
+const bootSidebar = (document, window, globals = {}) => {
+  const events = {};
+  window.addEventListener = (name, handler) => { events[name] = handler; };
+  window.location.protocol = "file:";
+  vm.runInNewContext(SOURCE, {
+    document, window, location: window.location, __CJDOC_DEPRECATION__: () => undefined, ...globals,
+  });
+  return events;
+};
 """
 
 
@@ -178,19 +174,23 @@ class HtmlNavigationTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def run_sidebar(self, harness: str) -> None:
+        self.run_node(canonical_api_route_script() + canonical_sidebar_script(), harness)
+
     def test_route_state_marks_overview_page_and_api_ancestor(self) -> None:
-        script = canonical_search_script()
-        source = extract_between(script, "const syncRouteState = () => {", "const positionSidebar")
         harness = r"""
 const sidebar = new Node("aside");
 sidebar.dataset.cjdocCurrentPage = "index.html";
 const overview = build("a", "cj-sidebar__link", {href: "index.html"});
 const api = build("a", "cj-sidebar__link", {href: "index.html#packages"});
 sidebar.append(overview, api);
-const document = {body: {dataset: {cjdocRoute: "overview"}}};
+const document = {
+  body: {dataset: {cjdocRoute: "overview"}},
+  documentElement: new Node("html"),
+  querySelector: selector => selector === "#cjdoc-sidebar" ? sidebar : null,
+};
 const window = {location: {hash: ""}};
-const context = vm.createContext({document, window, sidebar});
-vm.runInContext(SOURCE + "\nsyncRouteState();", context);
+const events = bootSidebar(document, window);
 const state = link => ({
   page: link.getAttribute("aria-current"),
   ancestor: (link.className || "").split(" ").includes("cj-sidebar__link--ancestor"),
@@ -199,20 +199,18 @@ assert.deepEqual(state(overview), {page: "page", ancestor: false});
 assert.deepEqual(state(api), {page: null, ancestor: false});
 // A fragment is client state on the same document: the overview stays current.
 window.location.hash = "#packages";
-vm.runInContext("syncRouteState();", context);
+events.hashchange();
 assert.deepEqual(state(overview), {page: "page", ancestor: false});
 assert.deepEqual(state(api), {page: null, ancestor: true});
 document.body.dataset.cjdocRoute = "api";
 sidebar.dataset.cjdocCurrentPage = "copper/Copper/wire/index.html";
-vm.runInContext("syncRouteState();", context);
+events.popstate();
 assert.deepEqual(state(overview), {page: null, ancestor: false});
 assert.deepEqual(state(api), {page: null, ancestor: true});
 """
-        self.run_node(source, harness)
+        self.run_sidebar(harness)
 
     def test_position_sidebar_prefers_current_page_then_deepest_ancestor(self) -> None:
-        script = canonical_search_script()
-        source = extract_between(script, "const positionSidebar = () => {", "const typeElements")
         harness = r"""
 const run = (nodes) => {
   const sidebar = new Node("aside");
@@ -221,9 +219,12 @@ const run = (nodes) => {
   sidebar.clientHeight = 300;
   sidebar.getBoundingClientRect = () => ({top: 100});
   const window = {location: {hash: ""}};
-  const document = {body: {dataset: {}}};
-  const context = vm.createContext({document, window, sidebar});
-  vm.runInContext(SOURCE + "\npositionSidebar();", context);
+  const document = {
+    body: {dataset: {}},
+    documentElement: new Node("html"),
+    querySelector: selector => selector === "#cjdoc-sidebar" ? sidebar : null,
+  };
+  bootSidebar(document, window, {requestAnimationFrame: callback => callback()});
   return sidebar.scrollTop;
 };
 const link = (className, top, current) => {
@@ -241,12 +242,9 @@ assert.equal(run([link("cj-tree__link cj-tree__link--ancestor", 150),
   link("cj-tree__link cj-tree__link--ancestor", 700)]), 700 - 100 - 100);
 assert.equal(run([link("cj-sidebar__link", 40, true)]), 0);
 """
-        self.run_node(source, harness)
+        self.run_sidebar(harness)
 
     def test_filter_expands_matching_branch_and_hides_others(self) -> None:
-        script = canonical_search_script()
-        source = (extract_between(script, "const packages = [];", "const syncRouteState")
-                  + extract_between(script, "const typeElements = record => {", "const initDrawer", prelude=False))
         harness = r"""
 const tree = build("nav", "cj-tree");
 const copperModule = build("section", "cj-tree__module",
@@ -305,17 +303,17 @@ const document = {
   body: {dataset: {}},
   documentElement: new Node("html"),
   querySelector: selector => selector === "[data-cjdoc-sidebar-filter]" ? filterInput
-    : selector === "[data-cjdoc-sidebar-no-results]" ? empty : null,
+    : selector === "[data-cjdoc-sidebar-no-results]" ? empty
+    : selector === "[data-cjdoc-sidebar-tree]" ? tree : null,
   querySelectorAll: () => [],
   createElement: tag => new Node(tag),
 };
 const window = {location: {hash: ""}, matchMedia: () => ({matches: false})};
-const context = vm.createContext({document, window, location: {protocol: "file:"}, tree, data});
-vm.runInContext(API_ROUTES + SOURCE + "\ninitSidebarTree();\nfilterSidebar();", context);
+bootSidebar(document, window, {__CJDOC_SIDEBAR_INDEX__: data});
 assert.equal(alphaItem.hidden, false);
 assert.equal(copperItem.hidden, false);
 filterInput.value = "Copper";
-vm.runInContext("filterSidebar();", context);
+filterInput.events.input();
 const copperType = copperItem.querySelector("[data-cjdoc-tree-item='type']");
 const copperMembers = copperType.querySelector(":scope > ul");
 assert.equal(copperMembers.querySelectorAll("[data-cjdoc-tree-item='member']").length, 2,
@@ -326,13 +324,13 @@ more.append(build("a", "cj-tree__more", {href: "symbols/copper.html"}));
 copperMembers.replaceChildren(copperMembers.children[0], more);
 copperMembers.setAttribute("data-cjdoc-tree-partial", "");
 filterInput.value = "cop";
-vm.runInContext("filterSidebar();", context);
+filterInput.events.input();
 assert.equal(copperMembers.querySelectorAll("[data-cjdoc-tree-item='member']").length, 2,
   "a type-name match must also complete a partial member branch");
 assert.equal(copperMembers.hasAttribute("data-cjdoc-tree-partial"), false);
 assert.equal(more.hidden, false, "filtering keeps the full member-index entry reachable");
 filterInput.value = "wire";
-vm.runInContext("filterSidebar();", context);
+filterInput.events.input();
 assert.equal(alphaItem.hidden, true, "packages without a match are hidden");
 assert.equal(copperItem.hidden, false);
 const copperTypes = copperItem.querySelector(":scope > ul");
@@ -346,12 +344,12 @@ assert.equal(memberRows[0].hidden, false);
 assert.equal(memberRows[1].hidden, true);
 assert.equal(more.hidden, false, "member-name filtering must not hide the full index");
 filterInput.value = "zzzzzz";
-vm.runInContext("filterSidebar();", context);
+filterInput.events.input();
 assert.equal(alphaItem.hidden, true);
 assert.equal(copperItem.hidden, true);
 assert.equal(empty.hidden, false);
 filterInput.value = "";
-vm.runInContext("filterSidebar();", context);
+filterInput.events.input();
 assert.equal(alphaItem.hidden, false);
 assert.equal(copperItem.hidden, false);
 assert.equal(empty.hidden, true);
@@ -359,11 +357,9 @@ assert.equal(copperTypes.hidden, true, "clearing the filter restores the collaps
 assert.equal(copperMembers.hidden, true, "clearing the filter restores the collapsed type");
 assert(memberRows.every(member => !member.hidden));
 """
-        self.run_node(source, "const API_ROUTES = " + json.dumps(canonical_api_route_script()) + ";\n" + harness)
+        self.run_sidebar(harness)
 
     def test_drawer_sets_page_state_and_restores_focus(self) -> None:
-        script = canonical_search_script()
-        source = extract_between(script, "const initDrawer = () => {", "initSidebarTree")
         harness = r"""
 const sidebar = new Node("aside", "cj-sidebar");
 sidebar.append(build("input", "cj-input", {"data-cjdoc-sidebar-filter": ""}));
@@ -378,14 +374,13 @@ const document = {
   activeElement: null,
   querySelector: selector => selector === "[data-cjdoc-menu]" ? menu
     : selector === "[data-cjdoc-menu-backdrop]" ? backdrop
-    : selector === "[data-cjdoc-sidebar-close]" ? null : null,
+    : selector === "#cjdoc-sidebar" ? sidebar : null,
   querySelectorAll: selector => selector === ".cj-header, .cj-main, .cj-toc, .cj-footer"
     ? [header, main] : [],
 };
 document.addEventListener = () => {};
-const window = {matchMedia: () => ({matches: true}), addEventListener() {}};
-const context = vm.createContext({document, window, sidebar});
-vm.runInContext(SOURCE + "\ninitDrawer();", context);
+const window = {location: {hash: ""}, matchMedia: () => ({matches: true})};
+bootSidebar(document, window);
 menu.events.click();
 assert.equal(menu.getAttribute("aria-expanded"), "true");
 assert.equal(document.documentElement.getAttribute("data-cj-drawer"), "open");
@@ -402,7 +397,7 @@ assert.equal(header.getAttribute("inert"), null);
 assert.equal(main.getAttribute("inert"), null);
 assert.equal(menu.focused, true, "closing the drawer returns focus to its trigger");
 """
-        self.run_node(source, harness)
+        self.run_sidebar(harness)
 
     def test_theme_bootstrap_url_choice_beats_storage_and_reader_values_are_allow_listed(self) -> None:
         harness = r"""

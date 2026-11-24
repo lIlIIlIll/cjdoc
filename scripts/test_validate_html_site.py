@@ -57,13 +57,17 @@ def canonical_api_route_script() -> str:
     return _script_literal(BROWSER_SOURCES / "html_scripts.cj", "HTML_API_LINK_SCRIPT")
 
 
+def canonical_sidebar_script() -> str:
+    return _script_literal(BROWSER_SOURCES / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
+
+
 def canonical_search_script(comment_fields: bool = False) -> str:
     """Reproduce the canonical reader bundle, including packaging whitespace."""
     fields = (_script_literal(BROWSER_SOURCES / "html_search_controller_fields.cj",
                               "HTML_SEARCH_CONTROLLER_FIELDS_SCRIPT")
               if comment_fields else "const fieldController = null;\n")
     source = (canonical_api_route_script()
-              + _script_literal(BROWSER_SOURCES / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
+              + canonical_sidebar_script()
               + _script_literal(BROWSER_SOURCES / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_PRIMITIVES_SCRIPT")
               + _script_literal(BROWSER_SOURCES / "html_search_kernel_index.cj", "HTML_SEARCH_KERNEL_INDEX_SCRIPT")
               + _script_literal(BROWSER_SOURCES / "html_search_kernel_matching.cj", "HTML_SEARCH_KERNEL_MATCHING_SCRIPT")
