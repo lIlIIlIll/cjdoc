@@ -47,6 +47,8 @@ python3 scripts/test_query_mcp.py --binary "$CURRENT_BINARY" \
 
 原生 MCP 集成驱动真实 stdio 进程，覆盖初始化/通知、非法 ID/消息、限额、EOF 及 CLI 等价；它**不调用模型**。正常 `scripts/check.sh cli` 也运行真实机器产物及 MCP 检查。完整 source-bound build/unit/CLI、最终发布目录、离线 ZIP、浏览器和远端 CI 仍各有独立证据，不用这些小门禁替代。
 
+`scripts/agent_evaluation_protocol.py` 校验冻结输入、限制预算并排定会话；`scripts/agent_evaluation.py` 执行会话并保存证据。运行 manifest 单独记录 `harness.protocolLoaderSha256`，`runnerSha256` 仍标识入口脚本。
+
 ## 执行一次完整配对
 
 下面的站点名字是固定任务的 scope 标签。路径必须对应实际捕获目录；没有该站点时先修复捕获流程，不把别的版本重命名充数。

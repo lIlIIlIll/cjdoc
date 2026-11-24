@@ -223,25 +223,31 @@ class HighlightCiContractTest(unittest.TestCase):
                 invocation = base / "source-alias"
                 invocation.symlink_to(source, target_is_directory=True)
             trusted = invocation / "scripts/highlight_acceptance.py"
-            outside = base / "outside/scripts/highlight_acceptance.py"
+            worker = invocation / "scripts/highlight_acceptance_worker.py"
+            outside = base / "outside/scripts/highlight_acceptance_worker.py"
             trusted.parent.mkdir(parents=True)
             outside.parent.mkdir(parents=True)
             outside.write_text('raise RuntimeError("unpublished fixture prose")\n', encoding="utf-8")
+            worker.write_text("import runpy, sys\nrunpy.run_path(sys.argv[1])\n", encoding="utf-8")
             trusted.write_text(
                 "import json, runpy, sys\n"
                 "from pathlib import Path\n"
                 "from highlight_ci import traceback_locations\n"
                 "try:\n"
-                "    runpy.run_path(sys.argv[1])\n"
+                "    runpy.run_path(sys.argv[2])\n"
                 "except Exception as error:\n"
                 "    print(json.dumps(traceback_locations(Path(__file__).resolve().parents[1], error.__traceback__)))\n",
                 encoding="utf-8")
             environment = dict(os.environ, PYTHONPATH=str(REPO / "scripts"),
                                PYTHONDONTWRITEBYTECODE="1", PRIVATE_FIXTURE_VALUE="unpublished environment")
-            result = subprocess.run([sys.executable, str(trusted), str(outside), "unpublished argument"],
+            result = subprocess.run([sys.executable, str(trusted), str(outside), str(worker),
+                                     "unpublished argument"],
                                     env=environment, capture_output=True, text=True, check=True, timeout=10)
             locations = json.loads(result.stdout)
-            self.assertEqual(locations, [{"script": "scripts/highlight_acceptance.py", "line": 5}])
+            self.assertEqual(locations, [
+                {"script": "scripts/highlight_acceptance.py", "line": 5},
+                {"script": "scripts/highlight_acceptance_worker.py", "line": 2},
+            ])
             for forbidden in [str(base), "unpublished", "RuntimeError", "PRIVATE_FIXTURE_VALUE"]:
                 self.assertNotIn(forbidden, result.stdout)
             record = base / "locations.json"

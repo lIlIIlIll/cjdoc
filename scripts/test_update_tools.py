@@ -24,7 +24,7 @@ GOLDEN_NAMES = (
     "conditional-linux",
     "path-dependencies",
 )
-from scripts.repository_input_contracts import SCHEMA_NAMES
+from scripts.repository_inputs.contracts import SCHEMA_NAMES
 
 
 class UpdateToolsTest(unittest.TestCase):
@@ -118,13 +118,13 @@ class UpdateToolsTest(unittest.TestCase):
         for name in (
             "fixture_snapshot.py", "update_goldens.sh", "update_schemas.sh",
             "verify_repository_inputs.py", "safe_output_root.py", "strict_json.py",
-            "worktree_identity.py", "repository_input_contracts.py",
-            "repository_input_files.py", "repository_input_codec.py",
-            "repository_input_vendor.py",
+            "worktree_identity.py",
             "release_package_contracts.py",
             "showcase_inputs.py",
         ):
             shutil.copyfile(PROJECT_ROOT / "scripts" / name, scripts / name)
+        shutil.copytree(PROJECT_ROOT / "scripts/repository_inputs", scripts / "repository_inputs",
+                        ignore=shutil.ignore_patterns("__pycache__"))
         for script in (scripts / "update_goldens.sh", scripts / "update_schemas.sh"):
             script.chmod(0o755)
 

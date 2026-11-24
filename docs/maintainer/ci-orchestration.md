@@ -168,6 +168,10 @@ provider stage on Windows in GitHub Actions. The command rejects other platforms
 or stage kinds. One capture observes one actual invocation; it does not retry the
 compiler or dispatch another workflow.
 
+`scripts/native_compiler_capture.py` owns stage observation and receipt assembly.
+`scripts/native_compiler_payload.py` owns verified file reads and the private
+LLVM-text audit before publishing the exact bitcode bytes.
+
 The provider fixture's `cjpm run` retains the product's `--jobs 1`,
 `-O2 --fno-chir-function-inlining` policy and adds only `-V --save-temps` with a
 unique owned directory under `RUNNER_TEMP`. Both the root dependency and fixture

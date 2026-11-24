@@ -88,7 +88,8 @@ done
 "${python_cmd}" - "${stage_dir}" <<'PY'
 from pathlib import Path
 import sys
-from scripts.verify_repository_inputs import SCHEMA_NAMES, validate_schema_document
+from scripts.repository_inputs.contracts import SCHEMA_NAMES
+from scripts.repository_inputs.schema import validate_schema_document
 from scripts.strict_json import strict_load
 
 root = Path(sys.argv[1])

@@ -19,14 +19,14 @@ sys.dont_write_bytecode = True
 try:
     from .safe_output_root import lexical_absolute, safe_output_file, verify_directory_chain
     from .strict_json import strict_dumps, strict_load
-    from .repository_input_contracts import CURRENT_GOLDEN_VERSION
+    from .repository_inputs.contracts import CURRENT_GOLDEN_VERSION
     from .release_package_contracts import release_core, release_version_from_tag
     from .verify_repository_inputs import required_repository_paths, verify_repository_inputs
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
     from safe_output_root import lexical_absolute, safe_output_file, verify_directory_chain
     from strict_json import strict_dumps, strict_load
-    from repository_input_contracts import CURRENT_GOLDEN_VERSION
+    from repository_inputs.contracts import CURRENT_GOLDEN_VERSION
     from release_package_contracts import release_core, release_version_from_tag
     from verify_repository_inputs import required_repository_paths, verify_repository_inputs
     from worktree_identity import exact_worktree_identity

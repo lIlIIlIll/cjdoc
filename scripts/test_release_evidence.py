@@ -346,13 +346,12 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "strict_json.py",
                 "verify_repository_inputs.py",
                 "worktree_identity.py",
-                "repository_input_contracts.py",
-                "repository_input_files.py",
-                "repository_input_codec.py",
-                "repository_input_vendor.py",
                 "showcase_inputs.py",
             ):
                 shutil.copyfile(PROJECT_ROOT / "scripts" / name, scripts / name)
+            shutil.copytree(PROJECT_ROOT / "scripts/repository_inputs",
+                            scripts / "repository_inputs",
+                            ignore=shutil.ignore_patterns("__pycache__"))
             self.git(repo, "add", "scripts")
             self.git(repo, "commit", "-q", "-m", "add verifier")
 

@@ -112,10 +112,16 @@ def public_cancel_host_receipt(path: Path) -> dict:
 
 
 
+HIGHLIGHT_TRACEBACK_SCRIPTS = (
+    "scripts/highlight_acceptance.py",
+    "scripts/highlight_acceptance_worker.py",
+    "scripts/highlight_process.py",
+)
+
+
 def traceback_locations(source: Path, traceback) -> list[dict]:
     """Retain trusted script/line locations, never exception text or locals."""
-    allowed = {source.resolve() / name: name for name in (
-        "scripts/highlight_acceptance.py", "scripts/highlight_process.py")}
+    allowed = {source.resolve() / name: name for name in HIGHLIGHT_TRACEBACK_SCRIPTS}
     locations = []
     while traceback is not None and len(locations) < 16:
         script = allowed.get(Path(traceback.tb_frame.f_code.co_filename).resolve())
@@ -135,13 +141,13 @@ def load_traceback_locations(path: Path) -> list[dict] | None:
         locations = json.loads(raw)
     except (OSError, ValueError):
         return None
-    allowed = {"scripts/highlight_acceptance.py", "scripts/highlight_process.py"}
     if not isinstance(locations, list) or not 1 <= len(locations) <= 16:
         return None
     for location in locations:
-        if (not isinstance(location, dict) or set(location) != {"script", "line"} or
-                not isinstance(location["script"], str) or location["script"] not in allowed or
-                type(location["line"]) is not int or not 1 <= location["line"] <= 1000000):
+        if (not isinstance(location, dict) or set(location) != {"script", "line"}
+                or not isinstance(location["script"], str)
+                or location["script"] not in HIGHLIGHT_TRACEBACK_SCRIPTS
+                or type(location["line"]) is not int or not 1 <= location["line"] <= 1000000):
             return None
     return locations
 

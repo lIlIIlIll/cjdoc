@@ -4,14 +4,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-try:
-    from .repository_input_contracts import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES
-    from .safe_output_root import lexical_absolute, safe_regular_file
-    from .strict_json import strict_dumps, strict_load, strict_loads
-except ImportError:  # Direct module execution.
-    from repository_input_contracts import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES
+from .contracts import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES
+
+if __package__ == "repository_inputs":  # Imported by a direct script entry point.
     from safe_output_root import lexical_absolute, safe_regular_file
     from strict_json import strict_dumps, strict_load, strict_loads
+else:
+    from ..safe_output_root import lexical_absolute, safe_regular_file
+    from ..strict_json import strict_dumps, strict_load, strict_loads
+
 
 def resolve_binary(value: Path) -> Path:
     candidate = lexical_absolute(value)
