@@ -11,26 +11,25 @@ Other platforms have not established a unit pass under either O2 configuration.
 This is a selected phase policy, never a retry after failure.
 `scripts/with_sts_cjpm.sh` applies the option and restores the manifests from a trap.
 
-Both phases additionally suppress the `unused` and `deprecated` warning groups.
-Every warning STS 1.2 emits for this tree today falls into one of those two
-groups, and most of them cannot be fixed here: 25 come from inside the pinned
-`yjson` dependency, 16 are symbols no product code path references (test hooks,
-unused property getters, and public entry points such as `generateMatrix` that
-only outside callers reach), 726 on macOS are mock variables synthesized inside
-the `@Test` macro, and 42 are `std.posix` fd calls (`openat`, `O_NOFOLLOW`,
-`lseek`, ...) whose replacement `std.fs` API cannot express the
-descriptor-relative, no-symlink walk that `src/filesystem/bounded_read.cj`
-requires. Suppressing them removed 86% of the build log without hiding any
-report the compiler still produces: `parser`,
-`semantics`, `apilevel-check`, `unsupport-compile-source`, `package-import` and
-`interpreter` stay enabled, which is why `all` is not used here.
+Product build/run invocations additionally suppress the `unused` and `deprecated`
+warning groups. Every warning STS 1.2 emits for this tree's Linux product build
+falls into one of those groups. Many cannot be fixed in the product path: 25
+come from inside the pinned `yjson` dependency, 16 are symbols no product code
+references (including test hooks and externally used public entry points), and
+42 deprecated calls are the `std.posix` fd APIs (`openat`, `O_NOFOLLOW`,
+`lseek`, ...) whose replacement `std.fs` API cannot express the descriptor-
+relative, no-symlink walk required by `src/filesystem/bounded_read.cj`. The
+remaining 3 deprecation warnings are `std.sync.ReentrantMutex` uses. Other
+warning groups remain visible; in particular, this policy does not use
+`-Woff all`, which also disables `semantics`, `parser`, `apilevel-check`,
+`unsupport-compile-source`, `package-import` and `interpreter`.
 
-The suppression is part of the manifest override, so `cjpm` applies it to every
-package it compiles -- cjdoc and its dependencies alike. That is the accepted
-cost: a newly dead symbol or a newly deprecated API call in this repository will
-not announce itself in the build log, so review and the lint stage are the only
-remaining signal for those two groups.
-
+The suppression is in the product manifest override, so `cjpm` applies it to
+the entire dependency closure. New unused symbols or deprecated API calls in
+product builds will not appear in the log; review and lint remain the signals
+for those groups. Unit tests deliberately retain warnings: STS 1.2 Windows
+unit compilation fails in `match (String)` when these suppression flags are
+applied, so keeping the test phase unsuppressed avoids that compiler failure.
 This module owns that rewrite so the wrapper and the CI-08.3 uniformity check
 share one definition. The package name is read from each manifest and checked
 against `KNOWN_PACKAGES`, never supplied by the caller: deriving it from a path
@@ -61,7 +60,7 @@ PRODUCT_OPTIMISATION = "-O2 --fno-chir-function-inlining"
 UNIT_OPTIMISATION = "-O1"
 OPTION = " ".join((PRODUCT_OPTIMISATION, *WARNING_SUPPRESSION))
 PRODUCT_OPTIONS = tuple(OPTION.split())
-UNIT_OPTION = " ".join((UNIT_OPTIMISATION, *WARNING_SUPPRESSION))
+UNIT_OPTION = UNIT_OPTIMISATION
 UNIT_OPTIONS = tuple(UNIT_OPTION.split())
 UNIT_REASON = "sts-1.2-linux-unit-plain-and-noinline-compiler-ice13"
 PRODUCT_REASON = "sts-1.2-doc-ir-gc-no-chir-function-inlining"
