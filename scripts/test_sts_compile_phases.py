@@ -18,6 +18,9 @@ except ImportError:
     from release_build_parameters import usable_shell
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'scripts'))
+
+from sts_compile_override import OPTION, UNIT_OPTION  # noqa: E402
 PROBE = r"""import json, os, pathlib, subprocess, sys, tomllib
 if sys.argv[1:] == ['-v']:
     raise SystemExit(0)
@@ -36,7 +39,7 @@ if command == 'test':
     (target / 'unit-o1-cache').write_text(option)
     if os.environ.get('PROBE_NESTED_BUILD'):
         subprocess.run([os.environ['PROBE_SHELL'], '-c', 'cjpm build --jobs 1'], check=True)
-        assert tomllib.loads(pathlib.Path('cjpm.toml').read_text())['package']['override-compile-option'] == '-O1'
+        assert tomllib.loads(pathlib.Path('cjpm.toml').read_text())['package']['override-compile-option'] == os.environ['PROBE_UNIT_OPTION']
 if command == 'build' and not os.environ.get('PROBE_EXIT_CODE'):
     binary = pathlib.Path('target/release/bin/main')
     binary.parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +78,7 @@ class CompilePhaseTests(unittest.TestCase):
         self.log = self.runner / 'invocations.jsonl'
         self.environment = dict(os.environ, GITHUB_WORKSPACE=str(self.repo), RUNNER_TEMP=str(self.runner), CJDOC_PYTHON=sys.executable,
                                 PROBE_OBSERVATIONS=str(self.observed), CJDOC_STS_INVOCATION_LOG=str(self.log),
-                                PROBE_SHELL=self.shell)
+                                PROBE_SHELL=self.shell, PROBE_UNIT_OPTION=UNIT_OPTION)
         self.environment['PATH'] = str(probe) + os.pathsep + os.environ.get('PATH', '')
         self.environment.pop('CJDOC_STS_WRAPPER_CJPM', None)
         self.environment.pop('CJDOC_REAL_CJPM', None)
@@ -98,11 +101,15 @@ class CompilePhaseTests(unittest.TestCase):
     def records(self, path):
         return [json.loads(line) for line in path.read_text().splitlines()]
 
+    def test_warning_suppression_is_product_only(self):
+        self.assertEqual(UNIT_OPTION, '-O1')
+        self.assertIn('-Woff', OPTION)
+
     def test_product_o2_and_unit_o1_are_selected_before_execution(self):
         result = self.invoke('cjpm build --jobs 1 && cjpm test --jobs 1 --no-progress && cjpm run --build-args "--jobs 1"')
         self.assertEqual(result.returncode, 0, result.stderr)
         actual = self.records(self.observed)
-        self.assertEqual([r['option'] for r in actual], ['-O2 --fno-chir-function-inlining', '-O1', '-O2 --fno-chir-function-inlining'])
+        self.assertEqual([r['option'] for r in actual], [OPTION, UNIT_OPTION, OPTION])
         self.assertEqual(self.manifest.read_bytes(), self.original)
         self.assertFalse(Path(actual[1]['target']).exists())
         records = self.records(self.log)
@@ -115,7 +122,7 @@ class CompilePhaseTests(unittest.TestCase):
         self.assertEqual(binary.read_bytes(), b'product-O2')
         verified = subprocess.run([sys.executable, str(self.repo / 'scripts/verify_build_invocations.py'), '--log', str(self.log), '--binary', str(binary)], capture_output=True, text=True)
         self.assertEqual(verified.returncode, 0, verified.stderr)
-        self.assertEqual(json.loads(verified.stdout)['option'], '-O2 --fno-chir-function-inlining')
+        self.assertEqual(json.loads(verified.stdout)['option'], OPTION)
 
     def test_failed_unit_keeps_exit_code_without_retry_or_product_cache_change(self):
         product = self.repo / 'target/release/bin/main'
@@ -125,7 +132,7 @@ class CompilePhaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 47, result.stderr)
         actual = self.records(self.observed)
         self.assertEqual(len(actual), 1)
-        self.assertEqual(actual[0]['option'], '-O1')
+        self.assertEqual(actual[0]['option'], UNIT_OPTION)
         self.assertFalse(Path(actual[0]['target']).exists())
         self.assertEqual(product.read_bytes(), b'previous-product')
         self.assertEqual(self.manifest.read_bytes(), self.original)
@@ -152,7 +159,7 @@ class CompilePhaseTests(unittest.TestCase):
     def test_nested_product_build_stays_o2_and_restores_outer_test_manifest(self):
         result = self.invoke('cjpm test --jobs 1', PROBE_NESTED_BUILD='1')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual([r['option'] for r in self.records(self.observed)], ['-O2 --fno-chir-function-inlining', '-O1'])
+        self.assertEqual([r['option'] for r in self.records(self.observed)], [OPTION, UNIT_OPTION])
         self.assertEqual(self.manifest.read_bytes(), self.original)
 
     def test_provider_run_retains_compiler_ir_without_changing_the_product_option(self):
@@ -166,7 +173,7 @@ class CompilePhaseTests(unittest.TestCase):
                                      CJDOC_STS_COMPILER_DIAGNOSTICS=diagnostics,
                                      PROBE_EXIT_CODE=str(status))
                 self.assertEqual(result.returncode, status, result.stderr)
-                expected = (f'-O2 --fno-chir-function-inlining -V --save-temps "{diagnostics}"')
+                expected = f'{OPTION} -V --save-temps "{diagnostics}"'
                 # What the compiler would read came back from TOML as exactly the
                 # requested argument: the Windows backslashes survived escaping and
                 # `cjpm`'s quote-grouping sees one --save-temps argument.
@@ -186,12 +193,12 @@ class CompilePhaseTests(unittest.TestCase):
                              CJDOC_STS_COMPILER_DIAGNOSTICS='/runner temp/ir')
         self.assertEqual(result.returncode, 0, result.stderr)
         raw = self.records(self.observed)[0]['option']
-        self.assertTrue(raw.startswith('-O2 --fno-chir-function-inlining '), raw)
+        self.assertTrue(raw.startswith(OPTION + ' '), raw)
         self.assertNotIn('-O1', raw)
         # The next invocation without the request is the plain pinned option again.
         result = self.invoke('cjpm run --build-args "--jobs 1"', cwd=fixture)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.records(self.observed)[-1]['option'], '-O2 --fno-chir-function-inlining')
+        self.assertEqual(self.records(self.observed)[-1]['option'], OPTION)
         self.assertEqual(manifest.read_bytes(), original)
 
     def test_retention_is_refused_outside_the_provider_run(self):
@@ -199,9 +206,9 @@ class CompilePhaseTests(unittest.TestCase):
         fixture, manifest, original = self.provider_fixture()
         diagnostics = '/runner temp/ir'
         cases = (
-            ('cjpm run --build-args "--jobs 1"', self.repo, '-O2 --fno-chir-function-inlining'),
-            ('cjpm build --jobs 1', fixture, '-O2 --fno-chir-function-inlining'),
-            ('cjpm test --jobs 1', fixture, '-O1'),
+            ('cjpm run --build-args "--jobs 1"', self.repo, OPTION),
+            ('cjpm build --jobs 1', fixture, OPTION),
+            ('cjpm test --jobs 1', fixture, UNIT_OPTION),
         )
         for command, cwd, expected in cases:
             with self.subTest(command=command, cwd=cwd.name):
@@ -242,7 +249,7 @@ class CompilePhaseTests(unittest.TestCase):
         result = self.invoke('cjpm build --jobs 1 && cd tools/chir-worker && cjpm build --jobs 1')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([r['option'] for r in self.records(self.observed)],
-                         ['-O2 --fno-chir-function-inlining', '-O2 --fno-chir-function-inlining'])
+                         [OPTION, OPTION])
         records = self.records(self.log)
         self.assertEqual(records[1]['package'], 'cjdoc_chir_worker')
         import hashlib

@@ -13,6 +13,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ci_stage
+from sts_compile_override import PRODUCT_OPTIONS, UNIT_OPTIONS
 
 
 class StageRecordTest(unittest.TestCase):
@@ -65,11 +66,11 @@ class StageRecordTest(unittest.TestCase):
         with patch.dict("os.environ", {"CJDOC_REAL_CJPM": "cjpm"}):
             unit = ci_stage.stage_environment(kind="native")
             product = ci_stage.stage_environment(kind="build")
-        self.assertEqual(unit["compileOptions"], ["--jobs 1", "-O1"])
+        self.assertEqual(unit["compileOptions"], ["--jobs 1", *UNIT_OPTIONS])
         self.assertEqual(unit["compileReason"], "sts-1.2-linux-unit-plain-and-noinline-compiler-ice13")
         self.assertEqual(unit["unitTargetIsolation"], "fresh-target-dir")
-        self.assertEqual(unit["productCompileOptions"], ["--jobs 1", "-O2", "--fno-chir-function-inlining"])
-        self.assertEqual(product["compileOptions"], ["--jobs 1", "-O2", "--fno-chir-function-inlining"])
+        self.assertEqual(unit["productCompileOptions"], ["--jobs 1", *PRODUCT_OPTIONS])
+        self.assertEqual(product["compileOptions"], ["--jobs 1", *PRODUCT_OPTIONS])
         self.assertEqual(product["unitTargetIsolation"], "")
 
     def test_native_stage_records_the_unit_exception(self) -> None:
@@ -80,8 +81,8 @@ class StageRecordTest(unittest.TestCase):
                 result = ci_stage.run_stage("native", "native", [sys.executable, "-c", "pass"], evidence)
             self.assertEqual(result, 0)
             environment = ci_stage.load_records(evidence)[0]["environment"]
-            self.assertEqual(environment["compileOptions"], ["--jobs 1", "-O1"])
-            self.assertEqual(environment["productCompileOptions"], ["--jobs 1", "-O2", "--fno-chir-function-inlining"])
+            self.assertEqual(environment["compileOptions"], ["--jobs 1", *UNIT_OPTIONS])
+            self.assertEqual(environment["productCompileOptions"], ["--jobs 1", *PRODUCT_OPTIONS])
 
     def test_windows_provider_failure_adds_only_sanitized_compiler_facts(self) -> None:
         from unittest.mock import patch

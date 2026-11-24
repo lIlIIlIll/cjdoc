@@ -34,12 +34,12 @@ import threading
 import time
 
 try:
-    from .sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
+    from .sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTIONS, UNIT_REASON
     from .compiler_failure_evidence import compiler_failure_evidence
     from .native_compiler_capture import NativeCompilerCapture
     from .ci_wallclock import classify_wallclock, non_overlapping_chain
 except ImportError:
-    from sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
+    from sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTIONS, UNIT_REASON
     from compiler_failure_evidence import compiler_failure_evidence
     from native_compiler_capture import NativeCompilerCapture
     from ci_wallclock import classify_wallclock, non_overlapping_chain
@@ -170,7 +170,7 @@ def stage_environment(repo: Path | None = None, *, kind: str | None = None) -> d
     compile_options = list(_COMPILE_OPTIONS) if wrapped else []
     compile_reason = PRODUCT_REASON if wrapped else ""
     if wrapped and kind == "native":
-        compile_options = ["--jobs 1", UNIT_OPTION]
+        compile_options = ["--jobs 1", *UNIT_OPTIONS]
         compile_reason = UNIT_REASON
     return {
         "checkoutCommit": os.environ.get("GITHUB_SHA") or git_value(repo, "rev-parse", "HEAD"),

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pin product build/run to -O2 --fno-chir-function-inlining.
+# Pin product build/run to -O2 --fno-chir-function-inlining -Woff deprecated.
+# Suppress only deprecation diagnostics; unit tests retain all warning groups.
 # Unit compilation uses the explicit -O1 compiler exception. Record the actual
 # phase/option/exit status; only build
 # records bind a product binary. Manifests and owned unit targets are restored

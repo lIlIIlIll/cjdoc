@@ -325,6 +325,7 @@ import subprocess
 import sys
 sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
 from ci_stage import BUILD_MANIFEST_SCHEMA, runtime_platform, sha256_file, stage_environment
+from sts_compile_override import OPTION, PRODUCT_OPTIONS
 
 repo = Path(sys.argv[1]).resolve()
 binary, worker = Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve()
@@ -353,8 +354,8 @@ document = {
         "stdxDigest": environment["stdxDigest"],
         "fingerprint": environment["toolchainFingerprint"],
     },
-    "compileOptions": ["--jobs 1", "-O2", "--fno-chir-function-inlining"],
-    "effectiveManifest": 'override-compile-option = "-O2 --fno-chir-function-inlining"',
+    "compileOptions": ["--jobs 1", *PRODUCT_OPTIONS],
+    "effectiveManifest": f'override-compile-option = "{OPTION}"',
     "mainBinary": record(binary, with_version=True),
     "workerBinary": record(worker, with_version=False),
     "runId": environment["runId"],
