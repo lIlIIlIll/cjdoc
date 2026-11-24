@@ -18,7 +18,6 @@ import zipfile
 from scripts import package_release
 from scripts import perf_gate
 from scripts import real_repository_smoke
-from scripts import release_package_contracts
 from scripts import safe_output_root
 from scripts import source_identity
 from scripts import strict_json
@@ -38,10 +37,11 @@ from scripts.verify_repository_inputs import GOLDEN_NAMES, SCHEMA_NAMES
 
 class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
     def test_release_archives_include_only_current_schema_ids(self) -> None:
-        self.assertEqual(
-            {f"docs/schema/{name}" for name in package_release.SCHEMA_FILES},
-            release_package_contracts.SCHEMA_PAYLOAD,
-        )
+        expected_skill = {
+            "skills/cjdoc-api-comments/SKILL.md",
+            "skills/cjdoc-api-comments/references/authoring.md",
+            "skills/cjdoc-api-comments/scripts/preview.py",
+        }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             repo, commit = self.make_release_repo(root / "repo")
@@ -55,8 +55,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             for name in SCHEMA_NAMES:
                 if re.search(r"-v[0-9]+$", name):
                     expected_schemas.add(f"docs/schema/{name}.schema.json")
-            self.assertEqual(expected_schemas, release_package_contracts.SCHEMA_PAYLOAD)
-            for platform in ("linux-x64", "windows-x64"):
+            for platform in ("linux-x64", "macos-arm64", "windows-x64"):
                 with self.subTest(platform=platform):
                     binary = root / ("main.exe" if platform.startswith("windows-") else "main")
                     binary.write_bytes(b"binary")
@@ -79,22 +78,30 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                         {PurePosixPath(name).parent.as_posix() for name in executables.values()},
                         {"."})
                     self.assertEqual(manifest["executables"], executables)
-                    self.assertEqual(expected_schemas - members.keys(), set(),
-                                     "archive omits current schemas")
-                    self.assertEqual(expected_schemas - manifest["files"].keys(), set(),
-                                     "manifest omits current schemas")
+                    for inventory in (members, manifest["files"]):
+                        self.assertEqual(
+                            {name for name in inventory if name.startswith("docs/schema/")},
+                            expected_schemas)
+                        self.assertEqual(
+                            {name for name in inventory if name.startswith("skills/")},
+                            expected_skill)
+                    for name in expected_skill:
+                        self.assertEqual(members[name].mode, 0o644, name)
+                    expected_files = expected_schemas | expected_skill
                     if platform.startswith("windows-"):
                         with zipfile.ZipFile(asset) as archive:
                             content = {name: archive.read("cjdoc-0.7.0/" + name)
-                                       for name in expected_schemas}
+                                       for name in expected_files}
                     else:
                         with tarfile.open(asset, "r:gz") as archive:
                             content = {}
-                            for name in expected_schemas:
+                            for name in expected_files:
                                 with archive.extractfile("cjdoc-0.7.0/" + name) as member:
                                     content[name] = member.read()
                     for name, value in content.items():
-                        self.assertEqual(value, (repo / name).read_bytes(), name)
+                        committed = subprocess.check_output(
+                            ["git", "-C", str(repo), "show", f"{commit}:{name}"])
+                        self.assertEqual(value, committed, name)
 
     def test_release_archive_is_reproducible_manifested_and_smokeable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -160,16 +167,15 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             )
             self.assertIsNone(members["README.md"].content)
             self.assertIsNotNone(members["release-manifest.json"].content)
-            tampered = dict(members)
-            original_member = tampered["README.md"]
-            tampered_readme = b"not the tagged README\n"
-            tampered["README.md"] = verify_release_package.ArchiveMember(
-                "README.md", len(tampered_readme),
-                verify_release_package.sha256_bytes(tampered_readme),
-                original_member.mode,
-            )
-            with self.assertRaisesRegex(ValueError, "does not match source commit"):
-                verify_release_package.verify_repository_payload(tampered, repo, commit)
+            for name in ("README.md", "skills/cjdoc-api-comments/scripts/preview.py"):
+                with self.subTest(tampered=name):
+                    tampered = dict(members)
+                    changed = b"not the tagged payload\n"
+                    tampered[name] = verify_release_package.ArchiveMember(
+                        name, len(changed), verify_release_package.sha256_bytes(changed), members[name].mode,
+                    )
+                    with self.assertRaisesRegex(ValueError, "does not match source commit: " + re.escape(name)):
+                        verify_release_package.verify_repository_payload(tampered, repo, commit)
 
             with self.assertRaisesRegex(ValueError, "does not match"):
                 package_release.build_archive(

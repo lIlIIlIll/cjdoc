@@ -26,6 +26,7 @@ try:
     from .install_cangjie_sdk import validate_combined_sdk_root
     from .release_package_contracts import (
         RELEASE_SEMVER,
+        REPOSITORY_PAYLOAD,
         WORKER_PROTOCOL,
         WORKER_RECEIPT_KEYS,
         WORKER_VERSION_PREFIX,
@@ -40,6 +41,7 @@ except ImportError:  # Direct script execution.
     from install_cangjie_sdk import validate_combined_sdk_root
     from release_package_contracts import (
         RELEASE_SEMVER,
+        REPOSITORY_PAYLOAD,
         WORKER_PROTOCOL,
         WORKER_RECEIPT_KEYS,
         WORKER_VERSION_PREFIX,
@@ -54,34 +56,6 @@ except ImportError:  # Direct script execution.
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-SCHEMA_FILES = (
-    "doc-ir.schema.json",
-    "doc-ir-v18.schema.json",
-    "api-surface-v3.schema.json",
-    "api-diff-v2.schema.json",
-    "search-index-v11.schema.json",
-    "versions-v2.schema.json",
-    "versions.schema.json",
-    "translation-coverage.schema.json",
-    "site-manifest.schema.json",
-    "diagnostics.schema.json",
-    "cfg-matrix.schema.json",
-    "search-index.schema.json",
-    "symbol-index.schema.json",
-    "navigation-index.schema.json",
-    "api-surface.schema.json",
-    "api-diff.schema.json",
-    "documentation-coverage.schema.json",
-    "documentation-quality.schema.json",
-    "navigation-index-v2.schema.json",
-    "agent-full-index.schema.json",
-    "declaration.schema.json",
-    "page.schema.json",
-    "machine-manifest.schema.json",
-    "query-request.schema.json",
-    "query-result.schema.json",
-    "source-provenance.schema.json",
-)
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -264,18 +238,9 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
     payload: dict[str, tuple[bytes, int]] = {
         executable_name: (executable_content, 0o755),
         worker_name: (worker_content, 0o755),
-        "README.md": (committed_file(repo, source_commit, "README.md"), 0o644),
-        "LICENSE": (committed_file(repo, source_commit, "LICENSE"), 0o644),
-        "THIRD_PARTY_NOTICES.md": (
-            committed_file(repo, source_commit, "THIRD_PARTY_NOTICES.md"), 0o644),
-        "licenses/markdown-MIT.txt": (
-            committed_file(repo, source_commit, "third_party/licenses/markdown-LICENSE"), 0o644),
-        "licenses/yjson-Apache-2.0.txt": (
-            committed_file(repo, source_commit, "vendor/yjson_algorithms/LICENSE"), 0o644),
     }
-    for schema_name in SCHEMA_FILES:
-        relative = f"docs/schema/{schema_name}"
-        payload[relative] = (committed_file(repo, source_commit, relative), 0o644)
+    for archive_name, repository_name in REPOSITORY_PAYLOAD.items():
+        payload[archive_name] = (committed_file(repo, source_commit, repository_name), 0o644)
     runtime: dict[str, object] = {
         "requiresCangjieSdk": True,
         "sdkVersion": sdk_version,

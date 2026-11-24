@@ -22,6 +22,7 @@
 | 你要完成的事 | 指南 |
 |---|---|
 | 照着真实 API 写字段、提示、示例和译文 | [PocketKit 文档注释示例](https://github.com/lIlIIlIll/cjdoc/blob/main/examples/pocketkit/demo-v2/docs/doc-comments.md) |
+| 让 Agent 读实现、补注释并核对 API 详情页 | [让 Agent 编写 API 注释](../README.md#让-agent-编写-api-注释) |
 | 生成站点并上传到静态托管 | [生成与发布](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/generate-and-publish.md) |
 | 保存注释或指南后查看新页面 | [实时预览](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/preview.md) |
 | 找到漏写的字段，设置覆盖率门槛 | [检查质量](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/how-to/check-quality.md) |

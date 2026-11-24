@@ -94,6 +94,11 @@ SCHEMA_PAYLOAD = {
     "docs/schema/query-result.schema.json",
     "docs/schema/source-provenance.schema.json",
 }
+API_COMMENT_SKILL_FILES = (
+    "skills/cjdoc-api-comments/SKILL.md",
+    "skills/cjdoc-api-comments/references/authoring.md",
+    "skills/cjdoc-api-comments/scripts/preview.py",
+)
 REPOSITORY_PAYLOAD = {
     "README.md": "README.md",
     "LICENSE": "LICENSE",
@@ -101,4 +106,5 @@ REPOSITORY_PAYLOAD = {
     "licenses/markdown-MIT.txt": "third_party/licenses/markdown-LICENSE",
     "licenses/yjson-Apache-2.0.txt": "vendor/yjson_algorithms/LICENSE",
     **{name: name for name in SCHEMA_PAYLOAD},
+    **{name: name for name in API_COMMENT_SKILL_FILES},
 }
