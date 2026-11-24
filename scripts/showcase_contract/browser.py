@@ -166,6 +166,40 @@ def _report_browser_identity(browser_version: str) -> None:
     })
 
 
+def check_portal_preview(page) -> None:
+    """Check the homepage preview before entering the native API journey."""
+    from playwright.sync_api import expect
+
+    preview = page.locator("[data-portal-preview]")
+    select = preview.locator("[data-portal-select]")
+    filter_box = preview.locator("[data-portal-filter]")
+    current = preview.locator('[data-portal-version="demo-v2"]')
+    previous = preview.locator('[data-portal-version="demo-v1"]')
+    expect(current).to_be_visible()
+    expect(previous).to_be_hidden()
+    expect(current.locator("[data-portal-member]:visible")).to_have_count(3)
+    filter_box.fill("add")
+    expect(current.locator("[data-portal-member]:visible")).to_have_count(2)
+    select.select_option("demo-v1")
+    expect(current).to_be_hidden()
+    expect(previous).to_be_visible()
+    expect(previous.locator("[data-portal-member]:visible")).to_have_count(2)
+    expect(previous.locator("summary").filter(has_text="public func add(value: Int64): Unit")).to_be_visible()
+    filter_box.fill("__no_preview_member__")
+    expect(previous.locator("[data-portal-empty]")).to_be_visible()
+    expect(previous.locator("[data-portal-member]:visible")).to_have_count(0)
+    filter_box.fill("")
+    select.select_option("demo-v2")
+    expect(current.locator("[data-portal-member]:visible")).to_have_count(3)
+    row = current.locator("[data-portal-member]").filter(has_text="public func add(value: String): Unit")
+    row.locator("summary").click()
+    expect(row.locator("a")).to_be_visible()
+    row.locator("summary").click()
+    page.evaluate("document.activeElement.blur(); window.scrollTo(0, 0)")
+    if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
+        raise AssertionError("homepage preview overflows its viewport")
+
+
 def exercise(browser, target: dict, key: tuple, base: str, site: Site, output: Path, homes: dict) -> dict:
     from playwright.sync_api import expect
     behavior, _, width, height, theme, _ = SCENARIOS[key[2]]
@@ -195,6 +229,7 @@ def exercise(browser, target: dict, key: tuple, base: str, site: Site, output: P
             initial_actions += 1
         home_key = (target["locale"], width, height, key[3], SCENARIOS[key[2]][-1])
         if home_key not in homes:
+            check_portal_preview(page)
             home = Journey(page, site, base, target, key[3])
             images = screenshots(home, tuple(str(part) for part in (*home_key, "homepage")), output)
             homes[home_key] = {"locale": target["locale"], "mode": key[3], "prefix": SCENARIOS[key[2]][-1],
