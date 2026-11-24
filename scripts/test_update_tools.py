@@ -121,6 +121,7 @@ class UpdateToolsTest(unittest.TestCase):
             "worktree_identity.py", "repository_input_contracts.py",
             "repository_input_files.py", "repository_input_codec.py",
             "repository_input_vendor.py",
+            "release_package_contracts.py",
             "showcase_inputs.py",
         ):
             shutil.copyfile(PROJECT_ROOT / "scripts" / name, scripts / name)

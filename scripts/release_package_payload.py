@@ -20,7 +20,6 @@ try:
         COMMIT,
         RELEASE_SEMVER,
         REPOSITORY_PAYLOAD,
-        SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
         WORKER_RECEIPT_KEYS,
@@ -45,7 +44,6 @@ except ImportError:  # Direct module execution.
         COMMIT,
         RELEASE_SEMVER,
         REPOSITORY_PAYLOAD,
-        SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
         WORKER_RECEIPT_KEYS,
@@ -206,16 +204,9 @@ def inspect_archive(path: Path, platform_name: str, version: str,
         if metadata.get("size") != member.size or \
                 metadata.get("sha256") != member.sha256:
             raise ValueError(f"release package payload hash/size mismatch: {name}")
-    expected_payload = {
-        executable_name,
-        worker_name,
-        "README.md",
-        "LICENSE",
-        "THIRD_PARTY_NOTICES.md",
-        "licenses/markdown-MIT.txt",
-        "licenses/yjson-Apache-2.0.txt",
-        "release-candidate.json",
-    } | SCHEMA_PAYLOAD
+    expected_payload = set(REPOSITORY_PAYLOAD) | {
+        executable_name, worker_name, "release-candidate.json",
+    }
     if actual_payload != expected_payload:
         raise ValueError(
             "release package payload set mismatch: missing=" +

@@ -24,6 +24,7 @@ from scripts import verify_release_package
 from scripts import verify_remote_tag
 from scripts import verify_repository_inputs
 from scripts import worktree_identity
+from scripts.release_package_contracts import API_COMMENT_SKILL_FILES
 from scripts.showcase_inputs import source_inputs
 from scripts.verify_repository_inputs import (
     CURRENT_GOLDEN_VERSION,
@@ -68,6 +69,7 @@ class ReleaseToolsTestSupport:
             "cjdoc.toml",
             "site/showcase-baseline.json",
             "scripts/requirements-showcase.txt",
+            *API_COMMENT_SKILL_FILES,
             *source_inputs(),
         ):
             destination = root / relative

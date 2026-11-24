@@ -7,6 +7,7 @@ import tomllib
 from typing import Any
 
 try:
+    from .release_package_contracts import API_COMMENT_SKILL_FILES
     from .repository_input_contracts import (
         CURRENT_GOLDEN_VERSION,
         DOC_IR_ARRAY_REFS,
@@ -20,6 +21,7 @@ try:
     from .safe_output_root import lexical_absolute, verify_directory_chain
     from .strict_json import strict_load
 except ImportError:  # Direct module execution.
+    from release_package_contracts import API_COMMENT_SKILL_FILES
     from repository_input_contracts import (
         CURRENT_GOLDEN_VERSION,
         DOC_IR_ARRAY_REFS,
@@ -77,6 +79,7 @@ def required_repository_paths() -> tuple[str, ...]:
         "cjdoc.toml",
         "site/showcase-baseline.json",
         "scripts/requirements-showcase.txt",
+        *API_COMMENT_SKILL_FILES,
     ]
     paths.extend(source_inputs())
     paths.extend(f"docs/schema/{name}.schema.json" for name in SCHEMA_NAMES)

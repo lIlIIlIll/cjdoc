@@ -100,6 +100,17 @@ cjdoc check --project . --check-examples
 
 `{must-pass run}` 要求示例编译并运行成功，实际标准输出必须与 `output` 中的两行一致。命令检查整个项目，启用的检查都通过时以 `0` 退出。看到 `CJDOC3072` 时对照诊断中的预期和实际输出；看到 `CJDOC3074` 时，示例未能构建为可执行文件，或当前环境无法施加内存限制。处理方式见[示例检查指南](docs/how-to/check-examples.md)。
 
+## 让 Agent 编写 API 注释
+
+先准备 Python 3.11 或更新版本，并[安装 cjdoc、加载匹配的仓颉 SDK](docs/getting-started/install.md)。从包含此技能的源码或解压后的发行包复制整个 `skills/cjdoc-api-comments/` 到下游项目；旧发行包不会补发该目录。如果目标下已有同名目录，不要覆盖。
+
+| Agent | 复制到项目内 | 调用 |
+|---|---|---|
+| Codex | `.agents/skills/` | `$cjdoc-api-comments` |
+| Claude Code | `.claude/skills/` | `/cjdoc-api-comments` |
+
+在下游项目中调用技能，例如：「为 `greet` 补写 cjdoc 注释，说明空名字的结果，并给我 API 详情页链接。」Agent 会检查注释并打开生成的详情页核对字段。预览不覆盖项目已有发布，也不执行注释中的示例。
+
 ## 用文档完成什么
 
 | 你的任务 | 从这里开始 |
