@@ -113,6 +113,29 @@ class HighlightCiContractTest(unittest.TestCase):
                               "failed while reading"]:
                 self.assertNotIn(forbidden, published)
 
+    def test_host_build_reports_plain_failures_without_private_diagnostic_text(self):
+        cases = (
+            ("error: /example/work/llc: command failed with exit code 139 (use -V to see invocation)\n"
+             "Error: failed to compile package `workspace_private`, return code is 1\n",
+             {"compiler-child-crash", "compiler-diagnostic", "package-compilation-failure"}),
+            ("ld: library not found for -lworkspace_private\n"
+             "clang: error: linker command failed with exit code 1\n", {"linker-failure"}),
+            ("fatal: unable to access 'https://private.example.test/repository': timeout\n",
+             {"dependency-fetch-failure"}),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            log = Path(temporary) / "host.log"
+            for diagnostic, classifications in cases:
+                with self.subTest(classifications=classifications):
+                    log.write_text(diagnostic, encoding="utf-8")
+                    result = highlight_ci.compiler_failure_evidence(
+                        "public-cancel-host", [("stderr", log)])
+                    self.assertEqual(set(result["classifications"]), classifications)
+                    self.assertEqual(result["observedStreams"], ["stderr"])
+                    published = json.dumps(result)
+                    for detail in ("workspace_private", "/example/work", "private.example.test"):
+                        self.assertNotIn(detail, published)
+
     def test_compiler_failure_ignores_untrusted_tokens_and_limits_log_tail(self):
         with tempfile.TemporaryDirectory() as temporary:
             log = Path(temporary) / "compiler.log"
