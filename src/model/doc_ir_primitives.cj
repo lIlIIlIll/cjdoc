@@ -13,7 +13,7 @@ protected let DOC_IR_MAX_JSON_DOCUMENT_BYTES: Int64 = 64 * 1024 * 1024
 protected let DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES: Int64 = 64 * 1024 * 1024
 // Aggregate physical JSON occurrences, counted equally by encoder and strict decoder.
 protected let DOC_IR_MAX_SCHEMA_OBJECTS: Int64 = 131072
-protected let DOC_IR_MAX_SCHEMA_ARRAY_ITEMS: Int64 = 131072
+protected let DOC_IR_MAX_SCHEMA_ARRAY_ITEMS: Int64 = 147456
 protected let DOC_IR_MAX_TYPE_OCCURRENCES: Int64 = 32768
 protected let DOC_IR_MAX_TYPE_EDGES: Int64 = 32768
 protected let DOC_IR_MAX_MARKDOWN_OCCURRENCES: Int64 = 32768

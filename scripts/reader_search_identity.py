@@ -299,8 +299,7 @@ def normalized_search_pair(before: dict, after: dict, *, registered: bool) -> tu
     for entry in new["entries"]:
         del entry["commentFields"]
     new["schemaVersion"] = old["schemaVersion"]
-    contract = new["contract"]
-    props = contract["requestProperties"]
+    contract = deepcopy(old["contract"])
     identifier = {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$", "minLength": 1, "maxLength": 64}
     expected = {
         "commentFields": {"type": "array", "minItems": 1, "maxItems": 64,
@@ -312,17 +311,14 @@ def normalized_search_pair(before: dict, after: dict, *, registered: bool) -> tu
             "id": identifier, "limit": {"type": "integer", "minimum": 1, "maximum": 100},
             "cursor": {"type": "string", "minLength": 1, "maxLength": 1024}}},
     }
-    _require(contract.get("version") == "cjdoc.search-contract/3" and
-             props.get("schemaVersion") == {"const": "cjdoc.query-request/4"} and
-             contract["searchFields"][-2:] == list(expected) and
-             all(props.get(key) == value for key, value in expected.items()),
-             "search contract does not have the exact registered additions")
-    for key in expected:
-        del props[key]
-    del contract["searchFields"][-2:]
-    contract["version"] = "cjdoc.search-contract/2"
-    props["schemaVersion"] = {"const": "cjdoc.query-request/3"}
-    _require(contract == old["contract"], "embedded contract changed beyond the registered additions")
+    contract["version"] = "cjdoc.search-contract/3"
+    contract["requestProperties"]["schemaVersion"] = {"const": "cjdoc.query-request/4"}
+    contract["requestProperties"].update(expected)
+    contract["searchFields"].extend(expected)
+    encoded = json.dumps(contract, ensure_ascii=False, separators=(",", ":"))
+    _require(after["contractText"] == encoded and new["contract"] == contract,
+             "embedded contract changed beyond the exact registered additions")
+    new["contract"] = old["contract"]
     return old, new
 
 

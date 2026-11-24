@@ -57,8 +57,11 @@ def canonical_api_route_script() -> str:
     return _script_literal(BROWSER_SOURCES / "html_scripts.cj", "HTML_API_LINK_SCRIPT")
 
 
-def canonical_search_script() -> str:
+def canonical_search_script(comment_fields: bool = False) -> str:
     """Reproduce the canonical reader bundle, including packaging whitespace."""
+    fields = (_script_literal(BROWSER_SOURCES / "html_search_controller_fields.cj",
+                              "HTML_SEARCH_CONTROLLER_FIELDS_SCRIPT")
+              if comment_fields else "const fieldController = null;\n")
     source = (canonical_api_route_script()
               + _script_literal(BROWSER_SOURCES / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
               + _script_literal(BROWSER_SOURCES / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_PRIMITIVES_SCRIPT")
@@ -70,8 +73,7 @@ def canonical_search_script() -> str:
                                 "HTML_SEARCH_CONTROLLER_SETUP_SCRIPT")
               + _script_literal(BROWSER_SOURCES / "html_search_controller_results.cj",
                                 "HTML_SEARCH_CONTROLLER_RESULTS_SCRIPT")
-              + _script_literal(BROWSER_SOURCES / "html_search_controller_fields.cj",
-                                "HTML_SEARCH_CONTROLLER_FIELDS_SCRIPT")
+              + fields
               + _script_literal(BROWSER_SOURCES / "html_search_controller_interaction.cj",
                                 "HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT")
               + _script_literal(BROWSER_SOURCES / "html_script_reading.cj", "HTML_READING_OUTLINE_SCRIPT")
@@ -82,7 +84,7 @@ def canonical_search_script() -> str:
     code = re.sub(r"(?m)^ *//[^\n]*", "", source)
     if "`" in code or "\\\n" in code:
         raise ValueError("the reader bundle must not contain template literals or continued string lines")
-    return source.replace("\n    ", "\n")
+    return "".join(line.lstrip(" \t") + "\n" for line in code.split("\n") if line.strip(" \t"))
 
 
 def canonical_theme_bootstrap_script() -> str:

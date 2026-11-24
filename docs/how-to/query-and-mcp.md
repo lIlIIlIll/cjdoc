@@ -179,7 +179,7 @@ printf '%s\n' '{"operation":"search","commentFields":[{"id":"owner","value":"pla
 在 MCP 中，将同一参数对象交给 `search` 工具即可。
 
 若返回 `comment_field_scope_required`，用 `{"operation":"search","commentFieldFacets":{"id":"owner"}}`
-查询候选值。结果在 `result.facets.commentFields.items`；取目标行的 `snapshotId`、`moduleId`
+查询候选值。结果在 `result.facets.commentFields.items`；取目标行 `scope` 的 `snapshotId`、`moduleId`
 加到原筛选请求后重试。`next` 不为 `null` 时，将它作为 `commentFieldFacets.cursor`
 读下一页；仅请求目录不会返回 API 命中。
 

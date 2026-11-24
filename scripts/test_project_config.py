@@ -164,6 +164,57 @@ class ProjectConfigurationCliTest(unittest.TestCase):
         field, = json.loads(cached.stdout)["metadata"]["fields"]
         self.assertEqual([use["values"] for use in field["uses"]], [["platform"]])
 
+    def test_comment_field_identity_is_scoped_to_module_and_snapshot(self):
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        (workspace / "cjpm.toml").write_text('[workspace]\nmembers = ["alpha", "beta"]\n', encoding="utf-8")
+        for name, value in (("alpha", "platform"), ("beta", "other")):
+            member = workspace / name
+            (member / "src").mkdir(parents=True)
+            (member / "cjpm.toml").write_text(
+                f'[package]\nname = "{name}"\nversion = "1.0.0"\n'
+                'cjc-version = "1.2.0"\noutput-type = "static"\n', encoding="utf-8")
+            (member / "cjdoc.toml").write_text(
+                f'[[comments.fields]]\nid = "owner"\ntitle = "{name} Owner"\nrepeatable = true\n', encoding="utf-8")
+            (member / "src/api.cj").write_text(
+                f'package {name}\n/**\n * Documented.\n * @owner {value}\n * @owner {value}\n */\n'
+                f'public func {name}(): Unit {{}}\n', encoding="utf-8")
+
+        paths = []
+        for revision in ("current", "next"):
+            output = self.root / revision
+            produced = self.invoke("generate", "--project", workspace, "--semantic", "source",
+                                   "--no-cache", "--lint-profile", "off", "--format", "json",
+                                   "--format", "html", "--doc-version", revision, "--output", output)
+            self.assertEqual(produced.returncode, 0, produced.stderr)
+            paths.append(output / "docs.json")
+
+        def query(snapshots, args, exit_code=0):
+            command = [self.binary, "query", *[value for path in snapshots for value in ("--snapshot", path)],
+                       "--request", "-"]
+            result = subprocess.run(command, cwd=self.cwd, capture_output=True, text=True, timeout=120,
+                                    input=json.dumps({"operation": "search", "mode": "discovery", **args}))
+            self.assertEqual(result.returncode, exit_code, result.stderr)
+            return json.loads(result.stdout)
+
+        predicate = {"commentFields": [{"id": "owner", "value": "platform"}]}
+        catalog = {"limit": 0, "commentFieldFacets": {"id": "owner"}}
+        first = query(paths[:1], predicate, 2)
+        self.assertEqual((first["status"], first["error"]["code"]), ("scope_mismatch", "comment_field_scope_required"))
+        rows = query(paths[:1], catalog)["result"]["facets"]["commentFields"]["items"]
+        self.assertEqual({(row["title"], row["value"], row["count"]) for row in rows},
+                         {("alpha Owner", "platform", 1), ("beta Owner", "other", 1)})
+        scope = next(row["scope"] for row in rows if row["value"] == "platform")
+        module = {"moduleId": scope["moduleId"]}
+        multiple = query(paths, predicate | module, 2)
+        self.assertEqual(multiple["error"]["code"], "comment_field_scope_required")
+        rows = query(paths, catalog | module)["result"]["facets"]["commentFields"]["items"]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(len({row["scope"]["snapshotId"] for row in rows}), 2)
+        self.assertTrue(all(row["value"] == "platform" and row["count"] == 1 for row in rows))
+        one = query(paths, predicate | scope)
+        self.assertEqual(one["completeness"]["query"]["total"], 1)
+
     def test_metadata_header_variants_preserve_groups_tags_and_translations(self):
         (self.project / "src/api.cj").write_text(
             "package configuration_demo\n/** Answer.\n * @group answers\n * @tag stable\n */\n"

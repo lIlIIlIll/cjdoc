@@ -83,9 +83,10 @@ class FixtureContractTest(unittest.TestCase):
         self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/19")
         metadata = document.get("metadata")
         self.assertIsInstance(metadata, dict)
-        self.assertEqual(set(metadata), {"groups", "tags"})
+        self.assertEqual(set(metadata), {"groups", "tags", "fields"})
         self.assertIsInstance(metadata["groups"], list)
         self.assertIsInstance(metadata["tags"], list)
+        self.assertEqual(metadata["fields"], [], msg=f"{fixture} publishes fields without a specification")
         self.assertEqual(document.get("generator"), {
             "name": "cjdoc", "version": self.package_version, "toolchain": "",
         })

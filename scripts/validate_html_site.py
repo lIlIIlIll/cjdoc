@@ -21,7 +21,8 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "8dacdcab79cf5d38608576f558ea134ebb35e54c4bf627723113d71a0358eb75"
+CANONICAL_SEARCH_JS_SHA256 = "d1838d3eade52ac8ea4c9c08517419c08a2ac8b6896b50eb463f2727a065f88a"
+CANONICAL_SEARCH_WITH_COMMENT_FIELDS_JS_SHA256 = "bd71d5653de654941bf5b89cfdabf3cf0d21f123d387f928575e569c8db573df"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "3dc968472190aab99c8a0db38a612cf95640e5a45b88f759d67480aa9fd115fd"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "601425eaed9db6165c2097148280088c6df3c85a001618e27926e90c54c3e2a4"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -626,6 +627,8 @@ def main() -> int:
                 if target_parser is None or fragment not in target_parser.ids:
                     raise ValueError(f"broken local anchor in {page.relative_to(publication_root)}: {link}")
 
+    search_text = (root / "search-index.json").read_text(encoding="utf-8")
+    search = strict_loads(search_text, description="HTML search index")
     script_roots = {root, *dependency_roots}
     if root != publication_root:
         script_roots.update(publication_root / lang for lang in ("en", "zh-CN")
@@ -638,8 +641,14 @@ def main() -> int:
         if script_paths != {"search.js", "search-index.js", "sidebar-index.js",
                             "theme-bootstrap.js", "symbol-alias.js"}:
             raise ValueError(f"{scope.relative_to(publication_root)} must contain only the canonical script set")
+        scope_index = search if scope == root else strict_loads(
+            (scope / "search-index.json").read_bytes(), description="scoped HTML search index")
+        field_dictionary = scope_index.get("commentFields")
+        if not isinstance(field_dictionary, list):
+            raise ValueError("search index commentFields must be an array")
+        bundle = CANONICAL_SEARCH_WITH_COMMENT_FIELDS_JS_SHA256 if field_dictionary else CANONICAL_SEARCH_JS_SHA256
         for name, digest in (("theme-bootstrap.js", CANONICAL_THEME_BOOTSTRAP_JS_SHA256),
-                             ("search.js", CANONICAL_SEARCH_JS_SHA256),
+                             ("search.js", bundle),
                              ("symbol-alias.js", CANONICAL_SYMBOL_ALIAS_JS_SHA256)):
             content = (scope / name).read_bytes()
             if hashlib.sha256(content).hexdigest() != digest:
@@ -649,8 +658,6 @@ def main() -> int:
                 if sink in text:
                     raise ValueError(f"unsafe {name} sink: {sink}")
 
-    search_text = (root / "search-index.json").read_text(encoding="utf-8")
-    search = strict_loads(search_text, description="HTML search index")
     search_script = (root / "search-index.js").read_text(encoding="utf-8")
     prefix = "globalThis.__CJDOC_SEARCH_INDEX__ = "
     suffix = ";\n"

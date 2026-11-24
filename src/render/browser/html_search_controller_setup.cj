@@ -217,6 +217,12 @@ internal let HTML_SEARCH_CONTROLLER_SETUP_SCRIPT = """
   let composing = false;
 
   const createController = () => {
+    const capability = kernel && index ? kernel.execute(index, {
+      operation: "search", mode: "discovery", profile: "bounded-static", query: "", limit: 0
+    }) : null;
+    const indexCapabilityError = capability && capability.errorCode ? capability.errorCode :
+      (!kernel || !index ? "search_index_unavailable" : null);
+
     const filterFieldForProperty = property => {
       const rows = index && index.contract && Array.isArray(index.contract.filterFields) ?
         index.contract.filterFields : [];

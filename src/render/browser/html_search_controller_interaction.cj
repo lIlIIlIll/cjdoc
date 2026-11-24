@@ -30,7 +30,7 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
         return;
       }
       if (indexCapabilityError) { showError(indexCapabilityError); return; }
-      refreshFieldControls();
+      fieldController?.refresh();
       const parsed = kernel.parseQuery(input.value, index.contract);
       if (parsed.errorCode) {
         showError(parsed.errorCode, parsed.invalidToken);
@@ -44,7 +44,7 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
       const filters = parsed.filters.concat(selectedFiltersResult.filters);
       const tags = parsed.tags.concat(urlSearchState.tags);
       if (!parsed.query && !filters.length && !tags.length && !urlSearchState.hasScope &&
-          !appliedCommentFields.length) return;
+          !fieldController?.hasPredicates) return;
       currentParsed = parsed;
       currentRequest = {
         operation: "search",
@@ -61,12 +61,7 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
       };
       if (tags.length) currentRequest.tags = tags;
       if (urlSearchState.moduleId !== null) currentRequest.moduleId = urlSearchState.moduleId;
-      if (appliedCommentFields.length) {
-        currentRequest.moduleId = fieldModule(appliedCommentFields[0].definition).moduleId;
-        currentRequest.commentFields = appliedCommentFields.map(row => ({
-          id: row.definition.id, value: row.value
-        }));
-      }
+      fieldController?.constrain(currentRequest);
       runPage(null);
     };
 
@@ -116,7 +111,7 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
             }
           }
           if (saved.commentFieldSnapshotId === index?.scope?.snapshotId) {
-            restoreCommentFields(saved.commentFields);
+            fieldController?.restore(saved.commentFields);
           }
         }
       } catch (_) { /* history can be unavailable */ }
@@ -129,12 +124,7 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
         window.history.replaceState({...retained, cjdocSearchFilters: {
           kind: kindFilter ? kindFilter.value : "",
           package: packageFilter ? packageFilter.value : "",
-          ...(appliedCommentFields.length ? {
-            commentFieldSnapshotId: index.scope.snapshotId,
-            commentFields: appliedCommentFields.map(row => ({
-              moduleId: fieldModule(row.definition).moduleId, id: row.definition.id, value: row.value
-            }))
-          } : {})
+          ...fieldController?.saved()
         }}, "");
       } catch (_) { /* history can be unavailable */ }
     };

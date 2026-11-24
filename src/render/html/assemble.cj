@@ -5,7 +5,7 @@ import cjdoc.render.search.DocumentationSearchProjection
 import cjdoc.render.foundation.RenderArtifactStore
 import cjdoc.render.routes.{
     historicalPackagePagePath, selectedDocumentationPages, symbolPagePath, symbolReadablePagePath}
-import cjdoc.render.browser.{HTML_THEME_BOOTSTRAP_SCRIPT, HTML_READER_BUNDLE}
+import cjdoc.render.browser.{HTML_THEME_BOOTSTRAP_SCRIPT, htmlReaderBundle}
 
 protected func appendHtmlArtifacts(artifacts: RenderArtifactStore,
     documentation: DocumentationSet, buildSearch: () -> DocumentationSearchProjection, projection: RenderProjection,
@@ -17,7 +17,8 @@ protected func appendHtmlArtifacts(artifacts: RenderArtifactStore,
             pages: selectedDocumentationPages(documentation, locale))
         let assetLookup = buildAssetLookup(projectedAssets)
         validateHtmlRouting(projection, projectedAssets)
-        let searchIndex = renderSearchIndex(buildSearch())
+        let search = buildSearch()
+        let searchIndex = renderSearchIndex(search)
         let searchSignatures = renderSearchSignatureIndex(documentation, projection)
         let _ = artifacts.addText("html/index.html", "text/html; charset=utf-8",
             renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
@@ -29,7 +30,7 @@ protected func appendHtmlArtifacts(artifacts: RenderArtifactStore,
         let _ = artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8",
             HTML_THEME_BOOTSTRAP_SCRIPT)
         let _ = artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
-            HTML_READER_BUNDLE)
+            htmlReaderBundle(!search.commentFieldDictionary.isEmpty()))
         let _ = artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8",
             HTML_SYMBOL_ALIAS_SCRIPT)
         let _ = artifacts.addText("html/style.css", "text/css; charset=utf-8",
