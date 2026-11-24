@@ -14,12 +14,14 @@ This is a selected phase policy, never a retry after failure.
 Both phases additionally suppress the `unused` and `deprecated` warning groups.
 Every warning STS 1.2 emits for this tree today falls into one of those two
 groups, and most of them cannot be fixed here: 25 come from inside the pinned
-`yjson` dependency, 16 are test-only helpers that a product build never reaches,
-726 on macOS are mock variables synthesized inside the `@Test` macro, and 42 are
-`std.posix` fd calls (`openat`, `O_NOFOLLOW`, `lseek`, ...) whose replacement
-`std.fs` API cannot express the descriptor-relative, no-symlink walk that
-`src/filesystem/bounded_read.cj` requires. Suppressing them removed 86% of the
-build log without hiding any report the compiler still produces: `parser`,
+`yjson` dependency, 16 are symbols no product code path references (test hooks,
+unused property getters, and public entry points such as `generateMatrix` that
+only outside callers reach), 726 on macOS are mock variables synthesized inside
+the `@Test` macro, and 42 are `std.posix` fd calls (`openat`, `O_NOFOLLOW`,
+`lseek`, ...) whose replacement `std.fs` API cannot express the
+descriptor-relative, no-symlink walk that `src/filesystem/bounded_read.cj`
+requires. Suppressing them removed 86% of the build log without hiding any
+report the compiler still produces: `parser`,
 `semantics`, `apilevel-check`, `unsupport-compile-source`, `package-import` and
 `interpreter` stay enabled, which is why `all` is not used here.
 

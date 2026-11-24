@@ -18,8 +18,9 @@
 选项通过了真实 Doc IR GC 查询与 MCP 回归；这不表示普通 `-O2` 已通过，也不认定编译器故障根因。
 
 警告抑制覆盖 `unused` 与 `deprecated` 两组，理由是这两组之外的告警当前一条都没有，而这两组
-里多数在本仓无法消除：25 条来自固定 `yjson` 依赖内部，16 条是只有 `cjpm test` 才编译的测试
-钩子，macOS 上 726 条是 `@Test` 宏合成的 mock 变量，42 条是 `std.posix` 的 fd API
+里多数在本仓无法消除：25 条来自固定 `yjson` 依赖内部，16 条是产品路径未引用的符号（测试钩子、
+未使用的属性 getter，以及 `generateMatrix` 这类只供外部调用的公开入口），macOS 上 726 条是
+`@Test` 宏合成的 mock 变量，42 条是 `std.posix` 的 fd API
 （`openat`、`O_NOFOLLOW`、`lseek` 等），其替代 API 无法表达 `src/filesystem/bounded_read.cj`
 需要的描述符相对、禁止符号链接的遍历。没有使用 `-Woff all`：它会一并关闭 `semantics`、
 `parser`、`apilevel-check` 等仍应可见的组。
