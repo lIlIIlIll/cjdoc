@@ -44,8 +44,7 @@ BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
 WORKER_PACKAGE = "cjdoc_chir_worker"
 # Literal, like `release_build_parameters.REQUIRED_OPTION`: the receipt must reject
 # a build whose applied flags drifted, so it cannot share the policy constant.
-REQUIRED_COMPILE_OPTIONS = ["-O2", "--fno-chir-function-inlining", "-Woff", "unused",
-                            "-Woff", "deprecated"]
+REQUIRED_COMPILE_OPTIONS = ["-O2", "--fno-chir-function-inlining", "-Woff", "deprecated"]
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 

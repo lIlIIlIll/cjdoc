@@ -32,7 +32,7 @@ sys.dont_write_bytecode = True
 # Pinned expectation, deliberately independent of `sts_compile_override.OPTION`:
 # the verifier must reject a build whose applied option drifted, which it cannot
 # do if both values come from the same constant.
-REQUIRED_OPTION = "-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated"
+REQUIRED_OPTION = "-O2 --fno-chir-function-inlining -Woff deprecated"
 
 SCHEMA = "cjdoc.sts-invocation/1"
 CHUNK = 1 << 20

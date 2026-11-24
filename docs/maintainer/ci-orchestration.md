@@ -173,10 +173,10 @@ compiler or dispatch another workflow.
 LLVM-text audit before publishing the exact bitcode bytes.
 
 The provider fixture's `cjpm run` retains the product's `--jobs 1`,
-`-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated` policy and adds
-only `-V --save-temps` with a
-unique owned directory under `RUNNER_TEMP`. Both the root dependency and fixture
-entry use the same manifest override path. Ordinary product builds/runs and the
+`-O2 --fno-chir-function-inlining -Woff deprecated` policy and adds only
+`-V --save-temps` with a unique owned directory under `RUNNER_TEMP`.
+Both the root dependency and fixture entry use the same manifest override
+path. Ordinary product builds/runs and the
 unit-only `-O1` exception remain unchanged. SDK selection, workflow files, cache
 keys, deadlines and acceptance budgets are not changed. Diagnostic provider wall
 time includes capture overhead and is not a replacement performance sample.

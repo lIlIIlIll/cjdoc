@@ -43,7 +43,7 @@ OVERRIDE_MODULE = Path("scripts/sts_compile_override.py")
 # Deliberately a literal, not an import from the policy module: this is the gate
 # that must fail when the applied policy drifts, so sharing the constant would
 # make the check compare the policy with itself.
-REQUIRED_OPTION = "-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated"
+REQUIRED_OPTION = "-O2 --fno-chir-function-inlining -Woff deprecated"
 OBSERVED_PREFIX = "CJDOC_OBSERVED_OPTION="
 
 PROBE_CJPM = '''#!/usr/bin/env bash

@@ -73,7 +73,7 @@
 
 ## 环境与指标语义
 
-- SDK 固定为 Cangjie 1.2.0 STS、stdx 1.2.0.1 static sidecar、仓库现有 `-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated` wrapper。sidecar 在 SDK 的父级布局中解析，不假设在 `cangjie/` 内。按[构建指南](build.md)准备环境，不修改 SDK/compiler/std/stdx。
+- SDK 固定为 Cangjie 1.2.0 STS、stdx 1.2.0.1 static sidecar、仓库现有 `-O2 --fno-chir-function-inlining -Woff deprecated` wrapper。sidecar 在 SDK 的父级布局中解析，不假设在 `cangjie/` 内。按[构建指南](build.md)准备环境，不修改 SDK/compiler/std/stdx。
 - 浏览器依赖使用 `tests/browser/package-lock.json` 的 Playwright 1.63.0 / Chromium 153.0.8010.12；本地 Node v26.12.0。浏览器上下文 `en-US`，文档分别选择 `en`、`zh-CN`，基准视口 1440×900、DPR 1、light、CPU throttle 1、JS old-space 512 MiB。报告没有物理 CPU 隔离或跨设备速度可比性声明。
 - 应用硬上限保持：Doc IR/单 artifact 64 MiB、artifact 总量 512 MiB、65,536 个输出条目、32,768 个类型出现次数。项目配置可以更严；冻结配置也在输入摘要中。源码缓存关闭；操作系统文件缓存不受控制，不声称冷 OS 缓存。
 - 真实 HTTP root、HTTP subpath 与 `file://` 分开记录。HTTP 服务不启用传输压缩；gzip 数字只是相同文件的离线体积统计，不是压缩传输耗时。

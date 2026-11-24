@@ -14,19 +14,19 @@
 ### 正式构建的完整旗标
 
 正式工具构建、worker、Release、CLI 功能验收，以及编译 cjdoc 源码依赖的 fixture 使用
-`-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated`。同源诊断中，额外 no-inline
-选项通过了真实 Doc IR GC 查询与 MCP 回归；这不表示普通 `-O2` 已通过，也不认定编译器故障根因。
+`-O2 --fno-chir-function-inlining -Woff deprecated`。同源诊断中，额外 no-inline 选项通过了真实 Doc IR
+GC 查询与 MCP 回归；这不表示普通 `-O2` 已通过，也不认定编译器故障根因。
 
-产品构建抑制 `unused` 与 `deprecated` 两组。Linux candidate 产品构建的警告中，25 条来自固定
-`yjson` 依赖内部，16 条是产品路径未引用的符号（包括测试钩子和外部调用的公开入口），42 条
-弃用警告来自 `std.posix` fd API（`openat`、`O_NOFOLLOW`、`lseek` 等），其替代 `std.fs` API
-无法表达 `src/filesystem/bounded_read.cj` 需要的描述符相对、禁止符号链接遍历；其余 3 条是
-`std.sync.ReentrantMutex`。没有用 `-Woff all`，`semantics`、`parser`、`apilevel-check` 等组仍可见。
+产品构建仅抑制 `deprecated`。Linux candidate 产品构建的 45 条弃用警告中，42 条来自 `std.posix`
+fd API（`openat`、`O_NOFOLLOW`、`lseek` 等），其替代 `std.fs` API 无法表达
+`src/filesystem/bounded_read.cj` 需要的描述符相对、禁止符号链接遍历；其余 3 条是
+`std.sync.ReentrantMutex`。`unused` 保持开启，保留死代码告警；没有用 `-Woff all`，以免同时关闭
+`semantics`、`parser`、`apilevel-check` 等组。
 
 抑制写在产品清单 override 里，因此会作用于整个产品依赖闭包（cjdoc 自身与 `yjson`、`markdown`
-等同等待遇）。代价明确：新增的产品死代码或弃用 API 调用不会出现在产品构建日志，需靠
-review 与 lint 阶段发现。单测阶段保留告警：STS 1.2 Windows 单测编译在 `match (String)` 上
-应用这两组 `-Woff` 时会失败，因此测试编译不抑制这两组。
+等同等待遇）。代价明确：新增的产品弃用 API 调用不会出现在产品构建日志，需靠 review 与 lint
+阶段发现。STS 1.2 Windows 产品编译在同时应用 `-Woff unused` 与 `-Woff deprecated` 时曾于
+`match (String)` 报错；当前策略仅抑制 `deprecated`，保留 `unused`。
 
 仅 `cjpm test` 编译使用显式 `-O1` 例外：Linux 同源对照中，STS 1.2.0、静态 stdx、
 131072 KiB 栈和相同测试参数下，普通 `-O2` 与 `-O2 --fno-chir-function-inlining`
@@ -46,7 +46,7 @@ export TMPDIR="$RUNNER_TEMP" TMP="$RUNNER_TEMP" TEMP="$RUNNER_TEMP"
 . scripts/with_sts_cjpm.sh
 ```
 
-之后在同一 shell、workspace 内，`cjpm build`/`run` 使用 `-O2 --fno-chir-function-inlining -Woff unused -Woff deprecated`，`cjpm test` 使用 `-O1`（告警保持开启）。其它命令和 workspace 外的调用原样透传。不要把临时覆盖写进提交。
+之后在同一 shell、workspace 内，`cjpm build`/`run` 使用 `-O2 --fno-chir-function-inlining -Woff deprecated`，`cjpm test` 使用 `-O1`。其它命令和 workspace 外的调用原样透传。不要把临时覆盖写进提交。
 
 每次单测创建 `RUNNER_TEMP` 下的新 `--target-dir`，结束后清理；wrapper 拒绝调用方另传该选项，防止单测复用或写入产品的 `target/`。测试中启动的产品构建仍选完整产品旗标，嵌套调用结束后恢复外层单测清单。
 
