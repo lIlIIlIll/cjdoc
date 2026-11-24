@@ -375,10 +375,11 @@ title = "Internal owner"
                 "external capture dropped a rendered extension use or disclosed a private sibling's value")
         replay = self.root / "extension-replay"
         self.run("extension-replay", [self.binary, "render", "--input", site / "docs.json",
-                 "--format", "html", "--output", replay])
-        require(any("public-extension" in page.read_text(encoding="utf-8")
-                    for page in (replay / "html").rglob("*.html")),
-                "frozen comment field was lost when rendering a public extension member")
+                 "--format", "html", "--format", "markdown", "--output", replay])
+        for directory, pattern in (("html", "*.html"), ("markdown", "*.md")):
+            require(any("public-extension" in page.read_text(encoding="utf-8")
+                        for page in (replay / directory).rglob(pattern)),
+                    f"{directory} replay dropped a public extension member's frozen field")
 
     def check_audience_narrowing(self, environment):
         snapshot = self.root / "capture-all/docs.json"
