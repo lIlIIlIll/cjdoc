@@ -203,6 +203,28 @@
     button.dataset.copyResult = copied ? 'copied' : 'unavailable';
     say(copied ? (zh ? '已复制' : 'Copied') : (zh ? '剪贴板不可用，请手动选择代码' : 'Clipboard unavailable; select the code manually'));
   }));
+  document.querySelectorAll('[data-portal-preview]').forEach(preview => {
+    const controls = preview.querySelector('[data-portal-controls]');
+    const select = controls.querySelector('[data-portal-select]');
+    const input = controls.querySelector('[data-portal-filter]');
+    const versions = [...preview.querySelectorAll('[data-portal-version]')];
+    const update = () => {
+      const query = input.value.trim().toLowerCase();
+      versions.forEach(version => {
+        version.hidden = version.dataset.portalVersion !== select.value;
+        let matches = 0;
+        version.querySelectorAll('[data-portal-member]').forEach(member => {
+          member.hidden = !member.querySelector('summary').textContent.toLowerCase().includes(query);
+          if (!member.hidden) matches += 1;
+        });
+        version.querySelector('[data-portal-empty]').hidden = matches !== 0;
+      });
+    };
+    select.addEventListener('change', update);
+    input.addEventListener('input', update);
+    update();
+    controls.hidden = false;
+  });
   if (location.protocol === 'file:') document.querySelectorAll('[data-offline-download]').forEach(link => {
     link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true');
     link.textContent = zh ? '当前已是解压后的离线目录' : 'Already viewing the extracted offline site';

@@ -307,7 +307,8 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
         download = source_archive(source, site, {**provenance, "tools": versions})
     with stage_timing.phase("showcase.plan-baseline"):
         plan = manifest.compile_plan(repo, site)
-        resolved = resolve_plan(plan, Site(site), repo, provenance["revision"])
+        routes = Site(site)
+        resolved = resolve_plan(plan, routes, repo, provenance["revision"])
         from showcase_contract.baseline import check_baseline
         check_baseline(load_json(repo / "site/showcase-baseline.json"), resolved)
     if previous is not None:
@@ -322,7 +323,7 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
     (site / "showcase-features.json").write_bytes(canonical_json(resolved))
     (site / "build.json").write_bytes(canonical_json(metadata))
     with stage_timing.phase("showcase.homepage"):
-        homepage.publish(repo, site, resolved, metadata)
+        homepage.publish(repo, site, resolved, metadata, routes)
     with stage_timing.phase("showcase.offline-archive"):
         create_archive(site)
     with stage_timing.phase("showcase.link-validate"):
