@@ -98,13 +98,12 @@ private func querySearchScopeValue(inputs: ArrayList<QuerySnapshotInput>,
     }, stable: true)
     let values = ArrayList<String>()
     for (input in ordered) {
-        values.add(match (field) {
-            case "snapshotId" => input.snapshot.snapshotId
-            case "language" => input.snapshot.locale
-            case "audience" => input.documentation.configuration.audience
-            case "cfgProfile" => input.documentation.configuration.cfgProfile
-            case _ => ""
-        })
+        let value = if (field == "snapshotId") { input.snapshot.snapshotId }
+            else if (field == "language") { input.snapshot.locale }
+            else if (field == "audience") { input.documentation.configuration.audience }
+            else if (field == "cfgProfile") { input.documentation.configuration.cfgProfile }
+            else { "" }
+        values.add(value)
     }
     if (values.isEmpty()) { return JsonNode.nullValue }
     var allSame = true
