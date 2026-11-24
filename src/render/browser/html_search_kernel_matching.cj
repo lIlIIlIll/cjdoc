@@ -251,15 +251,21 @@ internal let HTML_SEARCH_KERNEL_MATCHING_SCRIPT = #"  const canonicalJson = valu
   };
 
   const filterValueMatches = (stored, filter) => {
-    if (!stored || typeof stored.raw !== "string") return false;
-    if (filter.operator.primitive === "exact_string_equal") return stored.raw === filter.value;
-    if (filter.operator.primitive === "ascii_fold_contains") return stored.folded.includes(filter.foldedValue);
+    if (typeof stored !== "string") return false;
+    if (filter.operator.primitive === "exact_string_equal") return stored === filter.value;
+    if (filter.operator.primitive === "ascii_fold_contains") {
+      return (hasUnpairedSurrogate(stored) ? "" : fold(stored)).includes(filter.foldedValue);
+    }
     return false;
   };
+  // An ordinary text query needs no filter facts. Read the already-validated
+  // raw entry or exposure only when a predicate selects one of its properties.
   const contextAdmits = (context, filters) => filters.every(filter =>
     propertyArray(filter.definition.property).some(property => {
-      if (!context || !context.filterProperties.has(property)) return false;
-      return context.filterProperties.get(property).some(value => filterValueMatches(value, filter));
+      if (!context || !own(context.raw, property)) return false;
+      const stored = context.raw[property];
+      return Array.isArray(stored) ? stored.some(value => filterValueMatches(value, filter))
+        : filterValueMatches(stored, filter);
     }));
   const NO_EXPOSURES = Object.freeze([]);
   const filterExposures = (facts, exposures, entryFilters, contextual) => {

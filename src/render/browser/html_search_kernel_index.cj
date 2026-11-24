@@ -223,18 +223,6 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
     return {all: Object.freeze(all), byScope};
   };
 
-  const prepareFilterProperties = (source, fields) => {
-    const properties = new Map();
-    for (const property of fields) {
-      if (!own(source, property)) continue;
-      const value = source[property];
-      const values = Array.isArray(value) ? value : [value];
-      properties.set(property, values.map(raw => ({
-        raw, folded: typeof raw === "string" && !hasUnpairedSurrogate(raw) ? fold(raw) : ""
-      })));
-    }
-    return properties;
-  };
   const COMMENT_FIELD_ID = /^[a-z][a-z0-9-]{0,63}$/u;
   const validCommentFieldId = value => typeof value === "string" && COMMENT_FIELD_ID.test(value);
   const validCommentFieldValue = value => nonemptyString(value) && runeCount(value) <= 16384 &&
@@ -266,7 +254,8 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
     return {all: Object.freeze(all), byScope};
   };
 
-  const prepareEntry = (entry, modules, snapshot, fields, tagDictionary, commentFields) => {
+  const NO_FIELD_ROWS = Object.freeze([]);
+  const prepareEntry = (entry, modules, snapshot, tagDictionary, commentFields) => {
     if (!isObject(entry) || own(entry, "tagIds") ||
         !nonemptyString(entry.id) || entry.snapshotId !== snapshot.id || !nonemptyString(entry.canonicalId) ||
         typeof entry.concept !== "boolean" || !Number.isSafeInteger(entry.scope) ||
@@ -290,8 +279,9 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
           nonemptyString(exposure.qualifiedName) && nonemptyString(exposure.packageName))) return null;
     if ([entry.kind, entry.summary, entry.summaryDisplay, entry.body, entry.href,
         ...entry.parameterTypes].some(hasUnpairedSurrogate)) return null;
-    const scopedFields = entry.concept ? null : commentFields.byScope.get(entry.scope);
-    const fieldRows = [];
+    const scopedFields = !entry.concept && entry.commentFields.length
+      ? commentFields.byScope.get(entry.scope) : null;
+    const fieldRows = entry.commentFields.length ? [] : NO_FIELD_ROWS;
     let previousFieldId = null;
     for (const row of entry.commentFields) {
       if (!exactKeys(row, ["id", "values"]) || !validCommentFieldId(row.id) ||
@@ -333,8 +323,7 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
     }
     const exposures = entry.exposures.map(exposure => ({
       raw: exposure,
-      idBytes: utf8Bytes(exposure.id),
-      filterProperties: prepareFilterProperties(exposure, fields)
+      idBytes: utf8Bytes(exposure.id)
     }));
     exposures.sort((a, b) => compareByteArrays(a.idBytes, b.idBytes));
     const name = entry.name || "";
@@ -360,7 +349,6 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
       classification, tagIds: Object.freeze(classification.tags.map(tag => tag.id)),
       commentFields: Object.freeze(fieldRows),
       tagFacets: Object.freeze(tagFacts), metadataText,
-      filterProperties: prepareFilterProperties(entry, fields),
       nameFold: fold(name), qualifiedFold: fold(qualifiedName),
       identifierFold: fold([qualifiedName, name, ownerName].join("\n")),
       structuredFold: fold(structured + "\n" + metadataText),
@@ -411,10 +399,8 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
     const usedTagKeys = new Set();
     // Every entry must bind to the same publication snapshot and filter contract.
     const snapshot = {id: index.scope.snapshotId, bytes: utf8Bytes(index.scope.snapshotId)};
-    const fields = new Set(index.contract.filterFields.flatMap(field => propertyArray(field.property)));
     for (const entry of index.entries) {
-      const facts = prepareEntry(entry, modules, snapshot, fields, tagDictionary.byScope,
-        commentFields);
+      const facts = prepareEntry(entry, modules, snapshot, tagDictionary.byScope, commentFields);
       if (!facts) return invalid;
       for (const tag of facts.tagFacets) usedTagKeys.add(tag.key);
       for (const row of facts.commentFields) usedFieldKeys.add(facts.scope + SEP + row.id);
