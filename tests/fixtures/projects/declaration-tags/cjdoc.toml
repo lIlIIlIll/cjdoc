@@ -9,3 +9,18 @@ route = "concepts/guides/tag-walkthrough"
 title = "Tag walkthrough"
 id = "tag-walkthrough"
 kind = "guide"
+
+[comments.aliases]
+maintainer = "owner"
+
+[[comments.fields]]
+id = "owner"
+title = "负责人"
+repeatable = true
+
+[comments.fields.titles]
+en = "Owner"
+
+[[comments.fields]]
+id = "service-tier"
+title = '服务级别 <em>等级</em>'

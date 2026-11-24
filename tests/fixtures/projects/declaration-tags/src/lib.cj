@@ -19,6 +19,8 @@ public class StreamReader {
      * @tag stream
      * @tag stable
      * @tag stream
+     * @owner operations
+     * @service-tier <em>tier & "quoted"</em>
      */
     public func read(count: Int64): Int64 { count }
 
@@ -98,5 +100,7 @@ public func upperCaseOnly(): Unit {}
  * 不可见的词典成员。
  * @tag secret
  * @tag stream
+ * @owner secret-maintainer
+ * @service-tier secret-tier
  */
 private func hidden(): Unit {}
