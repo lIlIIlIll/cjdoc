@@ -49,7 +49,7 @@ SCHEMA_NAMES = {
     "declaration": "declaration",
     "page": "page",
     "manifest": "machine-manifest",
-    "search": "search-index-v11",
+    "search": "search-index-v12",
 }
 # Runtime identities use the existing documented prefixes; they are not a
 # signature or an authentication claim, only a content identity.
@@ -58,7 +58,7 @@ SNAPSHOT_PREFIX = "cjdoc:snapshot:v1:"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 SCHEMA_EXPORTS = (
     ("doc-ir", "doc-ir.schema.json"),
-    ("doc-ir-v18", "doc-ir-v18.schema.json"),
+    ("doc-ir-v19", "doc-ir-v19.schema.json"),
     ("navigation-index", "navigation-index-v2.schema.json"),
     ("navigation-index-v1", "navigation-index.schema.json"),
     ("agent-full-index", "agent-full-index.schema.json"),
@@ -68,8 +68,8 @@ SCHEMA_EXPORTS = (
     ("query-request", "query-request.schema.json"),
     ("query-result", "query-result.schema.json"),
     ("source-provenance", "source-provenance.schema.json"),
-    ("search-index", "search-index-v11.schema.json"),
-    ("search-index-v11", "search-index-v11.schema.json"),
+    ("search-index", "search-index-v12.schema.json"),
+    ("search-index-v12", "search-index-v12.schema.json"),
 )
 
 
@@ -595,7 +595,7 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
         raise ContractError("packaged inventory is not a versioned symbol index")
 
     doc_ir = load_json(root / manifest["docIr"]["path"])
-    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/18":
+    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/19":
         raise ContractError("packaged Doc IR is not the current version")
     declarations = {item["id"]: item for item in doc_ir.get("declarations", [])}
     pages = selected_documentation_pages(doc_ir.get("pages", []), manifest["scope"]["readingLanguage"])
@@ -894,9 +894,9 @@ def load_schemas(schema_dir: Path) -> dict:
     if request.get("additionalProperties") is not False or result.get(
             "additionalProperties") is not False:
         raise ContractError("query schemas must reject unknown properties")
-    if request["properties"]["schemaVersion"]["const"] != "cjdoc.query-request/3":
+    if request["properties"]["schemaVersion"]["const"] != "cjdoc.query-request/4":
         raise ContractError("query-request schema version is not the published contract")
-    if result["properties"]["schemaVersion"]["const"] != "cjdoc.query-result/4":
+    if result["properties"]["schemaVersion"]["const"] != "cjdoc.query-result/5":
         raise ContractError("query-result schema version is not the published contract")
     if "declaration" not in result.get("$defs", {}):
         raise ContractError("query-result schema does not embed the Doc IR declaration model")

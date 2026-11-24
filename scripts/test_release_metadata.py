@@ -240,11 +240,11 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertEqual(tuple(value["required"]), required, name)
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("doc-ir")},
-            {"doc-ir", "doc-ir-v18"},
+            {"doc-ir", "doc-ir-v19"},
         )
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("search-index")},
-            {"search-index", "search-index-v11"},
+            {"search-index", "search-index-v12"},
         )
         self.assertFalse(any("doctest" in name for name in SCHEMA_NAMES))
         # The frozen navigation v1 contract keeps its published identity; the
@@ -259,7 +259,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                      "machine-manifest", "query-request", "query-result", "source-provenance"):
             self.assertIn(name, SCHEMA_NAMES)
         self.assertIn("navigation-index", SCHEMA_NAMES)
-        for name in ("doc-ir", "doc-ir-v18"):
+        for name in ("doc-ir", "doc-ir-v19"):
             value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
             self.assertNotIn("evidenceKey", value["$defs"]["tag"]["properties"])
             self.assertIn("navigation", value["$defs"]["tag"]["properties"])
@@ -268,7 +268,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
     def test_current_golden_inventory_rejects_obsolete_version_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            obsolete = repo / "tests/fixtures/golden-v17"
+            obsolete = repo / "tests/fixtures/golden-v18"
             obsolete.mkdir()
             with self.assertRaises(ValueError):
                 verify_repository_inputs.verify_golden_set(repo, CURRENT_GOLDEN_VERSION)

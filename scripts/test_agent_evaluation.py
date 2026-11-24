@@ -68,7 +68,7 @@ def make_site(root: Path, language: str | None = "en", *, pages: int = 2) -> Pat
                          [{"id": "set", "language": language}]),
     })
     write_json(site / "search-index.json", {
-        "schemaVersion": "cjdoc.search-index/11",
+        "schemaVersion": "cjdoc.search-index/12",
         "tags": [],
         "entries": [{"id": "sym:0", "canonicalId": "cjdoc:v2:x", "exposure": True,
                      "name": "page", "qualifiedName": "demo.page", "kind": "function",
@@ -852,7 +852,7 @@ class RunnerIntegrationTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.capture = make_site(self.root / "capture")
         self.snapshot = write_json(self.root / "snap" / "docs.json",
-                                   {"schemaVersion": "cjdoc.doc-ir/18"})
+                                   {"schemaVersion": "cjdoc.doc-ir/19"})
         self.binary = self.write_script("native-cjdoc", NATIVE_STUB)
         self.stub = self.write_script("stub-codex", CLIENT_STUB)
 
@@ -1042,7 +1042,7 @@ class RunnerIntegrationTests(unittest.TestCase):
 
     def test_baseline_view_excludes_oracle_material(self):
         write_json(self.capture / "site/en/docs.json",
-                   {"schemaVersion": "cjdoc.doc-ir/18"})
+                   {"schemaVersion": "cjdoc.doc-ir/19"})
         write_json(self.capture / "site/en/api-surface/api-surface.json", {})
         write(self.capture / "site/en/coverage.json", "{}\n")
         self.assertEqual(self.runner("--task", "AG-01").returncode, 0)

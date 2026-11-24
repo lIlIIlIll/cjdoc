@@ -118,10 +118,14 @@ protected func isAdmonitionKind(value: String): Bool {
 protected func admonitionTagHead(line: String): ?AdmonitionTagHead {
     let text = line.trimAscii()
     if (!text.startsWith("@")) { return None }
-    var end: Int64 = 1
-    while (end < text.size && text[end] >= b'a' && text[end] <= b'z') { end++ }
+    let end = commentTagWordEnd(text)
     let level = text[1..end]
     if (!["note", "warning", "danger"].contains(level)) { return None }
+    admonitionTagHeadAfter(text, level, end)
+}
+
+private func admonitionTagHeadAfter(text: String, level: String, nameEnd: Int64): ?AdmonitionTagHead {
+    var end = nameEnd
     if (end < text.size && text[end] != b'[' && text[end] != b' ' && text[end] != b'\t') {
         return None
     }
@@ -183,10 +187,14 @@ private func validThrowsEntryId(value: String): Bool {
 protected func localizedTagHead(line: String): ?LocalizedTagHead {
     let text = line.trimAscii()
     if (!text.startsWith("@")) { return None }
-    var end: Int64 = 1
-    while (end < text.size && text[end] >= b'a' && text[end] <= b'z') { end++ }
+    let end = commentTagWordEnd(text)
     let name = text[1..end]
     if (!LOCALIZED_TAG_NAMES.contains(name)) { return None }
+    localizedTagHeadAfter(text, name, end)
+}
+
+private func localizedTagHeadAfter(text: String, name: String, nameEnd: Int64): ?LocalizedTagHead {
+    var end = nameEnd
     var language: ?String = None
     var entryId: ?String = None
     if (end < text.size && text[end] == b'[') {
@@ -242,4 +250,93 @@ protected func localizedTagHead(line: String): ?LocalizedTagHead {
         return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101"))
     }
     Some(LocalizedTagHead(name, language, rest, entryId: entryId))
+}
+
+/**
+ * One classified tag header in a top-level paragraph.
+ *
+ * `authored` is exactly what the author wrote; `formal` is the builtin tag or
+ * project field it denotes. Payload text starts after the authored header, so a
+ * span computed from the authored spelling stays correct for aliases too.
+ */
+protected class CommentTagHeader {
+    protected let authored: String
+    protected let formal: String
+    protected let language: ?String
+    protected let entryId: ?String
+    protected let error: ?String
+    protected let rest: String
+    internal let authoredEnd: Int64
+    protected let field: Bool
+
+    protected init(authored: String, formal: String, language: ?String, entryId: ?String,
+        error: ?String, rest: String, authoredEnd: Int64,
+        field!: Bool = false) {
+        this.authored = authored
+        this.formal = formal
+        this.language = language
+        this.entryId = entryId
+        this.error = error
+        this.rest = rest
+        this.authoredEnd = authoredEnd
+        this.field = field
+    }
+}
+
+private func commentTagWordEnd(text: String): Int64 {
+    var end: Int64 = 1
+    while (end < text.size) {
+        let byte = text[end]
+        let word = (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
+            (byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'_'
+        if (!word) { break }
+        end++
+    }
+    end
+}
+
+
+/**
+ * Classify one line as a tag header, resolving module aliases and fields.
+ *
+ * Matching is by complete lexical head: `@team-2` is a header only when that
+ * exact name is declared, so a longer unknown name is prose, never a prefix
+ * match of a known tag.
+ */
+protected func commentTagHeader(line: String, spec: ?CommentSpec): ?CommentTagHeader {
+    let text = line.trimAscii()
+    if (!text.startsWith("@")) { return None }
+    let offset = line.size - line.trimAsciiStart().size
+    let end = commentTagWordEnd(text)
+    if (end <= 1) { return None }
+    let token = text[1..end]
+    let formal = match (spec) {
+        case Some(value) => value.resolve(token)
+        case None => token
+    }
+    let authoredEnd = offset + end
+    if (isAdmonitionKind(formal)) {
+        return admonitionTagHeadAfter(text, formal, end).map({ head =>
+            CommentTagHeader(token, formal, head.language, head.entryId, head.error,
+                head.rest, authoredEnd)
+        })
+    }
+    if (LOCALIZED_TAG_NAMES.contains(formal)) {
+        return localizedTagHeadAfter(text, formal, end).map({ head =>
+            CommentTagHeader(token, formal, head.language, head.entryId, head.error,
+                head.rest, authoredEnd)
+        })
+    }
+    if (let Some(policy) <- spec) {
+        if (policy.field(formal).isSome()) {
+            if (end < text.size && text[end] != b' ' && text[end] != b'\t') {
+                return Some(CommentTagHeader(token, formal, None, None,
+                    if (text[end] == b'[') { "CJDOC3140" } else { "malformed" },
+                    "", authoredEnd, field: true))
+            }
+            return Some(CommentTagHeader(token, formal, None, None, None,
+                text[end..].trimAscii(), authoredEnd, field: true))
+        }
+    }
+    None
 }

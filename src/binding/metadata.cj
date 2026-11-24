@@ -5,9 +5,12 @@ import cjdoc.source.model.SourceSnapshot
 import cjdoc.source.Diagnostic
 import cjdoc.documentation.metadata.{
     DocumentationMetadataConfig, DocumentationMetadataInventory, MetadataContainer, MetadataGroupConfig,
-    MetadataModuleConfiguration, MetadataPackageScope, MetadataTagConfig, loadDocumentationMetadataConfig,
-    metadataOwnerIdSelectorKey, metadataOwnerNameSelectorKey}
+    MetadataModuleConfiguration, MetadataPackageScope, MetadataTagConfig, metadataOwnerIdSelectorKey,
+    metadataOwnerNameSelectorKey, parseDocumentationMetadataConfig}
+import cjdoc.documentation.comments.{CommentSpec, parseCommentSpec}
 import cjdoc.source.SourceLocation
+import cjdoc.filesystem.readTextBounded
+import std.fs.*
 import cjdoc.model as api_model
 import std.collection.*
 
@@ -44,6 +47,37 @@ internal class ResolvedMetadataTag {
     }
 }
 
+// One bounded read per actual module root feeds both configuration namespaces,
+// so `[metadata]` and `[comments]` can never observe different file versions.
+// Both namespaces read the same bounded file; the limit is the metadata
+// reader's published 64 KiB budget.
+private let PROJECT_CONFIGURATION_MAX_BYTES: Int64 = 64 * 1024
+
+private class ProjectModuleConfig {
+    let metadata: DocumentationMetadataConfig
+    let comments: CommentSpec
+
+    init(metadata: DocumentationMetadataConfig, comments: CommentSpec) {
+        this.metadata = metadata
+        this.comments = comments
+    }
+}
+
+private func readProjectModuleConfig(root: String, configPath: String): ProjectModuleConfig {
+    let path = Path(root).join("cjdoc.toml")
+    if (!exists(path)) {
+        return ProjectModuleConfig(parseDocumentationMetadataConfig(""), CommentSpec())
+    }
+    let text = try {
+        readTextBounded(path, PROJECT_CONFIGURATION_MAX_BYTES)
+    } catch (_: Exception) {
+        throw IllegalArgumentException(
+            "CJDOC3133 at ${configPath}:1: configuration must be valid UTF-8 and no larger than 65536 bytes")
+    }
+    ProjectModuleConfig(parseDocumentationMetadataConfig(text),
+        parseCommentSpec(text, configPath: configPath))
+}
+
 private func metadataInventoryFailure(detail: String): IllegalArgumentException {
     IllegalArgumentException("CJDOC3133: ${detail}")
 }
@@ -73,27 +107,64 @@ private func metadataGroupScopeKey(moduleId: String, packageName: String,
 private func metadataTagScopeKey(moduleId: String, tagId: String): String {
     "${moduleId.size}:${moduleId}${tagId.size}:${tagId}"
 }
-protected func captureDocumentationMetadataInventory(source: SourceSnapshot): Unit {
-    let parsedByRoot = HashMap<String, DocumentationMetadataConfig>()
+/**
+ * Validate a workspace descriptor directory's own configuration.
+ *
+ * A directory that only lists members contributes no declarations, so its
+ * `[comments]` policy is parsed for diagnostics but never attached to a module.
+ */
+protected func validateDescriptorConfiguration(root: String): Unit {
+    let _ = readProjectModuleConfig(root, "cjdoc.toml")
+}
+
+protected func captureDocumentationMetadataInventory(source: SourceSnapshot,
+    projectRoot!: String = ""): Unit {
+    let parsedByRoot = HashMap<String, ProjectModuleConfig>()
     let moduleConfigurations = ArrayList<MetadataModuleConfiguration>()
     var groupDefinitionCount: Int64 = 0
     var tagDefinitionCount: Int64 = 0
+    var fieldDefinitionCount: Int64 = 0
     for (moduleRoot in source.metadataModuleRoots) {
         let config = match (parsedByRoot.get(moduleRoot.actualRoot)) {
             case Some(value) => value
             case None =>
-                let value = loadDocumentationMetadataConfig(moduleRoot.actualRoot)
+                let value = readProjectModuleConfig(moduleRoot.actualRoot, moduleRoot.configPath)
                 parsedByRoot[moduleRoot.actualRoot] = value
                 value
         }
+        if (!config.comments.isEmpty()) { source.commentSpecs[moduleRoot.moduleId] = config.comments }
         moduleConfigurations.add(MetadataModuleConfiguration(moduleRoot.moduleId,
-            moduleRoot.configPath, config))
-        groupDefinitionCount += config.groups.size
-        tagDefinitionCount += config.tags.size
+            moduleRoot.configPath, config.metadata))
+        groupDefinitionCount += config.metadata.groups.size
+        tagDefinitionCount += config.metadata.tags.size
+        fieldDefinitionCount += config.comments.fields.size
+        if (fieldDefinitionCount > DOCUMENTATION_METADATA_MAX_DEFINITIONS) {
+            throw IllegalArgumentException("CJDOC3139 at ${moduleRoot.configPath}:1: " +
+                "comment fields exceed 2048 definitions across captured modules")
+        }
         if (groupDefinitionCount > DOCUMENTATION_METADATA_MAX_DEFINITIONS ||
             tagDefinitionCount > DOCUMENTATION_METADATA_MAX_DEFINITIONS) {
             throw metadataInventoryFailure("metadata exceeds 2048 definitions in a category")
         }
+    }
+
+    if (!projectRoot.isEmpty()) {
+        // Module roots are already canonicalized during discovery; compare on the
+        // same normalized spelling so a relative or symlinked --project does not
+        // make an already-read root look uncovered and read it a second time.
+        let normalizedRoot = try {
+            canonicalize(projectRoot).toString()
+        } catch (_: Exception) {
+            projectRoot
+        }
+        var rootCovered = false
+        for (moduleRoot in source.metadataModuleRoots) {
+            if (moduleRoot.actualRoot == normalizedRoot) {
+                rootCovered = true
+                break
+            }
+        }
+        if (!rootCovered) { validateDescriptorConfiguration(normalizedRoot) }
     }
 
     let packages = ArrayList<MetadataPackageScope>()

@@ -223,13 +223,13 @@ cjdoc check --project . --check-examples
 **先检查**：快照是不是当前格式、是不是用相同选项从对应版本源码生成的。
 
 ```text
-error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/18'
+error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/19'
 error: API diff inputs must match project, audience, and cfgProfile
 ```
 
 **处理**
 
-- `render` 只接受当前 `cjdoc.doc-ir/18`。源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的旧快照迁移路径。
+- `render` 只接受当前 `cjdoc.doc-ir/19`。源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的旧快照迁移路径。
 - `diff` 要求两份快照的项目、受众和 cfgProfile 一致。用相同的 `--audience`、`--cfg` 从对应版本源码重新生成两份快照再比较。
 
 **恢复后**：`render` 从保存的快照生成 HTML/Markdown；`diff` 输出只反映两份同源快照之间的真实差异。流程见[重渲染快照](render-snapshots.md)和[比较 API 并组合版本站点](compare-and-version.md)。

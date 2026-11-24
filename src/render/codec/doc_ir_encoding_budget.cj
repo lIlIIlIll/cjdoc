@@ -268,7 +268,7 @@ internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth:
 }
 internal func consumeDocumentationMetadataEncoding(value: DocumentationMetadata, path: String,
     budget: DocIrEncodingBudget): Unit {
-    budget.consumeObject(path, depth: 1, fields: 2)
+    budget.consumeObject(path, depth: 1, fields: 3)
     budget.consumeCollection(value.groups.size, "${path}.groups", depth: 2)
     var index: Int64 = 0
     for (group in value.groups) {
@@ -310,6 +310,40 @@ internal func consumeDocumentationMetadataEncoding(value: DocumentationMetadata,
             budget.consumeString(title.language, "${titlePath}.language")
             budget.consumeString(title.title, "${titlePath}.title")
             titleIndex++
+        }
+        index++
+    }
+    budget.consumeCollection(value.fields.size, "${path}.fields", depth: 2)
+    index = 0
+    for (field in value.fields) {
+        let itemPath = "${path}.fields[${index}]"
+        budget.consumeObject(itemPath, depth: 3, fields: 6)
+        budget.consumeString(field.moduleId, "${itemPath}.moduleId")
+        budget.consumeString(field.id, "${itemPath}.id")
+        budget.consumeString(field.title, "${itemPath}.title")
+        budget.consumeCollection(field.titles.size, "${itemPath}.titles", depth: 4)
+        var titleIndex: Int64 = 0
+        for (title in field.titles) {
+            let titlePath = "${itemPath}.titles[${titleIndex}]"
+            budget.consumeObject(titlePath, depth: 5, fields: 2)
+            budget.consumeString(title.language, "${titlePath}.language")
+            budget.consumeString(title.title, "${titlePath}.title")
+            titleIndex++
+        }
+        budget.consumeBytes(if (field.repeatable) { 4 } else { 5 }, "${itemPath}.repeatable")
+        budget.consumeCollection(field.uses.size, "${itemPath}.uses", depth: 4)
+        var useIndex: Int64 = 0
+        for (use in field.uses) {
+            let usePath = "${itemPath}.uses[${useIndex}]"
+            budget.consumeObject(usePath, depth: 5, fields: 2)
+            budget.consumeString(use.symbolId, "${usePath}.symbolId")
+            budget.consumeCollection(use.values.size, "${usePath}.values", depth: 6)
+            var valueIndex: Int64 = 0
+            for (item in use.values) {
+                budget.consumeString(item, "${usePath}.values[${valueIndex}]")
+                valueIndex++
+            }
+            useIndex++
         }
         index++
     }

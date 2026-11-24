@@ -258,6 +258,42 @@ en = "Streaming"
 
 分组按显式 `order` 升序排在前，未指定顺序的组排在后面；标题只影响显示，不改变成员身份、SymbolId、API fingerprint 或翻译覆盖率。标签定义只提供显示标题，成员关系仍由每个声明显式写 `@tag <id>` 决定。语法细节见[文档注释参考](doc-comments.md#分组与标签)。
 
+## `[comments]`：项目注释规范
+
+`[comments]` 让项目沿用现有 `/** ... */` 注释，在所属模块的 `cjdoc.toml` 声明标签别名、正式字段、必填或条件必填规则。与 `[metadata]` 一样按发现的 module 读取：成员项目只读自己的配置，workspace 根配置不会传给成员，依赖也不会接收调用者的规则。只有工作区描述目录（自身不产生声明）的 `[comments]` 只做校验，不挂到任何成员。每个配置最多 64 KiB，别名、字段、规则各最多 2048 条。
+
+```toml
+[comments.aliases]
+maintainer = "owner"   # 也可以指向内置标签，例如 rfc = "see"
+
+[[comments.fields]]
+id = "owner"           # [a-z][a-z0-9-]{0,63}
+title = "负责人"
+repeatable = false     # 默认 false；true 时同一字段可写多次
+
+[comments.fields.titles]
+en = "Owner"
+
+[[comments.rules]]
+require = "owner"
+when-present = "deprecated"  # 省略表示所有可见声明都适用
+severity = "warning"         # error（默认）或 warning
+```
+
+| 表 | 键 | 规则 |
+|---|---|---|
+| `[comments.aliases]` | `别名 = "目标"` | 别名与目标都符合 `[a-z][a-z0-9-]{0,63}`；目标只能是内置标签或本模块正式字段，不能指向另一个别名 |
+| `[[comments.fields]]` | `id`、`title`（必填） | 字段名规则同别名；标题是 1–256 UTF-8 字节的单行纯文本 |
+| | `repeatable` | `true` / `false`，默认 `false` |
+| `[comments.fields.titles]` | `en`、`zh-CN` | 只允许这两种语言；页面按语言取标题，没有译名时用 `title` |
+| `[[comments.rules]]` | `require`（必填） | 必填项，只接受正式名（内置标签或字段），不接受别名 |
+| | `when-present` | 触发条件，只接受正式名；与 `require` 相同报配置错误 |
+| | `severity` | `error`（默认）或 `warning`，不受 `[lint]` 控制 |
+
+字段、别名都不能与内置标签（含 `note`、`warning`、`danger`）冲突。别名可以写在字段定义之前。未知表、未知键、类型错误、重复定义、孤立 `[comments.fields.titles]`、别名链或环、未知目标、规则引用别名，都报 `CJDOC3139 at cjdoc.toml:<行>: <说明>`，退出码 `2`；`--lint-profile off` 也照样报错。
+
+注释里的写法与含义见[文档注释参考](doc-comments.md#项目注释字段)。
+
 ## `[limits]`：Doc IR JSON 大小
 
 | 键 | 取值 | 默认 |

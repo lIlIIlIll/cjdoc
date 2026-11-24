@@ -3,7 +3,8 @@ package cjdoc
 import cjdoc.examples.compileDocumentationExamples
 import cjdoc.semantic.SemanticProvider
 import cjdoc.binding.{
-    DocumentationSet, prepareDocumentationMetadata, resolveDocumentationReferences, sortDocumentationDeterministically}
+    DocumentationSet, evaluateCommentRules, prepareDocumentationMetadata,
+    resolveDocumentationReferences, sortDocumentationDeterministically}
 import cjdoc.documentation.i18n.{bindLocalizedDocumentationItems, prepareDocumentationLanguages}
 import cjdoc.documentation.i18n.coverage.withTranslationDiagnostics
 import cjdoc.quality.lintDocumentation
@@ -43,6 +44,13 @@ private func finishGeneratedDocumentation(documentation: DocumentationSet,
         case _ => ()
     }
     bindLocalizedDocumentationItems(documentation)
+    // Project comment rules are author policy, not builtin lint: they run only
+    // for the standard and strict profiles, and their severity comes from the
+    // rule itself rather than [lint].
+    match (request.lintProfile) {
+        case "standard" | "strict" => evaluateCommentRules(documentation, request.audience)
+        case _ => ()
+    }
     if (request.checkExamples) {
         compileDocumentationExamples(documentation, request.audience, qualityConfig)
     }

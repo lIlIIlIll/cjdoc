@@ -233,10 +233,10 @@ def run_smoke(binary: Path, version: str,
             raise ValueError("extracted binary --version does not match the package")
         if name == "schema":
             schema_names = set(output.splitlines())
-            if not {"doc-ir", "doc-ir-v18", "source-provenance"}.issubset(schema_names):
+            if not {"doc-ir", "doc-ir-v19", "source-provenance", "search-index-v12"}.issubset(schema_names):
                 raise ValueError("extracted binary schema list omits a current schema")
-            if "doc-ir-v17" in schema_names:
-                raise ValueError("extracted binary schema list retains the obsolete Doc IR v17 entry")
+            if {"doc-ir-v17", "doc-ir-v18", "search-index-v11"} & schema_names:
+                raise ValueError("extracted binary schema list retains an obsolete schema")
         evidence[name] = output
     return evidence
 

@@ -20,7 +20,7 @@
 # The user's global Git ignore excludes JSON; these are project sources.
 !/AGENTS.md
 !/docs/schema/*.json
-!/tests/fixtures/golden-v18/*.json
+!/tests/fixtures/golden-v19/*.json
 !/tests/perf/*.json
 !/tests/fixtures/query-semantics/cases.json
 !/tests/fixtures/projects/source_provenance/evidence/source.json

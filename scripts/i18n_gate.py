@@ -455,7 +455,7 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     search = {lang: json.loads((multi / "html" / lang / "search-index.json").read_text())
               for lang in ("en", "zh-CN")}
     for lang, value in search.items():
-        assert value["schemaVersion"] == "cjdoc.search-index/11"
+        assert value["schemaVersion"] == "cjdoc.search-index/12"
         text = json.dumps(value, ensure_ascii=False)
         assert "HiddenArithmeticalKeyword" not in text
         assert "私有中文标记" not in text

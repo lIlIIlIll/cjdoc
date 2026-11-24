@@ -67,6 +67,10 @@ internal class SearchPreparedEntry {
     internal let parameterTypesFolded: Array<String>
     internal let summaryBodyFolded: String
     internal let metadataTextFolded: String
+    // Published comment field values, folded once. They are retrieval text with
+    // the same token rules as documentation prose, but never part of `body`, so
+    // the body budget and the name scores stay untouched.
+    internal let commentFieldsFolded: String
     internal let identifierTextFolded: String
     internal let discoveryStructuredTextFolded: String
     internal let sectionTextsFolded: Array<String>
@@ -97,6 +101,14 @@ internal class SearchPreparedEntry {
         summaryBody.append(entry.body)
         summaryBodyFolded = searchAsciiFold(summaryBody.toString())
         metadataTextFolded = searchAsciiFold(entry.metadataText)
+        let fieldText = StringBuilder()
+        for (row in entry.commentFieldRows) {
+            for (value in row.values()) {
+                fieldText.append("\n")
+                fieldText.append(value)
+            }
+        }
+        commentFieldsFolded = searchAsciiFold(fieldText.toString())
         let structuredText = searchStructuredText(entry)
         identifierTextFolded = searchAsciiFold(searchIdentifierText(entry))
         let discoveryText = StringBuilder()
@@ -152,6 +164,7 @@ protected class PreparedDocumentationSearchProjection {
 /** Build all immutable native facts before the prepared view is cached/published. */
 protected func prepareDocumentationSearchProjection(
     projection: DocumentationSearchProjection): PreparedDocumentationSearchProjection {
+    searchValidateCommentFields(projection)
     let entries = ArrayList<SearchPreparedEntry>()
     for (entry in projection.entries) { entries.add(SearchPreparedEntry(entry)) }
     PreparedDocumentationSearchProjection(projection, entries)

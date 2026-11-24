@@ -80,7 +80,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/18")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/19")
         metadata = document.get("metadata")
         self.assertIsInstance(metadata, dict)
         self.assertEqual(set(metadata), {"groups", "tags"})
@@ -145,7 +145,7 @@ class FixtureContractTest(unittest.TestCase):
                 document, _ = self.generate("reexports", *options, expected_exit=0)
                 symbol = next(item for item in document["declarations"]
                               if item["qualifiedName"] == "reexport_root.collision")
-                request = {"schemaVersion": "cjdoc.query-request/3",
+                request = {"schemaVersion": "cjdoc.query-request/4",
                            "operation": "get_symbol", "symbolId": symbol["id"],
                            "sections": ["relations"]}
                 with tempfile.TemporaryDirectory() as temporary:

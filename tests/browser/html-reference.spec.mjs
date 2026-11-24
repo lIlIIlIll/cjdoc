@@ -2379,3 +2379,82 @@ test.describe('declaration tag navigation and filtering', () => {
     }
   }
 });
+
+test.describe('project comment fields', () => {
+  for (const locale of declarationLocales) {
+    for (const transport of ['file', 'subpath']) {
+      test(`${locale} ${transport}: browse, combine and restore field predicates`, async ({page}) => {
+        const chinese = locale === 'zh-CN';
+        const ownerTitle = chinese ? '负责人' : 'Owner';
+        const tierTitle = '服务级别 <em>等级</em>';
+        const indexUrl = declarationIndexUrl('tags', locale, transport);
+        await page.setViewportSize({width: transport === 'file' ? 390 : 1400, height: 850});
+        await openDeclarationPage(page, indexUrl, transport);
+        await page.keyboard.press('Control+k');
+        const dialog = page.getByRole('dialog');
+        const keyword = dialog.getByRole('combobox', {name: chinese ? '搜索 API' : 'Search API'});
+        const field = dialog.getByLabel(chinese ? '注释字段' : 'Comment field', {exact: true});
+        const value = dialog.getByLabel(chinese ? '字段值' : 'Field value', {exact: true});
+        const applied = dialog.getByRole('group', {
+          name: chinese ? '已应用注释字段' : 'Applied comment fields',
+        });
+        const remove = (label) => applied.getByRole('button', {
+          name: new RegExp((chinese ? '移除 ' : 'Remove ') + '.*' + label),
+        });
+        await expect(keyword).toBeFocused();
+        await expect(value).toBeDisabled();
+        await expect(dialog.getByRole('listbox').getByRole('option')).toHaveCount(0);
+        await field.selectOption({label: `declaration_tags · ${ownerTitle}`});
+        await expect(value.locator('option[value="platform"]')).toHaveText('platform (1)');
+        await expect(value.locator('option[value="secret-maintainer"]')).toHaveCount(0);
+        await value.selectOption('platform');
+        await expect(dialog.getByRole('listbox').getByRole('option')).toHaveCount(1);
+        await expect(remove('platform')).toBeVisible();
+        await expect(dialog.getByRole('link', {name: /boundedBody/})).toBeVisible();
+        await keyword.fill('platform');
+        await expect(dialog.getByRole('listbox').getByRole('option')).toHaveCount(1);
+        await field.selectOption({label: `declaration_tags · ${tierTitle}`});
+        await value.selectOption('primary');
+        await expect(remove('primary')).toBeVisible();
+        await remove('platform').press('Enter');
+        await expect(remove('platform')).toHaveCount(0);
+        await expect(field).toBeFocused();
+        await field.selectOption({label: `declaration_tags · ${ownerTitle}`});
+        await value.selectOption('platform');
+        await applied.getByRole('button', {
+          name: chinese ? '清空注释字段' : 'Clear comment fields',
+        }).click();
+        await expect(dialog.getByRole('listbox').getByRole('option')).toHaveCount(2);
+        await value.selectOption('platform');
+        await dialog.getByRole('link', {name: /boundedBody/}).click();
+        const details = page.locator('[data-cjdoc-doc-fields]');
+        await expect(details.locator('[data-cjdoc-doc-field="owner"]')).toHaveText(ownerTitle);
+        await expect(details.getByText('platform', {exact: true})).toHaveCount(2);
+        await page.goBack();
+        await openSearchDialog(page);
+        await expect(remove('platform')).toBeVisible();
+        await expect(dialog.getByRole('listbox').getByRole('option')).toHaveCount(1);
+        await page.keyboard.press('Escape');
+        assertDeclarationPageRequests(page);
+
+        const packageUrl = new URL(
+          await page.locator('ul.cj-package-index > li > a').first().getAttribute('href'), indexUrl);
+        await openDeclarationPage(page, packageUrl.href, transport);
+        const classLink = page.locator('tr[data-member-name="StreamReader"] .cj-decl-table__link');
+        const classUrl = new URL(await classLink.getAttribute('href'), packageUrl);
+        await openDeclarationPage(page, classUrl.href, transport);
+        const member = page.locator('details[data-member-name="read"]').filter({hasText: 'count: Int64'});
+        await member.locator('summary').click();
+        const content = member.locator('[data-cjdoc-doc-fields]');
+        await expect(content.locator('[data-cjdoc-doc-field="service-tier"]')).toHaveText(tierTitle);
+        await expect(content.getByText('<em>tier & "quoted"</em>', {exact: true})).toBeVisible();
+        await expect(content.locator('em')).toHaveCount(0);
+        await expect(page.locator('details[data-member-name="read"]').filter({hasText: 'text: String'})
+          .locator('[data-cjdoc-doc-fields]')).toHaveCount(0);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth))
+          .toBeLessThanOrEqual(transport === 'file' ? 391 : 1401);
+        assertDeclarationPageRequests(page);
+      });
+    }
+  }
+});

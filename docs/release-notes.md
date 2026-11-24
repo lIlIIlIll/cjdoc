@@ -10,8 +10,10 @@
 - **浏览完整 API：** 从首页「API 参考」展开包和类型；左栏可以显示当前分支的全部条目，包页的「本页目录」可跳到声明行。关闭 JavaScript 后仍可打开各声明的详情。
 - **分享 API：** 包、类型和成员有可读目录地址，例如 `packages/pocketkit/authoring/` 和 `pocketkit/TextCatalog/join/`。默认语言的声明地址不加语言前缀；包页保留当前语言目录。离线链接保留 `index.html`，旧包链接及其片段和旧 `symbols/` 链接仍可打开。详见[生成与发布](how-to/generate-and-publish.md)。
 - **迁移弃用 API：** 包表、成员、侧栏和搜索标明已弃用声明；详情显示作者说明或可读取的源码注解消息。能确认的 [`@replacement`](reference/doc-comments.md#弃用与迁移) 另有「改用」链接，原名称仍打开原声明。
-- **读取机器文档：** 新 HTML 文档包使用 `cjdoc.machine-manifest/3` 和 `cjdoc.read/3`。CLI 仍可验证和查询 `/1` 和 `/2` 包并沿用其原地址；Doc IR v18 不变。
+- **读取机器文档：** 新 HTML 文档包使用 `cjdoc.machine-manifest/3` 和 `cjdoc.read/3`。
 - **学写注释：** PocketKit demo-v2 新增[双语注释指南](../examples/pocketkit/demo-v2/docs/doc-comments.md)，可对照源码与生成的 API 页面。
+- **约束并检索 API 注释：** 在模块的 `cjdoc.toml` 配置[标签别名、必填规则和字段](reference/configuration.md#comments项目注释规范)。已捕获字段显示在 API 页，可在网页、CLI 或 MCP 中按完整值筛选；CLI/MCP 还可请求候选值和命中数。
+- **升级快照与查询调用方：** 从源码重新生成 Doc IR v19 及站点；`render` 不读取 v18。客户端按 `query-request/4`、`query-result/5`、`search-index/12` 和 `search-contract/3` 更新，见[查询协议](reference/query-protocol.md)。独立 `declaration/3` 和 `page/2` 不变。
 
 ## 0.7.9
 

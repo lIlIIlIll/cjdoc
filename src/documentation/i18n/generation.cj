@@ -1,6 +1,7 @@
 protected package cjdoc.documentation.i18n
 
-import cjdoc.documentation.comments.{hasTopLevelAdmonitionTag, parseAdmonitionsOnlyComment, parseLocalizedComment, requiresNonAdmonitionLocalizedComment}
+import cjdoc.documentation.comments.{localizedCommentFeatures, parseAdmonitionsOnlyComment, parseLocalizedComment}
+import cjdoc.binding.reportCommentStructures
 import cjdoc.binding.{DocumentationSet, SymbolDoc}
 import cjdoc.documentation.comments.isAdmonitionKind
 
@@ -95,14 +96,14 @@ protected func prepareDocumentationLanguages(documentation: DocumentationSet, pr
         if (profile.isNone() && module.role == "workspace") { profile = rootOptions }
         profiles[module.id] = profile
     }
+    reportCommentStructures(documentation)
     for (symbol in documentation.symbols) {
         if (let Some(comment) <- symbol.documentation) {
             validateDeclarationGroup(documentation, symbol, comment)
             validateDeclarationTags(documentation, symbol, comment)
             let noOptions: ?public_model.DocumentationLanguageOptions = None
             let options = profiles.get(symbol.moduleId).getOrDefault({ => noOptions })
-            let hasAdmonitions = hasTopLevelAdmonitionTag(comment.raw)
-            let hasOtherLocalizedFields = requiresNonAdmonitionLocalizedComment(comment.raw)
+            let (hasAdmonitions, hasOtherLocalizedFields) = localizedCommentFeatures(comment)
             if (options.isNone() && !hasAdmonitions && !hasOtherLocalizedFields) { continue }
             let language: ?String = match (options) { case Some(value) => Some(value.defaultLanguage); case None => None }
             let admonitionsOnly = options.isNone() && hasAdmonitions && !hasOtherLocalizedFields
@@ -166,5 +167,10 @@ private func localizedDefaultView(value: DocComment): DocComment {
     result.contracts.add(all: value.contracts)
     result.since = value.since; result.version = value.version; result.deprecated = value.deprecated
     result.authors.add(all: value.authors)
+    // Policy facts must survive the compatibility view, or a rule would see an
+    // author tag that no longer exists in the tree being evaluated.
+    result.occurrences = value.occurrences
+    result.fieldValues.add(all: value.fieldValues)
+    result.problems.add(all: value.problems)
     result
 }

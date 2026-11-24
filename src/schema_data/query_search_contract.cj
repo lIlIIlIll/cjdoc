@@ -84,7 +84,7 @@ public func documentationSearchContract(): String {
     let search = operations.get("search").getOrThrow().asObject()
     let properties = declaration.get("properties").getOrThrow().asObject()
     let contract = JsonObject()
-    contract.put("version", JsonNode.string("cjdoc.search-contract/2"))
+    contract.put("version", JsonNode.string("cjdoc.search-contract/3"))
     contract.put("textPolicy", querySearchTextPolicy())
     contract.put("maxRequestBytes", JsonNode.int64(1048576))
     contract.put("defaultMode", JsonNode.string("precise"))

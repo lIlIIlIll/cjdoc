@@ -46,6 +46,12 @@ protected class DocComment {
     protected var defaultLanguage: ?String = None
     protected var localizationScope: String = "all"
     protected let languageItems = ArrayList<LocalizedCommentItem>()
+    internal var preparedPolicy: ?CommentSpecLines = None
+    // Project-policy facts: explicit author tag appearances and validated custom
+    // field values. Generation-only; never serialized as prose or DocTag data.
+    protected var occurrences: Array<CommentTagOccurrence> = []
+    protected let fieldValues = ArrayList<DocFieldValue>()
+    protected let problems = ArrayList<CommentProblem>()
 
     protected init(raw: String, summaryMarkdown: String, descriptionMarkdown: String) {
         this.raw = raw

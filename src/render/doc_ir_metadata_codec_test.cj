@@ -54,7 +54,8 @@ private func metadataCodecComment(groupId: String, tagId: String): DocComment {
     ])
 }
 
-private func metadataCodecDocument(metadata: DocumentationMetadata): DocumentationSet {
+private func metadataCodecDocument(metadata: DocumentationMetadata,
+    audience!: String = "external"): DocumentationSet {
     let owner = SymbolDoc(DOC_IR_METADATA_TEST_OWNER, "class", "Catalog", "fixture.Catalog", "fixture",
         DOC_IR_METADATA_TEST_MODULE, "public", metadataCodecRange(1), "public class Catalog",
         SemanticInfo("partial", "ast"))
@@ -68,7 +69,7 @@ private func metadataCodecDocument(metadata: DocumentationMetadata): Documentati
         documentation: Some(metadataCodecComment("private-group", "secret")))
     let declarations: Array<SymbolDoc> = [owner, visible, hidden]
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "partial", ProjectInfo("metadata-codec"),
-        ConfigurationSnapshot(audience: "external", lintProfile: "off"),
+        ConfigurationSnapshot(audience: audience, lintProfile: "off"),
         providers: [ProviderInfo("ast", "builtin", DOC_IR_METADATA_TEST_MODULE, "partial",
             SemanticCapabilities(false, false, false, false, false))],
         modules: [ModuleDoc(DOC_IR_METADATA_TEST_MODULE, "metadata-transport", "root", "",
@@ -103,6 +104,22 @@ private func metadataJsonObject(documentation: DocumentationSet): JsonObject {
     JsonNode.parse(encodeDocIr(documentation)).asObject()
 }
 
+private func metadataFieldFixture(): DocumentationSet {
+    metadataCodecDocument(DocumentationMetadata(fields: [
+        DocumentationFieldDefinition(DOC_IR_METADATA_TEST_MODULE, "owner", "负责人",
+            titles: [DocumentationTitle("en", "Owner")], repeatable: true, uses: [
+                DocumentationFieldUse(DOC_IR_METADATA_TEST_VISIBLE, ["platform", "platform", "équipe"]),
+                DocumentationFieldUse(DOC_IR_METADATA_TEST_HIDDEN, ["internal"])
+            ]),
+        DocumentationFieldDefinition(DOC_IR_METADATA_TEST_MODULE, "private-field", "Internal",
+            uses: [DocumentationFieldUse(DOC_IR_METADATA_TEST_HIDDEN, ["hidden"])]),
+    ]), audience: "all")
+}
+
+private func fieldMetadataArray(document: JsonObject): JsonArray {
+    document.get("metadata").getOrThrow().asObject().get("fields").getOrThrow().asArray()
+}
+
 @Test
 class DocIrMetadataCodecTest {
     @TestCase
@@ -110,7 +127,7 @@ class DocIrMetadataCodecTest {
         let documentation = metadataCodecFixture()
         let encoded = encodeDocIr(documentation)
         let decoded = decodeDocIr(encoded)
-        @Expect(decoded.schemaVersion, "cjdoc.doc-ir/18")
+        @Expect(decoded.schemaVersion, "cjdoc.doc-ir/19")
         @Expect(encodeDocIr(decoded), encoded)
         @Expect(decoded.metadata.groups[0].id, "20-query")
         @Expect(decoded.metadata.groups[1].id, "private-group")
@@ -137,8 +154,9 @@ class DocIrMetadataCodecTest {
         unknownMetadata.get("metadata").getOrThrow().asObject().put("unexpected", JsonNode.boolean(true))
         @ExpectThrows[IllegalArgumentException](decodeDocIr(unknownMetadata.toJson()))
 
-        let oldVersion = encoded.replace("cjdoc.doc-ir/18", "cjdoc.doc-ir/17")
+        let oldVersion = encoded.replace("cjdoc.doc-ir/19", "cjdoc.doc-ir/17")
         @ExpectThrows[IllegalArgumentException](decodeDocIr(oldVersion))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("cjdoc.doc-ir/19", "cjdoc.doc-ir/18")))
     }
     @TestCase
     func nullableGroupFieldsAcceptExplicitNullAndDefinitionLimitsAreEnforced(): Unit {
@@ -286,6 +304,74 @@ class DocIrMetadataCodecTest {
         @Expect(published.metadata.groups[0].id, "20-query")
         @Expect(published.metadata.tags.size, 1)
         @Expect(published.metadata.tags[0].id, "stream")
+    }
+
+    @TestCase
+    func capturedCommentFieldsRoundTripAndNarrowByUse(): Unit {
+        let encoded = encodeDocIr(metadataFieldFixture())
+        let decoded = decodeDocIr(encoded)
+        @Expect(encodeDocIr(decoded), encoded)
+        @Expect(decoded.metadata.fields.size, 2)
+
+        let narrowed = projectPublicationDocumentation(decoded, audience: Some("external"))
+        @Expect(narrowed.configuration.audience, "external")
+        @Assert(narrowed.metadata.fields.size, 1)
+        let field = narrowed.metadata.fields[0]
+        @Expect(field.id, "owner")
+        @Expect(field.titleFor("en"), "Owner")
+        @Expect(field.titleFor("zh-CN"), "负责人")
+        @Assert(field.uses.size, 1)
+        let use = field.uses[0]
+        @Expect(use.symbolId, DOC_IR_METADATA_TEST_VISIBLE)
+        @Expect(use.values.toArray(), ["platform", "platform", "équipe"])
+        @Expect(encodeDocIr(decodeDocIr(encodeDocIr(narrowed))), encodeDocIr(narrowed))
+    }
+
+    @TestCase
+    func strictDecodeRejectsInvalidCapturedCommentFields(): Unit {
+        let original = metadataFieldFixture()
+        let missing = metadataJsonObject(original)
+        let _ = missing.get("metadata").getOrThrow().asObject().remove("fields")
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(missing.toJson()))
+
+        let hidden = metadataJsonObject(original)
+        hidden.get("configuration").getOrThrow().asObject().put("audience", JsonNode.string("external"))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(hidden.toJson()))
+
+        let orphaned = metadataJsonObject(original)
+        fieldMetadataArray(orphaned).get(0).getOrThrow().asObject().put("uses", JsonNode.array())
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(orphaned.toJson()))
+
+        let duplicate = metadataJsonObject(original)
+        let fields = fieldMetadataArray(duplicate)
+        fields.add(fields.get(0).getOrThrow())
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(duplicate.toJson()))
+
+        let nonRepeatable = metadataJsonObject(original)
+        fieldMetadataArray(nonRepeatable).get(0).getOrThrow().asObject().put("repeatable", JsonNode.boolean(false))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(nonRepeatable.toJson()))
+
+        let invalidValue = metadataJsonObject(original)
+        let uses = fieldMetadataArray(invalidValue).get(0).getOrThrow().asObject().get("uses").getOrThrow().asArray()
+        let overLimit = JsonNode.array()
+        overLimit.add(JsonNode.string(String.fromUtf8(Array<Byte>(16385, repeat: b'x'))))
+        uses.get(0).getOrThrow().asObject().put("values", overLimit)
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(invalidValue.toJson()))
+    }
+
+    @TestCase
+    func fieldUsesRequireCanonicalSymbolsInTheDeclaringModule(): Unit {
+        let metadata = DocumentationMetadata(fields: [DocumentationFieldDefinition(
+            DOC_IR_METADATA_TEST_MODULE, "owner", "Owner",
+            uses: [DocumentationFieldUse(DOC_IR_METADATA_TEST_VISIBLE, ["platform"])])])
+        let fixture = metadataCodecDocumentWithSecondScope(metadata)
+        for (symbol in [DOC_IR_METADATA_TEST_SECOND_OWNER, "cjdoc:v2:unknown::fixture::function:missing"]) {
+            let invalid = metadataJsonObject(fixture)
+            let field = fieldMetadataArray(invalid).get(0).getOrThrow().asObject()
+            let use = field.get("uses").getOrThrow().asArray().get(0).getOrThrow().asObject()
+            use.put("symbolId", JsonNode.string(symbol))
+            @ExpectThrows[IllegalArgumentException](decodeDocIr(invalid.toJson()))
+        }
     }
 
     @TestCase

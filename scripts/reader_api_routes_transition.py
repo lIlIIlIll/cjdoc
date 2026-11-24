@@ -33,11 +33,11 @@ from urllib.parse import unquote, urlsplit
 
 sys.dont_write_bytecode = True
 try:
-    from .reader_search_identity import MANIFEST_PAIRS, verify_search_identity
+    from .reader_search_identity import MANIFEST_PAIRS, normalized_search_pair, verify_search_identity
     from .strict_json import strict_dumps, strict_load, strict_loads
     from .test_agent_artifacts import check_schema, document
 except ImportError:
-    from reader_search_identity import MANIFEST_PAIRS, verify_search_identity
+    from reader_search_identity import MANIFEST_PAIRS, normalized_search_pair, verify_search_identity
     from strict_json import strict_dumps, strict_load, strict_loads
     from test_agent_artifacts import check_schema, document
 
@@ -603,13 +603,10 @@ class ApiRouteQualification:
         every identity is compared exactly.
         """
         old_proof, new_proof = self.before_proof, self.after_proof
-        _require(old_proof["contractText"] == new_proof["contractText"],
-                 "raw embedded search contract changed")
         _require(old_proof["signatures"] == new_proof["signatures"],
                  "native script signatures changed")
-        compared = []
-        for side, proof in (("baseline", old_proof), ("after", new_proof)):
-            index = deepcopy(proof["index"])
+        compared = normalized_search_pair(old_proof, new_proof, registered=paired_snapshot)
+        for side, index in zip(("baseline", "after"), compared):
             self.normalize_search(side, index)
             if paired_snapshot or old_proof["manifestPair"] != new_proof["manifestPair"]:
                 for name in ("snapshotId", "sourceSnapshotId"):
@@ -618,7 +615,6 @@ class ApiRouteQualification:
                     entry["snapshotId"] = "<registered-paired-snapshot>"
                 index["projectionId"] = "<registered-paired-projection>"
                 index["coverage"]["projectionId"] = "<registered-paired-projection>"
-            compared.append(index)
         _require(compared[0] == compared[1],
                  "search payload changed beyond the proven address mapping")
 

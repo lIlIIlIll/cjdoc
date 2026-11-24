@@ -67,7 +67,7 @@ class ProjectConfigurationCliTest(unittest.TestCase):
 
     def read_document(self, path):
         document = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(document["schemaVersion"], "cjdoc.doc-ir/18")
+        self.assertEqual(document["schemaVersion"], "cjdoc.doc-ir/19")
         self.assertIn("answer", {item["name"] for item in document["declarations"]})
         return document
 
@@ -107,6 +107,62 @@ class ProjectConfigurationCliTest(unittest.TestCase):
         checked = self.invoke("check", "--project", self.project, "--no-cache")
         self.assertEqual(checked.returncode, 0, checked.stderr)
         self.assertFalse((self.project / "published").exists())
+
+    def test_comment_rule_exit_status_and_structure_errors(self):
+        source = self.project / "src/api.cj"
+        prefix = "package configuration_demo\n"
+        declaration = "public func answer(): Unit {}\n"
+        source.write_text(prefix + "/**\n * Answer.\n * @deprecated\n */\n" + declaration, encoding="utf-8")
+        config = ('[comments.aliases]\nmaintainer2-team = "owner"\n'
+                  '[[comments.fields]]\nid = "owner"\ntitle = "负责人"\n')
+        rule = '[[comments.rules]]\nrequire = "owner"\nwhen-present = "deprecated"\n'
+        args = ("check", "--project", self.project, "--no-cache", "--semantic", "source")
+        self.configure(config + rule + 'severity = "warning"\n')
+        warning = self.invoke(*args)
+        self.assertEqual(warning.returncode, 0, warning.stderr)
+        self.assertRegex(warning.stderr, r"warning\[CJDOC3142\]:.*answer.*owner.*deprecated")
+        self.assertEqual(self.invoke(*args, "--deny-warnings").returncode, 1)
+        self.configure(config + rule)
+        error = self.invoke(*args)
+        self.assertEqual(error.returncode, 1, error.stderr)
+        self.assertIn("error[CJDOC3142]", error.stderr)
+        off = self.invoke(*args, "--lint-profile", "off")
+        self.assertEqual(off.returncode, 0, off.stderr)
+        self.assertNotIn("CJDOC3142", off.stderr)
+
+        source.write_text(prefix + "/**\n * Answer.\n * @owner[lang=en] invalid\n"
+                          " * @maintainer2-team platform\n */\n" + declaration, encoding="utf-8")
+        structure = self.invoke(*args, "--lint-profile", "off")
+        self.assertEqual(structure.returncode, 1, structure.stderr)
+        self.assertIn("error[CJDOC3140]", structure.stderr)
+        self.assertIn("error[CJDOC3141]", structure.stderr)
+        self.configure(config + '[[comments.rules]]\nrequire = "maintainer2-team"\n')
+        invalid = self.invoke(*args, "--lint-profile", "off")
+        self.assertEqual(invalid.returncode, 2, invalid.stderr)
+        self.assertIn("CJDOC3139", invalid.stderr)
+
+    def test_comment_alias_is_reinterpreted_after_a_source_cache_hit(self):
+        source = self.project / "src/api.cj"
+        source.write_text("package configuration_demo\n/**\n * Answer.\n"
+                          " * @maintainer2-team platform\n */\n"
+                          "public func answer(): Unit {}\n", encoding="utf-8")
+        args = ("generate", "--project", self.project, "--format", "json", "--stdout",
+                "--lint-profile", "off")
+        cache = self.root / "source-cache"
+        self.configure('[[comments.fields]]\nid = "owner"\ntitle = "负责人"\n')
+        before = self.invoke(*args, "--cache-dir", cache)
+        self.assertEqual(before.returncode, 0, before.stderr)
+        self.assertEqual(json.loads(before.stdout)["metadata"]["fields"], [])
+        self.assertTrue(any(path.is_file() for path in cache.rglob("*")), "source cache was not populated")
+        self.configure('[comments.aliases]\nmaintainer2-team = "owner"\n'
+                       '[[comments.fields]]\nid = "owner"\ntitle = "负责人"\n')
+        cached = self.invoke(*args, "--cache-dir", cache)
+        uncached = self.invoke(*args, "--no-cache")
+        self.assertEqual(cached.returncode, 0, cached.stderr)
+        self.assertEqual(uncached.returncode, 0, uncached.stderr)
+        self.assertEqual(cached.stdout, uncached.stdout)
+        field, = json.loads(cached.stdout)["metadata"]["fields"]
+        self.assertEqual([use["values"] for use in field["uses"]], [["platform"]])
 
     def test_metadata_header_variants_preserve_groups_tags_and_translations(self):
         (self.project / "src/api.cj").write_text(

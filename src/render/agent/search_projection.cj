@@ -2,8 +2,8 @@ protected package cjdoc.render.agent
 
 import cjdoc.render.search.{
     DocumentationSearchProjection, SearchContractLimits, SearchExposure, SearchProjectedEntry,
-    SearchScopeModule, SearchSection, attachSearchTagDictionary, searchContractJson,
-    searchContractLimits}
+    SearchScopeModule, SearchSection, attachSearchCommentFields, attachSearchTagDictionary,
+    searchContractJson, searchContractLimits}
 import cjdoc.render.publication.DeclarationClassification
 import cjdoc.render.reading.{isUnitType, summaryPlainText}
 import cjdoc.render.routes.{docBlockAnchor, label}
@@ -221,6 +221,7 @@ protected func buildDocumentationSearchProjection(snapshot: DocumentationReadSna
         else { left.id < right.id }
     }, stable: true)
     attachSearchTagDictionary(result)
+    attachSearchCommentFields(documentation, result)
     searchFinalizeContentId(result)
     result
 }
@@ -303,7 +304,7 @@ private func searchFingerprintDependency(out: StringBuilder, value: ?DependencyI
 /** Deterministic, unambiguous binding of contract, complete scope and every projected fact. */
 private func searchFinalizeContentId(projection: DocumentationSearchProjection): Unit {
     let out = StringBuilder()
-    searchFingerprintField(out, "format", "cjdoc.search-projection/3")
+    searchFingerprintField(out, "format", "cjdoc.search-projection/4")
     searchFingerprintField(out, "contract", searchContractJson())
     searchFingerprintField(out, "profile", projection.profile)
     searchFingerprintField(out, "snapshotId", projection.scopeSnapshotId)
@@ -327,6 +328,14 @@ private func searchFinalizeContentId(projection: DocumentationSearchProjection):
         searchFingerprintField(out, "tag.scope", tag.scope.toString())
         searchFingerprintField(out, "tag.id", tag.id)
         searchFingerprintField(out, "tag.title", tag.title)
+    }
+    searchFingerprintField(out, "commentFieldCount",
+        projection.commentFieldDictionary.size.toString())
+    for (field in projection.commentFieldDictionary) {
+        searchFingerprintField(out, "commentField.scope", field.scope.toString())
+        searchFingerprintField(out, "commentField.id", field.id)
+        searchFingerprintField(out, "commentField.title", field.title)
+        searchFingerprintField(out, "commentField.repeatable", field.repeatable.toString())
     }
     searchFingerprintField(out, "entryCount", projection.entries.size.toString())
     for (entry in projection.entries) {
@@ -352,6 +361,12 @@ private func searchFinalizeContentId(projection: DocumentationSearchProjection):
         searchFingerprintField(out, "entry.summary", entry.summary)
         searchFingerprintField(out, "entry.body", entry.body)
         searchFingerprintField(out, "entry.bodyTruncated", entry.bodyTruncated.toString())
+        for (row in entry.commentFieldRows) {
+            searchFingerprintField(out, "entry.field.id", row.id)
+            for (value in row.values()) {
+                searchFingerprintField(out, "entry.field.value", value)
+            }
+        }
         searchFingerprintClassification(out, entry.classification)
         searchFingerprintField(out, "entry.parameterCount", entry.parameterTypes.size.toString())
         for (parameter in entry.parameterTypes) { searchFingerprintField(out, "entry.parameter", parameter) }

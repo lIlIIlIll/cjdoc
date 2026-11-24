@@ -85,7 +85,7 @@ class BuildIntegrationTests(unittest.TestCase):
                      "llms.txt", "agent-full-index.json"):
             write("current/html/" + name, {})
         (current / "markdown").mkdir(parents=True)
-        author_ir = json.loads((ROOT / "tests/fixtures/golden-v18/basic.docs.json").read_text(encoding="utf-8"))
+        author_ir = json.loads((ROOT / "tests/fixtures/golden-v19/basic.docs.json").read_text(encoding="utf-8"))
         author_ir["declarations"][0]["documentation"]["rawText"] += (
             "\nhttps://github.com/lIlIIlIll/cjdoc/blob/main/docs/README.md")
         write("current/docs.json", author_ir)

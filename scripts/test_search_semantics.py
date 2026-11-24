@@ -198,6 +198,99 @@ class PublishedSearch:
             raise SearchCaseFailure("published UTF-8 SHA-256 disagrees with reference vectors")
 
 
+def _check_comment_fields(spec: dict, refs: dict, scope: dict, published: PublishedSearch,
+                          cli: Callable, mcp: Callable) -> None:
+    owner = {"id": "owner", "value": "platform"}
+    tier = {"id": "service-tier", "value": "primary"}
+    tagged, prose = (refs[spec[name]]["id"] for name in ("annotated", "prose"))
+    title = spec["title"][scope["language"]]
+    module = refs[spec["annotated"]]["moduleId"]
+    field_scope = {"moduleId": module, "snapshotId": scope["snapshotId"]}
+
+    for host, call, profiles in (
+        ("static", published.execute, ("bounded-static",)),
+        ("cli", cli, ("bounded-static", "full-ir")),
+        ("mcp", mcp, ("bounded-static", "full-ir")),
+    ):
+        for profile in profiles:
+            def run(**options):
+                request = {"operation": "search", "mode": "discovery", "profile": profile, **options}
+                response = call(request)
+                if host == "cli":
+                    code, response = response
+                    expected = 2 if response["status"] in ("stale_cursor", "scope_mismatch") else 0
+                    if code != expected:
+                        raise SearchCaseFailure(f"{host}: field query exited {code} instead of {expected}")
+                normalized = response if host == "static" else _native(response)
+                hits = {item["canonicalId"] for item in normalized["items"]}
+                facets = normalized["facets"].get("commentFields")
+                next_hit = response["next"] if host == "static" else response["completeness"]["query"]["next"]
+                return normalized["status"], hits, facets, next_hit
+
+            def check(condition, context):
+                if not condition:
+                    raise SearchCaseFailure(f"{host}/{profile}: comment field {context}")
+
+            status, hits, page, _ = run(query="platform")
+            check(status == "ok" and hits == {tagged, prose} and page is None,
+                  "keyword search or absent catalog")
+            status, hits, _, _ = run(commentFields=[owner, tier], query="platform")
+            check(status == "ok" and hits == {tagged}, "AND exact predicates")
+            for value in ("Platform", "plat", "missing"):
+                status, hits, _, _ = run(commentFields=[{**owner, "value": value}])
+                check(status == "not_found" and not hits, f"matches non-exact value {value!r}")
+
+            options = {"id": "owner", "limit": 1}
+            rows = []
+            cursor = None
+            for _ in spec["directory"]:
+                facet = options if cursor is None else {**options, "cursor": cursor}
+                status, hits, page, next_hit = run(commentFieldFacets=facet)
+                check(status == "ok" and not hits and next_hit is None and page is not None,
+                      "catalog-only request produced a hit page or no catalog")
+                rows.extend(page["items"])
+                cursor = page["next"]
+            expected_rows = [{"scope": field_scope, "id": "owner", "title": title,
+                              "value": value, "count": 1} for value in spec["directory"]]
+            check(cursor is None and rows == expected_rows, "ordered catalog pages or canonical counts")
+
+            conditions = {"query": "platform", "limit": 1, "commentFieldFacets": options}
+            _, hits, page, next_hit = run(**conditions)
+            check(len(hits) == 1 and next_hit and page["next"], "independent first pages")
+            second = {**options, "cursor": page["next"]}
+            status, next_hits, next_page, _ = run(**{**conditions, "cursor": next_hit,
+                                                    "commentFieldFacets": second})
+            check(status == "ok" and len(next_hits) == 1 and not hits & next_hits and
+                  next_page["items"] == expected_rows[2:3], "independent advances")
+            status, hits, zero_page, _ = run(**{**conditions, "limit": 0})
+            check(status == "ok" and not hits and zero_page["items"] == page["items"],
+                  "hit limit altered counts")
+
+            for change in (
+                {"query": "bounded"},
+                {"filters": [{"field": "name", "op": "eq", "value": "boundedBody"}]},
+                {"commentFields": [owner]},
+                {"limit": 0},
+                {"commentFieldFacets": {**second, "limit": 2}},
+                {"commentFieldFacets": {**options, "cursor": next_hit}},
+                {"commentFieldFacets": {**second, "cursor": second["cursor"][:-1] + "x"}},
+            ):
+                status, stale_hits, stale_page, _ = run(**{
+                    **conditions, "commentFieldFacets": second, **change,
+                })
+                check(status == "stale_cursor" and not stale_hits and stale_page is None,
+                      f"accepted changed cursor context {list(change)}")
+            status, _, stale_page, _ = run(**{**conditions, "cursor": second["cursor"]})
+            check(status == "stale_cursor" and stale_page is None, "catalog cursor accepted as hit cursor")
+
+            configured = {"commentFields": [owner, tier], "commentFieldFacets": options}
+            _, _, page, _ = run(**configured)
+            status, _, next_page, _ = run(commentFields=[tier, owner, tier],
+                                           commentFieldFacets={**options, "cursor": page["next"]})
+            check(status == "ok" and next_page["items"] == expected_rows[2:3],
+                  "reordered or duplicate equivalent predicates invalidated cursor")
+
+
 def run_search_cases(cases: Path, static_site: Path, snapshots: tuple[Path, ...],
                      cli: Callable, mcp: Callable, timeout: float) -> None:
     """Exercise independently expected cases through all three production surfaces."""
@@ -331,5 +424,7 @@ def run_search_cases(cases: Path, static_site: Path, snapshots: tuple[Path, ...]
                                 "coverage": case["expect"]["coverage"]}
                     _check_expected(f"{case['id']}/{host}/{variant}", answer, expected, rows, changed, 0)
                     executed[host] += 1
+    if "commentFields" in suite:
+        _check_comment_fields(suite["commentFields"], refs, scope, published, cli, mcp)
     print("source-bound search semantics passed: " + ", ".join(
         f"{count} {host} responses" for host, count in executed.items()))

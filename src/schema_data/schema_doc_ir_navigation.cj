@@ -1,6 +1,6 @@
 package cjdoc.schema_data
 
-internal let DOC_IR_V18_EXTERNAL_NAVIGATION = """
+internal let DOC_IR_EXTERNAL_NAVIGATION = """
     "dependencyInstance": {
       "type": "object",
       "additionalProperties": false,

@@ -1,6 +1,7 @@
 protected package cjdoc.query
 
 import cjdoc.schema_data as query_schema
+import cjdoc.render.search as query_search
 import std.collection.*
 import std.sort.*
 import yjson.*
@@ -130,7 +131,7 @@ protected func parseDocumentationQueryRequest(text: String): JsonObject {
         let name = request.nameAt(index)
         if (!QUERY_REQUEST_FIELDS.contains(name)) {
             throw DocumentationQueryException("invalid_request", "unknown_field",
-                "Request field '${name}' is not declared by cjdoc.query-request/3.")
+                "Request field '${name}' is not declared by cjdoc.query-request/4.")
         }
     }
     let errors = QUERY_REQUEST_SCHEMA.validate(request)
@@ -141,8 +142,16 @@ protected func parseDocumentationQueryRequest(text: String): JsonObject {
                 "Request field '${field}' is not applicable to this operation or identity.")
         }
         throw DocumentationQueryException("invalid_request", "request_schema",
-            "Request does not satisfy cjdoc.query-request/3." +
+            "Request does not satisfy cjdoc.query-request/4." +
             (if (field.isEmpty()) { "" } else { " Invalid field '${field}'." }))
+    }
+    if (request.get("commentFields").isSome()) {
+        try {
+            let _ = query_search.searchRequestCommentFields(request)
+        } catch (_: IllegalArgumentException) {
+            throw DocumentationQueryException("invalid_request", "request_schema",
+                "Comment field predicates must name formal IDs and use complete, single-line values.")
+        }
     }
     request
 }

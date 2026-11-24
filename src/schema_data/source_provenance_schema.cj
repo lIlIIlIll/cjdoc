@@ -35,7 +35,7 @@ private let SOURCE_PROVENANCE_SCHEMA_TEMPLATE = ##"{
 public func sourceProvenanceReceiptSchema(): String {
     let schema = JsonNode.parse(SOURCE_PROVENANCE_SCHEMA_TEMPLATE).asObject()
     let definitions = schema.get("$defs").getOrThrow().asObject()
-    let frozen = JsonNode.parse(DOC_IR_V18_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
+    let frozen = JsonNode.parse(DOC_IR_V19_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
     definitions.put("sourceRepositoryPath", frozen.get("sourceRepositoryPath").getOrThrow())
     schema.toJson()
 }

@@ -158,9 +158,13 @@ jobs:
           . scripts/with_sts_cjpm.sh
           export CJDOC_READER_TEST_BINARY="${PWD}/target/release/bin/main"
           export CJDOC_READER_TEST_REVISION="${READER_REVISION}"
+          export CJDOC_READER_BASELINE_SCHEMAS="${RUNNER_TEMP}/reader-baseline-source/docs/schema"
+          export CJDOC_READER_BASELINE_CONTRACT="${RUNNER_TEMP}/reader-evidence/baseline-search-contract.json"
+          install -d -m 0700 "${RUNNER_TEMP}/reader-evidence"
+          "${RUNNER_TEMP}/reader-baseline-source/target/release/bin/main" schema search-contract \
+            > "${CJDOC_READER_BASELINE_CONTRACT}"
           python scripts/with_stdx.py --variant static -- python -m unittest discover \
             -s scripts -p test_reader_benchmark.py -v
-          install -d -m 0700 "${RUNNER_TEMP}/reader-evidence"
           python scripts/with_stdx.py --variant static -- python scripts/reader_contract_review.py \
             --revision "${READER_REVISION}" --output "${RUNNER_TEMP}/reader-evidence/contracts"
           python scripts/with_stdx.py --variant static -- python scripts/reader_capture.py \
@@ -175,7 +179,7 @@ jobs:
           )
           if [[ "${READER_CORPUS}" == 1000 ]]; then
             registration_command+=(
-              --doc-ir-transition v17-v18-unregistered-source
+              --doc-ir-transition v17-v19-unregistered-source-no-comment-fields
               --aria-transition docs/maintainer/reader-scale-docs-173-177.json
               --presentation docs/maintainer/reader-scale-presentation-readable-api.json
               --api-routes-transition docs/maintainer/reader-scale-readable-api.json

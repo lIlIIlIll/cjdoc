@@ -149,7 +149,7 @@ private func contractSearchEntry(concept: Bool): JsonObject {
   "qualifiedName":null,"kind":"guide","ownerName":null,"ownerQualifiedName":null,
   "symbolKey":null,"parameterTypes":[],"returnType":null,"returnCanonical":null,
   "summary":"","summaryDisplay":"","body":"","bodyTruncated":false,"href":"guide/one.html",
-  "exposures":[],"externalDocs":[],"bindings":[],"sections":[],
+  "exposures":[],"externalDocs":[],"bindings":[],"sections":[],"commentFields":[],
   "classification":{"group":null,"tags":[]}
 }
 """).asObject()
@@ -554,22 +554,22 @@ class DocumentationQueryContractPublicTest {
         let searchSchema = JsonNode.parse(searchSchemaText).asObject()
         @Expect(searchSchema.get("properties").getOrThrow().asObject()
             .get("schemaVersion").getOrThrow().asObject().get("const").getOrThrow()
-            .asString(), "cjdoc.search-index/11")
+            .asString(), "cjdoc.search-index/12")
         @Expect(contractJsonArrayContains(searchSchema.get("required").getOrThrow()
             .asArray(), "tags"), true)
-        @Expect(schemaTextForCli("search-index-v11"), searchSchemaText)
+        @Expect(schemaTextForCli("search-index-v12"), searchSchemaText)
         let aliases = schemaTextForCli("list")
-        @Expect(aliases.contains("search-index-v11"), true)
-        @Expect(aliases.contains("search-index-v10"), false)
-        @Expect(aliases.contains("doc-ir-v18"), true)
-        @Expect(aliases.contains("doc-ir-v17"), false)
+        @Expect(aliases.contains("search-index-v12"), true)
+        @Expect(aliases.contains("search-index-v11"), false)
+        @Expect(aliases.contains("doc-ir-v19"), true)
+        @Expect(aliases.contains("doc-ir-v18"), false)
         @Expect(aliases.contains("source-provenance"), true)
         @Expect(schemaTextForCli("source-provenance").contains("cjdoc.source-provenance/1"), true)
 
         let querySchema = JsonNode.parse(documentationQueryOutputSchema()).asObject()
         let queryResultVersion = querySchema.get("properties").getOrThrow().asObject()
             .get("schemaVersion").getOrThrow().asObject().get("const").getOrThrow()
-        @Expect(queryResultVersion.asString(), "cjdoc.query-result/4")
+        @Expect(queryResultVersion.asString(), "cjdoc.query-result/5")
         let pageSchema = JsonNode.parse(schemaTextForCli("page")).asObject()
         @Expect(pageSchema.get("properties").getOrThrow().asObject()
             .get("schemaVersion").getOrThrow().asObject().get("const").getOrThrow()
@@ -598,7 +598,7 @@ class DocumentationQueryContractPublicTest {
         @Expect(contractIsValid(searchContractValidator, contract), true)
         let contractObject = contract.asObject()
         @Expect(contractObject.get("version").getOrThrow().asString(),
-            "cjdoc.search-contract/2")
+            "cjdoc.search-contract/3")
         @Expect(contractObject.get("maxTags").getOrThrow().asInt64(), 64)
         let predicates = contractObject.get("setPredicates").getOrThrow().asArray()
         @Expect(predicates.size(), 1)

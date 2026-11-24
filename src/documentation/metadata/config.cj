@@ -364,7 +364,16 @@ protected func loadDocumentationMetadataConfig(root: String): DocumentationMetad
     } catch (_: Exception) {
         throw metadataConfigReadFailure()
     }
+    parseDocumentationMetadataConfig(text)
+}
 
+/**
+ * Parse `[metadata]` from already-captured configuration text.
+ *
+ * One bounded read feeds both the metadata and comment readers, so two
+ * namespaces can never observe different bytes for the same module root.
+ */
+protected func parseDocumentationMetadataConfig(text: String): DocumentationMetadataConfig {
     let state = MetadataParserState()
     let multiline = MetadataMultilineState()
     let comments = TomlLineScanner()

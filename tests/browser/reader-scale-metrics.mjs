@@ -137,7 +137,10 @@ export async function timedQuery(page, query) {
 export async function entryIndex(site) {
   const file = path.join(site, 'search-index.json');
   const index = JSON.parse(await readFile(file, 'utf8'));
-  if (index.schemaVersion !== 'cjdoc.search-index/11' || !Array.isArray(index.entries)) throw new Error('Unsupported native search index');
+  const supported = ['cjdoc.search-index/11', 'cjdoc.search-index/12'];
+  if (!supported.includes(index.schemaVersion) || !Array.isArray(index.entries)) {
+    throw new Error('Unsupported native search index');
+  }
   return index;
 }
 

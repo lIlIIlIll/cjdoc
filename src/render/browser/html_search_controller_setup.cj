@@ -53,6 +53,23 @@ internal let HTML_SEARCH_CONTROLLER_SETUP_SCRIPT = """
     parent.append(row);
     return select;
   };
+  const buildCommentFieldControls = filters => {
+    if (!Array.isArray(index?.commentFields) || !index.commentFields.length) return null;
+    const definition = appendSearchFilter(filters, "data-cjdoc-comment-field",
+      text("Comment field", "注释字段"), text("Choose a comment field", "选择注释字段"));
+    const value = appendSearchFilter(filters, "data-cjdoc-comment-field-value",
+      text("Field value", "字段值"), text("Choose a field value", "选择字段值"));
+    value.disabled = true;
+    const more = createElement("button", "cj-button", text("More values", "更多值"));
+    more.type = "button";
+    more.hidden = true;
+    filters.append(more);
+    const active = createElement("div", "cj-search__facets");
+    active.setAttribute("role", "group");
+    active.setAttribute("aria-label", text("Applied comment fields", "已应用注释字段"));
+    active.hidden = true;
+    return {definition, value, more, active};
+  };
   const buildSearchDialog = () => {
     const node = createElement("dialog", "cj-search");
     node.id = "cjdoc-search-dialog";
@@ -88,7 +105,9 @@ internal let HTML_SEARCH_CONTROLLER_SETUP_SCRIPT = """
       text("Filter by kind", "按类别筛选"), text("All kinds", "全部类别"));
     const pack = appendSearchFilter(filters, "data-cjdoc-package",
       text("Filter by package", "按包筛选"), text("All packages", "全部包"));
+    const commentFields = buildCommentFieldControls(filters);
     node.append(filters);
+    if (commentFields) node.append(commentFields.active);
     const facets = createElement("div", "cj-search__facets");
     facets.setAttribute("data-cjdoc-search-facets", "");
     facets.setAttribute("role", "group");
@@ -124,7 +143,8 @@ internal let HTML_SEARCH_CONTROLLER_SETUP_SCRIPT = """
       "Search covers names, structured fields and up to 2,000 characters of body text " +
         "per entry. No match does not prove absence from the full documentation.",
       "检索覆盖名称、结构化字段及每项最多 2,000 字符的正文摘录；没有命中不代表完整文档中不存在。")));
-    return {node, field, close, list, status, pages, previous, next, facets, kind, pack, replacement};
+    return {node, field, close, list, status, pages, previous, next, facets, kind, pack, replacement,
+      commentFields};
   };
   let dialog = null;
   let input = null;
@@ -137,6 +157,7 @@ internal let HTML_SEARCH_CONTROLLER_SETUP_SCRIPT = """
   let previousPage = null;
   let nextPage = null;
   let searchFacets = null;
+  let commentFieldControls = null;
   let searchReplacement = null;
   let controller = null;
   const readUrlSearchState = () => {

@@ -21,7 +21,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "e24a7fb62a4c64e6283923e259c17595c4d6c467a7893e4ffe015ab9868cab29"
+CANONICAL_SEARCH_JS_SHA256 = "8dacdcab79cf5d38608576f558ea134ebb35e54c4bf627723113d71a0358eb75"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "3dc968472190aab99c8a0db38a612cf95640e5a45b88f759d67480aa9fd115fd"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "601425eaed9db6165c2097148280088c6df3c85a001618e27926e90c54c3e2a4"
 TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -675,12 +675,12 @@ def main() -> int:
         or strict_loads(embedded_search, description="embedded HTML search index") != search
     ):
         raise ValueError("search-index.js payload differs from search-index.json")
-    if search.get("schemaVersion") != "cjdoc.search-index/11":
+    if search.get("schemaVersion") != "cjdoc.search-index/12":
         raise ValueError("unexpected search index schemaVersion")
     if set(search) != {"schemaVersion", "profile", "contract", "projectionId",
-                       "scope", "coverage", "modules", "tags", "entries"}:
+                       "scope", "coverage", "modules", "tags", "commentFields", "entries"}:
         raise ValueError("invalid search index fields")
-    if not isinstance(search["contract"], dict) or search["contract"].get("version") != "cjdoc.search-contract/2":
+    if not isinstance(search["contract"], dict) or search["contract"].get("version") != "cjdoc.search-contract/3":
         raise ValueError("search index must publish its executable contract")
     entries = search.get("entries")
     if not isinstance(entries, list):
@@ -737,7 +737,8 @@ def main() -> int:
                 "ownerId", "name", "qualifiedName", "kind", "packageName", "ownerName",
                 "ownerQualifiedName", "symbolKey", "parameterTypes", "returnType",
                 "returnCanonical", "summary", "summaryDisplay", "body", "bodyTruncated",
-                "href", "exposures", "sections", "externalDocs", "bindings", "classification"}
+                "href", "exposures", "sections", "externalDocs", "bindings", "classification",
+                "commentFields"}
     for entry in entries:
         if set(entry) != required:
             raise ValueError(f"invalid search entry fields for {entry.get('id')}")

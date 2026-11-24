@@ -155,7 +155,7 @@ cjdoc check --project "$V2" --api-surface-baseline "$WORK/v1/api-surface/api-sur
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | `error: API diff inputs must match project, audience, and cfgProfile`，退出码 `2` | 两份快照的 project、受众或 cfg 不同 | 用相同的 `--audience`、`--cfg` 从两份源码重新生成快照再比较 |
-| `unsupported API surface schema 'cjdoc.doc-ir/18'`，退出码 `2` | 把 Doc IR（`docs.json`）当成 API 快照传给了 `diff` | 改用 `api-surface/api-surface.json` |
+| `unsupported API surface schema 'cjdoc.doc-ir/19'`，退出码 `2` | 把 Doc IR（`docs.json`）当成 API 快照传给了 `diff` | 改用 `api-surface/api-surface.json` |
 | 外部参考显示“无外部参考” | 索引缺失、版本字段不符，或索引在生成前没有放进 demo | 重新生成 `support-v1`，覆盖两份 demo 的 `docs/support-symbol-index.json`，再生成两个版本 |
 | 依赖链接打不开 | 依赖 HTML 树没复制，或复制后又跑了 `compose` | 按配置的相对路径把完整 `support/html` 复制到版本根，复制后不要再 `compose` |
 | 切换版本后停在首页 | 目标版本缺少该页面、符号、语言或章节 | 正常回退；从该版本首页重新导航 |

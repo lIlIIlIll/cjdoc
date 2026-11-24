@@ -27,7 +27,8 @@ private func searchContainsAllDocumentationText(facts: SearchPreparedEntry,
     if (tokens.isEmpty()) { return false }
     for (token in tokens) {
         if (!facts.summaryBodyFolded.contains(token) &&
-            !facts.metadataTextFolded.contains(token)) { return false }
+            !facts.metadataTextFolded.contains(token) &&
+            !facts.commentFieldsFolded.contains(token)) { return false }
     }
     true
 }

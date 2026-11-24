@@ -40,11 +40,11 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 18
+CURRENT_GOLDEN_VERSION = 19
 
 SCHEMA_NAMES = (
-    "doc-ir", "doc-ir-v18", "diagnostics", "cfg-matrix",
-    "search-index", "search-index-v11", "symbol-index",
+    "doc-ir", "doc-ir-v19", "diagnostics", "cfg-matrix",
+    "search-index", "search-index-v12", "symbol-index",
     "navigation-index", "api-surface", "api-surface-v3",
     "api-diff", "api-diff-v2", "documentation-coverage",
     "documentation-quality", "versions", "versions-v2",
@@ -53,7 +53,7 @@ SCHEMA_NAMES = (
     "query-request", "query-result", "source-provenance",
 )
 SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json',
-            'cjdoc.doc-ir/18',
+            'cjdoc.doc-ir/19',
             ('schemaVersion',
              'generator',
              'status',
@@ -75,8 +75,8 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
              'diagnostics',
              'dependencies',
              'documentSets')),
- 'doc-ir-v18': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v18.schema.json',
-                'cjdoc.doc-ir/18',
+ 'doc-ir-v19': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v19.schema.json',
+                'cjdoc.doc-ir/19',
                 ('schemaVersion',
                  'generator',
                  'status',
@@ -104,14 +104,14 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
  'cfg-matrix': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/cfg-matrix.schema.json',
                 'cjdoc.cfg-matrix/2',
                 ('schemaVersion', 'generator', 'profiles')),
- 'search-index': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index-v11.schema.json',
-                  'cjdoc.search-index/11',
+ 'search-index': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index-v12.schema.json',
+                  'cjdoc.search-index/12',
                   ('schemaVersion', 'profile', 'contract', 'projectionId', 'scope', 'coverage',
-                   'modules', 'tags', 'entries')),
- 'search-index-v11': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index-v11.schema.json',
-                      'cjdoc.search-index/11',
+                   'modules', 'tags', 'commentFields', 'entries')),
+ 'search-index-v12': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index-v12.schema.json',
+                      'cjdoc.search-index/12',
                       ('schemaVersion', 'profile', 'contract', 'projectionId', 'scope', 'coverage',
-                       'modules', 'tags', 'entries')),
+                       'modules', 'tags', 'commentFields', 'entries')),
  'symbol-index': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/symbol-index.schema.json',
                   'cjdoc.symbol-index/2',
                   ('schemaVersion', 'project', 'entries', 'dependencies', 'documentSets')),
@@ -181,10 +181,10 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
                     'cjdoc.machine-manifest/3',
                     ('schemaVersion', 'snapshotId', 'pathBase', 'projection', 'publicationRevision', 'scope', 'docIr', 'symbolIndex', 'documentSets', 'representations', 'resources', 'reports', 'fullReference', 'limits')),
  'query-request': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-request.schema.json',
-                  'cjdoc.query-request/3',
+                  'cjdoc.query-request/4',
                   ('operation',)),
  'query-result': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-result.schema.json',
-                  'cjdoc.query-result/4',
+                  'cjdoc.query-result/5',
                   ('schemaVersion', 'status', 'operation', 'scope', 'selection', 'result', 'completeness', 'sources', 'text', 'error')),
  'source-provenance': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/source-provenance.schema.json',
                        'cjdoc.source-provenance/1',
@@ -192,7 +192,7 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
 }
 SCHEMA_OPTIONAL_PROPERTIES = {
     "doc-ir": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
-    "doc-ir-v18": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
+    "doc-ir-v19": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
     "symbol-index": ("provenance", "version"),
     "site-manifest": ("defaultLanguage",),
     "query-request": (
@@ -202,7 +202,7 @@ SCHEMA_OPTIONAL_PROPERTIES = {
         "library", "symbolId", "symbolKey", "pageId", "name", "qualifiedName",
         "parameterTypes", "genericArity", "limit", "cursor", "preset", "sections", "maxBytes",
         "relatedSnapshotIds", "relations", "latest", "compatible", "mode", "profile",
-        "filters", "tags",
+        "filters", "tags", "commentFields", "commentFieldFacets",
     ),
 }
 DOC_IR_CORE_DEFS = {

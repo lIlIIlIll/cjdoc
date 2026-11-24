@@ -97,15 +97,139 @@ public class DocumentationTagDefinition {
     public prop titles: ReadOnlyList<DocumentationTitle> { get() { titlesStorage } }
 }
 
+/** One captured use of a project comment field by a canonical declaration. */
+public class DocumentationFieldUse {
+    public let symbolId: String
+    private let valuesStorage: ArrayList<String>
+
+    public init(symbolId: String, values: Array<String>) {
+        if (symbolId.isEmpty()) {
+            throw IllegalArgumentException("documentation field use requires a symbol id")
+        }
+        if (values.isEmpty()) {
+            throw IllegalArgumentException("documentation field use requires at least one value")
+        }
+        for (value in values) {
+            if (!isDocumentationFieldValue(value)) {
+                throw IllegalArgumentException(
+                    "documentation field value must be nonblank single-line text without controls")
+            }
+        }
+        this.symbolId = symbolId
+        this.valuesStorage = ArrayList<String>(values)
+    }
+
+    public prop values: ReadOnlyList<String> { get() { valuesStorage } }
+}
+
+/**
+ * A project comment field published for one module.
+ *
+ * Values live here, associated by canonical symbol id, rather than inside each
+ * declaration: a declaration record keeps one documentation tree, and an offline
+ * query can still answer "which declarations is owner=platform?" without
+ * re-reading source or `cjdoc.toml`.
+ */
+public class DocumentationFieldDefinition {
+    public let moduleId: String
+    public let id: String
+    public let title: String
+    private let titlesStorage: ArrayList<DocumentationTitle>
+    public let repeatable: Bool
+    private let usesStorage: ArrayList<DocumentationFieldUse>
+
+    public init(moduleId: String, id: String, title: String,
+        titles!: Array<DocumentationTitle> = [], repeatable!: Bool = false,
+        uses!: Array<DocumentationFieldUse> = []) {
+        if (moduleId.isEmpty()) {
+            throw IllegalArgumentException("documentation field moduleId cannot be empty")
+        }
+        if (!isDocumentationFieldId(id)) {
+            throw IllegalArgumentException("documentation field id must match [a-z][a-z0-9-]{0,63}")
+        }
+        if (!isDocumentationMetadataTitle(title)) {
+            throw IllegalArgumentException("documentation field title must be nonblank, single-line text of 1-256 UTF-8 bytes")
+        }
+        if (uses.isEmpty()) {
+            throw IllegalArgumentException("documentation field definition requires at least one use")
+        }
+        let storedTitles = validatedDocumentationTitleEntries(titles)
+        let seen = HashSet<String>()
+        let storedUses = ArrayList<DocumentationFieldUse>(uses)
+        for (use in storedUses) {
+            if (!seen.add(use.symbolId)) {
+                throw IllegalArgumentException("documentation field repeats one symbol use")
+            }
+            if (!repeatable && use.values.size > 1) {
+                throw IllegalArgumentException("single-value documentation field carries multiple values")
+            }
+        }
+        this.moduleId = moduleId
+        this.id = id
+        this.title = title
+        this.titlesStorage = storedTitles
+        this.repeatable = repeatable
+        this.usesStorage = storedUses
+    }
+
+    public prop titles: ReadOnlyList<DocumentationTitle> { get() { titlesStorage } }
+    public prop uses: ReadOnlyList<DocumentationFieldUse> { get() { usesStorage } }
+
+    /** Display title for one page language, falling back to the declared title. */
+    public func titleFor(language: String): String {
+        for (entry in titlesStorage) {
+            if (entry.language == language) { return entry.title }
+        }
+        title
+    }
+}
+
+/** Field identity rule; the same shape the project configuration enforces. */
+protected func isDocumentationFieldId(value: String): Bool {
+    if (value.isEmpty() || value.size > 64) { return false }
+    for (index in 0..value.size) {
+        let byte = value[index]
+        if (byte >= b'a' && byte <= b'z') { continue }
+        if (index > 0 && ((byte >= b'0' && byte <= b'9') || byte == b'-')) { continue }
+        return false
+    }
+    true
+}
+
+/** True for one legal custom field value: nonblank, single line, no controls. */
+protected func isDocumentationFieldValue(value: String): Bool {
+    documentationFieldValueProblem(value).isEmpty()
+}
+
+/** Report why a stored value cannot be the text of one authored field line. */
+protected func documentationFieldValueProblem(value: String): String {
+    var codePoints: Int64 = 0
+    var containsNonWhitespace = false
+    for (rune in value.runes()) {
+        codePoints++
+        if (codePoints > 16384) { return "too-long" }
+        let code = UInt32(rune)
+        if (code == 0x0Au32 || code == 0x0Du32 || code == 0x85u32 ||
+            code == 0x2028u32 || code == 0x2029u32) { return "multiline" }
+        if ((code < 0x20u32 && code != 0x09u32) ||
+            (code >= 0x7Fu32 && code <= 0x9Fu32)) { return "control" }
+        if (code != 0x20u32 && code != 0x09u32) { containsNonWhitespace = true }
+    }
+    if (!containsNonWhitespace) { "empty" } else { "" }
+}
+
 /** Immutable captured metadata definitions for a documentation set. */
 public class DocumentationMetadata {
     private let groupsStorage: ArrayList<DocumentationGroupDefinition>
     private let tagsStorage: ArrayList<DocumentationTagDefinition>
+    private let fieldsStorage: ArrayList<DocumentationFieldDefinition>
 
     public init(groups!: Array<DocumentationGroupDefinition> = [],
-        tags!: Array<DocumentationTagDefinition> = []) {
+        tags!: Array<DocumentationTagDefinition> = [],
+        fields!: Array<DocumentationFieldDefinition> = []) {
         if (groups.size > DOCUMENTATION_METADATA_MAX_DEFINITIONS ||
-            tags.size > DOCUMENTATION_METADATA_MAX_DEFINITIONS) {
+            tags.size > DOCUMENTATION_METADATA_MAX_DEFINITIONS ||
+            fields.size > DOCUMENTATION_METADATA_MAX_DEFINITIONS) {
             throw IllegalArgumentException("documentation metadata exceeds 2048 definitions in a category")
         }
         let groupsStorage = ArrayList<DocumentationGroupDefinition>(groups)
@@ -129,12 +253,19 @@ public class DocumentationMetadata {
             else if (left.id != right.id) { metadataUtf8LessThan(left.id, right.id) }
             else { false }
         }, stable: true)
+        let fieldsStorage = ArrayList<DocumentationFieldDefinition>(fields)
+        sort(fieldsStorage, lessThan: { left, right =>
+            if (left.moduleId != right.moduleId) { metadataUtf8LessThan(left.moduleId, right.moduleId) }
+            else { metadataUtf8LessThan(left.id, right.id) }
+        }, stable: true)
         this.groupsStorage = groupsStorage
         this.tagsStorage = tagsStorage
+        this.fieldsStorage = fieldsStorage
     }
 
     public prop groups: ReadOnlyList<DocumentationGroupDefinition> { get() { groupsStorage } }
     public prop tags: ReadOnlyList<DocumentationTagDefinition> { get() { tagsStorage } }
+    public prop fields: ReadOnlyList<DocumentationFieldDefinition> { get() { fieldsStorage } }
 }
 
 /** True when text is a legal author-facing metadata title, without rewriting it. */
@@ -249,7 +380,37 @@ protected func documentationMetadataForDeclarations(metadata: DocumentationMetad
                 titles: tag.titles.toArray()))
         }
     }
-    DocumentationMetadata(groups: groups.toArray(), tags: tags.toArray())
+    // A field survives only through uses by declarations visible here: an
+    // `all -> external` re-publication must drop a private-only value rather
+    // than publish a definition whose uses all disappeared.
+    let visibleModules = HashMap<String, HashSet<String>>()
+    for (declaration in declarations) {
+        match (visibleModules.get(declaration.moduleId)) {
+            case Some(ids) => let _ = ids.add(declaration.id)
+            case None =>
+                let ids = HashSet<String>()
+                let _ = ids.add(declaration.id)
+                visibleModules[declaration.moduleId] = ids
+        }
+    }
+    let fields = ArrayList<DocumentationFieldDefinition>()
+    for (field in metadata.fields) {
+        let moduleIds = match (visibleModules.get(field.moduleId)) {
+            case Some(value) => value
+            case None => continue
+        }
+        let retainedUses = ArrayList<DocumentationFieldUse>()
+        for (use in field.uses) {
+            if (!moduleIds.contains(use.symbolId)) { continue }
+            retainedUses.add(use)
+        }
+        if (retainedUses.isEmpty()) { continue }
+        fields.add(DocumentationFieldDefinition(field.moduleId, field.id, field.title,
+            titles: field.titles.toArray(), repeatable: field.repeatable,
+            uses: retainedUses.toArray()))
+    }
+    DocumentationMetadata(groups: groups.toArray(), tags: tags.toArray(),
+        fields: fields.toArray())
 }
 private func metadataKeyField(value: String): String {
     "${value.size}:${value}"

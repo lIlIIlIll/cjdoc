@@ -2,6 +2,7 @@ protected package cjdoc.binding
 
 import cjdoc.documentation.comments.DocComment
 import cjdoc.documentation.metadata.DocumentationMetadataInventory
+import cjdoc.documentation.comments.CommentSpec
 import cjdoc.model.DocumentationMetadata
 import cjdoc.semantic.{SemanticBindingStats, SymbolRelationship, TypeRelationship}
 import cjdoc.source.{Diagnostic, moduleId, SourceLocation}
@@ -169,6 +170,8 @@ protected class DocumentationSet {
     protected var cfgProfile = CfgProfile()
     protected var metadata: DocumentationMetadata = DocumentationMetadata()
     protected var metadataInventory = DocumentationMetadataInventory()
+    // Captured module comment policies; generation-only, never serialized.
+    protected let commentSpecs = HashMap<String, CommentSpec>()
 
     protected init(projectName: String) { this.projectName = projectName }
 }

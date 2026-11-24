@@ -273,7 +273,7 @@ class DomDocument {
 }
 
 const contract = {
- version: "cjdoc.search-contract/2", maxRequestBytes: 1048576,
+ version: "cjdoc.search-contract/3", maxRequestBytes: 1048576,
  defaultMode: "precise", defaultProfile: "full-ir", defaultLimit: 20, maxLimit: 100,
  maxFilters: 64, maxTags: 64, staticBodyTextLimit: 2000, summaryDisplayLimit: 240, signatureDisplayLimit: 512,
  textPolicy: {caseFold:"ascii-only", normalization:"none",
@@ -282,9 +282,9 @@ const contract = {
  globalFields: ["schemaVersion", "operation", "snapshotId", "language", "languageFallback", "audience", "cfgProfile"],
  searchFields: ["query", "symbolId", "symbolKey", "name", "qualifiedName", "parameterTypes", "genericArity",
    "kind", "moduleId", "packageName", "documentSetId", "apiVersion", "library", "dependencyInstanceId",
-   "target", "cfg", "latest", "limit", "cursor", "mode", "profile", "filters", "tags"],
+   "target", "cfg", "latest", "limit", "cursor", "mode", "profile", "filters", "tags", "commentFields", "commentFieldFacets"],
  requestProperties: {
-   schemaVersion: {const: "cjdoc.query-request/3"},
+   schemaVersion: {const: "cjdoc.query-request/4"},
    operation: {enum: ["resolve_docs", "search", "get_symbol"]},
    query: {type: "string", maxLength: 4096},
    snapshotId: {type: "string", minLength: 1, maxLength: 256},
@@ -320,6 +320,16 @@ const contract = {
      }}},
    tags: {type: "array", minItems: 1, maxItems: 64, items: {
      type: "string", minLength: 1, maxLength: 64, pattern: "^[A-Za-z0-9_-]{1,64}$"
+   }},
+   commentFields: {type:"array", minItems:1, maxItems:64, items:{
+     type:"object", additionalProperties:false, required:["id","value"], properties:{
+       id:{type:"string", pattern:"^[a-z][a-z0-9-]{0,63}$", minLength:1, maxLength:64},
+       value:{type:"string", minLength:1, maxLength:16384}
+     }}},
+   commentFieldFacets: {type:"object", additionalProperties:false, properties:{
+     id:{type:"string", pattern:"^[a-z][a-z0-9-]{0,63}$", minLength:1, maxLength:64},
+     limit:{type:"integer", minimum:1, maximum:100},
+     cursor:{type:"string", minLength:1, maxLength:1024}
    }}
  },
  filterFields: [
@@ -411,6 +421,7 @@ const entry = (name, packageName = "net", type = "class", moduleId = "cjdoc:modu
  sections: [], bodyTruncated: false, body: name === "send" ? "streaming" : "",
  summary: name === "send" ? "Streaming" : "<script>literal preview</script>",
  summaryDisplay: name === "send" ? "Streaming" : "<script>literal preview</script>",
+ commentFields: [],
  href: "symbols/" + name + ".html",
  classification: {
    group: name === "HttpClientBuilder" && packageName === "net"
@@ -420,12 +431,13 @@ const entry = (name, packageName = "net", type = "class", moduleId = "cjdoc:modu
  }
 });
 const index = {
- schemaVersion: "cjdoc.search-index/11", profile: "bounded-static", contract, projectionId: "projection",
+ schemaVersion: "cjdoc.search-index/12", profile: "bounded-static", contract, projectionId: "projection",
  scope: {snapshotId: "snap", sourceSnapshotId: "source", publicationRevision: "rev",
    project: "fixture", language: "en", audience: "external", cfgProfile: "default",
    apiCollectionState: "resolved"},
  coverage: {profile: "bounded-static", projectionId: "projection", bodyTextLimit: 2000,
    bodyComplete: true, truncatedEntries: 0},
+ commentFields: [],
  modules, tags: [
    {scope:2, id:"review", title:"Review"},
    {scope:2, id:"stream", title:"Streaming classification"},

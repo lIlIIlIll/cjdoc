@@ -235,7 +235,15 @@ class Acceptance:
         shutil.copytree(self.repo / "tests/fixtures/projects/declaration-tags", self.project,
                         ignore=shutil.ignore_patterns("target", ".git", "__pycache__"))
         self.config = self.project / "cjdoc.toml"
-        self.config.write_text(self.config.read_text(encoding="utf-8") + METADATA, encoding="utf-8")
+        self.config.write_text(self.config.read_text(encoding="utf-8") + METADATA + """
+[[comments.fields]]
+id = "internal-owner"
+title = "Internal owner"
+""", encoding="utf-8")
+        lib = self.project / "src/lib.cj"
+        lib.write_text(lib.read_text(encoding="utf-8").replace(
+            " * @owner secret-maintainer", " * @owner secret-maintainer\n * @internal-owner private-only"),
+            encoding="utf-8")
         scopes = self.project / "src/scopes"
         scopes.mkdir()
         (scopes / "lib.cj").write_text(SCOPED_SOURCE, encoding="utf-8")
@@ -257,10 +265,11 @@ class Acceptance:
                         request=json.dumps(request, ensure_ascii=True) + "\n")
         return json.loads(text, object_pairs_hook=unique_keys)
 
-    def generate(self, destination: str, *, html_site: bool, semantic_mode: str | None = None):
+    def generate(self, destination: str, *, html_site: bool, semantic_mode: str | None = None,
+                 audience: str = "external"):
         formats = ["json", "api-surface"] + (["html", "markdown"] if html_site else [])
         command = [self.binary, "generate", "--project", self.project, "--output", self.root / destination,
-                   "--no-cache", "--jobs", "1"]
+                   "--no-cache", "--jobs", "1", "--audience", audience]
         if semantic_mode is not None:
             command.extend(["--semantic", semantic_mode])
         for value in formats:
@@ -272,13 +281,14 @@ class Acceptance:
     def inspect_site(self, site: Path, language: str, label: str, environment=None) -> dict:
         manifest = load_json(site / "agent/manifest.json")
         document = load_json(site / manifest["docIr"]["path"])
-        require(document["schemaVersion"] == "cjdoc.doc-ir/18", "replay did not preserve current Doc IR")
+        require(document["schemaVersion"] == "cjdoc.doc-ir/19", "replay did not preserve current Doc IR")
         require(len(document["metadata"]["groups"]) == 6, "unused group definition leaked or used group disappeared")
         require({item["id"] for item in document["metadata"]["tags"]} == {"stable", "stream"},
                 "hidden-only tag definition leaked or a visible tag definition disappeared")
         refs = bind(document)
         expected = expected_classifications(refs, language)
         representations = {item["id"]: item for item in manifest["representations"] if item["kind"] == "symbol"}
+        self.check_comment_fields(site, document, representations, language)
         for ref, classification in expected.items():
             representation = representations[refs[ref]["id"]]
             artifact = load_json(site / representation["json"])
@@ -302,6 +312,44 @@ class Acceptance:
         return {"snapshotId": manifest["snapshotId"], "metadata": document["metadata"],
                 "representations": manifest["representations"], "resources": manifest["resources"],
                 "scopedGroupAnchors": scoped_anchors}
+
+    def check_comment_fields(self, site, document, representations, language):
+        fields = {item["id"]: item for item in document["metadata"]["fields"]}
+        require(set(fields) == {"owner", "service-tier"}, "private-only comment field escaped publication")
+        bounded = next(symbol for symbol in document["declarations"] if symbol["name"] == "boundedBody")
+        owners = {use["symbolId"]: use["values"] for use in fields["owner"]["uses"]}
+        require(owners[bounded["id"]] == ["platform", "platform", "zeta", "équipe"],
+                "frozen comment values lost their original spelling/order")
+        require({tuple(values) for values in owners.values()} ==
+                {("platform", "platform", "zeta", "équipe"), ("operations",)},
+                "private owner value escaped publication")
+        index = load_json(site / "search-index.json")
+        titles = {field["id"]: field["title"] for field in index["commentFields"]}
+        require(titles == {"owner": "Owner" if language == "en" else "负责人",
+                           "service-tier": "服务级别 <em>等级</em>"},
+                "search field titles did not select translation or literal fallback")
+        page = (site / representations[bounded["id"]]["html"]).read_text(encoding="utf-8")
+        require(titles["owner"] in page and "équipe" in page,
+                "API page does not render frozen field captions and values")
+        inline = next(symbol for symbol in document["declarations"] if symbol["name"] == "StreamReader")
+        page = (site / representations[inline["id"]]["html"]).read_text(encoding="utf-8")
+        require("&lt;em&gt;tier &amp; &quot;quoted&quot;&lt;/em&gt;" in page and
+                '<em>tier & "quoted"</em>' not in page, "inline field value is missing or interpreted as HTML")
+
+    def check_audience_narrowing(self, environment):
+        snapshot = self.root / "capture-all/docs.json"
+        fields = {row["id"]: row["uses"] for row in load_json(snapshot)["metadata"]["fields"]}
+        require("internal-owner" in fields and any(row["values"] == ["secret-maintainer"]
+                for row in fields["owner"]), "all-audience capture lacks the private uses")
+        request = {"operation": "search", "audience": "external", "mode": "discovery",
+                   "commentFieldFacets": {}}
+        response = json.loads(self.run("narrowed-comment-fields", [
+            self.binary, "query", "--snapshot", snapshot, "--request", "-"],
+            request=json.dumps(request) + "\n", environment=environment))
+        values = {(row["id"], row["value"]) for row in response["result"]["facets"]["commentFields"]["items"]}
+        require(values == {("owner", "operations"), ("owner", "platform"), ("owner", "zeta"),
+                           ("owner", "équipe"), ("service-tier", '<em>tier & "quoted"</em>'),
+                           ("service-tier", "primary")}, "query narrowing retained private field values")
 
     def check_scoped_groups(self, site, document, representations, language, *,
                             inherited=False, orders=(0, 50)):
@@ -460,12 +508,14 @@ class Acceptance:
     def execute(self):
         self.generate("capture", html_site=True)
         self.generate("syntax-model", html_site=False, semantic_mode="source")
+        self.generate("capture-all", html_site=False, semantic_mode="source", audience="all")
         before = {language: self.inspect_site(self.root / "capture/html" / language, language,
                                              "capture-" + language) for language in ("zh-CN", "en")}
         self.check_documentation_only()
         self.project.rename(self.root / "removed-source-and-config")
         require(not self.project.exists(), "source fixture is still available at its captured location")
         environment = self.frozen_environment()
+        self.check_audience_narrowing(environment)
         self.run("source-free-render", [self.binary, "render", "--input", self.root / "capture/docs.json",
                  "--format", "json", "--format", "html", "--format", "markdown", "--all-languages",
                  "--agent-full", "--output", self.root / "replay"], environment=environment)

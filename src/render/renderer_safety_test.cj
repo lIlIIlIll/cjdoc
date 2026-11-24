@@ -1034,7 +1034,7 @@ class RendererSafetyTest {
         // source annotation carries the message and the comment has no
         // @deprecated prose.
         let document = decodeDocIr(String.fromUtf8(
-            File.readFrom("tests/fixtures/golden-v18/basic.docs.json")))
+            File.readFrom("tests/fixtures/golden-v19/basic.docs.json")))
         var checked = false
         for (symbol in document.declarations where symbol.name == "oldParse") {
             checked = true

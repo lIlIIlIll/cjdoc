@@ -198,7 +198,7 @@ class ModelCodecCurrentSuite5 {
         @Expect(captured.tags[0].source.getOrThrow().end.byteOffset, 1)
         @Expect(captured.localizedTexts[0].markdown.children[0].metadata.getOrThrow().admonitionLevel, Some("warning"))
         @Expect(encodeDocIr(replay), encoded)
-        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("cjdoc.doc-ir/18", "cjdoc.doc-ir/17")))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("cjdoc.doc-ir/19", "cjdoc.doc-ir/17")))
         @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("\"level\": \"warning\"", "\"level\": \"unknown\"")))
         @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("\"level\": \"warning\"", "\"level\": \"warning\", \"title\": \"Injected\"")))
     }

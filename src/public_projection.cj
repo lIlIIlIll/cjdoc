@@ -4,6 +4,7 @@ import cjdoc.render.codec as render_codec
 
 import cjdoc.dependency.navigation.{
     DependencyDocumentPolicy, DependencyNavigationInputs, bindDependencyNavigation, resolvePublicSemanticLinks}
+import cjdoc.binding.{capturedCommentFields}
 import cjdoc.binding.{DocumentationSet, SymbolDoc, ModuleDoc, renderableSymbolIds}
 import cjdoc.documentation.assets.LocalAssetCollector
 import cjdoc.documentation.markdown.{MarkdownGenerationContext, publicComment}
@@ -353,8 +354,8 @@ private func publicDiagnosticSourceRange(documentation: DocumentationSet,
         case Some(value) => value
         case None => return None
     }
-    if (publicCode == "CJDOC3115" || publicCode == "CJDOC3116" ||
-        publicCode == "CJDOC3117" || publicCode == "CJDOC3118") {
+    if (["CJDOC3115", "CJDOC3116", "CJDOC3117", "CJDOC3118",
+        "CJDOC3140", "CJDOC3141", "CJDOC3142"].contains(publicCode)) {
         let moduleIds = HashSet<String>()
         for (origin in documentation.sourceFileOrigins) {
             if (origin.logicalPath == location.path) { let _ = moduleIds.add(origin.moduleId) }
@@ -476,6 +477,10 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     }
     let capturedMetadata = public_model.documentationMetadataForDeclarations(
         documentation.metadata, renderableDeclarations.toArray())
+    // Field values follow the same visible-declaration boundary as the metadata
+    // definitions they belong to; nothing captured is mutated in place.
+    let capturedFields = capturedCommentFields(documentation,
+        declarationProjection.renderableIds)
     declarationProjection.markdownContext.retainHighlightFailures(retainedHighlightFailures)
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot, deferExternal: !request.documentSources.isEmpty() || request.buildContext.isSome(),
@@ -504,7 +509,9 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
         documentationRevision: request.documentationRevision,
         languageOptions: if (request.i18n.isSome()) { request.i18n }
             else { loadDocumentationLanguages(request.projectRoot) },
-        metadata: capturedMetadata)
+        metadata: public_model.DocumentationMetadata(
+            groups: capturedMetadata.groups.toArray(), tags: capturedMetadata.tags.toArray(),
+            fields: capturedFields))
     // A fixed highlight allowance cannot assume the rest of the bundle is small.
     // Preserve all declarations/text without optional highlighting before the
     // existing fallback, if the stricter whole-document codec boundary is hit.

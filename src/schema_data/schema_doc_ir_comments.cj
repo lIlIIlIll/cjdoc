@@ -1,6 +1,6 @@
 package cjdoc.schema_data
 
-internal let DOC_IR_V18_COMMENTS = """
+internal let DOC_IR_COMMENTS = """
     "tag": {
       "type": "object", "additionalProperties": false,
       "required": ["name", "subject", "description", "referenceState", "targetSymbolId", "navigation", "entryId", "source"],

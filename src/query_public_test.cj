@@ -962,7 +962,7 @@ class DocumentationQueryPublicTest {
     func exitCodeAcceptsResultsAboveTheGenericJsonBufferDefault(): Unit {
         let payload = String.fromUtf8(Array<Byte>(9 * 1024 * 1024, repeat: b'x'))
         let result = JsonNode.object()
-        result.put("schemaVersion", JsonNode.string("cjdoc.query-result/4"))
+        result.put("schemaVersion", JsonNode.string("cjdoc.query-result/5"))
         result.put("status", JsonNode.string("ok"))
         result.put("text", JsonNode.string(payload))
         @Expect(documentationQueryExitCode(result.toJson()), 0)
@@ -981,7 +981,7 @@ class DocumentationQueryPublicTest {
         let snapshots = scope.get("snapshots").getOrThrow().asArray()
         @Expect(snapshots.size(), 1)
         @Expect(snapshots[0].asObject().get("sourceKind").getOrThrow().asString(), "public-model")
-        @Expect(result.get("schemaVersion").getOrThrow().asString(), "cjdoc.query-result/4")
+        @Expect(result.get("schemaVersion").getOrThrow().asString(), "cjdoc.query-result/5")
     }
 
     @TestCase

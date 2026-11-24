@@ -22,12 +22,6 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
       renderPage();
     };
 
-    const capability = kernel && index ? kernel.execute(index, {
-      operation: "search", mode: "discovery", profile: "bounded-static", query: "", limit: 0
-    }) : null;
-    const indexCapabilityError = capability && capability.errorCode ? capability.errorCode :
-      (!kernel || !index ? "search_index_unavailable" : null);
-
     const render = () => {
       resetSearch();
       if (!kernel || !index) { showError("search_index_unavailable"); return; }
@@ -36,6 +30,7 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
         return;
       }
       if (indexCapabilityError) { showError(indexCapabilityError); return; }
+      refreshFieldControls();
       const parsed = kernel.parseQuery(input.value, index.contract);
       if (parsed.errorCode) {
         showError(parsed.errorCode, parsed.invalidToken);
@@ -48,7 +43,8 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
       }
       const filters = parsed.filters.concat(selectedFiltersResult.filters);
       const tags = parsed.tags.concat(urlSearchState.tags);
-      if (!parsed.query && !filters.length && !tags.length && !urlSearchState.hasScope) return;
+      if (!parsed.query && !filters.length && !tags.length && !urlSearchState.hasScope &&
+          !appliedCommentFields.length) return;
       currentParsed = parsed;
       currentRequest = {
         operation: "search",
@@ -65,6 +61,12 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
       };
       if (tags.length) currentRequest.tags = tags;
       if (urlSearchState.moduleId !== null) currentRequest.moduleId = urlSearchState.moduleId;
+      if (appliedCommentFields.length) {
+        currentRequest.moduleId = fieldModule(appliedCommentFields[0].definition).moduleId;
+        currentRequest.commentFields = appliedCommentFields.map(row => ({
+          id: row.definition.id, value: row.value
+        }));
+      }
       runPage(null);
     };
 
@@ -113,6 +115,9 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
               control.value = value;
             }
           }
+          if (saved.commentFieldSnapshotId === index?.scope?.snapshotId) {
+            restoreCommentFields(saved.commentFields);
+          }
         }
       } catch (_) { /* history can be unavailable */ }
     }
@@ -123,7 +128,13 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
           previous : {};
         window.history.replaceState({...retained, cjdocSearchFilters: {
           kind: kindFilter ? kindFilter.value : "",
-          package: packageFilter ? packageFilter.value : ""
+          package: packageFilter ? packageFilter.value : "",
+          ...(appliedCommentFields.length ? {
+            commentFieldSnapshotId: index.scope.snapshotId,
+            commentFields: appliedCommentFields.map(row => ({
+              moduleId: fieldModule(row.definition).moduleId, id: row.definition.id, value: row.value
+            }))
+          } : {})
         }}, "");
       } catch (_) { /* history can be unavailable */ }
     };
@@ -223,6 +234,7 @@ internal let HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT = """
     previousPage = parts.previous;
     nextPage = parts.next;
     searchFacets = parts.facets;
+    commentFieldControls = parts.commentFields;
     searchReplacement = parts.replacement;
     kindFilter = parts.kind;
     packageFilter = parts.pack;

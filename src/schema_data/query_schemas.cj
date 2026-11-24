@@ -3,7 +3,7 @@ package cjdoc.schema_data
 import std.collection.*
 import yjson.*
 
-// One declarative source of the `cjdoc.query-request/3` contract: the field
+// One declarative source of the `cjdoc.query-request/4` contract: the field
 // schemas plus, per operation, the fields that operation actually honours and
 // the identity-specific narrowing `get_symbol` applies. The published request
 // schema and every MCP tool input schema are generated from this table, so a
@@ -15,7 +15,7 @@ import yjson.*
 private let QUERY_REQUEST_DECLARATION = """
 {
   "properties":{
-    "schemaVersion":{"const":"cjdoc.query-request/3"},
+    "schemaVersion":{"const":"cjdoc.query-request/4"},
     "operation":{"enum":["resolve_docs","search","get_symbol"]},
     "query":{"type":"string","maxLength":4096},
     "snapshotId":{"type":"string","minLength":1,"maxLength":256},
@@ -62,7 +62,16 @@ private let QUERY_REQUEST_DECLARATION = """
         "op":{},
         "value":{"type":"string","minLength":1,"maxLength":16384}}}},
     "tags":{"type":"array","minItems":1,"maxItems":64,
-      "items":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$","minLength":1,"maxLength":64}}
+      "items":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$","minLength":1,"maxLength":64}},
+    "commentFields":{"type":"array","minItems":1,"maxItems":64,
+      "items":{"type":"object","additionalProperties":false,
+        "required":["id","value"],"properties":{
+          "id":{"type":"string","pattern":"^[a-z][a-z0-9-]{0,63}$","minLength":1,"maxLength":64},
+          "value":{"type":"string","minLength":1,"maxLength":16384}}}},
+    "commentFieldFacets":{"type":"object","additionalProperties":false,"properties":{
+      "id":{"type":"string","pattern":"^[a-z][a-z0-9-]{0,63}$","minLength":1,"maxLength":64},
+      "limit":{"type":"integer","minimum":1,"maximum":100},
+      "cursor":{"type":"string","minLength":1,"maxLength":1024}}}
   },
   "globalFields":["schemaVersion","operation","snapshotId","language","languageFallback","audience","cfgProfile"],
   "operations":{
@@ -72,7 +81,7 @@ private let QUERY_REQUEST_DECLARATION = """
     "search":{"fields":["query","symbolId","symbolKey","name","qualifiedName","parameterTypes",
       "genericArity","kind","moduleId","packageName","documentSetId","apiVersion","library",
       "dependencyInstanceId","target","cfg","latest","limit","cursor",
-      "mode","profile","filters","tags"]},
+      "mode","profile","filters","tags","commentFields","commentFieldFacets"]},
     "get_symbol":{"fields":["moduleId","packageName","kind","documentSetId","apiVersion",
       "dependencyInstanceId","library","target","cfg"],
       "identities":{
@@ -354,7 +363,7 @@ private func queryRequestSchemaNode(): JsonObject {
     let schema = JsonObject()
     schema.put("$schema", JsonNode.string("https://json-schema.org/draft/2020-12/schema"))
     schema.put("$id", JsonNode.string("https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-request.schema.json"))
-    schema.put("title", JsonNode.string("cjdoc read-only documentation query v3"))
+    schema.put("title", JsonNode.string("cjdoc read-only documentation query v4"))
     schema.put("type", JsonNode.string("object"))
     schema.put("additionalProperties", JsonNode.boolean(false))
     schema.put("required", queryStringArray(["operation"]))
@@ -374,7 +383,7 @@ private func queryRequestSchemaNode(): JsonObject {
 }
 
 /**
- * The published `cjdoc.query-request/3` schema: strict object, one required
+ * The published `cjdoc.query-request/4` schema: strict object, one required
  * discriminator, and per-operation admissibility generated from the single
  * declaration above.
  */
