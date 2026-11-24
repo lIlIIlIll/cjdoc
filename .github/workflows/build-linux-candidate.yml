@@ -1,7 +1,7 @@
 name: Build Linux candidate
 
 # Single source of truth for the pinned Linux toolchain: the STS 1.2.0 compiler,
-# the matching authenticated static stdx sidecar and the pinned -O2 --fno-chir-function-inlining -Woff unused -Woff deprecated build options.
+# the matching authenticated static stdx sidecar and the pinned -O2 --fno-chir-function-inlining build options.
 # CI and Pages both call this workflow instead of repeating the setup inline.
 on:
   workflow_call:

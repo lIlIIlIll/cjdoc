@@ -55,7 +55,7 @@ jobs:
             --out "${GITHUB_OUTPUT}"
 
   # The Linux candidate is built once by the reusable workflow, so CI and Pages
-  # share one definition of the pinned toolchain and the pinned -O2 --fno-chir-function-inlining -Woff unused -Woff deprecated build options.
+  # share one definition of the pinned toolchain and the pinned -O2 --fno-chir-function-inlining build options.
   candidate-linux:
     name: Linux candidate
     needs: changes
