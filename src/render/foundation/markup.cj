@@ -28,10 +28,10 @@ private func visibleThroughOwners(symbol: SymbolDoc, audience: String,
     true
 }
 
-private func visibleExtensionContainerIds(documentation: DocumentationSet,
+private func visibleExtensionContainerIds(declarations: Iterable<SymbolDoc>,
     index: HashMap<String, SymbolDoc>, audience: String): HashSet<String> {
     let ownersWithVisibleMembers = HashSet<String>()
-    for (member in documentation.declarations) {
+    for (member in declarations) {
         if (!isVisibleForAudience(member, audience)) { continue }
         match (member.ownerId) {
             case Some(ownerId) => let _ = ownersWithVisibleMembers.add(ownerId)
@@ -39,7 +39,7 @@ private func visibleExtensionContainerIds(documentation: DocumentationSet,
         }
     }
     let result = HashSet<String>()
-    for (extension in documentation.declarations) {
+    for (extension in declarations) {
         if (extension.kind != "extend" || !ownersWithVisibleMembers.contains(extension.id)) {
             continue
         }
@@ -63,9 +63,14 @@ private func visibleExtensionContainerIds(documentation: DocumentationSet,
 
 protected func renderabilityIndex(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, audience: String): HashMap<String, Bool> {
+    renderabilityIndex(documentation.declarations, index, audience)
+}
+
+protected func renderabilityIndex(declarations: Iterable<SymbolDoc>,
+    index: HashMap<String, SymbolDoc>, audience: String): HashMap<String, Bool> {
     let results = HashMap<String, Bool>()
-    let visibleExtensionContainers = visibleExtensionContainerIds(documentation, index, audience)
-    for (root in documentation.declarations) {
+    let visibleExtensionContainers = visibleExtensionContainerIds(declarations, index, audience)
+    for (root in declarations) {
         if (results.contains(root.id)) { continue }
         let path = ArrayList<SymbolDoc>()
         var current: ?SymbolDoc = Some(root)

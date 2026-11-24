@@ -105,7 +105,7 @@ Windows source-free 回放必须保留子进程的原生运行时 PATH，同时�
 
 ## Doc IR/19 的项目注释字段
 
-`metadata.fields` 必有。定义按 `(moduleId,id)` 排序，`uses` 按 canonical `symbolId` 排序，`values` 保留作者顺序与重复项。定义与用途必须同属模块；字段只随当前受众可渲染的声明发布，收窄时删去失去全部用途的定义。发布、HTML 和搜索只读取冻结值，不重新解析源码或 `cjdoc.toml`。
+`metadata.fields` 必有。定义按 `(moduleId,id)` 排序，`uses` 按 canonical `symbolId` 排序，`values` 保留作者顺序与重复项。定义与用途必须同属模块；捕获、解码和渲染使用同一可见性规则，包括可见类型的公开扩展成员。收窄时删去失去全部用途的定义。发布、HTML 和搜索只读取冻结值，不重新解析源码或 `cjdoc.toml`。
 
 `declaration/3` 与 `page/2` 不变。重新发布旧文档时须从保存的源码重新生成 Doc IR 和站点，不能只改 `schemaVersion`。
 

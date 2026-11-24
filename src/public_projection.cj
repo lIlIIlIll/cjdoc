@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.render.codec as render_codec
+import cjdoc.render.foundation.renderabilityIndex
 
 import cjdoc.dependency.navigation.{
     DependencyDocumentPolicy, DependencyNavigationInputs, bindDependencyNavigation, resolvePublicSemanticLinks}
@@ -477,10 +478,17 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     }
     let capturedMetadata = public_model.documentationMetadataForDeclarations(
         documentation.metadata, renderableDeclarations.toArray())
-    // Field values follow the same visible-declaration boundary as the metadata
-    // definitions they belong to; nothing captured is mutated in place.
-    let capturedFields = capturedCommentFields(documentation,
-        declarationProjection.renderableIds)
+    // Field capture follows the same audience policy as decoding and rendering,
+    // including public members of extensions on visible targets.
+    let capturedFields: Array<public_model.DocumentationFieldDefinition> =
+        if (documentation.commentSpecs.isEmpty()) {
+            []
+        } else {
+            let index = HashMap<String, public_model.SymbolDoc>()
+            for (declaration in declarationProjection.declarations) { index[declaration.id] = declaration }
+            capturedCommentFields(documentation,
+                renderabilityIndex(declarationProjection.declarations, index, request.audience))
+        }
     declarationProjection.markdownContext.retainHighlightFailures(retainedHighlightFailures)
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot, deferExternal: !request.documentSources.isEmpty() || request.buildContext.isSome(),

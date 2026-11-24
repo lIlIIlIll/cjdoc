@@ -16,10 +16,10 @@ private func commentFieldSymbolLess(left: String, right: String): Bool {
 // moduleId -> (symbolId -> (fieldId -> author-ordered values)); one pass over the
 // captured declarations, so publishing many fields never rescans the set.
 private func commentValuesByModule(documentation: DocumentationSet,
-    visibleIds: HashSet<String>): HashMap<String, HashMap<String, HashMap<String, Array<String>>>> {
+    visibility: HashMap<String, Bool>): HashMap<String, HashMap<String, HashMap<String, Array<String>>>> {
     let byModule = HashMap<String, HashMap<String, HashMap<String, Array<String>>>>()
     for (symbol in documentation.symbols) {
-        if (!visibleIds.contains(symbol.id)) { continue }
+        if (!visibility.get(symbol.id).getOrDefault({ => false })) { continue }
         let comment = match (symbol.documentation) {
             case Some(value) => value
             case None => continue
@@ -60,9 +60,9 @@ private func commentValuesByModule(documentation: DocumentationSet,
  * value through a field two modules or two visibilities share.
  */
 protected func capturedCommentFields(documentation: DocumentationSet,
-    visibleIds: HashSet<String>): Array<api_model.DocumentationFieldDefinition> {
+    visibility: HashMap<String, Bool>): Array<api_model.DocumentationFieldDefinition> {
     let result = ArrayList<api_model.DocumentationFieldDefinition>()
-    let byModule = commentValuesByModule(documentation, visibleIds)
+    let byModule = commentValuesByModule(documentation, visibility)
     for (module in documentation.modules) {
         let spec = match (documentation.commentSpecs.get(module.id)) {
             case Some(value) => value

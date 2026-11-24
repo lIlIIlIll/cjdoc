@@ -353,6 +353,33 @@ title = "Internal owner"
                 '  - `<em>tier & "quoted"</em>`\n' in members,
                 "Markdown inline member lost its own field values or interpreted markup")
 
+    def check_extension_fields(self):
+        project = self.root / "extension-project"
+        shutil.copytree(self.repo / "tests/fixtures/projects/extend_visibility", project,
+                        ignore=shutil.ignore_patterns("target"))
+        (project / "cjdoc.toml").write_text('[[comments.fields]]\nid = "owner"\ntitle = "Owner"\n',
+                                          encoding="utf-8")
+        source = project / "src/fixture.cj"
+        source.write_text(source.read_text(encoding="utf-8").replace(
+            "    /** Length. */", "    /**\n     * Length.\n     * @owner public-extension\n     */").replace(
+            "    private func hiddenExtensionMember",
+            "    /**\n     * Hidden.\n     * @owner private-extension\n     */\n"
+            "    private func hiddenExtensionMember"), encoding="utf-8")
+        site = self.root / "extension-capture"
+        self.run("extension-capture", [self.binary, "generate", "--project", project, "--semantic", "source",
+                 "--format", "json", "--format", "html", "--audience", "external", "--output", site])
+        document = load_json(site / "docs.json")
+        member = next(symbol for symbol in document["declarations"] if symbol["name"] == "length")
+        require([(field["id"], field["uses"]) for field in document["metadata"]["fields"]] ==
+                [("owner", [{"symbolId": member["id"], "values": ["public-extension"]}])],
+                "external capture dropped a rendered extension use or disclosed a private sibling's value")
+        replay = self.root / "extension-replay"
+        self.run("extension-replay", [self.binary, "render", "--input", site / "docs.json",
+                 "--format", "html", "--output", replay])
+        require(any("public-extension" in page.read_text(encoding="utf-8")
+                    for page in (replay / "html").rglob("*.html")),
+                "frozen comment field was lost when rendering a public extension member")
+
     def check_audience_narrowing(self, environment):
         snapshot = self.root / "capture-all/docs.json"
         fields = {row["id"]: row["uses"] for row in load_json(snapshot)["metadata"]["fields"]}
@@ -524,6 +551,7 @@ title = "Internal owner"
         return environment
 
     def execute(self):
+        self.check_extension_fields()
         self.generate("capture", html_site=True)
         self.generate("syntax-model", html_site=False, semantic_mode="source")
         self.generate("capture-all", html_site=False, semantic_mode="source", audience="all")
