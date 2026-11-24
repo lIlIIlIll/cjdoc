@@ -241,8 +241,10 @@ id = "internal-owner"
 title = "Internal owner"
 """, encoding="utf-8")
         lib = self.project / "src/lib.cj"
-        lib.write_text(lib.read_text(encoding="utf-8").replace(
-            " * @owner secret-maintainer", " * @owner secret-maintainer\n * @internal-owner private-only"),
+        source = lib.read_text(encoding="utf-8").replace(
+            " * @owner secret-maintainer", " * @owner secret-maintainer\n * @internal-owner private-only")
+        lib.write_text(source.replace(
+            " */\npublic class StreamReader", " * @service-tier container-only\n */\npublic class StreamReader"),
             encoding="utf-8")
         scopes = self.project / "src/scopes"
         scopes.mkdir()
@@ -335,6 +337,21 @@ title = "Internal owner"
         page = (site / representations[inline["id"]]["html"]).read_text(encoding="utf-8")
         require("&lt;em&gt;tier &amp; &quot;quoted&quot;&lt;/em&gt;" in page and
                 '<em>tier & "quoted"</em>' not in page, "inline field value is missing or interpreted as HTML")
+        markdown = site.parents[1] / "markdown" / language
+        package = next(text for path in (markdown / "packages").glob("*.md")
+                       if "public func boundedBody()" in (text := path.read_text(encoding="utf-8")))
+        container = next(text for path in (markdown / "symbols").glob("*.md")
+                         if "\n# `declaration_tags.StreamReader`\n" in
+                         (text := path.read_text(encoding="utf-8")))
+        title = titles["owner"]
+        require(f"- {title}\n  - `platform`\n  - `platform`\n  - `zeta`\n  - `équipe`\n" in package,
+                "Markdown package page lost localized field title, duplicate, or value order")
+        introduction, _, members = container.partition("\n## ")
+        require("  - `container-only`\n" in introduction and "container-only" not in members,
+                "Markdown container page lost its own field or inherited it into a member")
+        require(f"- {title}\n  - `operations`\n" in members and
+                '  - `<em>tier & "quoted"</em>`\n' in members,
+                "Markdown inline member lost its own field values or interpreted markup")
 
     def check_audience_narrowing(self, environment):
         snapshot = self.root / "capture-all/docs.json"
@@ -349,7 +366,8 @@ title = "Internal owner"
         values = {(row["id"], row["value"]) for row in response["result"]["facets"]["commentFields"]["items"]}
         require(values == {("owner", "operations"), ("owner", "platform"), ("owner", "zeta"),
                            ("owner", "équipe"), ("service-tier", '<em>tier & "quoted"</em>'),
-                           ("service-tier", "primary")}, "query narrowing retained private field values")
+                           ("service-tier", "primary"), ("service-tier", "container-only")},
+                "query narrowing retained private field values or removed a visible value")
 
     def check_scoped_groups(self, site, document, representations, language, *,
                             inherited=False, orders=(0, 50)):

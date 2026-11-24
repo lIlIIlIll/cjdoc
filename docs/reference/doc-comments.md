@@ -209,7 +209,7 @@ title = "负责人"
 en = "Owner"
 ```
 
-- `@maintainer platform` 归一为正式字段 `owner`，值是 `platform`；页面中文显示「负责人」，英文显示「Owner」，搜索 `platform` 能命中该声明。
+- `@maintainer platform` 归一为正式字段 `owner`，值是 `platform`；HTML 和 Markdown API 页都显示该字段，中文标题为「负责人」，英文为「Owner」。在 HTML 搜索中按字段值 `platform` 筛选可找到该声明。
 - 字段值只取标签所在行、分隔空白之后的文本；去掉首尾 ASCII 空白，保留内部空格、大小写和标点。它不被当作 Markdown、链接或 HTML，也不会自动翻译。
 - 字段行不算正文：后续普通段落仍是说明。同一单值字段写两次（即使拼写或值相同）报 `CJDOC3141`，该声明在这个字段上没有有效值；`repeatable = true` 的字段按源码顺序保留每个合法条目。
 - 只有作者显式写出的标签才算。隐式 Markdown 摘要、自动回退的译文都不满足规则。

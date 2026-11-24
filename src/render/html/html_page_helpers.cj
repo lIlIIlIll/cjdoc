@@ -393,11 +393,10 @@ internal func appendDocumentationHtml(w: HtmlWriter,
  */
 private func appendProjectCommentFieldsHtml(w: HtmlWriter, projection: ?RenderProjection,
     symbol: SymbolDoc, locale: String, headingTag: String): Unit {
-    let rows = match (projection) {
-        case Some(value) => value.commentFields(symbol.id)
+    let rows = match (projection.flatMap({ value => value.commentFields(symbol.id) })) {
+        case Some(values) => values
         case None => return
     }
-    if (rows.isEmpty()) { return }
     w.open("section", attrs: [htmlClass("cj-doc-fields"), htmlAttr("data-cjdoc-doc-fields", "")])
     w.open(headingTag, attrs: [htmlClass("cj-doc-fields__title")])
     w.text(label(locale, "Comment fields", "注释字段"))

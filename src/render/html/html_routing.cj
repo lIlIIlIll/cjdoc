@@ -185,8 +185,8 @@ protected class RenderProjection {
     }
 
     /** This declaration's own published field values; owners are never inherited. */
-    protected func commentFields(symbolId: String): ArrayList<DocFieldRow> {
-        commentFieldsBySymbol.get(symbolId).getOrDefault({ => ArrayList<DocFieldRow>() })
+    protected func commentFields(symbolId: String): ?ArrayList<DocFieldRow> {
+        commentFieldsBySymbol.get(symbolId)
     }
 
     protected func members(owner: SymbolDoc): HtmlMemberBrowser {
