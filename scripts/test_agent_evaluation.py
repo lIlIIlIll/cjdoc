@@ -8,6 +8,7 @@ and the evaluation relay in front of it. No network, model, Cangjie SDK or
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -999,6 +1000,10 @@ class RunnerIntegrationTests(unittest.TestCase):
         self.assertEqual(len(plan["runs"]), 24)
         self.assertEqual(len(plan["sessions"]), 24)
         self.assertFalse((self.root / "run").exists())
+        self.assertEqual(
+            plan["harness"]["protocolLoaderSha256"],
+            hashlib.sha256((SCRIPTS / "agent_evaluation_protocol.py").read_bytes()).hexdigest(),
+        )
         by_arm = {session["arm"]: session for session in plan["sessions"]}
         baseline_server = " ".join(by_arm["baseline-html-index"]["serverCommand"])
         self.assertIn("agent_baseline_mcp.py", baseline_server)

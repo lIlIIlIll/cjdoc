@@ -3,40 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-try:
-    from .repository_input_contracts import (
-        COMMIT,
-        MARKDOWN_COMMIT,
-        MARKDOWN_LICENSE_SHA256,
-        MARKDOWN_UPSTREAM,
-        SHA256,
-        YJSON_COMMIT,
-        YJSON_MACROS_COMMIT,
-        YJSON_LICENSE_SHA256,
-        YJSON_PACKAGE_MANIFEST_SHA256,
-        YJSON_SOURCE_SHA256,
-        YJSON_UPSTREAM,
-        YJSON_UPSTREAM_NOTICE_SHA256,
-        YJSON_VENDOR_PATCHES,
-    )
-    from .repository_input_files import read_toml, safe_relative, sha256
-except ImportError:  # Direct module execution.
-    from repository_input_contracts import (
-        COMMIT,
-        MARKDOWN_COMMIT,
-        MARKDOWN_LICENSE_SHA256,
-        MARKDOWN_UPSTREAM,
-        SHA256,
-        YJSON_COMMIT,
-        YJSON_MACROS_COMMIT,
-        YJSON_LICENSE_SHA256,
-        YJSON_PACKAGE_MANIFEST_SHA256,
-        YJSON_SOURCE_SHA256,
-        YJSON_UPSTREAM,
-        YJSON_UPSTREAM_NOTICE_SHA256,
-        YJSON_VENDOR_PATCHES,
-    )
-    from repository_input_files import read_toml, safe_relative, sha256
+from .contracts import (
+    COMMIT,
+    MARKDOWN_COMMIT,
+    MARKDOWN_LICENSE_SHA256,
+    MARKDOWN_UPSTREAM,
+    SHA256,
+    YJSON_COMMIT,
+    YJSON_MACROS_COMMIT,
+    YJSON_LICENSE_SHA256,
+    YJSON_PACKAGE_MANIFEST_SHA256,
+    YJSON_SOURCE_SHA256,
+    YJSON_UPSTREAM,
+    YJSON_UPSTREAM_NOTICE_SHA256,
+    YJSON_VENDOR_PATCHES,
+)
+from .files import read_toml, safe_relative, sha256
+
 
 def verify_third_party(repo: Path) -> dict[str, str]:
     markdown_license = repo / "third_party/licenses/markdown-LICENSE"

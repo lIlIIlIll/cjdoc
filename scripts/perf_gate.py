@@ -20,12 +20,12 @@ from typing import Any
 sys.dont_write_bytecode = True
 
 try:
-    from .repository_input_contracts import CURRENT_GOLDEN_VERSION
+    from .repository_inputs.contracts import CURRENT_GOLDEN_VERSION
     from .safe_output_root import safe_output_file, safe_regular_file
     from .source_identity import source_identity as capture_source_identity
     from .strict_json import strict_dumps, strict_load, strict_loads
 except ImportError:  # Direct script execution.
-    from repository_input_contracts import CURRENT_GOLDEN_VERSION
+    from repository_inputs.contracts import CURRENT_GOLDEN_VERSION
     from safe_output_root import safe_output_file, safe_regular_file
     from source_identity import source_identity as capture_source_identity
     from strict_json import strict_dumps, strict_load, strict_loads

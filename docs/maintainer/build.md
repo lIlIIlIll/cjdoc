@@ -113,6 +113,8 @@ bash scripts/check.sh
 | `smoke` | 真实仓库双次生成 smoke |
 | `html-a11y` | 真实 Chromium 包索引响应式/语义/可访问性矩阵；需要 Playwright + Chromium，不在默认链路里 |
 
+`scripts/check.sh` 负责阶段分发和证据记录；`scripts/check_cli.sh` 负责 `cli` 阶段内的检查。
+
 CI 中的阶段调用方式可直接照搬（二进制换成你刚构建的）：
 
 ```bash

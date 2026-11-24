@@ -60,7 +60,7 @@
 | Doc IR 与 schema | [`src/model/`](../../src/model/)、[`src/schema_data/`](../../src/schema_data/)、[`src/render/codec/`](../../src/render/codec/) |
 | 发布投影、HTML、Markdown、搜索与 Agent | [`src/render/`](../../src/render/) 的 `publication/`、`html/`、`markdown/`、`search/`、`agent/` 和 `browser/`；HTML 负责发布索引，搜索包负责请求、匹配、过滤和排序。`routes/` 和 `reading/` 持有两种呈现共用的路由与阅读规则，`foundation/` 持有有界 buffer 和产物存储契约 |
 
-浏览器脚本变更用 `scripts/test_validate_html_site.py` 核对发布时的脚本字节。
+仓库输入校验（schema、golden、第三方清单）由 `scripts/repository_inputs/` 维护，命令入口是 `scripts/verify_repository_inputs.py`；`scripts/update_schemas.sh` 与 CLI golden 更新共用该目录的契约与校验。浏览器脚本变更用 `scripts/test_validate_html_site.py` 核对发布时的脚本字节。
 
 ## 验收记录
 

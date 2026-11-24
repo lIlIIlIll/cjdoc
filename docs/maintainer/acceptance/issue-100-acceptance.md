@@ -44,6 +44,8 @@ python3 scripts/highlight_acceptance.py \
 
 不要删除取消场景的锁继续使用同一输出父目录。`generate` 的严格失败沿用 `writeOnFailure=true`，应验证完整诊断产物；不能错误断言“失败时无 docs.json”。`serve` 的失败重建保留上次成功站点是另一契约。
 
+维护 worker 行为断言和取消场景时，修改 `scripts/highlight_acceptance_worker.py`；`scripts/highlight_acceptance.py` 排定验收顺序并汇总报告。
+
 API 删除门禁回归可用公开契约测试复现：
 
 ```bash

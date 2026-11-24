@@ -109,7 +109,7 @@ The generated site is a working reference, not a brochure. A reader arrives with
 - Three-column desktop frame: navigation tree, document, on-page outline.
 - Progressive enhancement: every page is complete without scripts; search, the lazy tree, filters, copy actions and display settings are enhancements.
 
-Tokens live in `src/render/style_tokens.cj`; the frame in `style_layout.cj`; components in `style_components.cj`. Markup is built by `HtmlWriter` (`src/render/html_writer.cj`) with a `cj-` BEM vocabulary.
+Under `src/render/browser/`, `style_tokens.cj` defines tokens, `style_layout.cj` the frame, and `style_components.cj` the components. Markup is built by `HtmlWriter` (`src/render/html/html_writer.cj`) with a `cj-` BEM vocabulary.
 
 ## Colors
 

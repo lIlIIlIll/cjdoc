@@ -15,7 +15,7 @@ import zipfile
 
 from scripts import package_release
 from scripts import perf_gate
-from scripts import repository_input_codec
+from scripts.repository_inputs import codec as repository_input_codec
 from scripts import real_repository_smoke
 from scripts import safe_output_root
 from scripts import source_identity

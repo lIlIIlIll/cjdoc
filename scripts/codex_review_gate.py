@@ -9,243 +9,28 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
-
-STATUS_CONTEXT = "codex-review-current-head"
-CODEX_BOT_LOGIN = "chatgpt-codex-connector[bot]"
-CODEX_BOT_ID = 199175422
-SHA_PATTERN = re.compile(r"[0-9a-f]{40}\Z")
-SUMMARY_PREFIX = "<!-- codex-pull-request-review-summary -->\n"
-STATE_MARKER = re.compile(r"(?m)^<!-- codex-review-state:v1 (\{[^\r\n]*\}) -->\r?$")
-
-
-@dataclass(frozen=True)
-class GateDecision:
-    state: str
-    description: str
-    target_url: str
-
-
-def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate review-state field: {key}")
-        result[key] = value
-    return result
-
-
-def _is_official_summary(comment: dict) -> bool:
-    user = comment.get("user") or {}
-    return (
-        isinstance(user, dict)
-        and user.get("login") == CODEX_BOT_LOGIN
-        and user.get("id") == CODEX_BOT_ID
-        and user.get("type") == "Bot"
-        and isinstance(comment.get("body"), str)
-        and comment["body"].startswith(SUMMARY_PREFIX)
-        and (
-            not isinstance(comment.get("performed_via_github_app"), dict)
-            or comment["performed_via_github_app"].get("slug")
-            == "chatgpt-codex-connector"
-        )
+if __package__:
+    from .codex_review_evidence import (
+        CODEX_BOT_ID as CODEX_BOT_ID, CODEX_BOT_LOGIN as CODEX_BOT_LOGIN,
+        SUMMARY_PREFIX as SUMMARY_PREFIX, SHA_PATTERN, GateDecision,
+        affected_shared_heads, classify_codex_review, deleted_codex_summary,
+        deletion_is_stale, pr_number_from_event,
     )
-
-
-def _read_review_state(comment: dict) -> dict:
-    match = STATE_MARKER.search(comment["body"])
-    if match is None:
-        raise ValueError("Codex summary has no v1 review-state marker")
-    state = json.loads(match.group(1), object_pairs_hook=_no_duplicate_keys)
-    if not isinstance(state, dict) or not isinstance(state.get("code_review"), dict):
-        raise ValueError("Codex summary is missing code_review state")
-    review = state["code_review"]
-    status = review.get("status")
-    if not isinstance(status, str):
-        raise ValueError("Codex summary has no code_review status")
-    reviewed_sha = review.get("commit_sha")
-    if reviewed_sha is not None and (
-        not isinstance(reviewed_sha, str) or not SHA_PATTERN.fullmatch(reviewed_sha)
-    ):
-        raise ValueError("Codex summary has an invalid reviewed commit SHA")
-    # Queued/running reviews carry null finding flags and may not have selected a
-    # commit yet; that is normal and stays `pending` in the classifier.
-    if status == "completed" and reviewed_sha is None:
-        raise ValueError("Completed Codex review lacks a full reviewed SHA")
-    # The managed reviewer reports its finding flags as `null` on some completions
-    # (observed on PR #139, 2026-10-20). A completed review with no reported
-    # findings is treated as completed: the required check verifies that a review
-    # ran for this HEAD, not that it was clean. Losing a flag must therefore not
-    # fail the gate closed. An explicitly non-boolean, non-null value is still a
-    # malformed schema and is rejected.
-    unresolved = review.get("has_unresolved_findings")
-    if unresolved is not None and not isinstance(unresolved, bool):
-        raise ValueError("Codex summary has a malformed has_unresolved_findings flag")
-    any_findings = review.get("has_any_findings")
-    if any_findings is not None and not isinstance(any_findings, bool):
-        raise ValueError("Codex summary has a malformed has_any_findings flag")
-    return review
-
-
-def classify_codex_review(head_sha: str, comments: list[dict], pr_url: str) -> GateDecision:
-    """Gate on review completion, NOT on a clean verdict or zero threads."""
-    if not SHA_PATTERN.fullmatch(head_sha):
-        raise ValueError("PR HEAD is not a full commit SHA")
-
-    summaries = [c for c in comments if isinstance(c, dict) and _is_official_summary(c)]
-    if not summaries:
-        return GateDecision("pending", "Awaiting Codex review summary for HEAD", pr_url)
-
-    # There should be one canonical summary. If multiple exist, use the newest
-    # rather than trusting an older Completed summary after a new review starts.
-    latest = max(
-        summaries,
-        key=lambda c: (c.get("updated_at") or "", c.get("id") or 0),
+    from .codex_review_github import GitHubAPI, STATUS_CONTEXT
+else:
+    from codex_review_evidence import (
+        CODEX_BOT_ID as CODEX_BOT_ID, CODEX_BOT_LOGIN as CODEX_BOT_LOGIN,
+        SUMMARY_PREFIX as SUMMARY_PREFIX, SHA_PATTERN, GateDecision,
+        affected_shared_heads, classify_codex_review, deleted_codex_summary,
+        deletion_is_stale, pr_number_from_event,
     )
-    target = latest.get("html_url") or pr_url
-    try:
-        code_review = _read_review_state(latest)
-    except (ValueError, json.JSONDecodeError) as exc:
-        return GateDecision("error", f"Unrecognized Codex summary: {exc}"[:140], target)
-
-    if code_review.get("commit_sha") is None:
-        return GateDecision("pending", "Awaiting Codex reviewed commit SHA", target)
-    if code_review["commit_sha"] != head_sha:
-        return GateDecision("pending", "Codex review covers an older HEAD", target)
-
-    state = code_review["status"]
-    if state == "completed":
-        if code_review.get("has_unresolved_findings") is True:
-            message = "Codex reviewed HEAD; unresolved findings need triage"
-        else:
-            # False, or null when the reviewer reported no flag: in both cases no
-            # unresolved finding is being claimed for this HEAD.
-            message = "Codex review completed for current HEAD"
-        return GateDecision("success", message, target)
-    if state in {"failed", "error", "cancelled", "timed_out"}:
-        return GateDecision("failure", f"Codex code review ended: {state}", target)
-    return GateDecision("pending", f"Waiting for Codex code review ({state})"[:140], target)
-
-
-def deleted_codex_summary(event_name: str, event: dict) -> bool:
-    """Revoke a deleted bot summary, even if GitHub still returns stale data.
-
-    The deleted webhook may omit the old body. We conservatively treat such a
-    bot deletion as a potential canonical summary deletion, but avoid revoking
-    a known non-summary bot comment.
-    """
-    if event_name != "issue_comment" or event.get("action") != "deleted":
-        return False
-    comment = event.get("comment") or {}
-    user = comment.get("user") or {}
-    if user.get("login") != CODEX_BOT_LOGIN or user.get("id") != CODEX_BOT_ID:
-        return False
-    body = comment.get("body")
-    return body is None or (isinstance(body, str) and body.startswith(SUMMARY_PREFIX))
-
-
-def pr_number_from_event(event_name: str, event: dict) -> int | None:
-    """Return None only for issue comments that do not concern a PR."""
-    if event_name == "workflow_dispatch":
-        number = (event.get("inputs") or {}).get("pr_number")
-    elif event_name == "issue_comment":
-        issue = event.get("issue") or {}
-        if not issue.get("pull_request"):
-            return None
-        number = issue.get("number")
-    elif event_name == "pull_request_target":
-        number = (event.get("pull_request") or {}).get("number")
-    else:
-        raise ValueError(f"unexpected event: {event_name}")
-    if isinstance(number, bool) or not str(number).isdigit() or int(number) < 1:
-        raise ValueError("missing or invalid PR number")
-    return int(number)
-
-
-class GitHubAPI:
-    def __init__(self, repo: str, token: str, api_url: str = "https://api.github.com"):
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
-            raise ValueError("invalid GITHUB_REPOSITORY")
-        if not token:
-            raise ValueError("missing GITHUB_TOKEN")
-        self.repo = repo
-        self.token = token
-        self.api_url = api_url.rstrip("/")
-
-    def _request(self, path: str, payload: dict | None = None):
-        data = json.dumps(payload).encode("utf-8") if payload is not None else None
-        req = Request(
-            f"{self.api_url}/repos/{self.repo}/{path}",
-            data=data,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self.token}",
-                "X-GitHub-Api-Version": "2022-11-28",
-                **({"Content-Type": "application/json"} if data else {}),
-            },
-            method="POST" if data is not None else "GET",
-        )
-        try:
-            with urlopen(req, timeout=20) as response:
-                return json.load(response)
-        except HTTPError as exc:
-            raise RuntimeError(f"GitHub API {req.get_method()} {path}: HTTP {exc.code}") from exc
-        except URLError as exc:
-            raise RuntimeError(f"GitHub API {req.get_method()} {path}: unavailable") from exc
-
-    def get_pull_request(self, number: int) -> dict:
-        return self._request(f"pulls/{number}")
-
-    def get_commit(self, sha: str) -> dict:
-        return self._request(f"commits/{sha}")
-
-    def list_open_pull_requests(self) -> list[dict]:
-        """Exhaustively check concurrent PRs before publishing scoped success.
-
-        GitHub commit statuses belong to a SHA+context, not to a PR. A shared
-        test-merge SHA cannot safely carry different PR review conclusions.
-        """
-        result: list[dict] = []
-        for page in range(1, 102):
-            query = urlencode({"state": "open", "per_page": 100, "page": page})
-            batch = self._request(f"pulls?{query}")
-            if not isinstance(batch, list):
-                raise ValueError("unexpected GitHub open-PR response")
-            result.extend(batch)
-            if len(batch) < 100:
-                return result
-        raise RuntimeError("too many open PRs to check merge identity safely")
-
-    def list_issue_comments(self, number: int) -> list[dict]:
-        result: list[dict] = []
-        for page in range(1, 102):
-            query = urlencode({"per_page": 100, "page": page})
-            batch = self._request(f"issues/{number}/comments?{query}")
-            if not isinstance(batch, list):
-                raise ValueError("unexpected GitHub comments response")
-            result.extend(batch)
-            if len(batch) < 100:
-                return result
-        raise RuntimeError("too many comments to validate Codex review safely")
-
-    def create_commit_status(self, sha: str, decision: GateDecision) -> None:
-        self._request(
-            f"statuses/{sha}",
-            {
-                "state": decision.state,
-                "context": STATUS_CONTEXT,
-                "description": decision.description[:140],
-                "target_url": decision.target_url,
-            },
-        )
+    from codex_review_github import GitHubAPI, STATUS_CONTEXT
 
 
 def _merge_scope_is_unique(
@@ -324,27 +109,6 @@ def _head_scope_is_unique(number: int, head_sha: str, open_prs: list[dict]) -> b
     if not found_current:
         raise RuntimeError("current PR is missing from open-PR response")
     return True
-
-
-def deletion_is_stale(deleted_comment: dict | None, comments: list[dict]) -> bool:
-    """Is a newer canonical summary present than the one that was deleted?
-
-    A delayed `issue_comment.deleted` delivery can arrive after a replacement
-    summary has already been reviewed and published as `success`. Forcing every
-    deletion to `pending` would then overwrite a newer valid result and leave the
-    current HEAD stuck, because no later event is guaranteed. GitHub orders
-    comments, so if the newest canonical summary is strictly newer than the
-    deleted one the deletion is stale and the normal classification applies.
-    """
-    if not isinstance(deleted_comment, dict):
-        return False
-    deleted_key = (deleted_comment.get("updated_at") or "", deleted_comment.get("id") or 0)
-    for comment in comments:
-        if not isinstance(comment, dict) or not _is_official_summary(comment):
-            continue
-        if (comment.get("updated_at") or "", comment.get("id") or 0) > deleted_key:
-            return True
-    return False
 
 
 class PublishedStatuses:
@@ -485,6 +249,214 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
     return GateDecision("pending", "The PR changed repeatedly during evaluation", "")
 
 
+@dataclass(frozen=True)
+class _ReviewTarget:
+    number: int
+    head_sha: str
+    base_sha: str
+    merge_sha: str
+    pr_url: str
+
+    def matches(self, pr: dict) -> bool:
+        return (
+            (pr.get("head") or {}).get("sha") == self.head_sha
+            and (pr.get("base") or {}).get("sha") == self.base_sha
+            and pr.get("merge_commit_sha") == self.merge_sha
+        )
+
+
+def _withdraw_publication(api: GitHubAPI, target: _ReviewTarget,
+                          published: PublishedStatuses | None) -> None:
+    """Withdraw BOTH targets, each attempted independently.
+
+    A status belongs to a SHA, not to a PR, so the test-merge commit and the
+    HEAD can each carry a conclusion this run cannot confirm. Isolating the
+    attempts means one failing endpoint cannot prevent the other withdrawal;
+    if any attempt fails the run fails, because a success that cannot be
+    withdrawn must never be left standing.
+    """
+    withdrawn = GateDecision("pending", "Publication could not be confirmed", target.pr_url)
+    errors: list[str] = []
+    for sha in (target.merge_sha, target.head_sha):
+        try:
+            _publish(api, sha, withdrawn, published)
+        except Exception as error:  # noqa: BLE001 - any transport failure
+            errors.append(f"{sha[:10]}: {error}")
+    if errors:
+        raise RuntimeError("could not withdraw every published status: "
+                           + "; ".join(errors))
+
+
+def _converge_decision(api: GitHubAPI, target: _ReviewTarget, fresh_decision: GateDecision,
+                       published: PublishedStatuses | None) -> None:
+    number, head_sha, merge_sha, pr_url = (
+        target.number, target.head_sha, target.merge_sha, target.pr_url,
+    )
+    # The world moved while this run was publishing, so this run's
+    # decision is superseded. Publishing `pending` here would be a
+    # regression that can outlive the newer run (each run has its own
+    # concurrency group, so an older one can finish last) and would
+    # strand a valid result with no guaranteed repair. Instead converge
+    # on the decision the CURRENT data supports -- computed by the same
+    # `decide`, so this is not an upgrade from stale reasoning.
+    _publish(api, merge_sha, fresh_decision, published)
+    head_still_unique = _head_scope_is_unique(
+        number, head_sha, api.list_open_pull_requests())
+    if head_still_unique:
+        _publish(api, head_sha, fresh_decision, published)
+    else:
+        # The HEAD is now shared, so a conclusion there cannot describe a
+        # single PR. Withdraw the success just written rather than leaving
+        # it for the other PR to inherit; a transient failure before the
+        # next pass would otherwise leave exactly that.
+        revoke_head_status(
+            api, head_sha,
+            GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
+        )
+    # Re-enter the evaluation loop: the convergence writes above were not
+    # themselves revalidated, and a concurrent deletion run could have
+    # revoked between them. Looping checks the evidence again instead of
+    # trusting this run's own last write.
+    raise PrChangedDuringEvaluation(
+        f"converged on {fresh_decision.state}; revalidating that decision")
+
+
+def _confirm_scope(api: GitHubAPI, target: _ReviewTarget, publish_head: bool,
+                   published: PublishedStatuses | None) -> str:
+    number, head_sha, base_sha, merge_sha, pr_url = (
+        target.number, target.head_sha, target.base_sha, target.merge_sha, target.pr_url,
+    )
+    # The post-publication `decide` revalidation reruns `_merge_scope_is_unique`,
+    # but a twin PR (same head+base) can still appear between that call and this
+    # scan. Recheck BOTH scopes here: the merge status must be withdrawn too, or a
+    # twin would inherit a conclusion that was never scoped against it.
+    final_open_prs = api.list_open_pull_requests()
+    head_ok = _head_scope_is_unique(number, head_sha, final_open_prs)
+    merge_ok = _merge_scope_is_unique(number, head_sha, base_sha, merge_sha, final_open_prs)
+    # Merge-scope ambiguity is handled INDEPENDENTLY of `publish_head`: the
+    # test-merge status may have been published even when the HEAD was withheld
+    # (a different-base PR already shared the HEAD), and a distinct-HEAD PR can
+    # still begin sharing the merge SHA. Either way the merge status no longer
+    # describes one PR and must be withdrawn, along with the HEAD if this run
+    # published one.
+    if not merge_ok:
+        reason = "the merge scope became ambiguous"
+        _publish(api, merge_sha,
+                 GateDecision("pending", f"Withheld: {reason}", pr_url), published)
+        if publish_head:
+            revoke_head_status(
+                api, head_sha,
+                GateDecision("pending", f"Withheld: {reason}", pr_url),
+            )
+        # The ambiguity may itself be transient: the twin could close while these
+        # withdrawals run, in which case its own `closed` handler re-evaluates the
+        # survivor and this stale `pending` would overwrite that valid success with
+        # no later event to repair it. Hand the decision back to the retry loop so
+        # the CURRENT scope is re-evaluated instead of treating this snapshot as
+        # final.
+        raise PrChangedDuringEvaluation("the merge scope became ambiguous")
+    if publish_head and not head_ok:
+        revoke_head_status(
+            api, head_sha,
+            GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
+        )
+        return "revoked (HEAD became shared)"
+    return ("published" if publish_head
+            else "withheld (HEAD is shared with another open PR)")
+
+
+def _publish_and_confirm(api: GitHubAPI, target: _ReviewTarget, decision: GateDecision,
+                         decide: Callable[[], GateDecision],
+                         published: PublishedStatuses | None) -> str:
+    number, head_sha, merge_sha = target.number, target.head_sha, target.merge_sha
+
+    # Every write lives inside one guard: any failure after a publication must
+    # withdraw BOTH targets and propagate. Reporting success while a target sits
+    # at `pending`, or worse at a stale success, would leave the PR either
+    # unmergeable or wrongly authorized with no guaranteed event to repair it.
+    try:
+        current = api.get_pull_request(number)
+        if not target.matches(current):
+            # Nothing was published, so simply re-evaluate the current snapshot.
+            raise PrChangedDuringEvaluation("the PR changed before anything was published")
+
+        scope_now = api.list_open_pull_requests()
+        publish_head = _head_scope_is_unique(number, head_sha, scope_now)
+        _publish(api, merge_sha, decision, published)
+        if publish_head:
+            _publish(api, head_sha, decision, published)
+
+        after = api.get_pull_request(number)
+        after_head = (after.get("head") or {}).get("sha")
+        after_base = (after.get("base") or {}).get("sha")
+        after_merge = after.get("merge_commit_sha")
+        if after.get("state") != "open":
+            # The PR closed while this pass was publishing. A closed PR has no
+            # authorization targets, so this pass must not return a success: the
+            # retry loop reconciles through the ledger.
+            raise PrChangedDuringEvaluation("the PR closed while publishing")
+        if (after_head, after_base, after_merge) != (head_sha, target.base_sha, merge_sha):
+            # The snapshot moved past what this pass published. Raising hands the
+            # cleanup to the retry loop, which withdraws every success recorded in
+            # the ledger -- including targets written by earlier passes, which a
+            # fresh pass could not otherwise know about. One mechanism, one place.
+            raise PrChangedDuringEvaluation("the PR changed while publishing")
+        fresh_decision = decide()
+        if fresh_decision != decision:
+            _converge_decision(api, target, fresh_decision, published)
+        # Final snapshot check: between the revalidation above and this return the
+        # PR can close, or its base/test-merge can move. Returning `success` then
+        # would leave the OLD test-merge commit authorized, and the run that
+        # changed it only knows the NEW one, so nothing would revoke the old.
+        # Compare every field, not just openness; raising hands cleanup to the
+        # retry loop.
+        final = api.get_pull_request(number)
+        if final.get("state") != "open" or not target.matches(final):
+            raise PrChangedDuringEvaluation("the PR changed before the conclusion was returned")
+        return _confirm_scope(api, target, publish_head, published)
+    except PrChangedDuringEvaluation:
+        # Control flow, not a transport failure: propagate so the caller can
+        # re-evaluate the current snapshot. Nothing needs withdrawing here --
+        # either nothing was published, or the caller's next pass recomputes and
+        # republishes under its own guard.
+        raise
+    except SupersededStatusNotWithdrawn:
+        # Already reported with precise targets; re-wrapping would hide them and a
+        # second withdrawal attempt here would just duplicate the failure.
+        raise
+    except Exception as error:  # noqa: BLE001 - any transport or protocol failure
+        _withdraw_publication(api, target, published)
+        if isinstance(error, (ValueError, RuntimeError)):
+            raise
+        raise RuntimeError(f"PR #{number} publication failed: {error}") from error
+
+
+def _report_decision(target: _ReviewTarget, decision: GateDecision, head_status: str) -> None:
+    number, head_sha, merge_sha = target.number, target.head_sha, target.merge_sha
+    # Reporting sits outside the guard on purpose: both targets were published and
+    # revalidated, so a logging failure is NOT a publication failure, and
+    # withdrawing confirmed statuses would strand a valid review. It still fails
+    # the run, so nothing is silent.
+    try:
+        print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: "
+              f"{STATUS_CONTEXT} = {decision.state}")
+        print(f"PR #{number} HEAD {head_sha}: {STATUS_CONTEXT} {head_status}")
+        print(decision.description)
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with open(summary_path, "a", encoding="utf-8") as file:
+                file.write(
+                    f"### Codex review gate\n\n- PR: #{number}\n- HEAD: `{head_sha}`"
+                    f"\n- Test merge: `{merge_sha}`\n- Status: **{decision.state}**"
+                    f"\n- Result: {decision.description}"
+                    "\n\nThis check verifies review completion, not that findings are resolved.\n"
+                )
+    except OSError as error:
+        raise ReportingFailed(
+            f"PR #{number}: reporting failed after the gate confirmed its statuses: {error}"
+        ) from error
+
+
 def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
                    deleted_comment: dict | None = None,
                    published: "PublishedStatuses | None" = None) -> GateDecision | None:
@@ -532,16 +504,14 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
         GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
     )
 
+    target = _ReviewTarget(number, head_sha, base_sha, merge_sha, pr_url)
+
     # Re-read the PR immediately before deciding. Another run (a base push, or
     # the base advancing while this run was in flight) may have changed the base
     # or HEAD since the first read, and publishing against the stale snapshot
     # would re-authorize a test merge that no longer describes this PR.
     fresh = api.get_pull_request(number)
-    if (
-        (fresh.get("head") or {}).get("sha") != head_sha
-        or (fresh.get("base") or {}).get("sha") != base_sha
-        or fresh.get("merge_commit_sha") != merge_sha
-    ):
+    if not target.matches(fresh):
         # Re-evaluate rather than revoke: a newer base-push run may already have
         # published a valid success for this very HEAD, and this stale run would
         # otherwise overwrite it with `pending`, with no later event guaranteed.
@@ -557,13 +527,10 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
         print(f"PR #{number}: candidate test merge does not match current base/head")
         return GateDecision("pending", "Unverified test merge for current PR", pr_url)
 
-    def decide(open_prs: list[dict], comments: list[dict]) -> GateDecision:
-        """The decision this PR's current data supports.
-
-        One function, so the post-publication revalidation asks exactly the same
-        question against fresh data instead of comparing a reclassified review
-        against a decision that also encoded merge-scope ambiguity.
-        """
+    def decide() -> GateDecision:
+        # Use the same current-evidence query both before and after publication.
+        open_prs = api.list_open_pull_requests()
+        comments = api.list_issue_comments(number)
         if not _merge_scope_is_unique(number, head_sha, base_sha, merge_sha, open_prs):
             return GateDecision(
                 "pending", "Shared merge/head+base across PRs; review scope ambiguous", pr_url
@@ -575,214 +542,10 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             return GateDecision("pending", "Codex review summary deleted; re-review required", pr_url)
         return classify_codex_review(head_sha, comments, pr_url)
 
-    decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
-
-    def withdraw_all(reason: str) -> None:
-        """Withdraw BOTH targets, each attempted independently.
-
-        A status belongs to a SHA, not to a PR, so the test-merge commit and the
-        HEAD can each carry a conclusion this run cannot confirm. Isolating the
-        attempts means one failing endpoint cannot prevent the other withdrawal;
-        if any attempt fails the run fails, because a success that cannot be
-        withdrawn must never be left standing.
-        """
-        withdrawn = GateDecision("pending", reason, pr_url)
-        errors: list[str] = []
-        for target in (merge_sha, head_sha):
-            try:
-                _publish(api, target, withdrawn, published)
-            except Exception as error:  # noqa: BLE001 - any transport failure
-                errors.append(f"{target[:10]}: {error}")
-        if errors:
-            raise RuntimeError("could not withdraw every published status: "
-                               + "; ".join(errors))
-
-    head_status = "not published"
-    # Every write lives inside one guard: any failure after a publication must
-    # withdraw BOTH targets and propagate. Reporting success while a target sits
-    # at `pending`, or worse at a stale success, would leave the PR either
-    # unmergeable or wrongly authorized with no guaranteed event to repair it.
-    try:
-        current = api.get_pull_request(number)
-        if (
-            (current.get("head") or {}).get("sha") != head_sha
-            or (current.get("base") or {}).get("sha") != base_sha
-            or current.get("merge_commit_sha") != merge_sha
-        ):
-            # Nothing was published, so simply re-evaluate the current snapshot.
-            raise PrChangedDuringEvaluation("the PR changed before anything was published")
-
-        scope_now = api.list_open_pull_requests()
-        publish_head = _head_scope_is_unique(number, head_sha, scope_now)
-        _publish(api, merge_sha, decision, published)
-        if publish_head:
-            _publish(api, head_sha, decision, published)
-
-        after = api.get_pull_request(number)
-        after_head = (after.get("head") or {}).get("sha")
-        after_base = (after.get("base") or {}).get("sha")
-        after_merge = after.get("merge_commit_sha")
-        if after.get("state") != "open":
-            # The PR closed while this pass was publishing. A closed PR has no
-            # authorization targets, so this pass must not return a success: the
-            # retry loop reconciles through the ledger.
-            raise PrChangedDuringEvaluation("the PR closed while publishing")
-        if after_head != head_sha or after_base != base_sha or after_merge != merge_sha:
-            # The snapshot moved past what this pass published. Raising hands the
-            # cleanup to the retry loop, which withdraws every success recorded in
-            # the ledger -- including targets written by earlier passes, which a
-            # fresh pass could not otherwise know about. One mechanism, one place.
-            raise PrChangedDuringEvaluation("the PR changed while publishing")
-        fresh_decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
-        if fresh_decision != decision:
-            # The world moved while this run was publishing, so this run's
-            # decision is superseded. Publishing `pending` here would be a
-            # regression that can outlive the newer run (each run has its own
-            # concurrency group, so an older one can finish last) and would
-            # strand a valid result with no guaranteed repair. Instead converge
-            # on the decision the CURRENT data supports -- computed by the same
-            # `decide`, so this is not an upgrade from stale reasoning.
-            _publish(api, merge_sha, fresh_decision, published)
-            head_still_unique = _head_scope_is_unique(
-                number, head_sha, api.list_open_pull_requests())
-            if head_still_unique:
-                _publish(api, head_sha, fresh_decision, published)
-            else:
-                # The HEAD is now shared, so a conclusion there cannot describe a
-                # single PR. Withdraw the success just written rather than leaving
-                # it for the other PR to inherit; a transient failure before the
-                # next pass would otherwise leave exactly that.
-                revoke_head_status(
-                    api, head_sha,
-                    GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
-                )
-            # Re-enter the evaluation loop: the convergence writes above were not
-            # themselves revalidated, and a concurrent deletion run could have
-            # revoked between them. Looping checks the evidence again instead of
-            # trusting this run's own last write.
-            raise PrChangedDuringEvaluation(
-                f"converged on {fresh_decision.state}; revalidating that decision")
-        # Final snapshot check: between the revalidation above and this return the
-        # PR can close, or its base/test-merge can move. Returning `success` then
-        # would leave the OLD test-merge commit authorized, and the run that
-        # changed it only knows the NEW one, so nothing would revoke the old.
-        # Compare every field, not just openness; raising hands cleanup to the
-        # retry loop.
-        final = api.get_pull_request(number)
-        if (
-            final.get("state") != "open"
-            or (final.get("head") or {}).get("sha") != head_sha
-            or (final.get("base") or {}).get("sha") != base_sha
-            or final.get("merge_commit_sha") != merge_sha
-        ):
-            raise PrChangedDuringEvaluation("the PR changed before the conclusion was returned")
-        # The post-publication `decide` revalidation reruns `_merge_scope_is_unique`,
-        # but a twin PR (same head+base) can still appear between that call and this
-        # scan. Recheck BOTH scopes here: the merge status must be withdrawn too, or a
-        # twin would inherit a conclusion that was never scoped against it.
-        final_open_prs = api.list_open_pull_requests()
-        head_ok = _head_scope_is_unique(number, head_sha, final_open_prs)
-        merge_ok = _merge_scope_is_unique(number, head_sha, base_sha, merge_sha, final_open_prs)
-        # Merge-scope ambiguity is handled INDEPENDENTLY of `publish_head`: the
-        # test-merge status may have been published even when the HEAD was withheld
-        # (a different-base PR already shared the HEAD), and a distinct-HEAD PR can
-        # still begin sharing the merge SHA. Either way the merge status no longer
-        # describes one PR and must be withdrawn, along with the HEAD if this run
-        # published one.
-        if not merge_ok:
-            reason = "the merge scope became ambiguous"
-            _publish(api, merge_sha,
-                     GateDecision("pending", f"Withheld: {reason}", pr_url), published)
-            if publish_head:
-                revoke_head_status(
-                    api, head_sha,
-                    GateDecision("pending", f"Withheld: {reason}", pr_url),
-                )
-            # The ambiguity may itself be transient: the twin could close while these
-            # withdrawals run, in which case its own `closed` handler re-evaluates the
-            # survivor and this stale `pending` would overwrite that valid success with
-            # no later event to repair it. Hand the decision back to the retry loop so
-            # the CURRENT scope is re-evaluated instead of treating this snapshot as
-            # final.
-            raise PrChangedDuringEvaluation("the merge scope became ambiguous")
-        if publish_head and not head_ok:
-            revoke_head_status(
-                api, head_sha,
-                GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
-            )
-            head_status = "revoked (HEAD became shared)"
-        else:
-            head_status = ("published" if publish_head
-                           else "withheld (HEAD is shared with another open PR)")
-    except PrChangedDuringEvaluation:
-        # Control flow, not a transport failure: propagate so the caller can
-        # re-evaluate the current snapshot. Nothing needs withdrawing here --
-        # either nothing was published, or the caller's next pass recomputes and
-        # republishes under its own guard.
-        raise
-    except SupersededStatusNotWithdrawn:
-        # Already reported with precise targets; re-wrapping would hide them and a
-        # second withdrawal attempt here would just duplicate the failure.
-        raise
-    except Exception as error:  # noqa: BLE001 - any transport or protocol failure
-        withdraw_all("Publication could not be confirmed")
-        if isinstance(error, (ValueError, RuntimeError)):
-            raise
-        raise RuntimeError(f"PR #{number} publication failed: {error}") from error
-    # Reporting sits outside the guard on purpose: both targets were published and
-    # revalidated, so a logging failure is NOT a publication failure, and
-    # withdrawing confirmed statuses would strand a valid review. It still fails
-    # the run, so nothing is silent.
-    try:
-        print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: "
-              f"{STATUS_CONTEXT} = {decision.state}")
-        print(f"PR #{number} HEAD {head_sha}: {STATUS_CONTEXT} {head_status}")
-        print(decision.description)
-        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-        if summary_path:
-            with open(summary_path, "a", encoding="utf-8") as file:
-                file.write(
-                    f"### Codex review gate\n\n- PR: #{number}\n- HEAD: `{head_sha}`"
-                    f"\n- Test merge: `{merge_sha}`\n- Status: **{decision.state}**"
-                    f"\n- Result: {decision.description}"
-                    "\n\nThis check verifies review completion, not that findings are resolved.\n"
-                )
-    except OSError as error:
-        raise ReportingFailed(
-            f"PR #{number}: reporting failed after the gate confirmed its statuses: {error}"
-        ) from error
+    decision = decide()
+    head_status = _publish_and_confirm(api, target, decision, decide, published)
+    _report_decision(target, decision, head_status)
     return decision
-
-
-def affected_shared_heads(event_name: str, event: dict) -> list[str]:
-    """HEAD SHAs whose set of owning open PRs changed in this event.
-
-    A HEAD shared by two open PRs is left pending for both. When one of them
-    closes or pushes elsewhere, the remaining PR now owns the old HEAD alone and
-    must be re-evaluated, but the triggering event only concerns the PR that
-    changed. These are the SHAs whose remaining owners must be revisited.
-    """
-    if event_name != "pull_request_target":
-        return []
-    action = event.get("action")
-    pull_request = event.get("pull_request") or {}
-    if action == "closed":
-        head = (pull_request.get("head") or {}).get("sha")
-        if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
-            return [head]
-        return []
-    if action == "synchronize":
-        before = event.get("before")
-        if not isinstance(before, str) or not SHA_PATTERN.fullmatch(before):
-            return []
-        # A delayed delivery can arrive after the PR already moved back to this
-        # commit (A -> B -> A). This PR then owns the reported `before` again, so
-        # its HEAD must be re-evaluated rather than excluded from the cleanup.
-        after = (pull_request.get("head") or {}).get("sha")
-        if after == before:
-            return []
-        return [before]
-    return []
 
 
 def reevaluate_head_owners(api: GitHubAPI, head_sha: str, skip: set[int]) -> None:
@@ -890,6 +653,51 @@ def reopen_aware_skip_set(api: GitHubAPI, event_name: str, event: dict,
     return skip
 
 
+def _reevaluate_base_push(api: GitHubAPI, branch: str) -> None:
+    candidates, listed = open_prs_targeting_branch(api, branch)
+    # Revoke all listed HEADs before evaluating any candidate: even a job timeout
+    # must not leave the rest authorized against the old base. Use the existing
+    # listing and a bounded pool so another API read or a serial sweep cannot
+    # consume the revocation window.
+    failures: list[str] = []
+
+    def revoke_candidate(candidate: int) -> str | None:
+        try:
+            head = listed.get(candidate)
+            if head is None:
+                head = (api.get_pull_request(candidate).get("head") or {}).get("sha")
+            if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
+                revoke_head_status(
+                    api, head,
+                    GateDecision("pending", "Base branch advanced; revalidating", ""),
+                )
+            return None
+        except Exception as error:  # noqa: BLE001 - any transport failure
+            return f"PR #{candidate} revocation: {error}"
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for outcome in pool.map(revoke_candidate, candidates):
+            if outcome is not None:
+                failures.append(outcome)
+
+    # Re-evaluate only after all withdrawals have been attempted. Bound this
+    # sweep too; no later event guarantees recovery for PRs left pending.
+    def evaluate_candidate(candidate: int) -> str | None:
+        try:
+            evaluate_pr(api, candidate)
+            print(f"re-evaluated PR #{candidate} after a push to {branch}")
+            return None
+        except Exception as error:  # noqa: BLE001 - any transport failure
+            return f"PR #{candidate}: {error}"
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for outcome in pool.map(evaluate_candidate, candidates):
+            if outcome is not None:
+                failures.append(outcome)
+    if failures:
+        raise RuntimeError("base push re-evaluation failed: " + "; ".join(failures))
+
+
 def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     """Evaluate the event's PR, then anyone else affected by the same HEAD.
 
@@ -904,59 +712,7 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
         if not branch:
             print("push event without a branch; skip")
             return 0
-        candidates, listed = open_prs_targeting_branch(api, branch)
-        # Withdraw every candidate's HEAD FIRST. A hard job timeout would
-        # otherwise terminate this fanout mid-way and leave the later HEADs
-        # still authorized against the previous base, with no chance to run the
-        # error handling. Revocation is cheap and can only deny.
-        failures: list[str] = []
-        # Revoke from the HEADs captured by the listing above: this fanout runs
-        # before the (also bounded) evaluation phase, and a hard job timeout
-        # mid-way would leave every later HEAD still carrying a success validated
-        # against the previous base. No second listing is issued, because a
-        # transient failure there would abort before anything was revoked.
-        # Revoke with a small worker pool. One status POST per candidate in
-        # series can exceed the job timeout on a large base push (each request may
-        # stall for the HTTP timeout), and a kill mid-way leaves every later HEAD
-        # still authorized. Four workers keep the wall clock bounded while staying
-        # gentle on the API.
-        def revoke_candidate(candidate: int) -> str | None:
-            try:
-                head = listed.get(candidate)
-                if head is None:
-                    head = (api.get_pull_request(candidate).get("head") or {}).get("sha")
-                if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
-                    revoke_head_status(
-                        api, head,
-                        GateDecision("pending", "Base branch advanced; revalidating", ""),
-                    )
-                return None
-            except Exception as error:  # noqa: BLE001 - any transport failure
-                return f"PR #{candidate} revocation: {error}"
-
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            for outcome in pool.map(revoke_candidate, candidates):
-                if outcome is not None:
-                    failures.append(outcome)
-        # The evaluation phase runs with the same bounded pool: each call makes
-        # several requests, so a serial sweep over a large base push can exceed
-        # the job timeout, and the preceding phase already set every candidate to
-        # `pending`. A hard kill would leave the later PRs blocked with no event
-        # to re-evaluate them.
-        def evaluate_candidate(candidate: int) -> str | None:
-            try:
-                evaluate_pr(api, candidate)
-                print(f"re-evaluated PR #{candidate} after a push to {branch}")
-                return None
-            except Exception as error:  # noqa: BLE001 - any transport failure
-                return f"PR #{candidate}: {error}"
-
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            for outcome in pool.map(evaluate_candidate, candidates):
-                if outcome is not None:
-                    failures.append(outcome)
-        if failures:
-            raise RuntimeError("base push re-evaluation failed: " + "; ".join(failures))
+        _reevaluate_base_push(api, branch)
         return 0
     number = pr_number_from_event(event_name, event)
     if number is None:

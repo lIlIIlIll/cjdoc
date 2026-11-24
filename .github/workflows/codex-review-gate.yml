@@ -26,6 +26,8 @@ on:
     paths:
       - '.github/workflows/codex-review-gate.yml'
       - 'scripts/codex_review_gate.py'
+      - 'scripts/codex_review_evidence.py'
+      - 'scripts/codex_review_github.py'
       - 'tests/test_codex_review_gate.py'
 
 permissions:

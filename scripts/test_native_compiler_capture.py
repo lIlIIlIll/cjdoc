@@ -23,6 +23,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import native_compiler_capture as capture_module
+import native_compiler_payload as payload_module
 from native_compiler_capture import NativeCompilerCapture
 
 PRODUCT_REASON = "sts-1.2-doc-ir-gc-no-chir-function-inlining"
@@ -303,7 +304,7 @@ class FailedStageTest(CaptureTestCase):
         fixture.write_ir("widget.o", b"object")
         fixture.write_invocations()
         fixture.write_log()
-        with mock.patch.object(capture_module.subprocess, "run",
+        with mock.patch.object(payload_module.subprocess, "run",
                                fake_opt(CLEAN_LLVM_TEXT)):
             record = capture.finish(5, fixture.stage_log)
 
@@ -348,7 +349,7 @@ class FailedStageTest(CaptureTestCase):
         fixture.write_invocations()
         capture.observe(WINDOWS_LLC_FAILURE.encode("utf-8"))
         fixture.write_log("... compiler log middle omitted ...\nfinal compiler summary\n")
-        with mock.patch.object(capture_module.subprocess, "run", fake_opt(CLEAN_LLVM_TEXT)):
+        with mock.patch.object(payload_module.subprocess, "run", fake_opt(CLEAN_LLVM_TEXT)):
             record = capture.finish(5, fixture.stage_log)
         self.assertEqual(record["status"], "recorded")
         self.assertEqual(record["compilerFailure"]["source"], "stage-stream")
@@ -371,7 +372,7 @@ class FailedStageTest(CaptureTestCase):
                 fixture.write_ir("widget.opt.bc", b"bitcode")
                 fixture.write_invocations()
                 fixture.write_log()
-                with mock.patch.object(capture_module.subprocess, "run",
+                with mock.patch.object(payload_module.subprocess, "run",
                                        fake_opt(text)):
                     record = capture.finish(5, fixture.stage_log)
                 self.assertEqual(record["status"], "unavailable")
@@ -395,7 +396,7 @@ class FailedStageTest(CaptureTestCase):
         # stores, so it must neither pass nor fail the payload by itself.
         text = (f"; ModuleID = '{capture.diagnostics_dir}/audit/widget.opt.bc'\n"
                 'define void @f() { ret void }\n')
-        with mock.patch.object(capture_module.subprocess, "run", fake_opt(text)):
+        with mock.patch.object(payload_module.subprocess, "run", fake_opt(text)):
             record = capture.finish(5, fixture.stage_log)
         self.assertEqual(record["status"], "recorded")
         self.assertIsNotNone(record["payload"])
@@ -413,7 +414,7 @@ class FailedStageTest(CaptureTestCase):
             fixture.write_ir("widget.opt.bc", b"bitcode")
             fixture.write_invocations()
             fixture.write_log()
-            with mock.patch.object(capture_module.subprocess, "run", fake_opt(text)):
+            with mock.patch.object(payload_module.subprocess, "run", fake_opt(text)):
                 outcomes[label] = capture.finish(5, fixture.stage_log)
         self.assertEqual(outcomes["local"]["reason"], "privacy-audit-rejected")
         self.assertIsNone(outcomes["local"]["payload"])
@@ -428,7 +429,7 @@ class FailedStageTest(CaptureTestCase):
         fixture.write_ir("widget.opt.bc", b"bitcode")
         fixture.write_invocations()
         fixture.write_log()
-        with mock.patch.object(capture_module.subprocess, "run", fake_opt(blocked)):
+        with mock.patch.object(payload_module.subprocess, "run", fake_opt(blocked)):
             record = capture.finish(5, fixture.stage_log)
         self.assertEqual(record["reason"], "privacy-audit-rejected")
         self.assertIsNone(record["payload"])
@@ -445,7 +446,7 @@ class FailedStageTest(CaptureTestCase):
         outside.write_bytes(b"bitcode")
         target.unlink()
         target.symlink_to(outside)
-        with mock.patch.object(capture_module.subprocess, "run", fake_opt(CLEAN_LLVM_TEXT)):
+        with mock.patch.object(payload_module.subprocess, "run", fake_opt(CLEAN_LLVM_TEXT)):
             record = capture.finish(5, fixture.stage_log)
         self.assertEqual(record["reason"], "ir-unsafe")
         self.assertIsNone(record["payload"])
@@ -459,7 +460,7 @@ class FailedStageTest(CaptureTestCase):
         capture.diagnostics_dir.joinpath("widget.opt.bc").write_bytes(b"bitcode")
         oversized.write_invocations()
         oversized.write_log()
-        with mock.patch.object(capture_module, "PAYLOAD_LIMIT", 4):
+        with mock.patch.object(payload_module, "PAYLOAD_LIMIT", 4):
             record = capture.finish(5, oversized.stage_log)
         self.assertEqual(record["reason"], "payload-oversize")
         self.assertIsNone(record["payload"])
@@ -563,7 +564,7 @@ class EvidenceIntegrityTest(CaptureTestCase):
         fixture.write_invocations()
         fixture.write_log()
         (fixture.sdk / "third_party/llvm/bin/llc.exe").write_bytes(b"replaced")
-        with mock.patch.object(capture_module.subprocess, "run",
+        with mock.patch.object(payload_module.subprocess, "run",
                                side_effect=fake_opt(CLEAN_LLVM_TEXT)) as disassemble:
             record = capture.finish(5, fixture.stage_log)
         self.assertEqual(record["status"], "unavailable")
@@ -665,7 +666,7 @@ class EvidenceIntegrityTest(CaptureTestCase):
         directory.mkdir()
         existing = directory / "widget.opt.bc"
         existing.write_bytes(b"previous-artifact")
-        with mock.patch.object(capture_module.subprocess, "run",
+        with mock.patch.object(payload_module.subprocess, "run",
                                fake_opt(CLEAN_LLVM_TEXT)):
             record = capture.finish(5, fixture.stage_log)
         self.assertEqual(record["reason"], "evidence-exists")
@@ -689,7 +690,7 @@ class EvidenceIntegrityTest(CaptureTestCase):
             directory.symlink_to(outside, target_is_directory=True)
         except OSError:
             self.skipTest("directory symlinks unavailable")
-        with mock.patch.object(capture_module.subprocess, "run", fake_opt(CLEAN_LLVM_TEXT)):
+        with mock.patch.object(payload_module.subprocess, "run", fake_opt(CLEAN_LLVM_TEXT)):
             record = capture.finish(5, fixture.stage_log)
         self.assertEqual(record["status"], "unavailable")
         self.assertEqual(record["reason"], "evidence-exists")
@@ -731,7 +732,7 @@ class EvidenceIntegrityTest(CaptureTestCase):
         fixture.write_ir("widget.opt.bc", b"bitcode")
         fixture.write_invocations()
         fixture.write_log()
-        with mock.patch.object(capture_module.subprocess, "run",
+        with mock.patch.object(payload_module.subprocess, "run",
                                fake_opt(CLEAN_LLVM_TEXT)), \
                 mock.patch.object(NativeCompilerCapture, "_write",
                                   side_effect=capture_module._Unavailable(
@@ -751,7 +752,7 @@ class EvidenceIntegrityTest(CaptureTestCase):
         fixture.write_ir("widget.opt.bc", b"bitcode")
         fixture.write_invocations()
         fixture.write_log()
-        with mock.patch.object(capture_module.subprocess, "run",
+        with mock.patch.object(payload_module.subprocess, "run",
                                fake_opt(CLEAN_LLVM_TEXT)):
             first = capture.finish(5, fixture.stage_log)
         payload = fixture.evidence / first["payload"]["file"]
