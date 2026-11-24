@@ -341,6 +341,7 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
             scripts = repo / "scripts"
             scripts.mkdir(exist_ok=True)
             for name in (
+                "release_package_contracts.py",
                 "safe_output_root.py",
                 "strict_json.py",
                 "verify_repository_inputs.py",
