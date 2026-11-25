@@ -131,7 +131,7 @@ class HighlightHostCliTest {
             @Expect(error.message, "--highlight-adapter and --highlight-node must be supplied together")
             let wrongCommand = @AssertThrows[IllegalArgumentException](
                 parseNewCli(["render", "--input", "docs.json", flag, highlightTestHostPath()]))
-            @Expect(wrongCommand.message, "highlight host options are only valid for generate and check")
+            @Expect(wrongCommand.message, "${flag} is not valid for render")
         }
         @Expect(parseNewCli(["generate"]).highlightAdapter.isNone(), true)
         @Expect(parseNewCli(["generate"]).highlightNode.isNone(), true)

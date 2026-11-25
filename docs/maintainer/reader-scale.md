@@ -123,7 +123,7 @@ python3 scripts/with_stdx.py --variant static -- python3 scripts/reader_capture.
 
 Linux 观测另记录实际 `environment.cpuAffinity`；它是 Node 启动进程的允许 CPU 列表，子进程继承该亲和性。需要隔离调度时，先从当前允许集合选择并登记固定 CPU 集合及物理核拓扑，再以同一 `taskset --cpu-list "$CPUSET"` 前缀运行完整 baseline/after 命令。隔离配方单独登记，不根据计时结果挑核，不改 governor，也不把未隔离配方的失败改记为通过；两侧完整 environment 仍须相等。
 
-采集器识别固定基线发布的 `cjdoc.search-index/11` 和候选发布的 `/12`。比较时分别用固定 baseline checkout 和当前 checkout 的 schema，重算 `/3` 与 `/4` 的搜索投影摘要。登记的 `v17-v19-unregistered-source-no-comment-fields` 只允许 v19 新增空字段数组及约定的搜索合同差异；源文件、路由、签名、ARIA 与预算仍按原规则核验。旧 schema 只用于证据校验，不进入产品库存。
+采集器识别固定基线发布的 `cjdoc.search-index/11` 和候选发布的 `/12`。比较时用各自冻结的 schema 重算搜索投影摘要，并验证内嵌的 `cjdoc.search-contract/2` → `/3` 过渡。登记只允许约定的默认值、空字段和合同差异；源文件、路由、签名、ARIA 与预算仍分别验证。旧 schema 只用于证据校验，不进入产品库存。
 
 已有固定原生站点时可独立重跑浏览器观测，原生生成费用仍引用原来的真实凭据，不把重跑写成重新生成：
 
@@ -146,19 +146,26 @@ python3 scripts/reader_register.py \
   --output "$TASK/registered-1000.json"
 ```
 
-这是不带协议过渡登记的严格默认调用。固定 1k CI 的 v17→v18 比较必须在 baseline 捕获后、after 捕获前，用下面的调用替代它；不要先生成默认登记再补改文件：
+上面是无过渡登记的严格默认调用。复现固定 1k CI 的 v17→v19 对照时，改用下面的调用，在 baseline 捕获后、after 捕获前一次写入全部登记：
 
 ```bash
+: "${BASELINE_SOURCE:?指定与 BASELINE_REVISION 一致的冻结 checkout}"
+test "$(git -C "$BASELINE_SOURCE" rev-parse HEAD)" = "$BASELINE_REVISION"
+export CJDOC_READER_BASELINE_SCHEMAS="$BASELINE_SOURCE/docs/schema"
+export CJDOC_READER_BASELINE_CONTRACT="$TASK/baseline-search-contract.json"
+"$BASELINE_BINARY" schema search-contract > "$CJDOC_READER_BASELINE_CONTRACT"
+
 python3 scripts/reader_register.py \
   --baseline "$TASK/baseline-1000/observation" \
   --template docs/maintainer/reader-scale-budgets.json \
   --output "$TASK/registered-1000.json" \
-  --doc-ir-transition v17-v18-unregistered-source \
+  --doc-ir-transition v17-v19-unregistered-source-no-comment-fields \
   --aria-transition docs/maintainer/reader-scale-docs-173-177.json \
-  --presentation docs/maintainer/reader-scale-presentation-v18.json
+  --presentation docs/maintainer/reader-scale-presentation-readable-api.json \
+  --api-routes-transition docs/maintainer/reader-scale-readable-api.json
 ```
 
-这三个参数只用于固定 1k 比较：精确过渡冻结 IR/ARIA 的既定差异，`--presentation` 明确登记本次重设的排版与实际使用字体。三者并存时各自仍按原规则逐项校验，任何一个都不会放宽数值预算、原始任务、打印/无 JS 检查或其它视觉相等要求；其它 cohort 和普通重跑不传它们，继续使用严格默认比较。
+四项登记只用于固定 1k 对照，分别限制 Doc IR/搜索、双语 ARIA、排版/实际字体和可读路由。它们不改数值预算、原始任务、打印或无 JS 检查；其它 cohort 使用严格默认比较。
 
 ```bash
 : "${AFTER_BINARY:?指定实际改后 binary}"
@@ -174,20 +181,19 @@ python3 scripts/reader_compare.py \
 
 登记只读取 baseline、数值模板和明确提供的 transition profile；Doc IR 过渡还从当前候选源码的 `cjpm.toml` 读取一次 `package.version`。登记不读取 after，并且不覆盖已有登记。比较器重算原始样本分位，拒绝更换源码/任务、SDK、浏览器、字体、harness、语言/载体或缺失测量；前 20 排序、原始重载签名/作者详情、准确性、体积、堆、DOM、打印/无 JS、布局和所有性能门槛继续照常检查。没有 transition 登记时，Doc IR 与搜索 index payload 仍按原有严格规则比较。资源受限输出保持 `pass: false`，不能补造浏览器样本。
 
-### 固定 1k 的 v17→v18 窄过渡
+### 固定 1k 的 v17→v19 过渡
 
-workflow 只在 `READER_CORPUS=1000` 时预登记 `v17-v18-unregistered-source` 和 `docs/maintainer/reader-scale-docs-173-177.json`；10k、50k、external 及手动其它规模不继承这两项登记。它们只允许比较副本中的下列精确、可验证变化，不改变输入、任务、采样或性能预算。
+工作流仅在 `READER_CORPUS=1000` 时使用上面的四项登记。10k、50k、external 及其它规模不继承。
 
-- Doc IR 基线必须是 `/17`，改后必须是 `/18`。基线每个 `ModuleDoc.repositoryPath` 都必须为 `null`；改后移除此字段。改后每个 `FileDoc.provenance` 必须恰为 `state=unavailable`、`reason=no_project_repository`、`evidenceKind=none`，`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity` 全为 `null`。只允许新增 `DocComment.localizationScope="all"`、`DocTag.entryId=null`、`DocTag.source=null` 和 `DocumentationText.entryId=null`。不允许出现 admonition，metadata 与其它字段仍须相等。
-- native 与每种 locale 的 publisher Doc IR 分别冻结基线完整 `generator`，并在 after 捕获前冻结候选源码的 `package.version` 为 `afterGeneratorVersion`。改后的 `generator.version` 必须精确等于该登记值；generator 名称、toolchain、其它键和值仍须与基线相同。只在上述身份核验成功后，才在比较副本中配对 version；不接受任意版本漂移。
-- IR 的原始 receipt/hash 在两侧分别验证。native `docs.json` 与 publisher 打包的 Doc IR 都按同一组精确默认值规则比较；publisher 快照身份还须从打包的 Doc IR 和 manifest 独立验证。登记不把原始文件改写成 v18，也不把默认来源值概括成任意来源差异。
-- search-index 仍是 `/11`，search-contract 仍是 `/2`。每侧的原始 `search-index.json`、`search-index.js` 和捕获 receipt 分别核验；严格解析 JS wrapper 的两个数据赋值：index 数据须与 JSON 一致，signature payload 在配对比较中须严格一致，且不允许额外可执行片段。另从 publisher 打包的 Doc IR 独立重算 snapshot ID，并以完整 schema 11 投影、UTF-8 长度前缀输入重算 projection fingerprint。
-- 只有上述证明成功后，比较副本才可配对 `scope.snapshotId`、`scope.sourceSnapshotId`、`entries[].snapshotId` 及根/coverage 的 `projectionId`。其余 schema 11 payload、正文、分类、模块/依赖/暴露、href、顺序、coverage 与 contract 全部严格相等。保留两侧原始 JSON/JS、receipt、SHA-256 和新身份，不回写产物。
+- 基线 Doc IR 必须为 `/17`，候选必须为 `/19`。旧 `ModuleDoc.repositoryPath` 必须为 `null`，候选移除此字段。候选只允许新增固定的未登记 `FileDoc.provenance`、默认注释定位字段及空的 `metadata.fields`；不允许新增 admonition。比较副本对齐这些已证明的默认值，其余字段严格相等。
+- 原生 Doc IR 和每种语言发布的 Doc IR 各自绑定原始文件摘要、基线完整 `generator` 和事前读取的候选 `package.version`。候选只允许该生成器版本变化；不会重写原始产物。
+- 分别按 `search-index/11` + `search-contract/2` 和 `search-index/12` + `search-contract/3` 验证原始 JSON、JS、内嵌合同和捕获回执。候选的根及条目 `commentFields` 必须为空；合同差异仅限 query-request/4 和登记的字段筛选/分面声明。签名数据不变。
+- 独立重算每侧的 snapshot 和 projection 身份后，才在比较副本中配对派生 ID；按登记规则以外的顺序、正文、链接、分类或 coverage 变化仍失败。保留两侧原始字节及摘要。
 - ARIA 登记使用 `cjdoc.reader-aria-transition/1` profile。它必须冻结 `en` 与 `zh-CN` 两种 locale 的完整 before/after ARIA snapshots、对应 corpus/locale 身份及完整快照摘要；摘要和实际快照都须匹配。允许的树差异仅限 #173 的反向类型使用位置文案、#174 按投影成员数省略工具栏控件的默认状态，以及 #176 的真实 current-page/ancestor 状态。未知树差异拒绝。
 - 可读路由登记使用 `reader-scale-readable-api.json`。从原始 `/1` 发布和冻结树读取历史包地址；只接受 `/3` 发布中与捕获声明的模块和包身份一致、且正文身份确证的 `packages/reader_scale/index.html`。仅配对这条已登记的包面包屑与原有已证实的声明地址；链接顺序、查询、片段和其余可访问性树内容不变。
 - ARIA profile 仅约束 ARIA snapshot 差异，不豁免字体、字体文件、实际 font usage、字号、正文排版或其它视觉指标；这些仍按原规则相等比较。数值门槛、样本数、原始任务、声明下限、排名、print 检查和性能/资源阈值均不变。
 
-这两项是 baseline 后、after 前写入新注册预算的 preregistration。`reader_compare.py` 仍只接收已冻结的 `--budgets`，没有 after-time 豁免开关；未注册时原有严格默认继续生效。它们描述可接受的窄差异，不是任何本地或远端 Reader 运行通过的证据。
+上述登记只在 baseline 后、after 前写入新预算。`reader_compare.py` 只接收已冻结的 `--budgets`，不提供 after-time 豁免；没有登记时仍使用严格比较。这些是允许的窄差异，不是运行通过的证据。
 
 
 若是新机器，应重新采集其 baseline 并绑定**同一份事先登记的数值模板**，不能把本地毫秒数与 runner 直接相减，也不能看完 after 再修改模板。单个比较器通过只证明已登记的检查，不代替 issue 的质量人工复核、人类可用性或全部已有验收。
@@ -200,8 +206,8 @@ RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件�
 
 [Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；固定以 `67faf0b244544a750543f049370c59479769eff4`（Doc IR/17、search-index/11）为当前 CI baseline，在 checkout 外使用同一认证 SDK 构建。该基线刷新经显式批准：此门禁仅证明后续修复相对该版本的回归，不把它表述为旧协议到新协议的完整性能比较。旧 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 的历史观测保持原样，原功能变更的成本另行披露。
 
-在同一 runner 上依次采 baseline、事前登记预算、采 after、运行行为回归并严格比较。固定 1k 按上文同时冻结 Doc IR、完整双语 ARIA 快照和 v18 presentation；其它规模不使用这三项登记。比较仍要求相同原始任务、样本数、完整字体环境、声明下限及资源/延迟预算。搜索 JSON/JS 各侧按 receipt 验证，只配对已证明的派生身份，其余 payload 严格比较；原始 JSON、日志、Doc IR、截图与比较作为该 run artifact 保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
-固定 1k 的 ARIA tree 只接受已冻结完整快照，排版与实际 font usage 只接受 `reader-scale-presentation-v18.json` 登记的差异；七家族安装清单和整个 environment 仍严格相等，数值预算不变。旧 `reader-scale-presentation.json` 继续只作 #163 的历史凭据，不用于当前 CI。
+在同一 runner 上依次采 baseline、事前登记预算、采 after、运行行为回归并严格比较。固定 1k 使用上述四项登记，其中排版与实际 font usage 使用 `reader-scale-presentation-readable-api.json`；历史排版 profile 不用于当前 CI。其它规模不使用这些登记。比较仍要求相同任务、样本数、完整字体环境、声明下限及资源/延迟预算。
+原始 JSON、日志、Doc IR、截图与比较作为该 run artifact 保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
 浏览器行为回归按当前检索契约校验：filter-only 同分结果使用 UTF-8 canonical identity 顺序，package 过滤保留 canonical-or-exposure 命中。历史恢复场景用显式 `name:` 条件选择唯一成员并核对其捕获的渲染身份，不对自由文本 discovery 的结果数量固定旧假设。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。

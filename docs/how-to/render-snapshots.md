@@ -85,7 +85,7 @@ cp target/doc-ir-capture/docs.json "$WORK/current.json"
 | `error: bounded read could not access file: '/…/current.json'` | 路径不存在，或命令不在 `$WORK` 里执行 | 确认已把 `current.json` 复制到当前目录，或给 `--input` 绝对路径 |
 | `error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/19'` | 快照来自旧版本 cjdoc | 源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的迁移路径 |
 | 输出目录被拒绝 | 提前手工建了目录，或登记产物被改过 | 换一个尚不存在的新输出路径；确认可丢弃手工修改后加 `--force-owned` |
-| `error: render accepts only --input, render options, and --max-doc-ir-mib` | 给 `render` 加了项目、依赖、受众、lint、cfg 或缓存类选项 | 去掉这些选项，改用 `generate` |
+| `error: --project is not valid for render` （或其他选项） | 给 `render` 加了项目、依赖、受众、lint、cfg 或缓存类选项 | 去掉这些选项，改用 `generate` |
 | `error: --doc-version requires --format html` | 只写了版本标签没生成 HTML | 同时加 `--format html` |
 | 页面里缺少某个声明或示例结果 | 快照里本来就没有 | `render` 只展示快照已有内容；补齐后重新 `generate` |
 

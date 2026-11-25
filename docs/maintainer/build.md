@@ -220,7 +220,7 @@ Linux 锁回收先核对同一次 kernel boot、PID namespace 和一致的 procf
 ## 浏览器回归
 
 完整 Playwright 套件需要真实生成的参考页、双语分组/标签页、版本组合和 PocketKit 阅读站点。
-先完成上述工具链和产品构建准备，使用 CI 固定的 Node 26.12.0 与 `tests/browser/package-lock.json`。
+先完成上述工具链和产品构建准备，使用[主 CI](../../.github/workflows/ci.yml)固定的 Node 26.11.1 与 `tests/browser/package-lock.json`。独立的 [Reader scale 工作流](../../.github/workflows/reader-scale.yml)使用 Node 26.12.0，不是本节的回归运行时。
 在仓库根目录执行；`OUT` 必须是本次新建的绝对输出目录，不能复用旧产物。
 fixture 仓库 URL 只用于验证捕获后的源码链接，不表示该示例仓库或 revision 可以远程访问。
 

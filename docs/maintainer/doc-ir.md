@@ -27,9 +27,9 @@ cjdoc schema page
 cjdoc schema source-provenance
 ```
 
-`docs/schema/` 的生成清单见 [`SCHEMA_NAMES`](../../scripts/repository_input_contracts.py)。当前公开 wire 为 Doc IR/19、declaration/3、page/2、query-request/4、query-result/5、search-index/12 与 search-contract/3；独立来源回执为 `cjdoc.source-provenance/1`。
+`docs/schema/` 的生成清单见 [`SCHEMA_NAMES`](../../scripts/repository_inputs/contracts.py)。当前公开 wire 为 Doc IR/19、declaration/3、page/2、query-request/4、query-result/5、search-index/12 与 search-contract/3；独立来源回执为 `cjdoc.source-provenance/1`。
 
-`scripts/check.sh cli` 会调用 `cjdoc schema <name>` 逐个导出并与 `docs/schema/` 逐字节比较，所以 schema 文件与 binary 必须同步。release 包也包含当前发布 schema 与 `release-manifest.json`；发布校验要求当前 schema 与 golden 都被 Git 跟踪。
+`just schema` 和 `scripts/check.sh cli` 使用同一校验器：核对 `cjdoc schema list`，逐个导出 schema 并与 `docs/schema/` 逐字节比较。release 包也包含当前发布 schema 与 `release-manifest.json`；发布校验要求当前 schema 与 golden 都被 Git 跟踪。
 
 ## 修改 Doc IR 的同步清单
 
@@ -69,17 +69,17 @@ bash scripts/update_goldens.sh
 
 当前 golden 覆盖 `basic`、`functions`、`types`、`extend_visibility`、`source_edges`、`unsupported`、`workspace`、`conditional-linux`、`path-dependencies` 等 fixture，由 `scripts/check.sh cli` 逐个两次生成、比较并与 golden 字节对齐。生成器和校验器都显式选择 `--semantic source`，固定源码/AST 契约，避免本机编译目标改变跨平台 golden；默认 CHIR 的自动定位、真实语义、失败回退与确定性由安装布局回归和普通 CLI 集成另行覆盖，性能 profile 仍测量默认 CHIR 路径。
 
-## Doc IR/18 的分类 metadata
+## 当前 Doc IR 的分类 metadata
 
-根对象必须包含 `metadata: {groups: [], tags: []}`。group wire 记录严格包含 moduleId、packageName、ownerId、id、title、titles 和 order；tag 记录严格包含 moduleId、id、title 和 titles。titles 记录 language/title，数组按稳定 UTF-8 顺序编码；缺字段与 null 不可互换，未知属性被拒绝。
+根对象必须包含 `metadata: {groups: [], tags: [], fields: []}`。group wire 记录严格包含 moduleId、packageName、ownerId、id、title、titles 和 order；tag 记录严格包含 moduleId、id、title 和 titles。titles 记录 language/title，数组按稳定 UTF-8 顺序编码；缺字段与 null 不可互换，未知属性被拒绝。
 
 生成时 metadata 配置先绑定完整源码声明 scope，再随公开声明投影捕获。公开 Doc IR 只保存当前发布声明实际使用的定义；audience/cfg 等发布范围收窄后，未再被使用的定义会移除。metadata 计入原有 Doc IR 字节和对象预算，不会扩大 64 MiB 总上限。metadata title/order 不进入 SymbolId 或 API fingerprint。
 
-`render --input` 只使用已捕获的 Doc IR/18，不读取源码目录、`cjdoc.toml` 或来源回执。Doc IR/17 及更早版本不接受迁移；若要重放旧项目内容，必须从保存的源码重新生成当前格式。
+`render --input` 只使用已捕获的 Doc IR/19，不读取源码目录、`cjdoc.toml` 或来源回执。Doc IR/18 及更早版本不接受迁移；若要重放旧项目内容，必须从保存的源码重新生成当前格式。
 
 `scripts/test_declaration_metadata.py --binary PATH --output-root DIR` 从真实源码捕获双语站点，移走任务副本的源码与配置后，以 compiler guard 验证重放、查询、manifest 完整性和非 breaking 的文档变更。同页 inherited/declared owner 冲突另用明确标注的公开 Doc IR 模型输入检查：syntax provider 的 `superType` 不是 `inheritedMember` 证据，测试不会把模型场景记作编译器产出的继承语义。
 
-## Doc IR/18 的逐文件源码来源
+## 当前 Doc IR 的逐文件源码来源
 
 每个 `FileDoc` 都必须带 `provenance`；构造默认是 `SourceProvenance.unavailable("no_registration")`。该对象及其 `state`、`reason`、`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity`、`evidenceKind` 字段在 wire 中均必需；无值写 `null`，`evidenceKind` 取 `caller_pinned_receipt` 或 `none`。公开投影和消费者按 `(moduleId, SourceRange.path)` 找对应文件，不再从 `ModuleDoc.repositoryPath` 推断来源；`ModuleDoc.repositoryPath` 已从 v18 移除。
 

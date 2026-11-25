@@ -37,7 +37,7 @@
 | 验收记录 | [acceptance/](acceptance/) | 按 issue 归档的验收映射与复现入口 |
 | 历史实现报告 | [implementation-report-v0.6.md](implementation-report-v0.6.md) | v0.6.0 的历史报告，仅作归档，不是当前证据 |
 | 调查记录 | [../research/](../research/) | CHIR、`std.ast`、高亮边界等时间点调查记录 |
-| 发布 schema | [../schema/](../schema/) | 当前发布的 25 个 schema 文件，由 `scripts/update_schemas.sh` 从构建产物同步 |
+| 发布 schema | [../schema/](../schema/) | `scripts/update_schemas.sh` 从构建产物同步；`just schema` 检查当前登记清单及产物字节 |
 
 ## 源码入口
 

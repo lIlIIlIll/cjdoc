@@ -54,15 +54,18 @@ copied local assets. Chinese and English structural labels are supported.
   behavior.
 - Unsupported source constructs should produce visible diagnostics or partial
   results rather than crash the complete generation.
-- CHIR is not part of the current dependency graph; any future semantic adapter
-  enters through the public `SemanticProvider` SPI.
+- `generate`, `check`, and `serve` default to the bundled `stdx.chir` worker
+  for supplemental semantic facts. Source declarations and comments remain
+  authoritative; worker failures retain the AST fallback. CLI users can opt
+  out with `--semantic source`; integrations can use `SemanticProvider`.
 
 ## Evidence on Hand
 
 The repository contains the HTML renderer in `src/render/html/`, renderer
 safety tests in `src/render/renderer_safety_test.cj`, HTML validation scripts in
 `scripts/validate_html_site.py` and `scripts/test_validate_html_site.py`, and
-fixtures under `tests/fixtures/projects/`, current goldens under `tests/fixtures/golden-v16/`, and no frozen legacy Doc IR migrations.
+fixtures under `tests/fixtures/projects/`, and current Doc IR v19 goldens
+under `tests/fixtures/golden-v19/`. The decoder does not migrate older inputs.
 No user-supplied logo, imagery, testimonials, or commercial claims are part of
 the product brief; future work must not fabricate them.
 

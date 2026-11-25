@@ -37,7 +37,7 @@
 | `--output DIR` | 目录 | generate/serve 为 `<project>/target/doc`，render 为 `target/doc` | generate、render、serve；compose 必填 |
 | `--stdout` | 标志 | 关闭 | generate、render |
 | `--input FILE` | Doc IR JSON | 无 | render（必填） |
-| `--force-owned` | 标志 | 关闭 | generate、render、compose |
+| `--force-owned` | 标志 | 关闭 | generate、render、serve、compose |
 | `--jobs N` | 整数 `1..64` | `1` | generate、check、serve |
 | `--audience LEVEL` | `external`、`package`、`all` | `external` | generate、check、serve |
 | `--lint-profile LEVEL` | `off`、`standard`、`strict` | `standard` | generate、check、serve |
@@ -51,8 +51,8 @@
 | `--cjc PATH` | 可执行文件 | `cjc` | generate、check、serve（要求 `--semantic chir`） |
 | `--chir-worker PATH` | 可执行文件 | 与 cjdoc 同目录的 `chir-worker-main` | generate、check、serve（要求 `--semantic chir`） |
 | `--chir-import-path DIR`… | 目录 | 无 | generate、check、serve（要求 `--semantic chir`） |
-| `--highlight-adapter PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-node` 成对） |
-| `--highlight-node PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-adapter` 成对） |
+| `--highlight-adapter PATH` | 绝对路径 | 无 | generate、check、serve（与 `--highlight-node` 成对） |
+| `--highlight-node PATH` | 绝对路径 | 无 | generate、check、serve（与 `--highlight-adapter` 成对） |
 | `--cfg NAME=VALUE`… | 条件编译键值 | 无 | generate、check、serve |
 | `--include-path-dependencies`、`--no-include-path-dependencies` | 标志 | 关闭 | generate、check、serve |
 | `--include-cached-dependencies`、`--no-include-cached-dependencies` | 标志 | 关闭 | generate、check、serve |
@@ -84,7 +84,7 @@
 | `--deny-breaking-api` | 标志 | 关闭 | diff |
 | `--deny-potentially-breaking-api` | 标志 | 关闭 | diff |
 | `--baseline FILE` / `--current FILE` | API 快照 | 无 | diff |
-| `--port N` | 端口整数 | `8080` | serve |
+| `--port N` | `0..65535`；`0` 由系统分配空闲端口 | `8080` | serve |
 | `--open` | 标志 | 关闭 | serve |
 | `--snapshot PATH`… | `docs.json`、`agent/manifest.json`、`versions.json` | 无 | query、mcp（1–64 个） |
 | `--request FILE\|-` | 请求 JSON，`-` 为 stdin | 无 | query（恰好一个） |
@@ -94,9 +94,7 @@
 
 `--locale` 选择界面语言与已有作者译文，不翻译正文；它不改写 `zh-Hans`、`en-US` 之类的区域别名，非法值报 `--locale must be zh-CN or en`。省略时 generate 与 serve 使用 `[i18n]` 的 `default-language`（没有该表时为 `zh-CN`）；render 不读配置，始终从 `zh-CN` 开始，除非显式给出该选项。
 
-`--port` 与 `--open` 只影响 serve。`render` 接受这两个选项但不使用；`diff` 拒绝它们，报 `diff accepts only input paths, --format, and API deny flags`。
-
-`--semantic` 对 render、diff、query、mcp、schema、versions compose 报 `semantic options are only valid for generate, check, and serve`。
+`--port` 与 `--open` 仅适用于 serve；其他命令不会忽略它们。命令帮助 `cjdoc <command> --help` 列出该命令可接受的选项。
 
 ## 生成和离线渲染的输出选项
 
@@ -149,8 +147,8 @@
 | 服务根 | 输出目录下的 `html/`，即使还请求了其他格式；`--format html` 总会补上 |
 | 可用的生成类选项 | `--format`、`--output`、`--locale`、`--force-owned`、`--jobs`、`--audience`、`--lint-profile`、`--cfg`、依赖与缓存选项、`--repository-*`、`--require-language`、`--deny-warnings`、`--check-examples`、两个覆盖率门槛、`--api-surface-baseline`、`--max-doc-ir-mib`、`--agent-full`、字体选项 |
 | 语义选项 | `--semantic`、`--cjc`、`--chir-*` 与 generate/check 一致，便于预览与正式站点使用相同设置 |
-| 不适用 | `--highlight-*`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible`、`--doc-version`、`--all-languages`、两个报告附加选项 |
-| `--stdout` | 被接受但不改变行为；与 `--format html` 同用仍报错 |
+| 外部高亮 | 同时给出 `--highlight-adapter` 和 `--highlight-node`；启动与重建均使用这一组合 |
+| 不适用 | `--stdout`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible`、`--doc-version`、`--all-languages`、两个报告附加选项 |
 | 配置来源 | `[output].directory` 决定站点根，`[output].formats` 决定额外产物，`[output].agent-full` 与字体键生效 |
 
 监视范围是项目内的 `.cj`、`.md`、`cjpm.toml`、`cjpm.lock`、`cjdoc.toml`；跳过隐藏项、`target/`、`.git/`、输出目录与缓存目录。保存后重建，浏览器需手动刷新。
@@ -158,6 +156,8 @@
 每次重建都按启动时的命令行重新读取 `cjdoc.toml`：改动的 `[analysis]`、`[semantic]` 等设置会生效，删除的键回到真实默认值，CLI 覆盖仍然优先。输出目录、缓存目录与监听端口在启动时确定，整个会话不变；重建时若解析出不同的输出或缓存位置，服务提示 `output or cache location changed; restart serve`，保留上一份成功站点。
 
 重建失败时服务继续提供上一份成功站点；进程因输入错误退出后，修正输入再重启。`Ctrl+C` 停止。
+
+`--port 0` 让系统选择空闲端口。终端地址、`--open` 与状态接口均使用实际监听端口。指定的端口若已被占用，serve 退出 `2` 并指出无法监听的地址。
 
 状态接口 `http://127.0.0.1:<port>/__cjdoc/status.json` 返回 `cjdoc.serve-status/1`：
 

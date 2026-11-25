@@ -370,8 +370,7 @@ private func serveBrowserCommand(url: String): (String, Array<String>) {
     ("cmd.exe", ["/c", "start", "", url])
 }
 
-private func launchServeBrowser(port: Int64): Unit {
-    let url = "http://127.0.0.1:${port}/"
+private func launchServeBrowser(url: String): Unit {
     try {
         let (command, arguments) = serveBrowserCommand(url)
         let _ = launch(command, arguments)
@@ -401,17 +400,26 @@ protected func runServeCommand(options: NewCliOptions, rebuild: ServeRebuild): I
     let requestedCache = selectedSourceCacheDirectory(options)
     let (preparedOutput, selectedCache) = prepareOutputAndCacheDirectories(output, requestedCache)
     let siteRoot = Path(preparedOutput).join("html")
-    let port = options.servePort
-    let server = TcpServerSocket(bindAt: IPSocketAddress("127.0.0.1", UInt16(port)))
-    server.reuseAddress = true
-    server.bind()
-    let state = ServeState()
-    eprintln("serve: http://127.0.0.1:${port}/")
-    serveBuild(options, preparedOutput, selectedCache, state, rebuild)
-    if (options.serveOpen) { launchServeBrowser(port) }
-    let excludedDirectories = serveSnapshotExclusions(preparedOutput, selectedCache)
-    var snapshot = collectServeSnapshot(canonicalize(Path(options.project)), excludedDirectories)
+    let requestedPort = options.servePort
+    let server = TcpServerSocket(bindAt: IPSocketAddress("127.0.0.1", UInt16(requestedPort)))
     try {
+        server.reuseAddress = true
+        try {
+            server.bind()
+        } catch (error: SocketException) {
+            throw IllegalArgumentException("cannot listen on 127.0.0.1:${requestedPort}: ${error.message}")
+        }
+        let port = match (server.localAddress) {
+            case address: IPSocketAddress => Int64(address.port)
+            case _ => throw IllegalStateException("preview listener did not return an IP address")
+        }
+        let url = "http://127.0.0.1:${port}/"
+        let state = ServeState()
+        eprintln("serve: ${url}")
+        serveBuild(options, preparedOutput, selectedCache, state, rebuild)
+        if (options.serveOpen) { launchServeBrowser(url) }
+        let excludedDirectories = serveSnapshotExclusions(preparedOutput, selectedCache)
+        var snapshot = collectServeSnapshot(canonicalize(Path(options.project)), excludedDirectories)
         while (true) {
             let current = collectServeSnapshot(canonicalize(Path(options.project)), excludedDirectories)
             if (!serveSnapshotsEqual(snapshot, current)) {

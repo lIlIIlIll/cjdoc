@@ -40,11 +40,10 @@ manifest 也可通过 `--previous` 做跨发布回归检查。更新范围基线
 
 ## 构建与本地复现
 
-准备仓库要求的 Cangjie 1.2.0 和匹配 stdx sidecar，严格按
-[Pages workflow](../../.github/workflows/pages.yml) 的固定工具链步骤构建 cjdoc。
-当前 SDK 1.2.0 的 `llc` 在默认优化级别处理 markdown/yjson 时会崩溃，因此该工作流的
-“Build cjdoc”步骤临时将唯一的空 `override-compile-option` 改为 `-O1`，构建后通过
-`finally` 恢复原始清单。复现时沿用该完整步骤，不直接运行省略此处理的默认构建命令。
+按[构建指南](build.md)准备经过认证的 Cangjie 1.2.0 STS 和匹配 stdx，并使用
+[`build-linux-candidate.yml`](../../.github/workflows/build-linux-candidate.yml) 的源绑定构建入口。
+产品和配套 CHIR worker 使用 `-O2 --fno-chir-function-inlining -Woff deprecated`；
+`-O1` 是 `cjpm test` 专属例外，不用于展示站生成器。
 不要修改 SDK、编译器或 stdx 来迁就展示。可执行文件必须来自要验收的仓库 revision，
 运行展示构建前工作区须恢复为该提交的干净状态。
 
@@ -93,7 +92,7 @@ HTML/Markdown 概念索引保留作者链接，不作为 cjdoc 手册改写。
 
 | 产物 | 可读视图必须保留的含义 |
 | --- | --- |
-| Doc IR v17 | source declarations, comments, source positions, explicit partial status, diagnostics, and captured group/tag metadata |
+| Doc IR v19 | 源码声明、注释和位置、显式不完整状态、诊断、分类及捕获的作者字段 |
 | coverage / quality | 指标分母、audience、规则和具体缺失位置；比例不代表契约正确 |
 | `--check-examples` | `must-pass`、`must-fail`、`run` 等作者指令的真实 CLI 验证；结果由诊断和退出码表达 |
 | API diff | 同库两个版本、原生分类、匹配状态、不确定性及前后声明链接 |

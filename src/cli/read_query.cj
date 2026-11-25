@@ -16,9 +16,12 @@ private func parseDocumentationReadCommand(args: Array<String>): DocumentationRe
     var index: Int64 = 1
     while (index < args.size) {
         let name = args[index]
-        if ((name != "--snapshot" && name != "--request") || index + 1 >= args.size) {
+        if (name != "--snapshot" && name != "--request") {
             throw DocumentationQueryException("invalid_request", "read_command_option",
-                "Read commands accept repeated --snapshot paths and query accepts one --request path or '-'.")
+                "${name} is not valid for ${args[0]}.")
+        }
+        if (index + 1 >= args.size) {
+            throw DocumentationQueryException("invalid_request", "read_command_option", "${name} requires a path.")
         }
         let value = args[index + 1]
         if (value.isEmpty()) { throw IllegalArgumentException("read command paths must not be empty") }

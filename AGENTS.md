@@ -2,8 +2,8 @@
 
 ## 项目目标
 
-`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。源码声明、注释和位置以 `std.ast` 与 lexer 为真值，输出 schema-versioned、确定性的 Doc IR v18；decoder 只接受当前版本，不迁移旧 Doc IR 输入。当前 wire contract 见 [Doc IR 维护说明](docs/maintainer/doc-ir.md)。
-`--semantic chir` 可选择内置 `stdx.chir` provider 做结构化语义补充；CHIR 不覆盖源码/注释真值，也不替代 source/AST fallback。
+`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。源码声明、注释和位置以 `std.ast` 与 lexer 为真值，输出确定性的 Doc IR v19；decoder 只接受当前版本，不迁移旧 Doc IR 输入。当前 wire contract 见 [Doc IR 维护说明](docs/maintainer/doc-ir.md)。
+`generate`、`check` 和 `serve` 默认由配套 `stdx.chir` worker 做结构化语义补充；`--semantic source` 仅使用源码/AST。CHIR 不覆盖源码/注释真值，失败时保留 source/AST fallback。
 
 ## 开始工作前
 
@@ -41,7 +41,7 @@ target/release/bin/main generate --project tests/fixtures/projects/basic --forma
 
 安装 `just` 后也可运行 `just doctor`、`just test`、`just check`、`just smoke`。
 
-`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 Bash 和 Python 标准库。它覆盖 build、unit、current v18 goldens、current-only codec round-trip、schema 同步、两次生成确定性、多页 HTML 全站校验、资源限制、安全和外部 provider fixture。当前公开查询/发布契约为 query-request/3、query-result/4、search-index/11、search-contract/2、declaration/3 和 page/2。
+`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 Bash 和 Python 标准库。它覆盖 build、unit、current v19 goldens、current-only codec round-trip、schema 同步、两次生成确定性、多页 HTML 全站校验、资源限制、安全和外部 provider fixture。当前公开查询/发布契约为 query-request/4、query-result/5、search-index/12、search-contract/3、declaration/3 和 page/2。
 
 ## 修改规则
 

@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_stage
+from safe_output_root import safe_regular_file, verify_directory_chain
 
 # Every fixture is paired with the anchors and tag identities its own sources
 # must publish. These expectations prevent a renderer from shrinking coverage
@@ -1125,35 +1126,33 @@ def check_tagged_members(page, entry: dict, transport: str,
     return failures
 
 
+def prepare_matrix_output(path: Path) -> tuple[Path, Path]:
+    # A parent segment must not erase a symlink component before the guard sees
+    # it. Only the verified directory chain may authorize replacement of work.
+    if ".." in path.parts:
+        raise ValueError(f"output root must not contain parent segments: {path}")
+    output = verify_directory_chain(path, allow_missing=True)
+    marker = output / "package-index-matrix.owner"
+    if marker.exists() or marker.is_symlink():
+        safe_regular_file(marker, description="package index matrix owner marker")
+    elif output.is_dir() and any(output.iterdir()):
+        raise ValueError(f"output root is not owned by this stage (refusing to delete): {output}")
+    work = verify_directory_chain(output / "work", allow_missing=True)
+    if work.is_dir():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    marker.write_text("cjdoc package index matrix\n", encoding="utf-8")
+    return output, work
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     binary = args.binary.resolve()
-    output = args.output.resolve()
+    output, work = prepare_matrix_output(args.output)
     repo = Path(__file__).resolve().parents[1]
-    # The stage deletes its own scratch tree, so it must never be pointed at a
-    # directory it does not own. Mirrors the other acceptance stages: a
-    # non-empty root without this stage's marker is refused, and a symlinked root
-    # is refused outright rather than followed.
-    if output.is_symlink():
-        raise ValueError(f"output root must not be a symlink: {output}")
-    marker = output / "package-index-matrix.owner"
-    if output.exists():
-        if not output.is_dir():
-            raise ValueError(f"output root must be a directory: {output}")
-        entries = [child for child in output.iterdir() if child.name != marker.name]
-        if entries and not marker.is_file():
-            raise ValueError(
-                f"output root is not owned by this stage (refusing to delete): {output}"
-            )
-    work = output / "work"
-    if work.exists():
-        shutil.rmtree(work)
-    work.mkdir(parents=True, exist_ok=True)
-    output.mkdir(parents=True, exist_ok=True)
-    marker.write_text("cjdoc package index matrix\n", encoding="utf-8")
 
     try:
         from playwright.sync_api import sync_playwright

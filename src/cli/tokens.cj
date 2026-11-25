@@ -106,7 +106,6 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
             Some(index + 2)
         case "--project" =>
             options.project = requireCliValue(args, index, "--project")
-            options.projectExplicit = true
             Some(index + 2)
         case "--input" =>
             options.input = Some(requireCliValue(args, index, "--input"))
@@ -139,7 +138,6 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
             Some(index + 1)
         case "--cjpm-cache" =>
             options.cjpmCacheRoot = Some(requireNonEmptyCliValue(args, index, "--cjpm-cache"))
-            options.cjpmCacheExplicit = true
             Some(index + 2)
         case "--repository-url" =>
             options.repositoryUrl = Some(requireNonEmptyCliValue(args, index, "--repository-url"))
@@ -183,7 +181,6 @@ private func parseCollectionOption(options: NewCliOptions, args: Array<String>, 
             Some(index + 2)
         case "--format" =>
             let value = requireCliValue(args, index, "--format")
-            options.formatsExplicit = true
             if (options.command == "diff") {
                 options.diffFormat = value
             } else {
@@ -224,8 +221,11 @@ private func parseNumericOption(options: NewCliOptions, args: Array<String>, ind
             options.jobsExplicit = true
             Some(index + 2)
         case "--port" =>
-            options.servePort = Int64.parse(requireCliValue(args, index, "--port"))
-            options.servePortExplicit = true
+            let port = Int64.tryParse(requireCliValue(args, index, "--port")).getOrDefault({ => -1 })
+            if (port < 0 || port > 65535) {
+                throw IllegalArgumentException("--port must be an integer in 0..65535")
+            }
+            options.servePort = port
             Some(index + 2)
         case _ => None<Int64>
     }
@@ -275,7 +275,7 @@ private func parseFlagOption(options: NewCliOptions, args: Array<String>, index:
             options.includeCachedDependencies = false
             options.includeCachedDependenciesExplicit = true
             Some(index + 1)
-        case "--open" => options.serveOpen = true; options.serveOpenExplicit = true; Some(index + 1)
+        case "--open" => options.serveOpen = true; Some(index + 1)
         case "--agent-full" => options.agentFull = true; options.agentFullExplicit = true; Some(index + 1)
         case "--no-agent-full" => options.agentFull = false; options.agentFullExplicit = true; Some(index + 1)
 
@@ -296,6 +296,7 @@ private func parseHtmlFontOption(options: NewCliOptions, args: Array<String>, in
 }
 
 internal func parseCliOption(options: NewCliOptions, args: Array<String>, index: Int64): Int64 {
+    validateDocumentOptionScope(options.command, args[index])
     if (let Some(next) <- parsePathAndTextOption(options, args, index)) { return next }
     if (let Some(next) <- parseCollectionOption(options, args, index)) { return next }
     if (let Some(next) <- parseNumericOption(options, args, index)) { return next }

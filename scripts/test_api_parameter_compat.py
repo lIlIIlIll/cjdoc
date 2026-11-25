@@ -22,18 +22,24 @@ def execute(args, *, expected, cwd=None):
     return result
 
 
-def fixture(root, label, parameters, returns="Int64"):
+def source_fixture(root, label, source_body):
     project = root / label
     source = project / "src" / "api.cj"
     source.parent.mkdir(parents=True)
     (project / "cjpm.toml").write_text(MANIFEST, encoding="utf-8")
-    result = "1" if returns == "Int64" else '"value"'
-    source.write_text(
-        f"package api_param_probe\n/** Accept a value. */\n"
-        f"public func accept({parameters}): {returns} {{ {result} }}\n",
-        encoding="utf-8",
-    )
+    source.write_text(f"package api_param_probe\n{source_body}\n", encoding="utf-8")
     return project
+
+
+def fixture(root, label, parameters, returns="Int64"):
+    result = "1" if returns == "Int64" else '"value"'
+    return source_fixture(root, label, "/** Accept a value. */\n"
+                          f"public func accept({parameters}): {returns} {{ {result} }}")
+
+
+def point_fixture(root, label, parameters):
+    return source_fixture(root, label, "public class Point {\n"
+                          f"    public Point({parameters}) {{}}\n}}")
 
 
 def surface(binary, project, mode):
@@ -45,17 +51,17 @@ def surface(binary, project, mode):
     return path
 
 
-def compare(binary, baseline, current, expected, evidence):
+def compare(binary, baseline, current, expected, evidence, *, comparison_state=None):
     for deny, status in (("--deny-breaking-api", int(expected == "breaking")),
                          ("--deny-potentially-breaking-api", int(expected == "potentially-breaking"))):
         result = execute([binary, "diff", "--baseline", baseline, "--current", current,
                           "--format", "json", deny], expected=status)
         report = json.loads(result.stdout)
-        entries = report["entries"]
+        entries = [entry for entry in report["entries"] if entry["classification"] != "unchanged"]
         assert len(entries) == 1 and entries[0]["classification"] == expected, report
         assert evidence in {item["field"] for item in entries[0]["evidence"]}, report
-        if expected == "additive":
-            assert report["comparisonState"] == "resolved", report
+        if comparison_state is not None:
+            assert report["comparisonState"] == comparison_state, report
 
 
 def main():
@@ -77,6 +83,8 @@ def main():
         "default": fixture(root, "default", "value!: Int64 = 2" + extra),
         "default-removed": fixture(root, "default-removed", "value!: Int64" + extra),
         "renamed": fixture(root, "renamed", "number!: Int64 = 1" + extra),
+        "old-point": point_fixture(root, "old-point", "value: Int64"),
+        "added-point": point_fixture(root, "added-point", "value: Int64" + extra),
     }
     cjpm = shutil.which("cjpm")
     assert cjpm, "the native compatibility contrast requires cjpm"
@@ -86,7 +94,8 @@ def main():
     for mode in ("source", "chir"):
         paths = {case: surface(binary, project, mode) for case, project in projects.items()}
         resolved = mode == "chir"
-        compare(binary, paths["old"], paths["added"], "additive", "parameters")
+        compare(binary, paths["old"], paths["added"], "additive", "parameters", comparison_state="resolved")
+        compare(binary, paths["old-point"], paths["added-point"], "additive", "parameters")
         compare(binary, paths["old"], paths["type"], "breaking" if resolved else "potentially-breaking",
                 "parameters[0].type" if resolved else "sourceApiSignature")
         compare(binary, paths["old"], paths["named"], "potentially-breaking", "sourceApiSignature")

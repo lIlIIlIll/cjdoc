@@ -34,11 +34,30 @@ IDENTITY_DIMENSIONS = ("apiSelection", "wrongApiVersion", "signatureAndNamedDefa
 FACT_VERDICTS = ("supported", "contradicted", "omitted")
 CITATION_VERDICTS = ("verified", "unverified", "rejected")
 ASSERTION_VERDICTS = ("observed", "not-observed", "unverified")
-EVIDENCE_KINDS = ("source", "doc-ir", "answer")
+SOURCE_EVIDENCE_KINDS = ("source", "doc-ir")
+
+
+def _has_independent_evidence(items: list) -> bool:
+    return any(isinstance(item, dict) and item.get("kind") in SOURCE_EVIDENCE_KINDS for item in items)
+
+
+def _check_review_evidence(items: Any, where: str, evidence: Evidence, raw_text: str,
+                           *, decisive_verdict: str | None) -> tuple[list, list[str]]:
+    problems = []
+    if items is None:
+        items = []
+    elif not isinstance(items, list):
+        problems.append(f"{where}: evidence must be a list")
+        items = []
+    if decisive_verdict is not None and not _has_independent_evidence(items):
+        problems.append(f"{where}: {decisive_verdict} needs source or Doc IR evidence")
+    for index, item in enumerate(items):
+        problems.extend(evidence.check(item, f"{where}: evidence[{index}]", answer_text=raw_text))
+    return items, problems
 
 
 def check_dimension(name: str, entry: Any, where: str,
-                    evidence: Evidence, task: dict) -> list[str]:
+                    evidence: Evidence, task: dict, raw_text: str) -> list[str]:
     if not isinstance(entry, dict):
         return [f"{where}: dimension {name} must be an object"]
     problems = []
@@ -47,9 +66,9 @@ def check_dimension(name: str, entry: Any, where: str,
         problems.append(f"{where}: dimension {name} needs explicit evidence")
         items = []
     for position, item in enumerate(items):
-        problems.extend(evidence.check(item, f"{where}: dimension {name} evidence[{position}]"))
-    kinds = {item.get("kind") for item in items if isinstance(item, dict)}
-    if name in IDENTITY_DIMENSIONS and not ({"source", "doc-ir"} & kinds):
+        problems.extend(evidence.check(item, f"{where}: dimension {name} evidence[{position}]",
+                                       answer_text=raw_text))
+    if name in IDENTITY_DIMENSIONS and not _has_independent_evidence(items):
         problems.append(f"{where}: dimension {name} is an identity judgment and needs "
                         "source or Doc IR evidence")
     value = entry.get("value")
@@ -180,19 +199,10 @@ def _check_facts(facts: Any, task: dict, raw_text: str, has_answer: bool,
             if verdict != "omitted":
                 problems.append(f"{entry_where}: without a captured answer the fact "
                                 "can only be omitted")
-        items = item.get("evidence")
-        if verdict in ("supported", "contradicted"):
-            if not isinstance(items, list) or not items:
-                problems.append(f"{entry_where}: {verdict} needs source/Doc IR evidence")
-                items = []
-        elif items is None:
-            items = []
-        elif not isinstance(items, list):
-            problems.append(f"{entry_where}: evidence must be a list")
-            items = []
-        for index, item_evidence in enumerate(items):
-            problems.extend(evidence.check(item_evidence,
-                                           f"{entry_where}: evidence[{index}]"))
+        items, gaps = _check_review_evidence(
+            item.get("evidence"), entry_where, evidence, raw_text,
+            decisive_verdict=verdict if verdict in ("supported", "contradicted") else None)
+        problems.extend(gaps)
         summaries.append({"fact": fact, "verdict": verdict,
                           "answerQuote": quote if isinstance(quote, str) else "",
                           "evidence": items})
@@ -204,7 +214,7 @@ def _check_facts(facts: Any, task: dict, raw_text: str, has_answer: bool,
 
 
 def _check_citations(judged: Any, citations: list[Any],
-                     evidence: Evidence, where: str) -> tuple[list[str], list[dict]]:
+                     evidence: Evidence, raw_text: str, where: str) -> tuple[list[str], list[dict]]:
     problems: list[str] = []
     summaries = []
     if not isinstance(judged, list):
@@ -232,19 +242,10 @@ def _check_citations(judged: Any, citations: list[Any],
         if verdict not in CITATION_VERDICTS:
             problems.append(f"{entry_where}: verdict must be one of "
                             f"{list(CITATION_VERDICTS)}")
-        items = item.get("evidence")
-        if verdict in ("verified", "rejected"):
-            if not isinstance(items, list) or not items:
-                problems.append(f"{entry_where}: {verdict} citations need evidence")
-                items = []
-        elif items is None:
-            items = []
-        elif not isinstance(items, list):
-            problems.append(f"{entry_where}: evidence must be a list")
-            items = []
-        for offset, item_evidence in enumerate(items):
-            problems.extend(evidence.check(item_evidence,
-                                           f"{entry_where}: evidence[{offset}]"))
+        items, gaps = _check_review_evidence(
+            item.get("evidence"), entry_where, evidence, raw_text,
+            decisive_verdict=f"{verdict} citation" if verdict in ("verified", "rejected") else None)
+        problems.extend(gaps)
         summaries.append({"index": index, "verdict": verdict,
                           "evidence": items,
                           "citation": citations[index]})
@@ -256,13 +257,13 @@ def _check_citations(judged: Any, citations: list[Any],
 
 
 def _check_dimensions(dimensions: Any, task: dict,
-                      evidence: Evidence, where: str) -> tuple[list[str], dict]:
+                      evidence: Evidence, raw_text: str, where: str) -> tuple[list[str], dict]:
     problems: list[str] = []
     if not isinstance(dimensions, dict):
         problems.append(f"{where}: dimensions must be an object")
         dimensions = {}
     for name in ADJUDICATED_DIMENSIONS:
-        problems.extend(check_dimension(name, dimensions.get(name), where, evidence, task))
+        problems.extend(check_dimension(name, dimensions.get(name), where, evidence, task, raw_text))
     extra_dimensions = sorted(set(dimensions) - set(ADJUDICATED_DIMENSIONS))
     if extra_dimensions:
         problems.append(f"{where}: measured dimensions must not be adjudicated: "
@@ -316,11 +317,11 @@ def validate_assessment(assessment: Any, task: dict, arm: str, record: dict,
 
     citations = answer_citations(record, protocol)
     citation_problems, citation_summaries = _check_citations(
-        assessment.get("citations"), citations, evidence, where)
+        assessment.get("citations"), citations, evidence, raw_text, where)
     problems.extend(citation_problems)
 
     dimensions = assessment.get("dimensions")
-    dimension_problems, dimensions = _check_dimensions(dimensions, task, evidence, where)
+    dimension_problems, dimensions = _check_dimensions(dimensions, task, evidence, raw_text, where)
     problems.extend(dimension_problems)
 
     assertions = assessment.get("behaviorAssertions")

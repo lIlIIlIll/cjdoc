@@ -40,7 +40,7 @@ internal func parseVersionsCommand(args: Array<String>): NewCliOptions {
             case "--force-owned" =>
                 options.forceOwned = true
                 index++
-            case _ => throw IllegalArgumentException("unsupported versions compose option")
+            case _ => throw IllegalArgumentException("${args[index]} is not valid for versions compose")
         }
     }
     if (options.versionInputs.isEmpty()) {

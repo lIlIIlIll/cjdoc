@@ -23,6 +23,7 @@ sys.path.insert(0, str(SCRIPTS))
 import agent_evaluation as evaluation
 import agent_evaluation_assessment as assessment_rules
 import agent_evaluation_capture as provenance
+from agent_evaluation_evidence import Evidence
 import agent_evaluation_consumers as consumers
 import agent_evaluation_runtime as runtime
 import agent_evaluation_states as states
@@ -249,6 +250,86 @@ class EvidenceAndGradeBoundaryTests(unittest.TestCase):
             self.assertIsNone(row['dimensions']['apiSelection'])
             self.assertIsNone(row['dimensions']['contractOmissions'])
             self.assertEqual(row['dimensions']['consumerBehavior'], 'runtime-executed-behavior-unverified')
+
+
+class AssessmentEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.protocol, _ = frozen()
+        self.task = next(task for task in self.protocol["tasks"] if task["id"] == "AG-10")
+        self.arm = evaluation.ARMS[0]
+        self.record = session_record(self.task, self.arm)
+        self.quote = "claim about the loaded fixture"
+        answer = json.loads(self.record["answer"]["raw"])
+        answer["facts"] = [self.quote]
+        answer["citations"] = [{"document": "unsupported-fixture", "field": "apiCollectionState"}]
+        self.record["answer"]["raw"] = json.dumps(answer)
+        project = REPO / "tests/fixtures/projects/unsupported"
+        closure = runtime.source_closure(REPO, [project])
+        identities = [{"path": item["relative"].as_posix(), "name": item["name"],
+                       "version": item["version"], "identity": item["identity"]} for item in closure]
+        snapshot = REPO / "tests/fixtures/golden-v19/unsupported.docs.json"
+        capture = SimpleNamespace(protocol={"tasks": [self.task]},
+                                  manifest={"snapshots": [{"sha256": provenance.digest_of(snapshot)}]})
+        verification = {"receipt": {"scopes": {self.task["scope"]: {"sourceIdentities": identities}}}}
+        self.evidence = Evidence(REPO, {"unsupported-fixture": snapshot}, capture, verification)
+        manifest = project / "cjpm.toml"
+        self.source = {"kind": "source", "path": manifest.relative_to(REPO).as_posix(),
+                       "sha256": provenance.digest_of(manifest), "excerpt": "unsupported_fixture"}
+        self.doc_ir = {"kind": "doc-ir", "snapshot": "unsupported-fixture", "field": "apiCollectionState",
+                       "equals": "resolved", "library": "unsupported_fixture"}
+        self.answer = {"kind": "answer", "quote": self.quote}
+
+    def judgment(self, facts, citations, *, fact_verdict="supported", citation_verdict="verified"):
+        return {
+            "requiredFacts": [{"fact": fact, "verdict": fact_verdict, "answerQuote": self.quote,
+                               "evidence": facts} for fact in self.task["requiredFacts"]],
+            "citations": [{"index": 0, "verdict": citation_verdict, "evidence": citations}],
+            "dimensions": {
+                "apiSelection": {"value": 1, "evidence": [self.source]},
+                "wrongApiVersion": {"value": 0, "evidence": [self.source]},
+                "signatureAndNamedDefaults": {"value": 0, "evidence": [self.source]},
+                "uncertaintyPreservation": {"value": 1, "evidence": [self.answer]},
+            },
+            "behaviorAssertions": [],
+            "behaviorReview": None,
+        }
+
+    def validate(self, judgment):
+        return assessment_rules.validate_assessment(judgment, self.task, self.arm, self.record,
+                                                    self.protocol, {}, self.evidence, "fixture")
+
+    def test_facts_and_citations_cannot_be_adjudicated_from_the_answer_alone(self):
+        for fact, citation in (("supported", "verified"), ("contradicted", "rejected")):
+            with self.subTest(fact=fact, citation=citation):
+                errors, _ = self.validate(self.judgment([self.answer], [self.answer], fact_verdict=fact,
+                                                         citation_verdict=citation))
+                self.assertEqual(len(errors), len(self.task["requiredFacts"]) + 1, errors)
+                self.assertTrue(all("needs source or Doc IR evidence" in error for error in errors), errors)
+
+    def test_answer_evidence_is_confined_to_this_task_and_arm(self):
+        other_task = next(task for task in self.protocol["tasks"] if task["id"] == "AG-06")
+        other_claims = []
+        for task, arm in ((self.task, evaluation.ARMS[1]), (other_task, self.arm)):
+            other = session_record(task, arm)
+            raw = json.loads(other["answer"]["raw"])
+            raw["facts"] = [f"unique peer excerpt for {task['id']} {arm}"]
+            other["answer"]["raw"] = json.dumps(raw)
+            other_claims.append(raw["facts"][0])
+        for quote in ["nowhere in the capture", *other_claims]:
+            with self.subTest(quote=quote):
+                peer = {"kind": "answer", "quote": quote}
+                judgment = self.judgment([self.source, peer], [self.doc_ir, peer])
+                judgment["dimensions"]["uncertaintyPreservation"]["evidence"] = [peer]
+                errors, _ = self.validate(judgment)
+                self.assertEqual(len(errors), len(self.task["requiredFacts"]) + 2, errors)
+                self.assertTrue(all("quote does not occur verbatim" in error for error in errors), errors)
+
+    def test_source_doc_ir_and_exact_answer_excerpt_can_be_combined(self):
+        errors, result = self.validate(self.judgment([self.source, self.doc_ir, self.answer],
+                                                      [self.doc_ir, self.answer]))
+        self.assertEqual(errors, [])
+        self.assertEqual(result["contractOmissions"], 0)
+        self.assertEqual(result["citations"][0]["verdict"], "verified")
 
 
 class ScopeAndProcessBoundaryTests(unittest.TestCase):

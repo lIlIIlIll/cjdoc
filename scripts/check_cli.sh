@@ -47,6 +47,8 @@ stage_cli() {
         --output "${check_dir}/api-parameter-compat"
     "${python_cmd}" scripts/test_png_idat.py --binary "${binary}" \
         --output "${check_dir}/png-idat"
+    "${python_cmd}" scripts/check_cli_option_contract.py --binary "${binary}" \
+        --output "${check_dir}/cli-option-contract"
     check_cli_output_ownership "${binary}" "${check_dir}"
     check_cli_external_artifacts "${binary}" "${check_dir}"
     cleanup_cli
@@ -93,26 +95,8 @@ check_cli_wire() {
     "${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and document["providers"][0]["name"]=="chir" and not any(item["code"]=="CJDOC2101" for item in document["diagnostics"])' \
         "${check_dir}/chir-default-cli.json"
 
-    # Published file stem to CLI schema name: the v1 navigation contract stays
-    # frozen while the `navigation-index` alias now answers v2.
-    for entry in \
-        doc-ir=doc-ir doc-ir-v19=doc-ir-v19 diagnostics=diagnostics cfg-matrix=cfg-matrix \
-        search-index=search-index search-index-v12=search-index-v12 symbol-index=symbol-index \
-        navigation-index=navigation-index-v1 navigation-index-v2=navigation-index \
-        api-surface=api-surface api-surface-v3=api-surface-v3 \
-        api-diff=api-diff api-diff-v2=api-diff-v2 \
-        documentation-coverage=documentation-coverage documentation-quality=documentation-quality \
-        versions=versions versions-v2=versions-v2 translation-coverage=translation-coverage \
-        site-manifest=site-manifest \
-        agent-full-index=agent-full-index declaration=declaration page=page \
-        machine-manifest=machine-manifest query-request=query-request query-result=query-result \
-        source-provenance=source-provenance; do
-        published="${entry%%=*}"
-        schema_name="${entry#*=}"
-        "${binary}" schema "${schema_name}" | tr -d '\r' \
-            >"${check_dir}/schemas/${published}.schema.json"
-        cmp "docs/schema/${published}.schema.json" "${check_dir}/schemas/${published}.schema.json"
-    done
+    "${python_cmd}" scripts/check_schemas.py --repo . --binary "${binary}" \
+        --output "${check_dir}/schemas"
 
     run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v19/basic.docs.json
     run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v19/functions.docs.json

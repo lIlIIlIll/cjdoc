@@ -156,7 +156,7 @@ target/doc/
 
 Doc IR 只装在内存或只有 `docs.json` 时，结果的 `packagedRepresentations` 为 `false`：规范路由存在不代表资源真的随包复制。装载 `agent/manifest.json` 才会校验资源哈希与完整表示映射。
 
-新发布使用 `cjdoc.machine-manifest/3` + `cjdoc.read/3`：包的 HTML 表示使用新包地址的实际 `index.html` 文件，声明地址与 `/2` 相同。CLI 仍能验证和查询 `/1` + `/1` 和 `/2` + `/2` 的旧发布，沿用各自的原始地址。manifest 版本必须与读取投影版本配对；三种发布的 `agent/docs.json` 均为 Doc IR v18。
+新发布使用 `cjdoc.machine-manifest/3` + `cjdoc.read/3`：包的 HTML 表示使用新包地址的实际 `index.html` 文件，声明地址与 `/2` 相同。CLI 也能验证 `/1` + `/1` 和 `/2` + `/2` 的 manifest 与读取投影，沿用各自的原始地址。三种配对都要求 `agent/docs.json` 为当前 Doc IR v19；支持旧 manifest 不等于接受旧 Doc IR。
 
 ## 多语言产物布局
 

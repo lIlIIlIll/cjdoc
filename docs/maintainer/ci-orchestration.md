@@ -332,6 +332,12 @@ Two shapes were compared by `scripts/measure_sdk_install.py` (dispatch
 * **B — `cache-archives-only`**: the cache holds only the two pinned archives and
   every job extracts once into a fresh directory.
 
+Current runs keep all temporary extractions under `--workdir`. Both variants'
+`totalMs` includes temporary directory cleanup before the next sample, excludes
+the independent identity check, and still excludes `actions/cache` restoration.
+The historical dispatches below use the earlier timing boundary; do not pair
+their medians with measurements from the corrected procedure.
+
 Three dispatches ran 5 paired cycles each and asserted that the identities
 produced by each shape are equal (`identityEqualUnderBothVariants: true` in every
 run).
