@@ -14,7 +14,8 @@ Doc IR 解析每个目标，产出 `showcase-plan.json` 和 `showcase-features.j
 首页首屏是一份真实页面样本：主操作与同站 iframe 打开同一个原生 `search-discovery`
 目标页（demo-v2 的 TextCatalog），展示层不复刻签名、成员或搜索。iframe 默认 `inert`，
 读者点按“在此试用”后才接收滚动与键盘；关闭 JavaScript 时遮罩是指向同一页面的普通链接。
-切换主题时同源 iframe 直接改用同一主题，`file://` 下通过 `?theme=` 重新载入。快速开始、
+切换主题时以 `?theme=` 重新载入 iframe，使框内阅读器的颜色与其设置一致；仅改根属性会让框内
+设置停留在启动时的主题。快速开始、
 完整功能清单、能力边界、复现入口及构建来源仍在同一首页，场景入口保持一次激活直达。
 现有发布和离线验收门禁保持不变。
 

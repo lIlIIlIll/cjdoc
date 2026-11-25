@@ -188,6 +188,12 @@ def check_specimen(page) -> None:
     expect(shield).to_have_count(0)
     if frame_element.evaluate("frame => frame.inert"):
         raise AssertionError("activating the homepage specimen did not release the frame")
+    # The framed reader caches its theme at start-up; the homepage must reload it so
+    # its own settings label agrees with the colors, not just repaint the root.
+    page.locator("[data-showcase-theme]").click()
+    page.locator('[data-showcase-theme-value="paper"]').click()
+    expect(framed.locator("html")).to_have_attribute("data-theme", "paper")
+    expect(framed.locator("[data-cjdoc-theme-label]")).to_have_text(re.compile("纸色|Paper"))
     page.evaluate("document.activeElement.blur(); window.scrollTo(0, 0)")
     if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
         raise AssertionError("homepage specimen overflows its viewport")

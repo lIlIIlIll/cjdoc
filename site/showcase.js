@@ -17,21 +17,28 @@
     const value = document.documentElement.dataset.themeChoice;
     return choices.some(([key]) => key === value) ? value : 'system';
   };
-  // The framed page applies themes like any generated page: "system" removes the
-  // attribute. A cross-origin file:// frame takes the choice through its URL.
+  // The framed reader caches its theme when it starts, so a live attribute change
+  // would leave its own settings out of step. Reload it with ?theme= instead; it
+  // reads that before storage, and a cross-origin file:// frame accepts it too.
   const frameRoot = (frame) => {
     try { return frame.contentDocument && frame.contentDocument.documentElement; } catch (_) { return null; }
   };
   const themeFrame = (frame, next) => {
     const root = frameRoot(frame);
     if (root) {
-      if (next === 'system') root.removeAttribute('data-theme');
-      else root.setAttribute('data-theme', next);
+      const href = frame.contentWindow.location.href;
+      if (href === 'about:blank') return;
+      const value = root.getAttribute('data-theme');
+      if (next === 'system' ? value === null : value === next) return;
+      const url = new URL(href);
+      url.searchParams.set('theme', next);
+      frame.contentWindow.location.replace(url.href);
       return;
     }
     try {
       const url = new URL(frame.src);
-      if (url.searchParams.get('theme') === next) return;
+      const current = url.searchParams.get('theme');
+      if (current === next || (next === 'system' && current === null)) return;
       url.searchParams.set('theme', next);
       frame.src = url.href;
     } catch (_) {}
@@ -233,9 +240,10 @@
     const frame = figure.querySelector('iframe');
     const shield = figure.querySelector('[data-showcase-specimen-shield]');
     if (!frame || !shield) return;
-    // A URL-only theme (?theme=) is not stored, so the framed page cannot see it.
-    frame.addEventListener('load', () => { if (frameRoot(frame)) themeFrame(frame, currentTheme()); });
-    if (currentTheme() !== 'system') themeFrame(frame, currentTheme());
+    // Match the frame's first page to the homepage, including a URL-only ?theme=
+    // that storage never sees; later in-frame navigation keeps the reader's choice.
+    frame.addEventListener('load', () => themeFrame(frame, currentTheme()), {once: true});
+    themeFrame(frame, currentTheme());
     const button = element('button', shield.className);
     button.type = 'button';
     button.dataset.showcaseSpecimenShield = '';
