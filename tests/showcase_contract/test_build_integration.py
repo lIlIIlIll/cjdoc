@@ -31,6 +31,7 @@ from showcase_contract.site import ContractError, HtmlDocument, Site
 from report_views.reports import UtilityRegion, native_check_view, quality_view
 from report_views.pages import Sections, publish as publish_report_pages
 from publication_ir import project as publication_projection
+from repository_inputs.contracts import CURRENT_GOLDEN_VERSION
 
 
 class BuildIntegrationTests(unittest.TestCase):
@@ -85,7 +86,8 @@ class BuildIntegrationTests(unittest.TestCase):
                      "llms.txt", "agent-full-index.json"):
             write("current/html/" + name, {})
         (current / "markdown").mkdir(parents=True)
-        author_ir = json.loads((ROOT / "tests/fixtures/golden-v19/basic.docs.json").read_text(encoding="utf-8"))
+        golden = ROOT / f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/basic.docs.json"
+        author_ir = json.loads(golden.read_text(encoding="utf-8"))
         author_ir["declarations"][0]["documentation"]["rawText"] += (
             "\nhttps://github.com/lIlIIlIll/cjdoc/blob/main/docs/README.md")
         write("current/docs.json", author_ir)

@@ -6,6 +6,7 @@ import unittest
 
 import test_contract
 from test_contract import write
+from repository_inputs.contracts import CURRENT_GOLDEN_VERSION
 from showcase_contract import ContractError
 from showcase_contract.contract import validate_plan
 from showcase_contract.routes import MemberLinks
@@ -37,7 +38,8 @@ class NativeRouteTests(unittest.TestCase):
         self.declaration = {"id": f.page["symbolId"], "ownerId": "owner-id", "name": "add",
                             "qualifiedName": "Bag.add", "packageName": "demo.collections",
                             "moduleId": "demo-module", "headerSpelling": "public func add(value: Int64): Unit"}
-        self.ir = {"schemaVersion": "cjdoc.doc-ir/19", "project": {"name": "synthetic_showcase"},
+        self.ir = {"schemaVersion": f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}",
+                   "project": {"name": "synthetic_showcase"},
                    "generator": {"name": "cjdoc"}, "configuration": {"audience": "external"},
                    "metadata": {"groups": [], "tags": []},
                    "declarations": [self.declaration, {**self.declaration, "id": "other-id",
