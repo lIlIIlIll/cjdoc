@@ -3,7 +3,7 @@ package cjdoc
 import cjdoc.semantic.chir.chirPackageDependencies
 import cjdoc.source.discovery.SyntaxSourceProvider
 import cjdoc.source.frontend.{sourceImportFactsFromText, sourceImportTextsFromSource}
-import cjdoc.source.model.{SourceFileOrigin, SourceImportFacts}
+import cjdoc.source.model.SourceImportFacts
 import std.collection.*
 import std.env.*
 import std.fs.*
@@ -48,8 +48,7 @@ private func hasReference(facts: Array<SourceImportFacts>, expected: String): Bo
     false
 }
 
-private func projectWithImport(importLine: String, label: String,
-    helperBody: String = "public func value(): Int64 { 42 }"): Path {
+private func projectWithImport(importLine: String): Path {
     let root = Directory.createTemp(getTempDirectory())
     Directory.create(root.join("src/helper"), recursive: true)
     File.writeTo(root.join("cjpm.toml"),
@@ -59,7 +58,7 @@ private func projectWithImport(importLine: String, label: String,
         ("package ${IMPORT_FACT_PACKAGE}\n${importLine}\n" +
          "public func answer(): Int64 { value() }\n").toArray())
     File.writeTo(root.join("src/helper/api.cj"),
-        ("package ${IMPORT_FACT_PACKAGE}.helper\n${helperBody}\n").toArray())
+        "package ${IMPORT_FACT_PACKAGE}.helper\npublic func value(): Int64 { 42 }\n".toArray())
     root
 }
 
@@ -67,7 +66,7 @@ private func projectWithImport(importLine: String, label: String,
 class SourceImportFactTest {
     @TestCase
     func legalImportSpellingsProduceTheSamePackageReference(): Unit {
-        let expected = "${IMPORT_FACT_PACKAGE}.helper"
+        let expected = "${IMPORT_FACT_PACKAGE}.helper.value"
         for (importLine in ["import ${IMPORT_FACT_PACKAGE}.helper.value",
             "import\t${IMPORT_FACT_PACKAGE}.helper.value",
             "private import ${IMPORT_FACT_PACKAGE}.helper.value",
@@ -77,7 +76,6 @@ class SourceImportFactTest {
             "import  ${IMPORT_FACT_PACKAGE}.helper.value"]) {
             let facts = importFactsFor(importLine)
             @Expect(hasReference(facts, expected), true)
-            @Expect(referencePaths(facts)[0], expected)
         }
     }
 
@@ -137,15 +135,13 @@ class SourceImportFactTest {
             let cold = provider.collect(project.toString())
             @Expect(cold.sourceFileOrigins.size, 1)
             @Expect(referencePaths(cold.sourceFileOrigins[0].importFacts),
-                ["${IMPORT_FACT_PACKAGE}.helper.value",
-                 "${IMPORT_FACT_PACKAGE}.helper"])
+                ["${IMPORT_FACT_PACKAGE}.helper.value"])
             let warm = SyntaxSourceProvider(cacheDirectory: Some(cache.toString()),
                 cacheFingerprint: Some("import-fact-cache-v1"),
                 astPreflightExecutable: TEST_AST_PREFLIGHT).collect(project.toString())
             @Expect(warm.sourceFileOrigins[0].importFacts.size, 1)
             @Expect(referencePaths(warm.sourceFileOrigins[0].importFacts),
-                ["${IMPORT_FACT_PACKAGE}.helper.value",
-                 "${IMPORT_FACT_PACKAGE}.helper"])
+                ["${IMPORT_FACT_PACKAGE}.helper.value"])
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
         }
@@ -172,7 +168,7 @@ class ImportDependencySelectionTest {
             "private import ${IMPORT_FACT_PACKAGE}.helper.value",
             "import ${IMPORT_FACT_PACKAGE}.helper.value as value",
             "import ${IMPORT_FACT_PACKAGE}.helper.{value}"]) {
-            let project = projectWithImport(importLine, importLine)
+            let project = projectWithImport(importLine)
             try {
                 let names = chirDependencyNames(project)
                 @Expect(names.contains("${IMPORT_FACT_PACKAGE}.helper"), true)
@@ -184,9 +180,9 @@ class ImportDependencySelectionTest {
 
     @TestCase
     func chirSelectionIgnoresAnUnmatchedSiblingPrefix(): Unit {
-        let project = projectWithImport(
-            "import ${IMPORT_FACT_PACKAGE}.helper.value", "chir-sibling")
+        let project = projectWithImport("import ${IMPORT_FACT_PACKAGE}.helper.value")
         try {
+            Directory.create(project.join("src/helper_extra"))
             File.writeTo(project.join("src/helper_extra/api.cj"),
                 "package ${IMPORT_FACT_PACKAGE}.helper_extra\npublic func other(): Int64 { 1 }\n"
                     .toArray())

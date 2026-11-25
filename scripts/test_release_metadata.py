@@ -268,10 +268,14 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
     def test_current_golden_inventory_rejects_obsolete_version_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            obsolete = repo / "tests/fixtures/golden-v18"
-            obsolete.mkdir()
-            with self.assertRaises(ValueError):
-                verify_repository_inputs.verify_golden_set(repo, CURRENT_GOLDEN_VERSION)
+            for version in (CURRENT_GOLDEN_VERSION - 2, CURRENT_GOLDEN_VERSION - 1,
+                            CURRENT_GOLDEN_VERSION + 1):
+                with self.subTest(version=version):
+                    obsolete = repo / f"tests/fixtures/golden-v{version}"
+                    obsolete.mkdir()
+                    with self.assertRaisesRegex(ValueError, f"obsolete v{version} golden"):
+                        verify_repository_inputs.verify_golden_set(repo, CURRENT_GOLDEN_VERSION)
+                    obsolete.rmdir()
 
     def test_current_golden_validation_rejects_changed_roundtrip_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
