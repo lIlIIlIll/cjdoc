@@ -125,7 +125,7 @@ internal class PublicModuleProjection {
             for (reExport in pkg.reExports) {
                 let bindings = ArrayList<public_model.ReExportBinding>()
                 for (binding in reExport.bindings) {
-                    bindings.add(public_model.ReExportBinding(binding.exposedName,
+                    bindings.add(public_model.ReExportBinding(binding.exposedName, binding.importedName,
                         targetSymbolIds: binding.targetSymbolIds.toArray()))
                 }
                 reExports.add(public_model.ReExportDoc(reExport.id, reExport.kind,

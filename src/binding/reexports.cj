@@ -20,49 +20,31 @@ internal func reExportPackageKey(moduleId: String, packageName: String): String 
 protected class ReExportPackageSurface {
     let names = HashMap<String, ArrayList<String>>()
 
-    func copy(): ReExportPackageSurface {
-        let result = ReExportPackageSurface()
-        for ((name, ids) in names) {
-            result.names[name] = ArrayList<String>(ids)
-        }
-        result
-    }
-
-    func add(exposedName: String, targetIds: ArrayList<String>,
-        kindById: HashMap<String, String>, maximumNew!: Int64 = MAX_REEXPORT_BINDINGS):
-        (String, Int64) {
-        if (targetIds.isEmpty()) { return ("unchanged", 0) }
+    func additionCount(exposedName: String, targetIds: ArrayList<String>,
+        kindById: HashMap<String, String>): Int64 {
         let existing = match (names.get(exposedName)) {
             case Some(value) => value
-            case None =>
-                let value = ArrayList<String>()
-                names[exposedName] = value
-                value
-        }
-        var different = false
-        for (id in targetIds) {
-            if (!existing.contains(id)) { different = true; break }
-        }
-        if (!different) { return ("unchanged", 0) }
-        if (!existing.isEmpty()) {
-            let kind = kindById.get(existing[0])
-            if (kind != Some("function") && kind != Some("macro")) { return ("conflict", 0) }
-            for (id in existing) {
-                if (kindById.get(id) != kind) { return ("conflict", 0) }
-            }
-            for (id in targetIds) {
-                if (kindById.get(id) != kind) { return ("conflict", 0) }
-            }
+            case None => return targetIds.size
         }
         var added: Int64 = 0
         for (id in targetIds) { if (!existing.contains(id)) { added++ } }
-        if (added > maximumNew) { return ("limit", added) }
-        if (added > 0) {
-            for (id in targetIds) { if (!existing.contains(id)) { existing.add(id) } }
-            sort(existing, lessThan: { left, right => left < right }, stable: true)
-            ("added", added)
-        } else {
-            ("unchanged", 0)
+        if (added == 0) { return 0 }
+        let kind = kindById.get(existing[0])
+        if (kind != Some("function") && kind != Some("macro")) { return -1 }
+        for (id in existing) { if (kindById.get(id) != kind) { return -1 } }
+        for (id in targetIds) { if (kindById.get(id) != kind) { return -1 } }
+        added
+    }
+
+    func merge(exposedName: String, targetIds: ArrayList<String>): Unit {
+        match (names.get(exposedName)) {
+            case Some(existing) =>
+                let previousSize = existing.size
+                for (id in targetIds) { if (!existing.contains(id)) { existing.add(id) } }
+                if (previousSize != existing.size) {
+                    sort(existing, lessThan: { left, right => left < right }, stable: true)
+                }
+            case None => names[exposedName] = ArrayList<String>(targetIds)
         }
     }
 }
@@ -186,6 +168,7 @@ protected class PendingReExport {
     let selection: String
     var state: String
     var conflict = false
+    var contributed = false
     var limited = false
     var degraded = false
     let aliasSymbolPackage: ?PackageDoc
@@ -241,7 +224,8 @@ protected class ReExportBindingResult {
 internal func addResolvedBinding(result: ReExportBindingResult, surface: ReExportPackageSurface,
     sourceName: String, exposedName: String): Unit {
     match (surface.names.get(sourceName)) {
-        case Some(ids) => result.bindings.add(ReExportBinding(exposedName, targetSymbolIds: ids.toArray()))
+        case Some(ids) =>
+            result.bindings.add(ReExportBinding(exposedName, sourceName, targetSymbolIds: ids.toArray()))
         case None => result.missing = true
     }
 }
@@ -282,8 +266,10 @@ internal func bindingsForPending(pending: PendingReExport,
 }
 
 internal func reExportSourceLess(left: SourceReExport, right: SourceReExport): Bool {
-    if (left.source.path != right.source.path) { return left.source.path < right.source.path }
+    if (left.moduleId != right.moduleId) { return left.moduleId < right.moduleId }
+    if (left.packageName != right.packageName) { return left.packageName < right.packageName }
     if (left.normalizedSpec != right.normalizedSpec) { return left.normalizedSpec < right.normalizedSpec }
+    if (left.source.path != right.source.path) { return left.source.path < right.source.path }
     if (left.source.startLine != right.source.startLine) { return left.source.startLine < right.source.startLine }
     left.source.startColumn < right.source.startColumn
 }
@@ -304,6 +290,7 @@ internal func appendReExportDiagnostic(documentation: DocumentationSet, pending:
 // across every import, independent of how often a chain is re-evaluated.
 protected class ReExportBindingBudget {
     var work: Int64 = 0
+    var steps: Int64 = 0
     var exceeded = false
 
     func spend(amount: Int64): Bool {
@@ -333,26 +320,26 @@ internal func applyReExportBindings(item: PendingReExport,
         case None => return false
     }
     let result = bindingsForPending(item, surfaces)
-    let candidate = exporter.copy()
+    if (result.missing) { return false }
     var added: Int64 = 0
+    let selectedNames = if (item.kind == "multi") { Some(HashSet<String>()) } else { None }
     for (binding in result.bindings) {
-        let ids = ArrayList<String>()
-        ids.add(all: binding.targetSymbolIds)
-        let outcome = candidate.add(binding.exposedName, ids, kindById,
-            maximumNew: MAX_REEXPORT_BINDINGS)
-        match (outcome[0]) {
-            case "added" => added += outcome[1]
-            case "conflict" => item.conflict = true; return false
-            case "limit" => item.limited = true; return false
-            case _ => ()
+        if (let Some(names) <- selectedNames) {
+            if (!names.add(binding.exposedName)) { item.conflict = true; return false }
         }
+        let count = exporter.additionCount(binding.exposedName, binding.targetSymbolIds, kindById)
+        if (count < 0) { item.conflict = true; return false }
+        added += count
     }
     if (added == 0) { return false }
     if (!budget.spend(added)) {
         item.limited = true
         return false
     }
-    surfaces[exporterKey] = candidate
+    for (binding in result.bindings) {
+        exporter.merge(binding.exposedName, binding.targetSymbolIds)
+    }
+    item.contributed = true
     true
 }
 
@@ -399,17 +386,12 @@ internal func finalizeReExportState(item: PendingReExport,
     }
 }
 
-internal func resolveReExports(documentation: DocumentationSet, source: SourceSnapshot): Unit {
-    if (source.reExports.size > MAX_REEXPORTS) {
-        documentation.diagnostics.add(Diagnostic("warning", "CJDOC1031",
-            "public import resolution exceeded the configured work budget"))
-        return
-    }
+private func seedReExportSurfaces(documentation: DocumentationSet,
+    kindById: HashMap<String, String>): HashMap<String, ReExportPackageSurface> {
     let surfaces = HashMap<String, ReExportPackageSurface>()
     for (pkg in documentation.packages) {
         surfaces[reExportPackageKey(pkg.moduleId, pkg.name)] = ReExportPackageSurface()
     }
-    let kindById = HashMap<String, String>()
     for (symbol in documentation.symbols) {
         kindById[symbol.id] = symbol.kind
         if (symbol.ownerId.isSome() ||
@@ -423,28 +405,23 @@ internal func resolveReExports(documentation: DocumentationSet, source: SourceSn
                 value
         }
         let ids = ArrayList<String>([symbol.id])
-        let _ = surface.add(symbol.name, ids, kindById)
+        if (surface.additionCount(symbol.name, ids, kindById) >= 0) { surface.merge(symbol.name, ids) }
     }
+    surfaces
+}
 
-    let ordered = ArrayList<SourceReExport>()
-    ordered.add(all: source.reExports)
-    sort(ordered, lessThan: reExportSourceLess, stable: true)
-    let pending = ArrayList<PendingReExport>()
-    let lookup = ReExportLookupIndex(documentation)
-    for (item in ordered) { pending.add(pendingReExport(lookup, item)) }
-
-    var propagationExceeded = false
-    let budget = ReExportBindingBudget()
-    // Import propagation must reach a fixed point before any binding is
-    // published: a name an upstream package has not exposed yet is pending, not
-    // missing. Surfaces only grow, so re-running exactly the imports that observe
-    // a changed package terminates and is independent of file order.
+// A missing name is pending until convergence. A previously productive import
+// that becomes ambiguous cannot seed another package, so discard the candidate
+// surfaces and replay with that edge removed. The budget spans every replay.
+private func propagateReExportSurfaces(pending: ArrayList<PendingReExport>,
+    surfaces: HashMap<String, ReExportPackageSurface>, kindById: HashMap<String, String>,
+    budget: ReExportBindingBudget): Bool {
     let dependents = HashMap<String, ArrayList<Int64>>()
     let queue = ArrayList<Int64>()
     let queued = HashSet<Int64>()
     var dependentIndex: Int64 = 0
     for (item in pending) {
-        if (item.selection == "resolved" && item.kind != "packageAlias") {
+        if (item.selection == "resolved" && item.kind != "packageAlias" && !item.conflict) {
             let _ = queued.add(dependentIndex)
             queue.add(dependentIndex)
             if (let Some(target) <- item.targetPackage) {
@@ -457,19 +434,22 @@ internal func resolveReExports(documentation: DocumentationSet, source: SourceSn
         }
         dependentIndex++
     }
-    var work: Int64 = 0
     var queueCursor: Int64 = 0
     while (queueCursor < queue.size) {
         let current = queue[queueCursor]
         queueCursor++
         let _ = queued.remove(current)
         let item = pending[current]
-        work++
-        if (work > MAX_REEXPORT_PROPAGATION_WORK) {
-            propagationExceeded = true
-            break
+        budget.steps++
+        if (budget.steps > MAX_REEXPORT_PROPAGATION_WORK) {
+            budget.exceeded = true
+            return false
         }
-        if (!applyReExportBindings(item, surfaces, kindById, budget)) { continue }
+        if (!applyReExportBindings(item, surfaces, kindById, budget)) {
+            if (budget.exceeded) { return false }
+            if (item.conflict && item.contributed) { return true }
+            continue
+        }
         let exporterKey = reExportPackageKey(item.source.moduleId, item.source.packageName)
         match (dependents.get(exporterKey)) {
             case Some(values) => for (index in values) {
@@ -478,7 +458,29 @@ internal func resolveReExports(documentation: DocumentationSet, source: SourceSn
             case None => ()
         }
     }
-    if (propagationExceeded || budget.exceeded || lookup.exhausted) {
+    false
+}
+
+internal func resolveReExports(documentation: DocumentationSet, source: SourceSnapshot): Unit {
+    if (source.reExports.size > MAX_REEXPORTS) {
+        documentation.diagnostics.add(Diagnostic("warning", "CJDOC1031",
+            "public import resolution exceeded the configured work budget"))
+        return
+    }
+    let ordered = ArrayList<SourceReExport>()
+    ordered.add(all: source.reExports)
+    sort(ordered, lessThan: reExportSourceLess, stable: true)
+    let pending = ArrayList<PendingReExport>()
+    let lookup = ReExportLookupIndex(documentation)
+    for (item in ordered) { pending.add(pendingReExport(lookup, item)) }
+    let budget = ReExportBindingBudget()
+    let kindById = HashMap<String, String>()
+    var surfaces = seedReExportSurfaces(documentation, kindById)
+    while (propagateReExportSurfaces(pending, surfaces, kindById, budget)) {
+        for (item in pending) { item.contributed = false }
+        surfaces = seedReExportSurfaces(documentation, kindById)
+    }
+    if (budget.exceeded || lookup.exhausted) {
         documentation.diagnostics.add(Diagnostic("warning", "CJDOC1031",
             "public import resolution exceeded the configured work budget"))
         for (item in pending) {
@@ -489,7 +491,6 @@ internal func resolveReExports(documentation: DocumentationSet, source: SourceSn
     let occurrences = HashMap<String, Int64>()
     for (item in pending) {
         finalizeReExportState(item, surfaces)
-        let bindingResult = bindingsForPending(item, surfaces)
         let occurrenceKey = "${item.source.moduleId}\n${item.source.packageName}\n${item.source.source.path}\n${item.source.normalizedSpec}"
         let ordinal = match (occurrences.get(occurrenceKey)) { case Some(value) => value; case None => 0 }
         occurrences[occurrenceKey] = ordinal + 1
@@ -500,7 +501,7 @@ internal func resolveReExports(documentation: DocumentationSet, source: SourceSn
             case None => None<String>
         }
         let publishedBindings = if (item.state == "resolved") {
-            bindingResult.bindings.toArray()
+            bindingsForPending(item, surfaces).bindings.toArray()
         } else {
             Array<ReExportBinding>()
         }

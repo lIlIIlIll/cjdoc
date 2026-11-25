@@ -54,7 +54,7 @@ def ir_transition_pair():
         }],
     }
     after = deepcopy(before)
-    after["schemaVersion"] = "cjdoc.doc-ir/19"
+    after["schemaVersion"] = "cjdoc.doc-ir/20"
     after["metadata"]["fields"] = []
     del after["modules"][0]["repositoryPath"]
     after["files"][0]["provenance"] = {
@@ -951,7 +951,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 register_ir_observation(invalid, "a" * 64, after["generator"]["version"])
 
         invalid_after = [
-            ("wrong version", lambda document: document.update(schemaVersion="cjdoc.doc-ir/18")),
+            ("previous version", lambda document: document.update(schemaVersion="cjdoc.doc-ir/19")),
             ("missing comment fields", lambda document: document["metadata"].pop("fields")),
             ("captured comment fields", lambda document: document["metadata"].update(fields=[{}])),
             ("obsolete module field", lambda document: document["modules"][0].update(repositoryPath=None)),

@@ -144,7 +144,7 @@ def main() -> None:
     run(binary, "generate", "--project", FIXTURE, "--format", "json", "--format", "html",
         "--format", "markdown", "--agent-full", "--output", captured, "--no-cache")
     document = read_json(captured / "docs.json")
-    assert document.get("schemaVersion") == "cjdoc.doc-ir/19"
+    assert document.get("schemaVersion") == "cjdoc.doc-ir/20"
     assert all("repositoryPath" not in module for module in document["modules"])
     declaration = find_declaration(document, "inspectSnapshot")
     file_doc = next(file for file in document["files"] if file["path"] == "src/api.cj")

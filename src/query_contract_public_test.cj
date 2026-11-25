@@ -561,7 +561,7 @@ class DocumentationQueryContractPublicTest {
         let aliases = schemaTextForCli("list")
         @Expect(aliases.contains("search-index-v12"), true)
         @Expect(aliases.contains("search-index-v11"), false)
-        @Expect(aliases.contains("doc-ir-v19"), true)
+        @Expect(aliases.contains("doc-ir-v20"), true)
         @Expect(aliases.contains("doc-ir-v18"), false)
         @Expect(aliases.contains("source-provenance"), true)
         @Expect(schemaTextForCli("source-provenance").contains("cjdoc.source-provenance/1"), true)

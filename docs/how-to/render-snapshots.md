@@ -4,7 +4,7 @@
 
 ## 什么时候用本页
 
-- 已经有一份 `cjdoc.doc-ir/19` 的 `docs.json`，想换输出格式或换输出目录。
+- 已经有一份 `cjdoc.doc-ir/20` 的 `docs.json`，想换输出格式或换输出目录。
 - 想把生成和发布分开：先在有源码的机器上捕获，再在别处渲染。
 - 只想改站点版本标签或附加报告，不想重新分析源码。
 
@@ -13,7 +13,7 @@
 ## 前提条件
 
 - 已完成[生成第一个站点](../tutorials/first-site.md)，能在 `docdemo/` 项目根运行 `cjdoc`。
-- 快照必须是当前 cjdoc 生成的 `cjdoc.doc-ir/19`。旧版本快照不会自动升级。
+- 快照必须是当前 cjdoc 生成的 `cjdoc.doc-ir/20`。旧版本快照不会自动升级。
 
 ## 1. 保存快照
 
@@ -23,7 +23,7 @@
 cjdoc generate --project . --format json --output target/doc-ir-capture
 ```
 
-**预期结果**：`target/doc-ir-capture/docs.json` 是这次生成的完整快照，`schemaVersion` 为 `cjdoc.doc-ir/19`。
+**预期结果**：`target/doc-ir-capture/docs.json` 是这次生成的完整快照，`schemaVersion` 为 `cjdoc.doc-ir/20`。
 
 把它复制到项目之外的新目录，模拟只拿到快照、没有源码的场景：
 
@@ -83,7 +83,7 @@ cp target/doc-ir-capture/docs.json "$WORK/current.json"
 |---|---|---|
 | `error: render requires --input` | 没给 `--input` | 加上 `--input <docs.json>` |
 | `error: bounded read could not access file: '/…/current.json'` | 路径不存在，或命令不在 `$WORK` 里执行 | 确认已把 `current.json` 复制到当前目录，或给 `--input` 绝对路径 |
-| `error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/19'` | 快照来自旧版本 cjdoc | 源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的迁移路径 |
+| `error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/20'` | 快照来自旧版本 cjdoc | 源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的迁移路径 |
 | 输出目录被拒绝 | 提前手工建了目录，或登记产物被改过 | 换一个尚不存在的新输出路径；确认可丢弃手工修改后加 `--force-owned` |
 | `error: --project is not valid for render` （或其他选项） | 给 `render` 加了项目、依赖、受众、lint、cfg 或缓存类选项 | 去掉这些选项，改用 `generate` |
 | `error: --doc-version requires --format html` | 只写了版本标签没生成 HTML | 同时加 `--format html` |

@@ -126,7 +126,7 @@ private func publicationProjectionFixture(audience: String): api_model.Documenta
                 PROJECTION_EXTENSION_MEMBER],
             reExports: [api_model.ReExportDoc(PROJECTION_REEXPORT_ID, "single", "fixture", "resolved",
                 projectionRange(9), targetModuleId: Some(PROJECTION_MODULE),
-                bindings: [api_model.ReExportBinding("Host", targetSymbolIds: [PROJECTION_HOST])])])],
+                bindings: [api_model.ReExportBinding("Host", "Host", targetSymbolIds: [PROJECTION_HOST])])])],
         files: [FileDoc("src/api.cj", PROJECTION_MODULE, "fixture"),
             FileDoc("src/private.cj", PROJECTION_MODULE, "fixture"),
             FileDoc("docs/comments.cj", PROJECTION_MODULE, "fixture"),

@@ -146,7 +146,7 @@ python3 scripts/reader_register.py \
   --output "$TASK/registered-1000.json"
 ```
 
-上面是无过渡登记的严格默认调用。复现固定 1k CI 的 v17→v19 对照时，改用下面的调用，在 baseline 捕获后、after 捕获前一次写入全部登记：
+上面是无过渡登记的严格默认调用。复现固定 1k CI 的 v17→v20 对照时，改用下面的调用，在 baseline 捕获后、after 捕获前一次写入全部登记：
 
 ```bash
 : "${BASELINE_SOURCE:?指定与 BASELINE_REVISION 一致的冻结 checkout}"
@@ -159,7 +159,7 @@ python3 scripts/reader_register.py \
   --baseline "$TASK/baseline-1000/observation" \
   --template docs/maintainer/reader-scale-budgets.json \
   --output "$TASK/registered-1000.json" \
-  --doc-ir-transition v17-v19-unregistered-source-no-comment-fields \
+  --doc-ir-transition v17-v20-unregistered-source-no-comment-fields \
   --aria-transition docs/maintainer/reader-scale-docs-173-177.json \
   --presentation docs/maintainer/reader-scale-presentation-readable-api.json \
   --api-routes-transition docs/maintainer/reader-scale-readable-api.json
@@ -181,11 +181,11 @@ python3 scripts/reader_compare.py \
 
 登记只读取 baseline、数值模板和明确提供的 transition profile；Doc IR 过渡还从当前候选源码的 `cjpm.toml` 读取一次 `package.version`。登记不读取 after，并且不覆盖已有登记。比较器重算原始样本分位，拒绝更换源码/任务、SDK、浏览器、字体、harness、语言/载体或缺失测量；前 20 排序、原始重载签名/作者详情、准确性、体积、堆、DOM、打印/无 JS、布局和所有性能门槛继续照常检查。没有 transition 登记时，Doc IR 与搜索 index payload 仍按原有严格规则比较。资源受限输出保持 `pass: false`，不能补造浏览器样本。
 
-### 固定 1k 的 v17→v19 过渡
+### 固定 1k 的 v17→v20 过渡
 
 工作流仅在 `READER_CORPUS=1000` 时使用上面的四项登记。10k、50k、external 及其它规模不继承。
 
-- 基线 Doc IR 必须为 `/17`，候选必须为 `/19`。旧 `ModuleDoc.repositoryPath` 必须为 `null`，候选移除此字段。候选只允许新增固定的未登记 `FileDoc.provenance`、默认注释定位字段及空的 `metadata.fields`；不允许新增 admonition。比较副本对齐这些已证明的默认值，其余字段严格相等。
+- 基线 Doc IR 必须为 `/17`，候选必须为 `/20`。旧 `ModuleDoc.repositoryPath` 必须为 `null`，候选移除此字段。候选只允许新增固定的未登记 `FileDoc.provenance`、默认注释定位字段及空的 `metadata.fields`；不允许新增 admonition。固定语料不含重导出绑定，过渡不会忽略 `importedName` 或放宽任何绑定比较。比较副本对齐已证明的默认值，其余字段严格相等。
 - 原生 Doc IR 和每种语言发布的 Doc IR 各自绑定原始文件摘要、基线完整 `generator` 和事前读取的候选 `package.version`。候选只允许该生成器版本变化；不会重写原始产物。
 - 分别按 `search-index/11` + `search-contract/2` 和 `search-index/12` + `search-contract/3` 验证原始 JSON、JS、内嵌合同和捕获回执。候选的根及条目 `commentFields` 必须为空；合同差异仅限 query-request/4 和登记的字段筛选/分面声明。签名数据不变。
 - 独立重算每侧的 snapshot 和 projection 身份后，才在比较副本中配对派生 ID；按登记规则以外的顺序、正文、链接、分类或 coverage 变化仍失败。保留两侧原始字节及摘要。

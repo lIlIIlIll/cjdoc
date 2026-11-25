@@ -490,7 +490,7 @@ public func completeDocumentationSchema(template: String): String {
         case Some(node) => node.asObject()
         case None => throw IllegalArgumentException("artifact schema template has no $defs")
     }
-    let frozen = JsonNode.parse(DOC_IR_V19_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
+    let frozen = JsonNode.parse(DOC_IR_V20_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
     for (index in 0..frozen.size()) {
         let name = frozen.nameAt(index)
         if (definitions.contains(name)) {

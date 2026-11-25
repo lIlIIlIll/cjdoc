@@ -441,14 +441,15 @@ internal func validReExportId(value: String): Bool {
     true
 }
 
-// A re-export names the package it imported directly and exposes declarations
-// that package makes visible, including everything its own resolved re-exports
-// forward. Validating the closure keeps one storable target identity without
-// accepting a forged reference to a hidden, unreachable, or missing declaration.
+// A claimed binding needs a chain of resolved exposures ending at an actual
+// declaration in the backing package. Package adjacency alone is not evidence:
+// a named import from origin does not expose origin's unrelated declarations.
+private let DOC_IR_MAX_REEXPORT_VALIDATION_WORK: Int64 = 1000000
+
 internal class ReExportReachability {
     private let packagesByKey = HashMap<String, PackageDoc>()
     private let moduleDependencies = HashMap<String, HashSet<String>>()
-    private let closureCache = HashMap<String, HashSet<String>>()
+    private let provedExposures = HashSet<String>()
     private let reachableCache = HashMap<String, HashSet<String>>()
     private var work: Int64 = 0
 
@@ -462,7 +463,7 @@ internal class ReExportReachability {
     }
 
     private func consume(amount: Int64): Bool {
-        if (work + amount > DOC_IR_MAX_REEXPORT_EDGES) { return false }
+        if (work + amount > DOC_IR_MAX_REEXPORT_VALIDATION_WORK) { return false }
         work += amount
         true
     }
@@ -503,42 +504,51 @@ internal class ReExportReachability {
         reachable.contains(targetModuleId)
     }
 
-    // Symbol ids the package exposes: its own top-level declarations plus the
-    // targets of its resolved re-exports, transitively through forwarded packages.
-    func closure(moduleId: String, packageName: String): ?HashSet<String> {
-        let startKey = compositeKey(moduleId, packageName)
-        match (closureCache.get(startKey)) {
-            case Some(value) => return Some(value)
-            case None => ()
-        }
-        let result = HashSet<String>()
-        let visitedPackages = HashSet<String>()
-        let pending = ArrayList<String>([startKey])
+    func proves(moduleId: String, packageName: String, inputName: String, target: SymbolDoc): Bool {
+        if (moduleId == target.moduleId && packageName == target.packageName &&
+            inputName == target.name) { return true }
+        let initial = (moduleId, packageName, inputName)
+        let initialKey = exposureKey(initial, target.id)
+        if (provedExposures.contains(initialKey)) { return true }
+        let pending = ArrayList<(String, String, String)>([initial])
+        let visited = HashSet<String>([initialKey])
         var cursor: Int64 = 0
         while (cursor < pending.size) {
-            let key = pending[cursor]
+            let hop = pending[cursor]
             cursor++
-            if (!visitedPackages.add(key)) { continue }
-            let pkg = match (packagesByKey.get(key)) {
-                case Some(value) => value
-                case None => return None
+            let (module, name, selected) = hop
+            if ((module == target.moduleId && name == target.packageName && selected == target.name) ||
+                provedExposures.contains(exposureKey(hop, target.id))) {
+                let _ = provedExposures.add(initialKey)
+                return true
             }
-            if (!consume(pkg.symbolIds.size + pkg.reExports.size)) { return None }
-            for (id in pkg.symbolIds) { let _ = result.add(id) }
+            let pkg = match (packagesByKey.get(compositeKey(module, name))) {
+                case Some(value) => value
+                case None => continue
+            }
+            if (!consume(pkg.reExports.size)) { return false }
             for (reExport in pkg.reExports) {
-                let targetModuleId = match (reExport.targetModuleId) {
+                if (reExport.state != "resolved" || reExport.bindings.isEmpty()) { continue }
+                let nextModule = match (reExport.targetModuleId) {
                     case Some(value) => value
                     case None => continue
                 }
+                if (!moduleReaches(module, nextModule)) { continue }
+                if (!consume(reExport.bindings.size)) { return false }
                 for (binding in reExport.bindings) {
-                    for (targetId in binding.targetSymbolIds) { let _ = result.add(targetId) }
+                    if (binding.exposedName != selected) { continue }
+                    if (!consume(binding.targetSymbolIds.size)) { return false }
+                    if (!binding.targetSymbolIds.contains(target.id)) { continue }
+                    let next = (nextModule, reExport.targetPackageName, binding.importedName)
+                    if (visited.add(exposureKey(next, target.id))) { pending.add(next) }
                 }
-                let targetKey = compositeKey(targetModuleId, reExport.targetPackageName)
-                if (targetKey != key && !visitedPackages.contains(targetKey)) { pending.add(targetKey) }
             }
         }
-        closureCache[startKey] = result
-        Some(result)
+        false
+    }
+
+    private func exposureKey(hop: (String, String, String), id: String): String {
+        compositeKey(compositeKey(compositeKey(hop[0], hop[1]), hop[2]), id)
     }
 }
 

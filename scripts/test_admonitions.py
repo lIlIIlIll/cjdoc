@@ -83,7 +83,7 @@ def validate_products(output: Path, locale: str) -> tuple[Path, dict, dict, Path
     site = output / locale
     snapshot = site / "docs.json"
     document = read_json(snapshot)
-    assert document.get("schemaVersion") == "cjdoc.doc-ir/19"
+    assert document.get("schemaVersion") == "cjdoc.doc-ir/20"
     declaration = next(symbol for symbol in document["declarations"]
                        if symbol.get("name") == "commit")
     comment = declaration["documentation"]

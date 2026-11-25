@@ -309,7 +309,13 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
                 domainFail("${reExportPath}.bindings",
                     "resolved symbol re-export requires at least one binding")
             }
-            var targetClosure: ?HashSet<String> = None
+            if (reExport.state == "resolved" &&
+                (reExport.kind == "single" || reExport.kind == "alias")) {
+                if (reExport.bindings.size != 1 || (reExport.kind == "alias" &&
+                    reExport.alias != Some(reExport.bindings[0].exposedName))) {
+                    domainFail(reExportPath, "invalid named re-export exposure")
+                }
+            }
             match (reExport.targetModuleId) {
                 case Some(targetModuleId) =>
                     if (!moduleIds.contains(targetModuleId) ||
@@ -323,14 +329,6 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
                         domainFail(reExportPath,
                             "target package is not reachable from the exporting module")
                     }
-                    if (!reExport.bindings.isEmpty()) {
-                        targetClosure = match (reachability.closure(targetModuleId,
-                            reExport.targetPackageName)) {
-                            case Some(value) => Some(value)
-                            case None => domainFail(reExportPath,
-                                "re-export target reachability exceeded its work budget")
-                        }
-                    }
                 case None => if (reExport.state == "resolved") {
                     domainFail("${reExportPath}.targetModuleId",
                         "resolved re-export is missing its target module")
@@ -340,6 +338,10 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
             var bindingIndex: Int64 = 0
             for (binding in reExport.bindings) {
                 let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
+                if ((reExport.kind == "single" || reExport.kind == "all") &&
+                    binding.importedName != binding.exposedName) {
+                    domainFail("${bindingPath}.importedName", "only a renamed import may change the exposed name")
+                }
                 if (!exposedNames.add(binding.exposedName)) {
                     domainFail("${bindingPath}.exposedName",
                         "duplicate exposed name in re-export")
@@ -352,8 +354,9 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
                     }
                     match (byId.get(targetId)) {
                         case Some(target) =>
-                            let reachable = match (targetClosure) {
-                                case Some(values) => values.contains(targetId)
+                            let reachable = match (reExport.targetModuleId) {
+                                case Some(owner) => reachability.proves(owner, reExport.targetPackageName,
+                                    binding.importedName, target)
                                 case None => false
                             }
                             if (target.ownerId.isSome() ||

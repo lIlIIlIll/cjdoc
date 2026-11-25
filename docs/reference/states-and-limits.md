@@ -141,7 +141,7 @@ Doc IR 的每个源文件记录来源状态：
 - GitHub 源码 URL 只接受 `https://github.com/<owner>/<repo>` 形式且被引用源码必须位于该仓库根内；其他情况不会变成已验证链接。
 - Windows 当前不实现站点本地图片的安全相对文件读取：图片被省略并报 `CJDOC4026`，Markdown 替代文本保留，生成可为 `partial`。Linux 与 macOS 支持该路径。
 - `--locale` 不翻译作者正文。`versions compose` 只复制既有站点并注入选择器，不重新生成，也不校验各版本内容是否一致；每个版本输入须是有效 HTML 站点入口或带站点清单的多语言输出根。
-- `render` 只接受当前的 `cjdoc.doc-ir/19`；源码或指南改动后要重新 `generate`。current-only 只针对 Doc IR，其他协议各自有版本，见[产物参考](artifacts.md#schema-与-wire-版本)。
+- `render` 只接受当前的 `cjdoc.doc-ir/20`；源码或指南改动后要重新 `generate`。current-only 只针对 Doc IR，其他协议各自有版本，见[产物参考](artifacts.md#schema-与-wire-版本)。
 - 声明、标签、源文件、辅助输入与渲染产物都受固定预算约束。超限时可能报诊断、跳过输入、保留部分结果或报资源错误；保留了一部分输出不等于全量成功，也不能靠调大上限绕过安全边界。
 
 ## 主要资源上限

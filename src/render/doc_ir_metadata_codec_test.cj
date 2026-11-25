@@ -127,7 +127,7 @@ class DocIrMetadataCodecTest {
         let documentation = metadataCodecFixture()
         let encoded = encodeDocIr(documentation)
         let decoded = decodeDocIr(encoded)
-        @Expect(decoded.schemaVersion, "cjdoc.doc-ir/19")
+        @Expect(decoded.schemaVersion, "cjdoc.doc-ir/20")
         @Expect(encodeDocIr(decoded), encoded)
         @Expect(decoded.metadata.groups[0].id, "20-query")
         @Expect(decoded.metadata.groups[1].id, "private-group")
@@ -154,9 +154,9 @@ class DocIrMetadataCodecTest {
         unknownMetadata.get("metadata").getOrThrow().asObject().put("unexpected", JsonNode.boolean(true))
         @ExpectThrows[IllegalArgumentException](decodeDocIr(unknownMetadata.toJson()))
 
-        let oldVersion = encoded.replace("cjdoc.doc-ir/19", "cjdoc.doc-ir/17")
+        let oldVersion = encoded.replace("cjdoc.doc-ir/20", "cjdoc.doc-ir/17")
         @ExpectThrows[IllegalArgumentException](decodeDocIr(oldVersion))
-        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("cjdoc.doc-ir/19", "cjdoc.doc-ir/18")))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("cjdoc.doc-ir/20", "cjdoc.doc-ir/18")))
     }
     @TestCase
     func nullableGroupFieldsAcceptExplicitNullAndDefinitionLimitsAreEnforced(): Unit {

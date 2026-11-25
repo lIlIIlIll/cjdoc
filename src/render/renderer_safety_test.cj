@@ -270,10 +270,10 @@ class RendererSafetyTest {
             sourceApiSignature: SourceApiSignature("unavailable"))
         let reExport = ReExportDoc(
             "cjdoc:reexport:v1:1111111111111111111111111111111111111111111111111111111111111111",
-            "single", "fixture", "resolved", source, targetModuleId: Some(moduleId),
+            "multi", "fixture", "resolved", source, targetModuleId: Some(moduleId),
             bindings: [
-                ReExportBinding("renamedPub", targetSymbolIds: [availableId]),
-                ReExportBinding("renamedOpaque", targetSymbolIds: [unavailableId])])
+                ReExportBinding("renamedPub", "pub", targetSymbolIds: [availableId]),
+                ReExportBinding("renamedOpaque", "opaque", targetSymbolIds: [unavailableId])])
         let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
             ProjectInfo("renderer-exposure"), ConfigurationSnapshot(lintProfile: "off"),
             providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
@@ -1034,7 +1034,7 @@ class RendererSafetyTest {
         // source annotation carries the message and the comment has no
         // @deprecated prose.
         let document = decodeDocIr(String.fromUtf8(
-            File.readFrom("tests/fixtures/golden-v19/basic.docs.json")))
+            File.readFrom("tests/fixtures/golden-v20/basic.docs.json")))
         var checked = false
         for (symbol in document.declarations where symbol.name == "oldParse") {
             checked = true

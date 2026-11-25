@@ -4,13 +4,13 @@ package cjdoc.schema_data
 private let DOC_IR_ROOT = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v19.schema.json",
-  "title": "cjdoc Doc IR v19",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v20.schema.json",
+  "title": "cjdoc Doc IR v20",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "metadata", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/19"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/20"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
@@ -204,9 +204,10 @@ private let DOC_IR_WORKSPACE = """
     },
     "reExportBinding": {
       "type": "object", "additionalProperties": false,
-      "required": ["exposedName", "targetSymbolIds"],
+      "required": ["exposedName", "importedName", "targetSymbolIds"],
       "properties": {
         "exposedName": {"type": "string", "minLength": 1},
+        "importedName": {"type": "string", "minLength": 1},
         "targetSymbolIds": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/symbolId"}}
       }
     },
@@ -361,5 +362,5 @@ private func buildDocIrSchema(): String {
     out.toString()
 }
 
-public let DOC_IR_V19_SCHEMA = buildDocIrSchema()
-public let DOC_IR_SCHEMA = DOC_IR_V19_SCHEMA.replace("doc-ir-v19.schema.json", "doc-ir.schema.json")
+public let DOC_IR_V20_SCHEMA = buildDocIrSchema()
+public let DOC_IR_SCHEMA = DOC_IR_V20_SCHEMA.replace("doc-ir-v20.schema.json", "doc-ir.schema.json")

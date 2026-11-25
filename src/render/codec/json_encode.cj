@@ -340,7 +340,8 @@ protected func appendPackage(out: StringBuilder, value: PackageDoc): Unit {
         for (binding in reExport.bindings) {
             if (!firstBinding) { out.append(",") }
             firstBinding = false
-            out.append("{\"exposedName\":${escapeJsonString(binding.exposedName)},\"targetSymbolIds\":")
+            out.append("{\"exposedName\":${escapeJsonString(binding.exposedName)},")
+            out.append("\"importedName\":${escapeJsonString(binding.importedName)},\"targetSymbolIds\":")
             appendStrings(out, binding.targetSymbolIds)
             out.append("}")
         }

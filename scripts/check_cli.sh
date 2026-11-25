@@ -100,17 +100,17 @@ check_cli_wire() {
     "${python_cmd}" scripts/check_schemas.py --repo . --binary "${binary}" \
         --output "${check_dir}/schemas"
 
-    run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v19/basic.docs.json
-    run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v19/functions.docs.json
-    run_golden types tests/fixtures/projects/types tests/fixtures/golden-v19/types.docs.json
-    run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v19/extend.docs.json
-    run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v19/source-edges.docs.json
-    run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v19/unsupported.docs.json
-    run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v19/workspace.docs.json
+    run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v20/basic.docs.json
+    run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v20/functions.docs.json
+    run_golden types tests/fixtures/projects/types tests/fixtures/golden-v20/types.docs.json
+    run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v20/extend.docs.json
+    run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v20/source-edges.docs.json
+    run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v20/unsupported.docs.json
+    run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v20/workspace.docs.json
     run_golden conditional-linux tests/fixtures/projects/conditional \
-        tests/fixtures/golden-v19/conditional-linux.docs.json --cfg os=Linux
+        tests/fixtures/golden-v20/conditional-linux.docs.json --cfg os=Linux
     run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-        tests/fixtures/golden-v19/path-dependencies.docs.json --include-path-dependencies
+        tests/fixtures/golden-v20/path-dependencies.docs.json --include-path-dependencies
 }
 
 check_cli_roundtrip() {
@@ -246,7 +246,7 @@ check_cli_rejections() {
     local strict_code invalid_code render_invalid_code resource_limit_code
     "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
         --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-    "${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/19" and len(value["declarations"]) == 25' \
+    "${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/20" and len(value["declarations"]) == 25' \
         "${check_dir}/stdout.json"
 
     set +e

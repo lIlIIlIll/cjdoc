@@ -15,7 +15,7 @@
 | `generate` | 项目 | 读取项目并生成选定格式 | `cjdoc generate --project . --format html` |
 | `check` | 项目 | 读取项目、检查诊断与门槛，不写出站点 | `cjdoc check --project .` |
 | `serve` | 项目 | 生成预览站点并监听输入变化 | `cjdoc serve --project . --port 8080` |
-| `render` | Doc IR 文件 | 只读 `cjdoc.doc-ir/19`，离线重新渲染 | `cjdoc render --input docs.json --format html --output replay` |
+| `render` | Doc IR 文件 | 只读 `cjdoc.doc-ir/20`，离线重新渲染 | `cjdoc render --input docs.json --format html --output replay` |
 | `diff` | 两个 API 快照 | 比较两个 `cjdoc.api-surface/3` 快照 | `cjdoc diff old.json new.json --format json` |
 | `versions compose` | 已生成的版本站点 | 组合版本站点并注入选择器 | `cjdoc versions compose --version v1=old/html --version v2=new/html --latest v2 --output versions` |
 | `query` | 冻结快照 | 执行一个 JSON 查询请求 | `cjdoc query --snapshot docs.json --request request.json` |
@@ -177,7 +177,7 @@ cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-
 cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]
 ```
 
-两个输入都必需，两种写法只能选一种；多余的位置参数报 `unknown option '...'`。`--format` 只接受 `text`（默认）与 `json`。`--deny-breaking-api` 使 `breaking` 条目失败，`--deny-potentially-breaking-api` 使 `potentially-breaking` 条目失败；两类都要拒绝时同时给出。输入必须是 `cjdoc.api-surface/3` 快照，传入 Doc IR 报 `unsupported API surface schema 'cjdoc.doc-ir/19'`。严格基线是另一个接口：`check --api-surface-baseline` 连新增也拒绝。流程见[比较与多版本](../how-to/compare-and-version.md)。
+两个输入都必需，两种写法只能选一种；多余的位置参数报 `unknown option '...'`。`--format` 只接受 `text`（默认）与 `json`。`--deny-breaking-api` 使 `breaking` 条目失败，`--deny-potentially-breaking-api` 使 `potentially-breaking` 条目失败；两类都要拒绝时同时给出。输入必须是 `cjdoc.api-surface/3` 快照，传入 Doc IR 报 `unsupported API surface schema 'cjdoc.doc-ir/20'`。严格基线是另一个接口：`check --api-surface-baseline` 连新增也拒绝。流程见[比较与多版本](../how-to/compare-and-version.md)。
 
 ## versions compose
 
@@ -234,7 +234,7 @@ cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-ap
 | generate、check、diff、versions compose、schema | 0 | 完成且所选策略未失败 |
 | 同上 | 1 | 文档 error、`--deny-warnings` 遇到的 warning、覆盖率或 API 门槛失败、示例检查失败 |
 | 同上 | 2 | 用法、配置或输入错误（含选项互斥、取值范围、配置文件语法） |
-| render | 同上三条 | 输入不是 `cjdoc.doc-ir/19`、无法读取或超出 `--max-doc-ir-mib` 时为 `2` |
+| render | 同上三条 | 输入不是 `cjdoc.doc-ir/20`、无法读取或超出 `--max-doc-ir-mib` 时为 `2` |
 | query | 0 | `ok`、`ambiguous`、`not_found`、`source_incomplete` |
 | query | 2 | `invalid_request`、`scope_mismatch`、`stale_cursor` |
 | query | 3 | `budget_exceeded`、`resource_limit`、`unavailable` |

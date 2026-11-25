@@ -43,7 +43,7 @@ GOLDEN_NAMES = (
 CURRENT_GOLDEN_VERSION = 19
 
 SCHEMA_NAMES = (
-    "doc-ir", "doc-ir-v19", "diagnostics", "cfg-matrix",
+    "doc-ir", "doc-ir-v20", "diagnostics", "cfg-matrix",
     "search-index", "search-index-v12", "symbol-index",
     "navigation-index", "api-surface", "api-surface-v3",
     "api-diff", "api-diff-v2", "documentation-coverage",
@@ -53,7 +53,7 @@ SCHEMA_NAMES = (
     "query-request", "query-result", "source-provenance",
 )
 SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json',
-            'cjdoc.doc-ir/19',
+            'cjdoc.doc-ir/20',
             ('schemaVersion',
              'generator',
              'status',
@@ -75,8 +75,8 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
              'diagnostics',
              'dependencies',
              'documentSets')),
- 'doc-ir-v19': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v19.schema.json',
-                'cjdoc.doc-ir/19',
+ 'doc-ir-v20': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v20.schema.json',
+                'cjdoc.doc-ir/20',
                 ('schemaVersion',
                  'generator',
                  'status',
@@ -192,7 +192,7 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
 }
 SCHEMA_OPTIONAL_PROPERTIES = {
     "doc-ir": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
-    "doc-ir-v19": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
+    "doc-ir-v20": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
     "symbol-index": ("provenance", "version"),
     "site-manifest": ("defaultLanguage",),
     "query-request": (

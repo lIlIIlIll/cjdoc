@@ -144,7 +144,7 @@ target/doc/
 | `search-index.json`、`search-index.js` | `cjdoc.search-index/12`，内嵌 `cjdoc.search-contract/3` | 静态站搜索用 `discovery` + `bounded-static`，只支持 `search` |
 | `symbol-index.json` | `cjdoc.symbol-index/2` | 符号库存，与 `--format symbol-index` 内容同类 |
 | `agent/manifest.json` | `cjdoc.machine-manifest/3` | 绑定快照、发布修订、作用域、资源哈希，以及每个 HTML/Markdown/JSON 表示的相对路径 |
-| `agent/docs.json` | `cjdoc.doc-ir/19` | 与 manifest 对应的自包含 Doc IR |
+| `agent/docs.json` | `cjdoc.doc-ir/20` | 与 manifest 对应的自包含 Doc IR |
 | `agent/symbols/*.json` | `cjdoc.declaration/3` | 单条声明的独立表示，含分类与源码投影 |
 | `agent/pages/*.json`、`agent/pages/*.md` | `cjdoc.page/2` | 概念页、包页或项目页的独立表示 |
 | `agent/packages/*` | `cjdoc.page/2`、`cjdoc.declaration/3` | 包页与包内声明的 Markdown/JSON 表示 |
@@ -156,7 +156,7 @@ target/doc/
 
 Doc IR 只装在内存或只有 `docs.json` 时，结果的 `packagedRepresentations` 为 `false`：规范路由存在不代表资源真的随包复制。装载 `agent/manifest.json` 才会校验资源哈希与完整表示映射。
 
-新发布使用 `cjdoc.machine-manifest/3` + `cjdoc.read/3`：包的 HTML 表示使用新包地址的实际 `index.html` 文件，声明地址与 `/2` 相同。CLI 也能验证 `/1` + `/1` 和 `/2` + `/2` 的 manifest 与读取投影，沿用各自的原始地址。三种配对都要求 `agent/docs.json` 为当前 Doc IR v19；支持旧 manifest 不等于接受旧 Doc IR。
+新发布使用 `cjdoc.machine-manifest/3` + `cjdoc.read/3`：包的 HTML 表示使用新包地址的实际 `index.html` 文件，声明地址与 `/2` 相同。CLI 也能验证 `/1` + `/1` 和 `/2` + `/2` 的 manifest 与读取投影，沿用各自的原始地址。三种配对都要求 `agent/docs.json` 为当前 Doc IR v20；支持旧 manifest 不等于接受旧 Doc IR。
 
 ## 多语言产物布局
 
@@ -231,7 +231,7 @@ versions/
 
 | `cjdoc schema` 名字 | wire 版本 | 说明 |
 |---|---|---|
-| `doc-ir`、`doc-ir-v19` | `cjdoc.doc-ir/19` | 两个名字都输出当前 Doc IR；解码器只接受 v19 |
+| `doc-ir`、`doc-ir-v20` | `cjdoc.doc-ir/20` | 两个名字都输出当前 Doc IR；解码器只接受 v20 |
 | `diagnostics` | `cjdoc.diagnostics/2` | 诊断数组 envelope |
 | `cfg-matrix` | `cjdoc.cfg-matrix/2` | 多 cfg profile 的 Doc IR 集合 |
 | `search-index`、`search-index-v12` | `cjdoc.search-index/12` | 两个名字相同 |
@@ -258,7 +258,7 @@ versions/
 
 ### current-only 的适用范围
 
-`cjdoc.doc-ir/19` 是当前 Doc IR wire：`render`、query 加载器与解码器都不迁移 `/18` 或更早版本，旧 JSON 必须从原始源码重新生成。这条规则只针对 Doc IR；其他协议各自有版本号，`navigation-index-v1` 就是明确保留的冻结 schema。
+`cjdoc.doc-ir/20` 是当前 Doc IR wire：`render`、query 加载器与解码器都不迁移 `/18` 或更早版本，旧 JSON 必须从原始源码重新生成。这条规则只针对 Doc IR；其他协议各自有版本号，`navigation-index-v1` 就是明确保留的冻结 schema。
 
 ## 其他命令写出的文件
 

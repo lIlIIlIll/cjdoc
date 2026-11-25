@@ -179,7 +179,7 @@ jobs:
           )
           if [[ "${READER_CORPUS}" == 1000 ]]; then
             registration_command+=(
-              --doc-ir-transition v17-v19-unregistered-source-no-comment-fields
+              --doc-ir-transition v17-v20-unregistered-source-no-comment-fields
               --aria-transition docs/maintainer/reader-scale-docs-173-177.json
               --presentation docs/maintainer/reader-scale-presentation-readable-api.json
               --api-routes-transition docs/maintainer/reader-scale-readable-api.json

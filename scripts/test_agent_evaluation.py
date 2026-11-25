@@ -852,7 +852,7 @@ class RunnerIntegrationTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.capture = make_site(self.root / "capture")
         self.snapshot = write_json(self.root / "snap" / "docs.json",
-                                   {"schemaVersion": "cjdoc.doc-ir/19"})
+                                   {"schemaVersion": "cjdoc.doc-ir/20"})
         self.binary = self.write_script("native-cjdoc", NATIVE_STUB)
         self.stub = self.write_script("stub-codex", CLIENT_STUB)
 
@@ -1042,7 +1042,7 @@ class RunnerIntegrationTests(unittest.TestCase):
 
     def test_baseline_view_excludes_oracle_material(self):
         write_json(self.capture / "site/en/docs.json",
-                   {"schemaVersion": "cjdoc.doc-ir/19"})
+                   {"schemaVersion": "cjdoc.doc-ir/20"})
         write_json(self.capture / "site/en/api-surface/api-surface.json", {})
         write(self.capture / "site/en/coverage.json", "{}\n")
         self.assertEqual(self.runner("--task", "AG-01").returncode, 0)

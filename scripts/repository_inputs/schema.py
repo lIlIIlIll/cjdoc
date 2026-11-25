@@ -428,7 +428,7 @@ def validate_doc_ir_schema(name: str, value: dict, properties: dict) -> None:
         raise ValueError(f"{name} schema critical definitions are missing")
     validate_doc_ir_collection_shapes(name, properties)
     validate_doc_ir_provenance(name, value, definitions)
-    if name in ("doc-ir", "doc-ir-v19"):
+    if name in ("doc-ir", "doc-ir-v20"):
         validate_doc_ir_metadata(name, value, properties)
         validate_doc_ir_markdown(name, definitions)
 
@@ -744,9 +744,9 @@ def validate_schema_version(name: str, value: dict, properties: dict) -> None:
 
 
 def validate_graph_binding(name: str, value: dict, properties: dict) -> None:
-    if name in ("doc-ir", "doc-ir-v19") and properties["documentationRevision"] != {"type": "string"}:
+    if name in ("doc-ir", "doc-ir-v20") and properties["documentationRevision"] != {"type": "string"}:
         raise ValueError(f"{name} schema documentation revision shape is invalid")
-    if name in ("doc-ir", "doc-ir-v19", "symbol-index"):
+    if name in ("doc-ir", "doc-ir-v20", "symbol-index"):
         definitions = value.get("$defs")
         for definition_name, graph_field in (
             ("dependencyInstance", "componentModuleId"), ("documentSetIdentity", "moduleId"),

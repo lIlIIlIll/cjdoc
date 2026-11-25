@@ -96,8 +96,9 @@ internal func decodePackages(root: JsonObject): Array<PackageDoc> {
             var bindingIndex: Int64 = 0
             for (bindingNode in jsonArrayValues(arrayAt(reExport, "bindings", reExportPath))) {
                 let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
-                let binding = strictObject(bindingNode, bindingPath, ["exposedName", "targetSymbolIds"])
+                let binding = strictObject(bindingNode, bindingPath, ["exposedName", "importedName", "targetSymbolIds"])
                 bindings.add(ReExportBinding(stringAt(binding, "exposedName", bindingPath),
+                    stringAt(binding, "importedName", bindingPath),
                     targetSymbolIds: stringsAt(binding, "targetSymbolIds", bindingPath)))
                 bindingIndex++
             }

@@ -240,7 +240,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertEqual(tuple(value["required"]), required, name)
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("doc-ir")},
-            {"doc-ir", "doc-ir-v19"},
+            {"doc-ir", "doc-ir-v20"},
         )
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("search-index")},
@@ -259,7 +259,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                      "machine-manifest", "query-request", "query-result", "source-provenance"):
             self.assertIn(name, SCHEMA_NAMES)
         self.assertIn("navigation-index", SCHEMA_NAMES)
-        for name in ("doc-ir", "doc-ir-v19"):
+        for name in ("doc-ir", "doc-ir-v20"):
             value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
             self.assertNotIn("evidenceKey", value["$defs"]["tag"]["properties"])
             self.assertIn("navigation", value["$defs"]["tag"]["properties"])

@@ -267,7 +267,7 @@ class AssessmentEvidenceTests(unittest.TestCase):
         closure = runtime.source_closure(REPO, [project])
         identities = [{"path": item["relative"].as_posix(), "name": item["name"],
                        "version": item["version"], "identity": item["identity"]} for item in closure]
-        snapshot = REPO / "tests/fixtures/golden-v19/unsupported.docs.json"
+        snapshot = REPO / "tests/fixtures/golden-v20/unsupported.docs.json"
         capture = SimpleNamespace(protocol={"tasks": [self.task]},
                                   manifest={"snapshots": [{"sha256": provenance.digest_of(snapshot)}]})
         verification = {"receipt": {"scopes": {self.task["scope"]: {"sourceIdentities": identities}}}}

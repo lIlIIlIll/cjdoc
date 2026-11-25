@@ -301,6 +301,6 @@ Receipt 拒绝未知或重复字段、缺失字段、重复/不安全路径、�
 
 ## 相关文档
 
-- [doc-ir.md](doc-ir.md)：Doc IR v19、当前 source-provenance/1 回执与文件来源 wire、导航 wire 的紧凑表示及 schema/golden 同步。
+- [doc-ir.md](doc-ir.md)：Doc IR v20、当前 source-provenance/1 回执与文件来源 wire、导航 wire 的紧凑表示及 schema/golden 同步。
 - [build.md](build.md)：CHIR worker 的构建与 `--semantic chir` 参数。
 - [release-process.md](release-process.md)：证据层级与发布 checklist。

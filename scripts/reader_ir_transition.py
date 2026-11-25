@@ -1,4 +1,4 @@
-"""Evidence-only comparison for the registered v17/v19 default-field transition.
+"""Evidence-only comparison for the registered v17/v20 default-field transition.
 
 This is not a product decoder or input migration. Raw observations stay unchanged.
 """
@@ -15,7 +15,7 @@ try:
 except ImportError:
     from strict_json import strict_loads
 
-TRANSITION_NAME = "v17-v19-unregistered-source-no-comment-fields"
+TRANSITION_NAME = "v17-v20-unregistered-source-no-comment-fields"
 UNREGISTERED_SOURCE = {
     "state": "unavailable", "reason": "no_project_repository",
     "repository": None, "repositoryPath": None, "sourceDigest": None,
@@ -95,7 +95,7 @@ def compare_ir_transition(before: dict, after: dict, registration: dict,
     expected_generator = {**before["generator"], "version": after_version}
     _require(after.get("generator") == expected_generator,
              "after generator differs from the registered candidate version or baseline identity")
-    _require(after.get("schemaVersion") == "cjdoc.doc-ir/19", "after must be exactly v19")
+    _require(after.get("schemaVersion") == "cjdoc.doc-ir/20", "after must be exactly v20")
     _reject_admonitions(after)
     old, new = deepcopy(before), deepcopy(after)
     _require(new["metadata"].get("fields") == [], "after must have no comment fields")
