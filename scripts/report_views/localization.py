@@ -58,6 +58,8 @@ DIFF_REASONS = {
     "type or symbol relationships changed": ("类型或符号关系变化", "Type or symbol relationships changed"),
     "enum exhaustiveness evidence changed": ("枚举穷尽性证据变化", "Enum exhaustiveness evidence changed"),
     "source API signature changed": ("源码 API 签名变化", "Source API signature changed"),
+    "source signature does not establish an optional-only change": (
+        "源码签名无法证明仅追加了可选参数", "Source signature does not establish an optional-only change"),
     "visibility changed": ("可见性变化", "Visibility changed"),
     "visibility narrowed": ("可见性收窄", "Visibility narrowed"),
     "documentation changed": ("文档变化", "Documentation changed"),

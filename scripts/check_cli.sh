@@ -43,6 +43,10 @@ stage_cli() {
     check_cli_agent_publication "${binary}" "${check_dir}"
     check_cli_versions "${binary}" "${check_dir}"
     check_cli_rejections "${binary}" "${check_dir}"
+    "${python_cmd}" scripts/test_api_parameter_compat.py --binary "${binary}" \
+        --output "${check_dir}/api-parameter-compat"
+    "${python_cmd}" scripts/test_png_idat.py --binary "${binary}" \
+        --output "${check_dir}/png-idat"
     check_cli_output_ownership "${binary}" "${check_dir}"
     check_cli_external_artifacts "${binary}" "${check_dir}"
     cleanup_cli

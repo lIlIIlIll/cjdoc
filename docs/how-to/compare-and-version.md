@@ -69,7 +69,7 @@ cjdoc diff \
   --format text
 ```
 
-开头列出项目、受众、比较状态和各类差异数量，之后列出变更条目。先找 `breaking`，例如这两份源码里 `TextCatalog.legacyCount` 的移除。再读 `potentially-breaking` 及每条的原因：当类型或返回契约不能可靠判定为等价时，即便新增参数本身是可选的，也要复核该条目。
+开头列出项目、受众、比较状态和各类差异数量，之后列出变更条目。先找 `breaking`，例如 `TextCatalog.legacyCount` 被移除，或已经解析的既有参数类型发生变化。只有原调用签名保持不变、且新增参数都在末尾并有默认值，才会把这类追加判为 `additive`。证据不足时，检查 `potentially-breaking` 条目的原因。
 
 `demo-v2` 移除了 `TextCatalog.legacyCount`、新增了 `nonEmpty`、给 `add` 增加了可选参数，所以不会得到空差异。`--format` 默认 `text`；要保存完整报告供组合站点使用，改成 `--format json` 并重定向到文件：
 

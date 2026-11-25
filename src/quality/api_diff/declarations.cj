@@ -137,6 +137,99 @@ private func appendedParametersAreDefaulted(old: ApiContractDeclaration,
     true
 }
 
+private func parameterListEnd(declaration: ApiContractDeclaration): Int64 {
+    let signature = declaration.sourceApiSignature
+    let introducer = match (declaration.kind) {
+        case "function" => "FUNC:4:func"
+        case "constructor" => if (declaration.name == "init") { "INIT:4:init" } else {
+            "IDENTIFIER:${declaration.name.size}:${declaration.name}"
+        }
+        case _ => return -1
+    }
+    var callable = false
+    var depth: Int64 = 0
+    for (index in 0..signature.size) {
+        let token = signature[index]
+        if (!callable) {
+            callable = token == introducer
+        } else if (token == "LPAREN:1:(") {
+            depth++
+        } else if (depth > 0 && token == "RPAREN:1:)") {
+            depth--
+            if (depth == 0) { return index }
+        }
+    }
+    -1
+}
+
+private func sourceSignatureOnlyAppendsParameters(old: ApiContractDeclaration,
+    current: ApiContractDeclaration): Bool {
+    if (old.sourceApiSignatureState != "resolved" ||
+        current.sourceApiSignatureState != "resolved") { return false }
+    let before = old.sourceApiSignature
+    let after = current.sourceApiSignature
+    let oldEnd = parameterListEnd(old)
+    let newEnd = parameterListEnd(current)
+    if (oldEnd < 0 || newEnd <= oldEnd || before.size - oldEnd != after.size - newEnd) {
+        return false
+    }
+    // The old signature must survive verbatim on both sides of the insertion.
+    // Names, named-argument markers, and unresolved type spellings live here.
+    for (index in 0..oldEnd) {
+        if (before[index] != after[index]) { return false }
+    }
+    if (!old.parameters.isEmpty() && before[oldEnd - 1] != "COMMA:1:," &&
+        after[oldEnd] != "COMMA:1:,") { return false }
+    for (offset in 0..(before.size - oldEnd)) {
+        if (before[oldEnd + offset] != after[newEnd + offset]) { return false }
+    }
+    true
+}
+
+private func sameSourceTokens(left: ReadOnlyList<String>, right: ReadOnlyList<String>): Bool {
+    if (left.size != right.size) { return false }
+    for (index in 0..left.size) {
+        if (left[index] != right[index]) { return false }
+    }
+    true
+}
+
+private func compareSharedParameters(old: ReadOnlyList<ApiContractParameter>,
+    current: ReadOnlyList<ApiContractParameter>, initialClassification: String,
+    reasons: ArrayList<String>, evidence: ArrayList<ApiDiffEvidence>): String {
+    var classification = initialClassification
+    var index: Int64 = 0
+    while (index < old.size && index < current.size) {
+        let before = old[index]
+        let after = current[index]
+        if (before.name != after.name) {
+            if (classification != "breaking") { classification = "potentially-breaking" }
+            addReason(reasons, evidence, "parameters[${index}].name", "parameter name changed",
+                before: Some(before.name), after: Some(after.name), state: "partial")
+        }
+        if (before.typeState != after.typeState || !optionalEqual(before.`type`, after.`type`)) {
+            let resolved = before.typeState == "resolved" && after.typeState == "resolved"
+            if (resolved) { classification = "breaking" }
+            else if (classification != "breaking") { classification = "potentially-breaking" }
+            addReason(reasons, evidence, "parameters[${index}].type", "parameter type contract changed",
+                before: Some(parameterValue(before)), after: Some(parameterValue(after)),
+                state: if (resolved) { "resolved" } else { "partial" })
+        }
+        if (before.defaultState == "resolved" && after.defaultState != "resolved") {
+            classification = "breaking"
+            addReason(reasons, evidence, "parameters[${index}].default", "default value became unavailable",
+                before: before.defaultValue, after: after.defaultValue)
+        } else if (before.defaultState != after.defaultState ||
+            !optionalEqual(before.defaultValue, after.defaultValue)) {
+            if (classification != "breaking") { classification = "potentially-breaking" }
+            addReason(reasons, evidence, "parameters[${index}].default", "default value changed",
+                before: before.defaultValue, after: after.defaultValue, state: "partial")
+        }
+        index++
+    }
+    classification
+}
+
 private func compareDeclaration(old: ApiContractDeclaration, current: ApiContractDeclaration,
     matchState: String): ApiDiffEntry {
     let reasons = ArrayList<String>()
@@ -155,11 +248,15 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
             before: Some(old.visibility), after: Some(current.visibility),
             state: if (visibilityWidened) { "resolved" } else { "partial" })
     }
+    classification = compareSharedParameters(old.parameters, current.parameters, classification, reasons, evidence)
     let appendedDefaultedParameters = appendedParametersAreDefaulted(old, current)
+    let optionalOnlySourceChange = appendedDefaultedParameters && sourceSignatureOnlyAppendsParameters(old, current)
     if (old.parameters.size != current.parameters.size) {
         let resolvedCollection = old.collectionState == "resolved" && current.collectionState == "resolved"
         if (resolvedCollection && appendedDefaultedParameters) {
-            if (classification == "unchanged") { classification = "additive" }
+            if (classification == "unchanged") {
+                classification = if (optionalOnlySourceChange) { "additive" } else { "potentially-breaking" }
+            }
         } else if (resolvedCollection) {
             classification = "breaking"
         } else if (classification != "breaking") {
@@ -172,36 +269,6 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
             },
             before: Some(parametersValue(old.parameters)), after: Some(parametersValue(current.parameters)),
             state: if (resolvedCollection) { "resolved" } else { "partial" })
-    } else {
-        var index: Int64 = 0
-        while (index < old.parameters.size) {
-            let before = old.parameters[index]
-            let after = current.parameters[index]
-            if (before.name != after.name) {
-                if (classification != "breaking") { classification = "potentially-breaking" }
-                addReason(reasons, evidence, "parameters[${index}].name", "parameter name changed",
-                    before: Some(before.name), after: Some(after.name), state: "partial")
-            }
-            if (before.typeState != after.typeState || !optionalEqual(before.`type`, after.`type`)) {
-                if (before.typeState == "resolved" && after.typeState == "resolved") {
-                    classification = "breaking"
-                } else if (classification != "breaking") { classification = "potentially-breaking" }
-                addReason(reasons, evidence, "parameters[" + index.toString() + "].type", "parameter type contract changed",
-                    before: Some(parameterValue(before)), after: Some(parameterValue(after)),
-                    state: if (before.typeState == "resolved" && after.typeState == "resolved") { "resolved" } else { "partial" })
-            }
-            if (before.defaultState == "resolved" && after.defaultState != "resolved") {
-                classification = "breaking"
-                addReason(reasons, evidence, "parameters[${index}].default", "default value became unavailable",
-                    before: before.defaultValue, after: after.defaultValue)
-            } else if (before.defaultState != after.defaultState ||
-                !optionalEqual(before.defaultValue, after.defaultValue)) {
-                if (classification != "breaking") { classification = "potentially-breaking" }
-                addReason(reasons, evidence, "parameters[${index}].default", "default value changed",
-                    before: before.defaultValue, after: after.defaultValue, state: "partial")
-            }
-            index++
-        }
     }
     if (old.returnState != current.returnState || !optionalEqual(old.returnType, current.returnType)) {
         if (old.returnState == "resolved" && current.returnState == "resolved") {
@@ -233,14 +300,18 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
         addReason(reasons, evidence, "enumNonExhaustive", "enum exhaustiveness evidence changed",
             before: None<String>, after: None<String>, state: "partial")
     }
-    if ((old.sourceApiSignatureState != current.sourceApiSignatureState ||
-        joinedStrings(old.sourceApiSignature) != joinedStrings(current.sourceApiSignature)) &&
-        !(visibilityWidened && sourceSignatureOnlyVisibilityChange(old, current)) &&
-        !appendedDefaultedParameters) {
+    let signatureChanged = old.sourceApiSignatureState != current.sourceApiSignatureState ||
+        !sameSourceTokens(old.sourceApiSignature, current.sourceApiSignature)
+    if (signatureChanged && !(visibilityWidened && sourceSignatureOnlyVisibilityChange(old, current)) &&
+        !optionalOnlySourceChange) {
         if (classification != "breaking") { classification = "potentially-breaking" }
         addReason(reasons, evidence, "sourceApiSignature", "source API signature changed",
             before: Some(joinedStrings(old.sourceApiSignature)), after: Some(joinedStrings(current.sourceApiSignature)),
             state: if (old.sourceApiSignatureState == "resolved" && current.sourceApiSignatureState == "resolved") { "resolved" } else { "partial" })
+    }
+    if (appendedDefaultedParameters && !optionalOnlySourceChange && !signatureChanged) {
+        addReason(reasons, evidence, "sourceApiSignature",
+            "source signature does not establish an optional-only change", state: "partial")
     }
     if (fingerprintChanged(old.documentationFingerprint, current.documentationFingerprint) && reasons.isEmpty()) {
         classification = "documentation-only"
