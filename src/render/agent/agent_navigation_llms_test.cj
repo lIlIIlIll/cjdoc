@@ -167,9 +167,14 @@ class AgentNavigationLlmsTest {
     @TestCase
     func truncatedConceptListStillOffersTheBoundedContinuation(): Unit {
         let pages = ArrayList<DocumentationPage>()
-        for (index in 0..(AGENT_LLMS_LIST_LIMIT + 2)) {
+        // A valid document can exceed the byte budget well before its page limit.
+        let longTitle = StringBuilder()
+        for (_ in 0..512) { longTitle.append("Long title ") }
+        let titleSuffix = longTitle.toString()
+        let moduleCount: Int64 = 32
+        for (index in 0..moduleCount) {
             pages.add(llmsPage("module-${index}", "concepts/modules/m-${index}.html",
-                "Module ${index}", "module"))
+                "Module ${index}: ${titleSuffix}", "module"))
         }
         pages.add(llmsPage("guide", "concepts/guides/guide.html", "Guide", "guide"))
         let llms = llmsText(llmsDocumentation(pages.toArray()))
@@ -177,6 +182,11 @@ class AgentNavigationLlmsTest {
         @Expect(llms.contains("### Guides"))
         @Expect(llms.contains("](<concepts/guides/guide.html>)"))
         @Expect(llms.contains("### Modules"))
+        var listedModules: Int64 = 0
+        for (href in llmsLinkedRoutes(llms) where href.startsWith("concepts/modules/")) {
+            listedModules++
+        }
+        @Expect(listedModules > 0 && listedModules < moduleCount)
         @Expect(llms.contains("Additional conceptual pages are listed in navigation-index.json"))
         @Expect(llms.contains("Follow navigation-index.json and its actual continuation files"))
         // Truncation of concepts does not hide the generated API packages.
