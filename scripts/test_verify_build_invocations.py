@@ -34,7 +34,7 @@ def record(option: str = OPTION, argv: list[str] | None = None,
         "schemaVersion": "cjdoc.sts-invocation/1",
         "package": package,
         "option": option,
-        "argv": argv or ["build", "--jobs", "1"],
+        "argv": argv or ["build", "-i", "--jobs", "1"],
         "platform": "Linux",
         "workspace": "/w",
     }, sort_keys=True)
@@ -62,7 +62,7 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertEqual(payload["option"], OPTION)
 
     def test_invocations_before_the_offset_are_ignored(self) -> None:
-        self.write(record(argv=["test"]), record(argv=["build", "--jobs", "1"]))
+        self.write(record(argv=["test"]), record(argv=["build", "-i", "--jobs", "1"]))
         offset = len((record(argv=["test"]) + "\n").encode("utf-8"))
         result = self.check(since=offset)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -130,7 +130,7 @@ class InvocationVerificationTests(unittest.TestCase):
         manifest.write_text('[package]\n  name = "cjdoc"\n  cjdoc-test = true\n',
                             encoding="utf-8")
         result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
-                      f"--option={OPTION}", "--", "build", "--jobs", "1"])
+                      f"--option={OPTION}", "--", "build", "-i", "--jobs", "1"])
         self.assertEqual(result.returncode, 0, result.stderr)
         entry = json.loads(self.log.read_text().splitlines()[0])
         self.assertEqual(entry["schemaVersion"], "cjdoc.sts-invocation/1")
@@ -138,7 +138,7 @@ class InvocationVerificationTests(unittest.TestCase):
         # mislabelled as the root package.
         self.assertEqual(entry["package"], "cjdoc")
         self.assertEqual(entry["option"], OPTION)
-        self.assertEqual(entry["argv"], ["build", "--jobs", "1"])
+        self.assertEqual(entry["argv"], ["build", "-i", "--jobs", "1"])
         self.assertIsNone(entry["binary"])
 
     def test_the_logger_labels_an_auxiliary_package_from_its_manifest(self) -> None:
@@ -146,7 +146,7 @@ class InvocationVerificationTests(unittest.TestCase):
         manifest.write_text('[package]\n  name = "cjdoc_chir_worker"\n  cjdoc-test = true\n',
                             encoding="utf-8")
         result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
-                      f"--option={OPTION}", "--", "build", "--jobs", "1"])
+                      f"--option={OPTION}", "--", "build", "-i", "--jobs", "1"])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.log.read_text().splitlines()[0])["package"],
                          "cjdoc_chir_worker")
@@ -154,7 +154,7 @@ class InvocationVerificationTests(unittest.TestCase):
     def test_an_auxiliary_build_is_recorded_but_not_held_to_the_vouched_command(self) -> None:
         """The worker shares the product flags but has its own recorded invocation."""
         self.write(record(),
-                   record(argv=["build", "--jobs", "1"], package="cjdoc_chir_worker"))
+                   record(argv=["build", "-i", "--jobs", "1"], package="cjdoc_chir_worker"))
         result = self.check()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["builds"], 2)
@@ -183,7 +183,7 @@ class InvocationVerificationTests(unittest.TestCase):
         import hashlib
         self.write(json.dumps({
             "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": OPTION,
-            "argv": ["build", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
+            "argv": ["build", "-i", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
             "binary": {"sha256": hashlib.sha256(b"original").hexdigest(), "size": 8},
         }, sort_keys=True))
         result = run([str(SCRIPT), "--log", str(self.log), "--since", "0",
@@ -197,7 +197,7 @@ class InvocationVerificationTests(unittest.TestCase):
         import hashlib
         line = json.dumps({
             "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": OPTION,
-            "argv": ["build", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
+            "argv": ["build", "-i", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
             "binary": {"sha256": hashlib.sha256(b"built").hexdigest(), "size": 5},
         }, sort_keys=True)
         self.write(line)

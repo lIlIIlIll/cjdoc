@@ -290,8 +290,8 @@ stage_build() {
         remove_owned_outputs "$(worker_target_path)"
     }
     trap cleanup_build_worker EXIT
-    # Keep the same single-job build command across platform acceptance and release receipts.
-    cjpm build --jobs 1
+    # Keep the incremental single-job argv consistent with acceptance and release receipts.
+    cjpm build -i --jobs 1
     # Resolve the real executable name. Windows produces `main.exe`, and the
     # `-f main` test can succeed on a non-executable stub, so the `.exe` spelling
     # is preferred whenever it exists.
@@ -308,7 +308,7 @@ stage_build() {
         --require-tracked --binary "${binary}"
     local worker
     worker="$(resolve_worker_binary "${worker_project}/target/release/bin/main")"
-    (cd "${worker_project}" && cjpm build --jobs 1)
+    (cd "${worker_project}" && cjpm build -i --jobs 1)
     if [[ ! -x "${worker}" && ! ( -f "${worker}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
         echo "CHIR worker executable was not produced at ${worker}" >&2
         exit 1

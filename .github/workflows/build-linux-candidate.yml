@@ -89,6 +89,22 @@ jobs:
           set -euo pipefail
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
+      - name: Compute product dependency cache identity
+        id: product-cache-key
+        shell: bash
+        run: >-
+          python scripts/dependency_cache_key.py --repo .
+          --platform "${RUNNER_OS}-${RUNNER_ARCH}" --github-output "${GITHUB_OUTPUT}"
+
+      - name: Restore cjpm incremental artifacts
+        id: product-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.product-cache-key.outputs.paths }}
+          key: ${{ steps.product-cache-key.outputs.key }}
+          restore-keys: |
+            ${{ steps.product-cache-key.outputs.restore-prefix }}
+
       - name: Build the Linux candidate
         id: build
         shell: bash
@@ -97,7 +113,9 @@ jobs:
           RUNNER_TEMP: ${{ runner.temp }}
           # The candidate job records a build stage too, so it reports its cache
           # state like the acceptance jobs rather than leaving the field empty.
-          CJDOC_CACHE_STATE: cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}
+          CJDOC_CACHE_STATE: >-
+            cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }},
+            deps=${{ steps.product-cache.outputs.cache-matched-key != '' && 'hit' || 'miss' }}
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
@@ -111,6 +129,13 @@ jobs:
           cat "${RUNNER_TEMP}/ci-stage-summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
           digest="$(python -c "import hashlib,sys;print(hashlib.sha256(open('target/release/bin/main','rb').read()).hexdigest())")"
           echo "main_binary_sha256=${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Save successful cjpm incremental artifacts
+        if: success() && steps.product-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.product-cache-key.outputs.paths }}
+          key: ${{ steps.product-cache-key.outputs.key }}
 
       - name: Upload timing evidence
         if: always()
