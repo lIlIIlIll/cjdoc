@@ -2,14 +2,14 @@ protected package cjdoc.source.frontend
 
 import cjdoc.source.joinedImportPath
 import cjdoc.source.model.{SourceImportFacts, SourceImportItem}
-import cjdoc.source.lexing.{IndexedSourceBuffer, sourceLexerTokens}
+import cjdoc.source.lexing.sourceLexerTokens
 import std.ast.*
 import std.collection.*
 
 // std.ast already resolves modifiers, whitespace, comments, aliases and `{...}`
 // lists. Projecting those fields instead of re-parsing statement text is what
 // keeps legal spellings from changing the selected package.
-private func importFactsItems(content: ImportContent): Array[SourceImportItem] {
+private func importFactsItems(content: ImportContent): Array<SourceImportItem> {
     let result = ArrayList<SourceImportItem>()
     for (item in content.items) {
         if (item.identifier.value.isEmpty()) { continue }
@@ -21,8 +21,7 @@ private func importFactsItems(content: ImportContent): Array[SourceImportItem] {
     result.toArray()
 }
 
-internal func sourceImportFacts(importList: ImportList, path: String,
-    source: IndexedSourceBuffer): SourceImportFacts {
+internal func sourceImportFacts(importList: ImportList, path: String): SourceImportFacts {
     let content = importList.content
     SourceImportFacts(importList.modifier.value, importKindName(content.importKind),
         content.orgName.value,
@@ -32,11 +31,10 @@ internal func sourceImportFacts(importList: ImportList, path: String,
         items: importFactsItems(content), source: importLocation(path, importList))
 }
 
-internal func collectImportFacts(program: Program, path: String,
-    source: IndexedSourceBuffer): Array[SourceImportFacts] {
+internal func collectImportFacts(program: Program, path: String): Array<SourceImportFacts> {
     let result = ArrayList<SourceImportFacts>()
     for (importList in program.importLists) {
-        result.add(sourceImportFacts(importList, path, source))
+        result.add(sourceImportFacts(importList, path))
     }
     result.toArray()
 }
@@ -46,13 +44,12 @@ internal func collectImportFacts(program: Program, path: String,
 // same ones the source parse would report.
 protected func sourceImportFactsFromText(path: String, importText: String):
     Array<SourceImportFacts> {
-    let buffer = IndexedSourceBuffer(importText)
     let program = try {
         parseProgram(sourceLexerTokens(importText))
     } catch (_: Exception) {
         return []
     }
-    collectImportFacts(program, path, buffer)
+    collectImportFacts(program, path)
 }
 
 protected func importFactsCanonicalTexts(facts: Array<SourceImportFacts>): Array<String> {

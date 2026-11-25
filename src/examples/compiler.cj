@@ -8,6 +8,7 @@ import std.env.*
 import std.fs.*
 
 private let MAX_EXAMPLE_COMPILER_OUTPUT_BYTES: Int64 = 8192
+internal let EXAMPLE_COMPILER_OUTPUT_TRUNCATED = "... compiler output truncated"
 
 private func exampleFailureSeverity(config: DocumentationQualityConfig): ?String {
     match (config.ruleSeverity("example-not-compiling")) {
@@ -33,7 +34,8 @@ internal func boundedCompilerOutput(value: String): String {
         out.append(line)
         used += cost
     }
-    out.append("\n... compiler output truncated")
+    out.append("\n")
+    out.append(EXAMPLE_COMPILER_OUTPUT_TRUNCATED)
     out.toString()
 }
 
@@ -99,7 +101,7 @@ private func judgeFailedCompile(documentation: DocumentationSet,
     let bodyDetail = joinedExampleFailureBlocks(attribution.bodyBlocks)
     if (target.expectsFailure) {
         match (target.failureContains) {
-            case Some(fragment) => if (!attribution.bodyText().contains(fragment)) {
+            case Some(fragment) => if (!attribution.bodyMessageContains(fragment)) {
                 addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                     "@example '${label}' failed without the pinned message '${fragment}': ${bodyDetail}")
             }
@@ -114,8 +116,11 @@ private func judgeFailedCompile(documentation: DocumentationSet,
     }
 }
 
-private func exampleFailureAttribution(outputText: String,
+private func exampleFailureAttribution(outputText: String, exitCode: Int64,
     source: SyntheticExampleSource): ExampleCompileAttribution {
+    if (exitCode == 124 || exitCode < 0 || exitCode >= 128) {
+        return attributeExampleCompilerOutput(outputText, 0, 0)
+    }
     attributeExampleCompilerOutput(outputText, source.bodyStartLine, source.bodyEndLine)
 }
 
@@ -172,7 +177,7 @@ private func compileExampleTarget(documentation: DocumentationSet,
             if (exitCode != 0) {
                 let compilerText = compilerOutput(stdout, stderr, generated, temporary)
                 judgeFailedCompile(documentation, target, compilerText, exitCode,
-                    exampleFailureAttribution(compilerText, staged), failureSeverity)
+                    exampleFailureAttribution(compilerText, exitCode, staged), failureSeverity)
             } else if (target.expectsFailure) {
                 addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                     "@example '${label}' is pinned to fail but compiled successfully")

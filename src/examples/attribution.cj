@@ -22,17 +22,13 @@ protected class ExampleCompileAttribution {
     prop hasBodyFailure: Bool { get() { !bodyBlocks.isEmpty() } }
     prop hasContextFailure: Bool { get() { !contextBlocks.isEmpty() } }
 
-    // Only body diagnostics may satisfy `failureContains`; a message produced by
-    // an import, an option or another context file can never satisfy a pin.
-    func bodyText(): String {
-        let out = StringBuilder()
-        var first = true
+    // Source excerpts and related notes are not the compiler error message.
+    func bodyMessageContains(expected: String): Bool {
         for (block in bodyBlocks) {
-            if (!first) { out.append("\n") }
-            out.append(block)
-            first = false
+            let end = block.indexOf("\n") ?? block.size
+            if (block[..end].contains(expected)) { return true }
         }
-        out.toString()
+        false
     }
 }
 
@@ -50,12 +46,9 @@ private func parseDiagnosticLocation(value: String): ?(String, Int64) {
     let bytes = value.toArray()
     var columnSeparator: Int64 = -1
     var index = bytes.size
-    var separators = 0
     while (index > 0) {
         index--
-        if (bytes[index] != b':') { continue }
-        separators++
-        if (separators == 2) { columnSeparator = index; break }
+        if (bytes[index] == b':') { columnSeparator = index; break }
     }
     if (columnSeparator <= 0) { return None }
     var lineSeparator: Int64 = -1
@@ -65,6 +58,8 @@ private func parseDiagnosticLocation(value: String): ?(String, Int64) {
         if (bytes[index] == b':') { lineSeparator = index; break }
     }
     if (lineSeparator <= 0) { return None }
+    let column = parseLocationNumber(value[columnSeparator + 1..]) ?? 0
+    if (column <= 0) { return None }
     let line = match (parseLocationNumber(value[lineSeparator + 1..columnSeparator])) {
         case Some(found) => found
         case None => return None
@@ -97,9 +92,10 @@ private func blockBelongsToBody(block: String, generatedLabel: String,
     path == generatedLabel && bodyStartLine <= line && line <= bodyEndLine
 }
 
-private func startsDiagnosticReport(line: String): Bool {
-    let trimmed = line.trimAscii()
-    trimmed.startsWith("error:") || trimmed.startsWith("fatal:")
+private func diagnosticSeverity(line: String): Int64 {
+    if (line.startsWith("error:") || line.startsWith("fatal:")) { return 2 }
+    if (line.startsWith("warning:") || line.startsWith("note:")) { return 1 }
+    0
 }
 
 private func appendAttributedBlock(bodyBlocks: ArrayList<String>,
@@ -129,11 +125,14 @@ protected func attributeExampleCompilerOutput(outputText: String,
     let contextBlocks = ArrayList<String>()
     let lines = ArrayList<String>()
     for (line in outputText.split("\n")) {
-        if (startsDiagnosticReport(line)) {
+        let severity = diagnosticSeverity(line)
+        if (severity > 0) {
             appendAttributedBlock(bodyBlocks, contextBlocks, lines, generatedLabel,
                 bodyStartLine, bodyEndLine)
             lines.clear()
-            lines.add(line)
+            if (severity == 2) { lines.add(line) }
+        } else if (line == EXAMPLE_COMPILER_OUTPUT_TRUNCATED) {
+            contextBlocks.add(line)
         } else if (!lines.isEmpty()) {
             lines.add(line)
         }

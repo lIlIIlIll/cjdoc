@@ -934,7 +934,8 @@ class ExampleFailureAttributionTest {
         let attribution = attributedFor([output], 6, 7)
         @Expect(attribution.hasBodyFailure, true)
         @Expect(attribution.hasContextFailure, false)
-        @Expect(attribution.bodyText().contains("missingApi"), true)
+        @Expect(attribution.bodyMessageContains("missingApi"), true)
+        @Expect(attribution.bodyMessageContains("let result"), false)
     }
 
     @TestCase
@@ -958,8 +959,8 @@ class ExampleFailureAttributionTest {
         let attribution = attributedFor([header, body], 6, 7)
         @Expect(attribution.bodyBlocks.size, 1)
         @Expect(attribution.contextBlocks.size, 1)
-        @Expect(attribution.bodyText().contains("mismatched types"), true)
-        @Expect(attribution.bodyText().contains("can not find package"), false)
+        @Expect(attribution.bodyMessageContains("mismatched types"), true)
+        @Expect(attribution.bodyMessageContains("can not find package"), false)
     }
 
     @TestCase
@@ -977,9 +978,9 @@ class ExampleFailureAttributionTest {
     func otherContextFileFailureIsNeverBodyAttributed(): Unit {
         let output = """
             error: mismatched types
-             ==> <generated-example>:3:53:
+             ==> <temporary>/src/api.cj:6:53:
               | 
-            3 | public func add(left: Int64, right: Int64): Int64 { "not a number" }
+            6 | public func add(left: Int64, right: Int64): Int64 { "not a number" }
               |                                                     ^^^^^^^^^^^^^^ expected 'Int64', found 'Struct-String'
               | 
             """
