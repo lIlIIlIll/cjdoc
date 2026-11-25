@@ -167,12 +167,15 @@ class AgentNavigationLlmsTest {
     func truncatedConceptListStillOffersTheBoundedContinuation(): Unit {
         let pages = ArrayList<DocumentationPage>()
         for (index in 0..(AGENT_LLMS_LIST_LIMIT + 2)) {
-            pages.add(llmsPage("guide-${index}", "concepts/guides/g-${index}.html",
-                "Guide ${index}", "guide"))
+            pages.add(llmsPage("module-${index}", "concepts/modules/m-${index}.html",
+                "Module ${index}", "module"))
         }
+        pages.add(llmsPage("guide", "concepts/guides/guide.html", "Guide", "guide"))
         let llms = llmsText(llmsDocumentation(pages.toArray()))
         @Expect(llms.contains("## Concepts and guides"))
         @Expect(llms.contains("### Guides"))
+        @Expect(llms.contains("](<concepts/guides/guide.html>)"))
+        @Expect(llms.contains("### Modules"))
         @Expect(llms.contains("Additional conceptual pages are listed in navigation-index.json"))
         @Expect(llms.contains("Follow navigation-index.json and its actual continuation files"))
         // Truncation of concepts does not hide the generated API packages.

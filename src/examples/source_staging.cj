@@ -132,9 +132,9 @@ internal func stageExampleSources(unit: ExampleCompilationUnit,
 // recorded here, where the layout is decided, so failure attribution can tell an
 // error in the example apart from an error in its context.
 protected class SyntheticExampleSource {
-    let text: String
-    let bodyStartLine: Int64
-    let bodyEndLine: Int64
+    protected let text: String
+    protected let bodyStartLine: Int64
+    protected let bodyEndLine: Int64
 
     init(text: String, bodyStartLine: Int64, bodyEndLine: Int64) {
         this.text = text
@@ -151,7 +151,7 @@ private func countSourceLines(value: String): Int64 {
     lines
 }
 
-protected func syntheticExampleSource(unit: ExampleCompilationUnit,
+internal func syntheticExampleSource(unit: ExampleCompilationUnit,
     target: ExampleCompilationTarget): SyntheticExampleSource {
     syntheticSourceForHeader(exampleHeaderText(unit, target), target.code,
         "func __cjdoc_compile_example(): Unit {\n", "}\n")

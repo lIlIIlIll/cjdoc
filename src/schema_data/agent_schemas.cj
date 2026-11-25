@@ -476,14 +476,18 @@ public let MACHINE_MANIFEST_SCHEMA_TEMPLATE = ##"{
   }
 }"##
 
-/**
- * Return a template with the current Doc IR v18 `$defs` merged in.
- *
- * The merge is a copy of the existing definition objects, so the published
- * artifact schema stays self-contained and `$ref: "#/$defs/declaration"` still
- * means the single Doc IR declaration model. A template may not shadow a v18
- * definition: that would fork the model rather than reuse it.
- */
+// Independent package pages describe visible results, not replay evidence.
+// Keeping their binding shape stable also keeps the page/2 contract stable.
+private let PUBLISHED_REEXPORT_BINDING_SCHEMA = ##"{
+  "type": "object", "additionalProperties": false,
+  "required": ["exposedName", "targetSymbolIds"],
+  "properties": {
+    "exposedName": {"type": "string", "minLength": 1},
+    "targetSymbolIds": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/symbolId"}}
+  }
+}"##
+
+/** Merge the shared current Doc IR definitions with the artifact's own model. */
 public func completeDocumentationSchema(template: String): String {
     let schema = JsonNode.parse(template).asObject()
     let definitions = match (schema.get("$defs")) {
@@ -496,7 +500,11 @@ public func completeDocumentationSchema(template: String): String {
         if (definitions.contains(name)) {
             throw IllegalArgumentException("artifact schema redefines Doc IR definition '${name}'")
         }
-        definitions.put(name, frozen.valueAt(index))
+        if (name == "reExportBinding") {
+            definitions.put(name, JsonNode.parse(PUBLISHED_REEXPORT_BINDING_SCHEMA))
+        } else {
+            definitions.put(name, frozen.valueAt(index))
+        }
     }
     schema.toJson()
 }

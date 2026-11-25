@@ -123,7 +123,7 @@
 
 ## 可选语义和高亮后端
 
-语义选项对 `generate`、`check`、`serve` 有效；高亮宿主选项只对 `generate`、`check` 有效，否则报 `highlight host options are only valid for generate and check`。
+语义选项与高亮宿主选项适用于 `generate`、`check`、`serve`。高亮宿主的两个路径必须成对传入；`render` 使用 Doc IR 中已捕获的高亮信息。
 
 | 选项 | 取值与约束 | 默认 |
 |---|---|---|
@@ -140,7 +140,7 @@
 
 ## serve
 
-`cjdoc serve --project . --port 8080` 先做一次完整生成，然后在本机 `127.0.0.1` 监听并监视输入。`--port` 默认 `8080`，按十进制整数解析，没有单独的取值范围校验；`--open` 在首次构建完成后请求浏览器打开 `http://127.0.0.1:<port>/`，命令本身不等待页面，平台顺序为 `xdg-open`、`open`、`cmd.exe /c start`，失败时只在终端提示。
+`cjdoc serve --project . --port 8080` 先生成完整站点，再在本机 `127.0.0.1` 监听并监视输入。`--port` 默认 `8080`，接受十进制 `0..65535`。`--open` 在绑定成功后请求 `xdg-open`、`open` 或 `cmd.exe /c start` 打开实际监听地址；打开失败时仍可访问终端显示的地址。
 
 | 项目 | 规则 |
 |---|---|

@@ -56,7 +56,7 @@ class ConceptualConfigContractTest {
     func headerTrailingCommentsRegisterTheSameGuideAsThePlainHeader(): Unit {
         let plain = "[[docs.pages]]\nsource = \"docs/guide.md\"\nroute = \"concepts/guide\"\n"
         expectEquivalentGuide(plain)
-        for suffix in [" # Guide registration", "\t# Guide registration", "   ", " # 中文说明"] {
+        for (suffix in [" # Guide registration", "\t# Guide registration", "   ", " # 中文说明"]) {
             expectEquivalentGuide("[[docs.pages]]" + suffix + "\n" +
                 "source = \"docs/guide.md\"\nroute = \"concepts/guide\"\n")
         }
@@ -85,12 +85,12 @@ class ConceptualConfigContractTest {
 
     @TestCase
     func malformedOrIncompletePageConfigurationKeepsAnActionableError(): Unit {
-        for configuration in [
+        for (configuration in [
             "[[docs.pages]] # missing body\n",
             "[[docs.pages]]\nroute = \"concepts/guide\"\n",
             "[[docs.pages]]\nsource = \"docs/guide.md\"\nroute = \"../escape\"\n",
             "[[docs.pages]]\nsource = \"docs/guide.md\"\ntitle = \"\"\" multiline\n"
-        ] {
+        ]) {
             let project = conceptualHeaderProject(configuration)
             try {
                 @ExpectThrows[IllegalArgumentException](conceptualHeaderGenerate(project))

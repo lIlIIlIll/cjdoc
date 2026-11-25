@@ -22,6 +22,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from urllib.parse import unquote, urlsplit
 
 from safe_output_root import verify_directory_chain
 
@@ -63,7 +64,7 @@ def page_configuration(suffix: str = "") -> str:
 def header_scenario(binary: Path, root: Path) -> dict:
     """F05: a header comment may not make a registered guide disappear."""
     outputs = {}
-    for name, suffix in (("plain", ""), ("commented", " # Guide registration")):
+    for name, suffix in (("plain", ""), ("commented", " \t # Guide registration")):
         project = root / "header" / name
         write(project, {
             "cjpm.toml": MANIFEST.format(name="docs_header_probe"),
@@ -102,6 +103,18 @@ def header_scenario(binary: Path, root: Path) -> dict:
     guide = [page for page in document.get("pages", []) if page["source"] == "docs/guide.md"]
     if len(guide) != 1 or guide[0]["title"] != "Guide # kept":
         raise Failure(f"quoted '#' in a value was treated as a comment: {guide}")
+    if [(page["id"], page["route"], page["source"]) for page in document["pages"]] != plain_pages:
+        raise Failure("a quoted hash changed the registered page identities")
+    untouched = root / "header" / "no-pages"
+    write(untouched, {
+        "cjpm.toml": MANIFEST.format(name="docs_header_probe"),
+        "src/api.cj": "package docs_header_probe\npublic func value(): Int64 { 1 }\n",
+        "cjdoc.toml": '[analysis]\nlint-profile = "off"\n',
+    })
+    absent = run([binary, "generate", "--project", untouched, "--semantic", "source",
+                  "--lint-profile", "off", "--no-cache", "--format", "json", "--stdout"])
+    if json.loads(absent.stdout).get("pages"):
+        raise Failure("a project without page config unexpectedly captured pages")
     # A page registration without its required source still fails loudly.
     broken = root / "header" / "broken"
     write(broken, {
@@ -109,15 +122,27 @@ def header_scenario(binary: Path, root: Path) -> dict:
         "src/api.cj": "package docs_header_probe\n/** Value. */\npublic func value(): Int64 { 1 }\n",
         "cjdoc.toml": "[[docs.pages]] # missing source\nroute = \"concepts/guide\"\n",
     })
-    run([binary, "generate", "--project", broken, "--semantic", "source",
-         "--lint-profile", "off", "--no-cache", "--format", "json", "--stdout"], expected=2)
+    rejected = run([binary, "generate", "--project", broken, "--semantic", "source",
+                    "--lint-profile", "off", "--no-cache", "--format", "json", "--stdout"], expected=2)
+    if "[[docs.pages]] requires source" not in rejected.stderr:
+        raise Failure(f"invalid page configuration lost its diagnostic: {rejected.stderr}")
+    multiline = root / "header" / "invalid-multiline"
+    write(multiline, {
+        "cjpm.toml": MANIFEST.format(name="docs_header_probe"),
+        "src/api.cj": "package docs_header_probe\npublic func value(): Int64 { 1 }\n",
+        "cjdoc.toml": '[docs]\nindex = """\n[[docs.pages]]\nsource = "docs/never.md"\n"""\n',
+    })
+    rejected = run([binary, "generate", "--project", multiline, "--semantic", "source",
+                    "--lint-profile", "off", "--no-cache", "--format", "json", "--stdout"], expected=2)
+    if "single-line strings" not in rejected.stderr or "requires source" in rejected.stderr:
+        raise Failure(f"a pseudo-header in an invalid multiline setting changed the diagnostic: {rejected.stderr}")
     return {"scenario": "docs-pages-header-comment", "pages": plain_pages}
 
 
 def concatenate_text(node: dict) -> str:
     text = node["literal"] if node["kind"] == "text" else ""
     if node["kind"] == "semantic_link":
-        text = node["literal"]
+        return node["literal"]
     return text + "".join(concatenate_text(child) for child in node.get("children", []))
 
 
@@ -142,14 +167,15 @@ def semantic_link_scenario(binary: Path, root: Path) -> dict:
     document = json.loads(result.stdout)
     symbol = next(item for item in document["declarations"] if item["name"] == "value")
     comment = symbol["documentation"]
-    if comment["rawText"] != body:
+    if comment["rawText"] != "/** " + body + " */":
         raise Failure(f"rawText changed: {comment['rawText']!r}")
-    if concatenate_text(comment["markdown"]) != body:
+    if concatenate_text(comment["markdown"]) != "Prefix {@link } middle value tail.":
         raise Failure(f"Markdown text lost author characters: "
                       f"{concatenate_text(comment['markdown'])!r}")
     links: list[dict] = []
     collect_semantic_links(comment["markdown"], links)
-    if len(links) != 1 or links[0]["metadata"]["semanticState"] != "resolved":
+    if len(links) != 1 or links[0]["metadata"]["state"] != "resolved" or \
+            links[0]["metadata"]["targetSymbolId"] != symbol["id"]:
         raise Failure(f"valid link did not resolve: {links}")
     site = root / "semantic-link-site"
     run([binary, "generate", "--project", project, "--semantic", "source",
@@ -166,9 +192,10 @@ def semantic_link_scenario(binary: Path, root: Path) -> dict:
 
 def route_project(root: Path, *, multi_language: bool) -> Path:
     project = root / "route-encoding" / ("multi" if multi_language else "single")
-    configuration = ""
+    configuration = '[i18n]\ndefault-language = "en"\n'
     if multi_language:
-        configuration = ('[i18n]\ndefault-language = "en"\nlanguages = ["en", "zh-CN"]\n\n')
+        configuration += 'languages = ["en", "zh-CN"]\n'
+    configuration += "\n"
     configuration += (
         '[[docs.pages]]\nid = "guide"\nlanguage = "en"\nsource = "docs/guide.md"\n'
         f'route = "{SPACE_ROUTE.removesuffix(".html")}"\n\n'
@@ -209,6 +236,10 @@ def verify_route_site(site: Path, root: Path, *, prefix: str, expect_sources: bo
         raise Failure(f"{other} encoded the captured route twice")
     if expect_sources and 'id="standalone--doc-topic"' not in guide.read_text(encoding="utf-8"):
         raise Failure("fragment target id missing in the target page")
+    navigation = json.loads((site / prefix / "navigation-index.json").read_bytes())
+    addresses = {unquote(urlsplit(page["href"]).path) for page in navigation["pages"]}
+    if not {SPACE_ROUTE, UNICODE_ROUTE} <= addresses:
+        raise Failure("navigation does not identify the same routes as the authored hyperlinks")
 
 
 def route_scenario(binary: Path, root: Path) -> list[dict]:
@@ -232,7 +263,7 @@ def route_scenario(binary: Path, root: Path) -> list[dict]:
     shutil.copyfile(root / "route-ir" / "docs.json", document)
     shutil.rmtree(project)
     detached = root / "route-detached-site"
-    run([binary, "render", "--input", document, "--format", "html", "--output", detached])
+    run([binary, "render", "--input", document, "--format", "html", "--locale", "en", "--output", detached])
     verify_route_site(detached, root, prefix="html", expect_sources=True)
     receipts.append({"scenario": "route-encoding-detached-ir",
                      "root": detached.relative_to(root).as_posix(), "page": "html/concepts/other.html",

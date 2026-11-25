@@ -51,7 +51,11 @@ protected func conceptualSafeRoute(value: String): Bool {
 private func conceptualValue(code: String, equals: Int64): String {
     let decoded = tomlAssignmentString(code, equals)
     if (!decoded.invalid && decoded.value.isSome()) { return decoded.value.getOrThrow() }
-    code[equals + 1..].trimAscii()
+    let bare = code[equals + 1..].trimAscii()
+    if (bare.startsWith("\"") || bare.startsWith("'")) {
+        throw IllegalArgumentException("[docs] invalid quoted TOML value")
+    }
+    bare
 }
 
 private func conceptualKey(code: String, equals: Int64): String {
@@ -79,7 +83,10 @@ private func conceptualHeader(code: String): ?(Bool, String) {
 
 private func conceptualHeaderRejected(code: String): Unit {
     let trimmed = code.trimAscii()
-    if (trimmed.startsWith("[docs") || trimmed.startsWith("[[docs")) {
+    let afterOpening = if (trimmed.startsWith("[[")) { trimmed[2..] } else { trimmed[1..] }
+    let name = afterOpening.trimAscii()
+    if (name == "docs" || name.startsWith("docs.") || name.startsWith("docs]") ||
+        name.startsWith("docs ") || name.startsWith("docs\t")) {
         throw IllegalArgumentException("malformed [docs] table header: " + trimmed)
     }
 }
@@ -96,7 +103,7 @@ private func conceptualPathFromValue(code: String, equals: Int64, setting: Strin
 // string. Documentation tables do not support them, so a withheld line there is
 // rejected instead of silently dropping a page registration.
 private func conceptualMultilineValueRejected(rawLine: String, section: String): Unit {
-    if (!section.startsWith("docs") || rawLine.trimAscii().isEmpty()) { return }
+    if ((section != "docs" && !section.startsWith("docs.")) || rawLine.trimAscii().isEmpty()) { return }
     throw IllegalArgumentException("[docs] settings must use single-line TOML values")
 }
 
@@ -179,11 +186,9 @@ private func conceptualHeaderSection(config: ConceptualDocsConfig, current: ?Con
     }
     finishConceptualPage(config, current)
     if (name == "docs.pages") {
-        if (array) {
-            config.enabled = true
-            return ("docs.pages", Some(ConceptualPageSpec()))
-        }
-        return ("other", None)
+        if (!array) { throw IllegalArgumentException("[[docs.pages]] must be an array of tables") }
+        config.enabled = true
+        return ("docs.pages", Some(ConceptualPageSpec()))
     }
     if (name == "docs" || name == "docs.packages" || name.startsWith("docs.packages.")) {
         config.enabled = true

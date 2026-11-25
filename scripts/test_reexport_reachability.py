@@ -47,9 +47,9 @@ def write_project(root: Path, root_file: str, *, cycle=False):
         out.write_text("\n".join([f"package {package}", *lines, ""]), encoding="utf-8")
 
 
-def run(command, *, cwd=None, expect=0):
+def run(command, *, cwd=None, expect=0, input=None):
     process = subprocess.run([str(arg) for arg in command], cwd=cwd, capture_output=True,
-                             encoding="utf-8", timeout=100)
+                             encoding="utf-8", timeout=100, input=input)
     if process.returncode != expect:
         raise AssertionError(f"{Path(command[0]).name}: expected exit {expect}, got {process.returncode}\n"
                              f"{process.stderr[:3000]}")
@@ -118,6 +118,25 @@ class ReExportReachabilityTest(unittest.TestCase):
                 output = root / f"rendered-{name}"
                 run([self.binary, "render", "--input", capture, "--format", "html", "--output", output])
                 self.assertTrue((output / "html" / "index.html").is_file())
+                pages = (output / "html" / "agent" / "packages").glob("*.json")
+                packages = (json.loads(page.read_bytes()) for page in pages)
+                package = next(page for page in packages if page["package"]["name"] == PACKAGE)
+                self.assertEqual(package["schemaVersion"], "cjdoc.page/2")
+                rows = [binding for entry in package["package"]["reExports"] for binding in entry["bindings"]]
+                self.assertEqual(len(rows), 5)
+                self.assertTrue(all(set(row) == {"exposedName", "targetSymbolIds"} for row in rows))
+                request = {"schemaVersion": "cjdoc.query-request/4", "operation": "get_symbol",
+                           "symbolId": by_name["sourceAlias"]["id"], "sections": ["relations"]}
+                result = json.loads(run([self.binary, "query", "--snapshot", capture, "--request", "-"],
+                                        input=json.dumps(request)).stdout)
+                self.assertEqual(result["schemaVersion"], "cjdoc.query-result/5")
+                item, = result["result"]["items"]
+                alias_context = [row for row in item["exposures"]
+                                 if row["exposedName"] == "aliasValue" and row["declaringPackage"] == PACKAGE]
+                self.assertEqual(len(alias_context), 1)
+                exact, = alias_context[0]["reExport"]["bindings"]
+                self.assertEqual(exact, {"exposedName": "aliasValue",
+                                         "targetSymbolIds": [by_name["sourceAlias"]["id"]]})
             self.reject_nonexposed_targets(root, pristine)
 
     def reject_nonexposed_targets(self, root, pristine):

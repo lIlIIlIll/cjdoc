@@ -51,9 +51,3 @@ protected func sourceImportFactsFromText(path: String, importText: String):
     }
     collectImportFacts(program, path)
 }
-
-protected func importFactsCanonicalTexts(facts: Array<SourceImportFacts>): Array<String> {
-    let result = ArrayList<String>()
-    for (entry in facts) { result.add(entry.canonicalText()) }
-    result.toArray()
-}

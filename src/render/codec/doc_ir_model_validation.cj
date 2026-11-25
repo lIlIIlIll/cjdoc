@@ -446,6 +446,13 @@ internal func validReExportId(value: String): Bool {
 // a named import from origin does not expose origin's unrelated declarations.
 private let DOC_IR_MAX_REEXPORT_VALIDATION_WORK: Int64 = 1000000
 
+private func bindingIncludesTarget(binding: ReExportBinding, id: String): Bool {
+    for (candidate in binding.targetSymbolIds) {
+        if (candidate == id) { return true }
+    }
+    false
+}
+
 internal class ReExportReachability {
     private let packagesByKey = HashMap<String, PackageDoc>()
     private let moduleDependencies = HashMap<String, HashSet<String>>()
@@ -538,7 +545,7 @@ internal class ReExportReachability {
                 for (binding in reExport.bindings) {
                     if (binding.exposedName != selected) { continue }
                     if (!consume(binding.targetSymbolIds.size)) { return false }
-                    if (!binding.targetSymbolIds.contains(target.id)) { continue }
+                    if (!bindingIncludesTarget(binding, target.id)) { continue }
                     let next = (nextModule, reExport.targetPackageName, binding.importedName)
                     if (visited.add(exposureKey(next, target.id))) { pending.add(next) }
                 }

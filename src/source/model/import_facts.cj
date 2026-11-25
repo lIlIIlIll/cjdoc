@@ -63,37 +63,22 @@ protected class SourceImportFacts {
         result.toArray()
     }
 
-    // Canonical, whitespace-free witness used for cache equality and tests.
-    protected func canonicalText(): String {
-        let builder = StringBuilder()
-        builder.append(modifier); builder.append("|")
-        builder.append(kind); builder.append("|")
-        builder.append(organization); builder.append("|")
-        var first = true
-        for (part in prefixPaths) {
-            if (!first) { builder.append(".") }
-            builder.append(part)
-            first = false
+    // Verification reparses the same import statements in a compact temporary
+    // program. Its positions differ, so compare syntax without positions.
+    protected func hasSameStatement(other: SourceImportFacts): Bool {
+        if (modifier != other.modifier || kind != other.kind || organization != other.organization ||
+            member != other.member || alias != other.alias ||
+            prefixPaths.size != other.prefixPaths.size || items.size != other.items.size) {
+            return false
         }
-        builder.append("|")
-        builder.append(member)
-        builder.append("|")
-        match (alias) {
-            case Some(value) => builder.append(value)
-            case None => builder.append("~")
+        for (index in 0..prefixPaths.size) {
+            if (prefixPaths[index] != other.prefixPaths[index]) { return false }
         }
-        builder.append("|")
-        first = true
-        for (item in items) {
-            if (!first) { builder.append(",") }
-            builder.append(item.name)
-            match (item.alias) {
-                case Some(value) => builder.append("="); builder.append(value)
-                case None => ()
-            }
-            first = false
+        for (index in 0..items.size) {
+            if (items[index].name != other.items[index].name ||
+                items[index].alias != other.items[index].alias) { return false }
         }
-        builder.toString()
+        true
     }
 }
 

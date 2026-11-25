@@ -317,7 +317,8 @@ private func appendModule(out: StringBuilder, value: ModuleDoc): Unit {
     out.append("}")
 }
 
-protected func appendPackage(out: StringBuilder, value: PackageDoc): Unit {
+protected func appendPackage(out: StringBuilder, value: PackageDoc,
+    capturedSelectors!: Bool = true): Unit {
     out.append("{\"name\":${escapeJsonString(value.name)},\"moduleId\":${escapeJsonString(value.moduleId)},")
     out.append("\"sourceFiles\":")
     appendStrings(out, value.sourceFiles)
@@ -341,7 +342,10 @@ protected func appendPackage(out: StringBuilder, value: PackageDoc): Unit {
             if (!firstBinding) { out.append(",") }
             firstBinding = false
             out.append("{\"exposedName\":${escapeJsonString(binding.exposedName)},")
-            out.append("\"importedName\":${escapeJsonString(binding.importedName)},\"targetSymbolIds\":")
+            if (capturedSelectors) {
+                out.append("\"importedName\":${escapeJsonString(binding.importedName)},")
+            }
+            out.append("\"targetSymbolIds\":")
             appendStrings(out, binding.targetSymbolIds)
             out.append("}")
         }

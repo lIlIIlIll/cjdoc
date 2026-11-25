@@ -201,57 +201,62 @@ internal func renderAgentLlms(context: DocumentationReadSnapshot,
     // are a separate origin even though navigation gives both the kind
     // `package`. A shared list would put a conceptual overview among the API
     // surface it merely describes.
-    var conceptCount: Int64 = 0
+    let continuation = "- Additional conceptual pages are listed in navigation-index.json and its continuation parts.\n"
+    let activeGroups = HashSet<String>()
+    for (page in pages where page.source == "concept") {
+        let _ = activeGroups.add(agentLlmsGroupLabel(page.kind))
+    }
+    var remainingGroups = activeGroups.size
     var conceptsStarted = false
     var conceptsTruncated = false
     for (groupLabel in ["Project overview", "Modules", "Package overviews", "Guides",
         "Other conceptual pages"]) {
-        if (conceptsTruncated) { break }
+        if (!activeGroups.contains(groupLabel)) { continue }
+        // Share remaining space with later concept groups and API packages so
+        // cropping one category cannot starve the next.
+        let share = (AGENT_LLMS_LIMIT - out.size - continuation.size) / (remainingGroups + 1)
+        let groupLimit = out.size + share
+        remainingGroups--
         var groupCount: Int64 = 0
         for (page in pages where page.source == "concept" &&
             agentLlmsGroupLabel(page.kind) == groupLabel) {
-            if (conceptCount >= AGENT_LLMS_LIST_LIMIT) {
-                conceptsTruncated = true
-                break
-            }
+            if (groupCount >= AGENT_LLMS_LIST_LIMIT) { conceptsTruncated = true; break }
             let link = agentLinkText(page.title, page.href)
             let sectionHeading = if (!conceptsStarted) { "\n## Concepts and guides\n\n" } else { "" }
             let groupHeading = if (groupCount == 0) {
                 sectionHeading + "### " + groupLabel + "\n\n"
             } else { "" }
-            if (groupHeading.size + link.size > AGENT_LLMS_LIMIT - out.size) {
+            if (groupHeading.size + link.size > groupLimit - out.size) {
                 conceptsTruncated = true
-                break
+                continue
             }
             out.append(groupHeading)
-            if (!agentAppendFixed(out, link, AGENT_LLMS_LIMIT)) {
-                conceptsTruncated = true
-                break
-            }
+            out.append(link)
             conceptsStarted = true
-            conceptCount++
             groupCount++
         }
     }
     // Only reports a continuation when a page actually stayed unlisted.
     if (conceptsTruncated) {
-        if (!agentAppendFixed(out,
-            "- Additional conceptual pages are listed in navigation-index.json and its continuation parts.\n",
-            AGENT_LLMS_LIMIT)) { return out.toString() }
+        if (!agentAppendFixed(out, continuation, AGENT_LLMS_LIMIT)) { return out.toString() }
     }
     var packageCount: Int64 = 0
+    var packagesTruncated = false
     for (page in pages where page.source == "api-package") {
-        if (packageCount >= AGENT_LLMS_LIST_LIMIT) { continue }
+        if (packageCount >= AGENT_LLMS_LIST_LIMIT) { packagesTruncated = true; break }
         let link = agentLinkText(page.title, page.href)
         if (packageCount == 0) {
             let heading = "\n## API packages\n\n"
-            if (heading.size + link.size > AGENT_LLMS_LIMIT - out.size) { break }
+            if (heading.size + link.size > AGENT_LLMS_LIMIT - out.size) {
+                packagesTruncated = true
+                break
+            }
             out.append(heading)
         }
-        if (!agentAppendFixed(out, link, AGENT_LLMS_LIMIT)) { break }
+        if (!agentAppendFixed(out, link, AGENT_LLMS_LIMIT)) { packagesTruncated = true; break }
         packageCount++
     }
-    if (packageCount >= AGENT_LLMS_LIST_LIMIT) {
+    if (packagesTruncated) {
         if (!agentAppendFixed(out, "- Additional packages are listed in navigation-index.json.\n",
             AGENT_LLMS_LIMIT)) { return out.toString() }
     }

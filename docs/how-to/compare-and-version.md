@@ -105,11 +105,11 @@ cp -R "$WORK/support/html" "$WORK/site/0.2.0/dependencies/support-v1"
 
 几个容易出错的地方：
 
-- `--version ID=PATH` 指向生成输出里的 `html` 目录，不是整个输出根。省略 `--label` 和 `--base-path` 时两者都等于版本 ID，所以版本页面位于 `site/0.1.0/`、`site/0.2.0/`。
+- 单语站点的 `--version ID=PATH` 指向生成输出里的 `html/`。用 `--all-languages` 生成的站点改为传入含 `site-manifest.json` 的输出根。省略 `--label` 和 `--base-path` 时两者都等于版本 ID。
 - 省略 `--latest` 时取**第一个** `--version` 的 ID（`latestPolicy` 为 `first-listed`），不是按版本号排序。
 - `--channel` 与默认的 `status=published` 只是展示文字，不验证发布流程。
 - 依赖库的完整 HTML 树要在 `compose` **之后**复制，才会保持为独立依赖文档。先复制再组合，它们会被当成版本输入并注入版本选择器。
-- 使用 `--all-languages` 时，输入的 `html/<语言>/` 会组合成 `<版本根>/<语言>/`，依赖页面要复制到 `<版本根>/<语言>/dependencies/support-v1`。
+- 多语版本保留 `<版本根>/html/<语言>/` 的目录层次；复制依赖页面到 `<版本根>/html/<语言>/dependencies/support-v1`。各语言的入口见组合后 `versions.json` 的 `languages`。
 
 ## 第五步：打开并检查站点
 

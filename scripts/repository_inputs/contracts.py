@@ -40,7 +40,7 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 19
+CURRENT_GOLDEN_VERSION = 20
 
 SCHEMA_NAMES = (
     "doc-ir", "doc-ir-v20", "diagnostics", "cfg-matrix",

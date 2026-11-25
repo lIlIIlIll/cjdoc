@@ -23,6 +23,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parent.parent
 PACKAGE = "import_probe"
+HELPER = f"{PACKAGE}.helper"
 
 
 def installed_executable(path: Path) -> Path:
@@ -31,7 +32,6 @@ def installed_executable(path: Path) -> Path:
     if not executable.is_file():
         raise AssertionError(f"missing required executable: {path.name}")
     return executable.resolve()
-HELPER = f"{PACKAGE}.helper"
 
 MANIFEST = f'''[package]
 cjc-version = "1.2.0"
@@ -167,15 +167,26 @@ class ImportDependencyVariantsTest(unittest.TestCase):
                 self.assertNotIn("CJDOC3070", codes, label)
 
     def test_mixed_spellings_keep_every_real_dependency(self):
+        extra = f"{PACKAGE}.second"
         project = self.variants.project(
             "example-mixed-spellings",
             f"import\t{HELPER}.value",
-            example_import=f"import std.collection.ArrayList\nprivate import {HELPER}.*")
+            example_import=f"import std.collection.ArrayList\nprivate import {extra}.secondValue")
+        extra_file = project / "src/second/api.cj"
+        extra_file.parent.mkdir()
+        extra_file.write_text(f"package {extra}\npublic func secondValue(): Int64 {{ 2 }}\n", encoding="utf-8")
+        api = project / "src/api.cj"
+        api.write_text(api.read_text(encoding="utf-8").replace("{ value() }", "{ value() + secondValue() }"),
+                       encoding="utf-8")
         self.native_build(project)
-        result = self.generate(project, "source", "--check-examples")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        codes = [code for _, code, _ in self.diagnostics(json.loads(result.stdout))]
-        self.assertEqual([code for code in codes if code.startswith("CJDOC30")], [])
+        for semantic, flags in (("source", ("--check-examples",)), ("chir", ())):
+            result = self.generate(project, semantic, *flags)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            document = json.loads(result.stdout)
+            codes = [code for _, code, _ in self.diagnostics(document)]
+            self.assertFalse({"CJDOC2103", "CJDOC2104", "CJDOC3030", "CJDOC3031", "CJDOC3070"} & set(codes))
+            self.assertTrue({(HELPER, "value"), (extra, "secondValue")} <=
+                            {(item["packageName"], item["name"]) for item in document["declarations"]})
 
 
 class MustFailAttributionTest(unittest.TestCase):
@@ -213,6 +224,14 @@ class MustFailAttributionTest(unittest.TestCase):
         self.assertIn("CJDOC3070", self.codes(summary), summary)
         self.assertNotIn("CJDOC3030", self.codes(summary), summary)
 
+    def test_legal_private_import_with_valid_body_fails_the_pin_as_successful_compile(self):
+        project = self.variants.project("valid-private-pin", f"private import {HELPER}.value", pin="must-fail")
+        code, summary = self.check(project)
+        self.assertEqual(code, 1, summary)
+        self.assertIn("pinned to fail but compiled successfully", " ".join(
+            message for key, message in summary if key == "CJDOC3070"))
+        self.assertNotIn("CJDOC3031", self.codes(summary), summary)
+
     def test_valid_body_with_context_failure_reports_context_only(self):
         project = self.variants.project("valid-body-context-failure",
                                         "private import absent_helper.value")
@@ -234,12 +253,20 @@ class MustFailAttributionTest(unittest.TestCase):
         self.assertEqual([item for item in self.codes(summary)
                           if item in ("CJDOC3030", "CJDOC3031", "CJDOC3070")], [], summary)
 
-    def test_mixed_body_and_header_errors_still_reject_the_context(self):
-        project = self.variants.project("mixed-errors", "private import absent_helper.value",
-                                        pin="must-fail", body="let result = missingApi(1, 2)")
+    def test_mixed_body_and_other_file_errors_still_reject_the_context(self):
+        project = self.variants.project("mixed-errors", f"private import {HELPER}.value",
+                                        pin="must-fail", error="Struct-String",
+                                        body="let result: Int64 = false")
+        (project / "src/broken.cj").write_text(
+            f"package {PACKAGE}\nfunc broken(): String {{ true }}\n", encoding="utf-8")
         code, summary = self.check(project)
-        self.assertNotEqual(code, 0, summary)
-        self.assertIn("CJDOC3031", self.codes(summary), summary)
+        self.assertEqual(code, 1, summary)
+        context = " ".join(message for key, message in summary if key == "CJDOC3031")
+        self.assertIn("Struct-String", context)
+        self.assertNotIn("<generated-example>", context)
+        pin = " ".join(message for key, message in summary if key == "CJDOC3070")
+        self.assertIn("failed without the pinned message", pin)
+        self.assertIn("<generated-example>", pin)
 
     def test_failure_contains_ignores_context_diagnostics(self):
         project = self.variants.project("context-message", "private import absent_helper.value",
@@ -255,12 +282,14 @@ class MustFailAttributionTest(unittest.TestCase):
                                         pin="must-fail")
         (project / "src/api.cj").write_text(
             (project / "src/api.cj").read_text(encoding="utf-8").replace(
-                "{must-fail}", '{must-fail flags="--cfg os=Linux"}'),
+                "{must-fail}", '{must-fail error="builtin condition" flags="--cfg os=Linux"}'),
             encoding="utf-8")
         code, summary = self.check(project)
         self.assertNotEqual(code, 0, summary)
         self.assertIn("CJDOC3031", self.codes(summary), summary)
         self.assertIn("CJDOC3070", self.codes(summary), summary)
+        self.assertIn("builtin condition", " ".join(
+            message for key, message in summary if key == "CJDOC3031"))
 
     def test_failure_contains_matches_body_diagnostics(self):
         project = self.variants.project("body-message", f"import {HELPER}.value",

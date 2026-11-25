@@ -9,8 +9,7 @@ import std.sort.*
 protected let MAX_REEXPORTS: Int64 = 100000
 protected let MAX_REEXPORT_BINDINGS: Int64 = 100000
 protected let MAX_REEXPORT_LOOKUP_WORK: Int64 = 1000000
-// Propagation re-evaluates an import only after an exporter surface changed, so
-// this bound only caps the total number of solver steps for pathological chains.
+// Count each evaluation and the names/IDs it visits, including failed work and replays.
 protected let MAX_REEXPORT_PROPAGATION_WORK: Int64 = 1000000
 
 internal func reExportPackageKey(moduleId: String, packageName: String): String {
@@ -19,6 +18,13 @@ internal func reExportPackageKey(moduleId: String, packageName: String): String 
 
 protected class ReExportPackageSurface {
     let names = HashMap<String, ArrayList<String>>()
+
+    func comparisonCost(exposedName: String, count: Int64): Int64 {
+        match (names.get(exposedName)) {
+            case Some(existing) => count * existing.size + count + existing.size
+            case None => count
+        }
+    }
 
     func additionCount(exposedName: String, targetIds: ArrayList<String>,
         kindById: HashMap<String, String>): Int64 {
@@ -222,16 +228,20 @@ protected class ReExportBindingResult {
 }
 
 internal func addResolvedBinding(result: ReExportBindingResult, surface: ReExportPackageSurface,
-    sourceName: String, exposedName: String): Unit {
+    sourceName: String, exposedName: String, budget!: ?ReExportBindingBudget = None): Unit {
     match (surface.names.get(sourceName)) {
         case Some(ids) =>
+            if (let Some(work) <- budget) {
+                if (!work.evaluate(ids.size)) { return }
+            }
             result.bindings.add(ReExportBinding(exposedName, sourceName, targetSymbolIds: ids.toArray()))
         case None => result.missing = true
     }
 }
 
 internal func bindingsForPending(pending: PendingReExport,
-    surfaces: HashMap<String, ReExportPackageSurface>): ReExportBindingResult {
+    surfaces: HashMap<String, ReExportPackageSurface>,
+    budget!: ?ReExportBindingBudget = None): ReExportBindingResult {
     let result = ReExportBindingResult()
     let target = match (pending.targetPackage) {
         case Some(value) => value
@@ -243,21 +253,29 @@ internal func bindingsForPending(pending: PendingReExport,
     }
     match (pending.kind) {
         case "single" =>
-            addResolvedBinding(result, surface, pending.source.identifier, pending.source.identifier)
+            addResolvedBinding(result, surface, pending.source.identifier, pending.source.identifier, budget: budget)
         case "alias" =>
             addResolvedBinding(result, surface, pending.source.identifier,
-                pending.source.alias.getOrThrow())
+                pending.source.alias.getOrThrow(), budget: budget)
         case "multi" =>
+            if (let Some(work) <- budget) {
+                if (!work.evaluate(pending.source.items.size)) { return result }
+            }
             for (item in pending.source.items) {
                 addResolvedBinding(result, surface, item.name,
-                    match (item.alias) { case Some(value) => value; case None => item.name })
+                    match (item.alias) { case Some(value) => value; case None => item.name }, budget: budget)
+                if (let Some(work) <- budget) { if (work.exceeded) { return result } }
             }
         case "all" =>
+            if (let Some(work) <- budget) {
+                if (!work.evaluate(surface.names.size)) { return result }
+            }
             let names = ArrayList<String>()
             for ((name, _) in surface.names) { names.add(name) }
             sort(names, lessThan: { left, right => left < right }, stable: true)
             for (name in names) {
-                addResolvedBinding(result, surface, name, name)
+                addResolvedBinding(result, surface, name, name, budget: budget)
+                if (let Some(work) <- budget) { if (work.exceeded) { return result } }
             }
         case "packageAlias" => ()
         case _ => result.missing = true
@@ -290,8 +308,17 @@ internal func appendReExportDiagnostic(documentation: DocumentationSet, pending:
 // across every import, independent of how often a chain is re-evaluated.
 protected class ReExportBindingBudget {
     var work: Int64 = 0
-    var steps: Int64 = 0
+    var evaluations: Int64 = 0
     var exceeded = false
+
+    func evaluate(amount: Int64): Bool {
+        if (exceeded || amount > MAX_REEXPORT_PROPAGATION_WORK - evaluations) {
+            exceeded = true
+            return false
+        }
+        evaluations += amount
+        true
+    }
 
     func spend(amount: Int64): Bool {
         if (exceeded || amount <= 0) { return !exceeded }
@@ -319,13 +346,16 @@ internal func applyReExportBindings(item: PendingReExport,
         case Some(value) => value
         case None => return false
     }
-    let result = bindingsForPending(item, surfaces)
-    if (result.missing) { return false }
+    let result = bindingsForPending(item, surfaces, budget: Some(budget))
+    if (budget.exceeded || result.missing) { return false }
     var added: Int64 = 0
-    let selectedNames = if (item.kind == "multi") { Some(HashSet<String>()) } else { None }
+    let selectedNames = if (item.kind == "multi") { Some(HashSet<String>()) } else { None<HashSet<String>> }
     for (binding in result.bindings) {
         if (let Some(names) <- selectedNames) {
             if (!names.add(binding.exposedName)) { item.conflict = true; return false }
+        }
+        if (!budget.evaluate(exporter.comparisonCost(binding.exposedName, binding.targetSymbolIds.size))) {
+            return false
         }
         let count = exporter.additionCount(binding.exposedName, binding.targetSymbolIds, kindById)
         if (count < 0) { item.conflict = true; return false }
@@ -440,11 +470,7 @@ private func propagateReExportSurfaces(pending: ArrayList<PendingReExport>,
         queueCursor++
         let _ = queued.remove(current)
         let item = pending[current]
-        budget.steps++
-        if (budget.steps > MAX_REEXPORT_PROPAGATION_WORK) {
-            budget.exceeded = true
-            return false
-        }
+        if (!budget.evaluate(1)) { return false }
         if (!applyReExportBindings(item, surfaces, kindById, budget)) {
             if (budget.exceeded) { return false }
             if (item.conflict && item.contributed) { return true }

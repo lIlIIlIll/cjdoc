@@ -129,7 +129,7 @@ def validate_embedded_doc_ir_definitions(name: str, value: dict, properties: dic
         raise ValueError(f"{name} schema definitions are missing: {sorted(missing)}")
     embedded = set(frozen_definitions or ()) & DOC_IR_DEFINITIONS & names
     if not embedded:
-        raise ValueError(f"{name} schema does not embed any current Doc IR v17 definition")
+        raise ValueError(f"{name} schema does not embed any current Doc IR definition")
     for definition_name in embedded:
         if definitions[definition_name] != frozen_definitions[definition_name]:
             raise ValueError(

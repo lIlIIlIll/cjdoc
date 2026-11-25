@@ -5,12 +5,12 @@ import cjdoc.toolchain.ToolchainIdentity
 import cjdoc.source.provenance.SourceRepositoryRegistry
 import cjdoc.source.model.addSourceLimitDiagnostic
 import cjdoc.source.model.{ParsedSourceFile, SourceInputFile, withCapturedSourceFacts}
-import cjdoc.source.frontend.{
-    hasDeepSourceBinaryExpression, importFactsCanonicalTexts, parseSourceTextWithAst,
+import cjdoc.source.frontend.{hasDeepSourceBinaryExpression, parseSourceTextWithAst,
     sourceImportTextsFromSource}
 import cjdoc.source.model.{
     SourceModule, CapturedSourceIndex, CapturedSourceFacts, SourceFileOrigin, SourceSnapshot,
     MAX_CAPTURED_SOURCE_LINES}
+import cjdoc.source.model.SourceImportFacts
 import cjdoc.source.Diagnostic
 import cjdoc.source.{SourceLocation, SOURCE_CACHE_FORMAT, MAX_SOURCE_FILE_BYTES, MAX_SOURCE_CACHE_BYTES, MAX_SOURCE_CACHE_ITEMS, SourceAuxiliaryBudget, readAuxiliaryFileBounded, SourceCacheStats}
 import cjdoc.filesystem.{BoundedFileRead, hostPathIsWithin, readFileBounded, readFileBoundedSnapshot, readTextBounded}
@@ -330,12 +330,12 @@ internal func parseSourceFrontend(input: SourceInputFile, fallbackPackageName: S
 }
 
 
-private func sourceCacheFactListsMatch(first: ArrayList<String>,
-    second: Array<String>): Bool {
+private func sourceCacheImportFactsMatch(first: ArrayList<SourceImportFacts>,
+    second: ArrayList<SourceImportFacts>): Bool {
     if (first.size != second.size) { return false }
     var index: Int64 = 0
     while (index < first.size) {
-        if (first[index] != second[index]) { return false }
+        if (!first[index].hasSameStatement(second[index])) { return false }
         index++
     }
     true
@@ -373,8 +373,7 @@ private func cachedImportMetadataMatchesSource(input: SourceInputFile,
     let sourceDerived = parseSourceFrontend(input, fallbackPackageName, importSource,
         astPreflightExecutable)
     if (sourceDerived.packageName.isNone()) { return false }
-    sourceCacheFactListsMatch(cached.importFacts,
-        importFactsCanonicalTexts(sourceDerived.importFacts.toArray())) &&
+    sourceCacheImportFactsMatch(cached.importFacts, sourceDerived.importFacts) &&
         sourceCacheStringListsMatch(cached.imports, sourceDerived.imports) &&
         sourceCacheStringListsMatch(cached.packageImports, sourceDerived.packageImports)
 }

@@ -43,30 +43,24 @@ class InlineSemanticLinkAuthorTextTest {
         let targets = semanticLinkTargets(tree)
         @Assert(targets.size, 1)
         @Expect(targets[0], "value")
-        @Expect(semanticLinkRenderedText(tree), body)
+        @Expect(semanticLinkRenderedText(tree), "Prefix {@link } middle value tail.")
         @Expect(semanticLinkTexts(tree).contains("Prefix {@link } middle "))
         @Expect(semanticLinkTexts(tree).contains(" tail."))
     }
 
     @TestCase
     func unusableMarkersBeforeBetweenAndAfterValidLinksPreserveAllText(): Unit {
-        let cases = [
-            "A {@link } B {@link value} C",
-            "A {@link value} B {@link } C",
-            "A {@link value} B {@link value} C",
-            "A {@link missing { C {@link value}",
-            "A {@link value C {@link value}",
-            "A {@link } {@link } {@link valueValue}",
-            "A {@link {} B {@link value} C"
-        ]
-        for (body in cases) {
-            let tree = parseStandaloneMarkdown(body)
-            @Expect(semanticLinkRenderedText(tree), body)
-            let targets = semanticLinkTargets(tree)
-            @Expect(targets.size >= 1, true)
-            for (target in targets) {
-                @Expect(!target.trimAscii().isEmpty())
-                @Expect(!target.contains("{") && !target.contains("}"))
+        for (invalid in ["{@link }", "{@link open", "{@link {nested}"]) {
+            for ((body, visible, linkedCount) in [
+                ("A ${invalid} B {@link value} C", "A ${invalid} B value C", 1),
+                ("A {@link value} B ${invalid} C {@link value} D", "A value B ${invalid} C value D", 2),
+                ("A {@link value} B ${invalid} C", "A value B ${invalid} C", 1)
+            ]) {
+                let tree = parseStandaloneMarkdown(body)
+                @Expect(semanticLinkRenderedText(tree), visible)
+                let targets = semanticLinkTargets(tree)
+                @Expect(targets.size, linkedCount)
+                for (target in targets) { @Expect(target, "value") }
             }
         }
     }
@@ -82,7 +76,7 @@ class InlineSemanticLinkAuthorTextTest {
                 symbol = Some(declaration)
             }
             let comment = symbol.getOrThrow().documentation.getOrThrow()
-            @Expect(semanticLinkRenderedText(comment.markdown), "Prefix {@link } middle {@link value} tail.")
+            @Expect(semanticLinkRenderedText(comment.markdown), "Prefix {@link } middle value tail.")
             let nodes = ArrayList<api_model.MarkdownNode>()
             for (child in comment.markdown.children) { appendSemanticLinks(child, nodes) }
             @Assert(nodes.size, 1)
@@ -95,7 +89,7 @@ class InlineSemanticLinkAuthorTextTest {
             }
             let decodedComment = decodedSymbol.getOrThrow().documentation.getOrThrow()
             @Expect(semanticLinkRenderedText(decodedComment.markdown),
-                "Prefix {@link } middle {@link value} tail.")
+                "Prefix {@link } middle value tail.")
             for (format in ["html", "markdown"]) {
                 let artifacts = api_render.renderDocumentationFormatsWithOptions(decoded, [format],
                     locale: "en")

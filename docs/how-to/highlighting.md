@@ -176,7 +176,7 @@ cjdoc generate --project . --format html --format json --output target/external 
 | `error: --highlight-node requires a path without shell metacharacters` | 值里带空格、`;` 等字符 | 直接给可执行文件的绝对路径，不要写 `node --version` 这类命令 |
 | `error: [highlight].languages contains duplicate language 'cangjie'`，退出码 `2` | 同一语言在数组里出现两次 | 去重；语言名归一化后也不能重复 |
 | `error: [highlight].languages must not be empty`，退出码 `2` | 把数组写成空 | 至少列一个语言，或删掉整行使用默认值 |
-| 写了 `languages = ["python"]` 但仍是纯文本 | 只列语言不会启用外部后端 | 两个路径选项必须同时给出，且只对 `generate`、`check` 有效 |
+| 写了 `languages = ["python"]` 但仍是纯文本 | 只列语言不会启用外部后端 | `generate`、`check` 或 `serve` 时同时给出两个路径选项 |
 | `check` 因高亮 warning 失败 | 用了 `--deny-warnings` | 要么修好后端，要么在不需要外部高亮时把它从 `languages` 移除 |
 
 配置键与可选值见[配置参考](../reference/configuration.md)，选项与约束见[CLI 参考](../reference/cli.md#可选语义和高亮后端)。

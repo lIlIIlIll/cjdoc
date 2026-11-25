@@ -11,19 +11,19 @@ import std.convert.Parsable
 private let ATTRIBUTION_LOCATION_PREFIX = "==>"
 
 protected class ExampleCompileAttribution {
-    let bodyBlocks: Array<String>
-    let contextBlocks: Array<String>
+    protected let bodyBlocks: Array<String>
+    protected let contextBlocks: Array<String>
 
     init(bodyBlocks: Array<String>, contextBlocks: Array<String>) {
         this.bodyBlocks = bodyBlocks
         this.contextBlocks = contextBlocks
     }
 
-    prop hasBodyFailure: Bool { get() { !bodyBlocks.isEmpty() } }
-    prop hasContextFailure: Bool { get() { !contextBlocks.isEmpty() } }
+    protected prop hasBodyFailure: Bool { get() { !bodyBlocks.isEmpty() } }
+    protected prop hasContextFailure: Bool { get() { !contextBlocks.isEmpty() } }
 
     // Source excerpts and related notes are not the compiler error message.
-    func bodyMessageContains(expected: String): Bool {
+    protected func bodyMessageContains(expected: String): Bool {
         for (block in bodyBlocks) {
             let end = block.indexOf("\n") ?? block.size
             if (block[..end].contains(expected)) { return true }
