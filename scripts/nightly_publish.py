@@ -428,12 +428,15 @@ def get_release(api: Any, repository: str, release_id: int) -> dict[str, Any]:
     return _release_document(api.json(f"repos/{repository}/releases/{release_id}"))
 
 
-def release_assets(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Require every listed asset to be an uploaded file with a SHA-256 digest."""
+def release_assets(release: dict[str, Any], *,
+                   starter_ids: list[int] | None = None) -> dict[str, dict[str, Any]]:
+    """Validate uploaded assets; only draft recovery may collect empty starters."""
     raw_assets = release.get("assets")
     if not isinstance(raw_assets, list):
         raise NightlyPublishError("GitHub release response omits its asset list")
     assets: dict[str, dict[str, Any]] = {}
+    seen_names: set[str] = set()
+    seen_ids: set[int] = set()
     for asset in raw_assets:
         if not isinstance(asset, dict):
             raise NightlyPublishError("GitHub release asset entry is malformed")
@@ -446,6 +449,16 @@ def release_assets(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
             raise NightlyPublishError(f"GitHub release asset {name} omits a positive id")
         if type(size) is not int or size < 0:
             raise NightlyPublishError(f"GitHub release asset {name} omits its size")
+        if name in seen_names or asset_id in seen_ids:
+            raise NightlyPublishError(f"GitHub release repeats asset {name}")
+        seen_names.add(name)
+        seen_ids.add(asset_id)
+        # GitHub can leave an empty starter asset after a failed upload (HTTP 502).
+        if starter_ids is not None and release.get("draft") is True \
+                and asset.get("state") == "starter" and size == 0 \
+                and asset.get("digest") in (None, ""):
+            starter_ids.append(asset_id)
+            continue
         if asset.get("state") != "uploaded":
             raise NightlyPublishError(
                 f"GitHub release asset {name} is not in the uploaded state")
@@ -453,8 +466,6 @@ def release_assets(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if match is None:
             raise NightlyPublishError(
                 f"GitHub release asset {name} publishes no SHA-256 digest")
-        if name in assets:
-            raise NightlyPublishError(f"GitHub release repeats asset {name}")
         assets[name] = {"id": asset_id, "size": size, "sha256": match.group(1)}
     return assets
 
@@ -893,9 +904,12 @@ def create_draft(api: Any, inputs: Inputs) -> dict[str, Any]:
 def reconcile_assets(api: Any, inputs: Inputs, release: dict[str, Any],
                      local: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Upload only verified assets and remove only workflow-owned stale ones."""
-    released = require_owned_draft(api, inputs, release)
-    release_id = released["id"]
-    current = release_assets(released)
+    release_id = release["id"]
+    released = require_owned_draft(api, inputs, get_release(api, inputs.repository, release_id))
+    starters: list[int] = []
+    current = release_assets(released, starter_ids=starters)
+    for asset_id in starters:
+        api.send("DELETE", asset_endpoint(inputs.repository, asset_id))
     # A previous, interrupted attempt can leave assets with older digests for
     # the same source and SDK. They are only touched on a draft proven above.
     for name in sorted(set(current) - set(local)):

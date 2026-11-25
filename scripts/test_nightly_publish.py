@@ -15,16 +15,12 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
-from unittest import mock
+from unittest.mock import patch
 
 from scripts import nightly_publish as publisher
 from scripts import package_release
 from scripts.release_package_contracts import nightly_release_version, nightly_tag
-from scripts.release_tools_test_support import (
-    PROJECT_ROOT,
-    SDK_SHA256,
-    ReleaseToolsTestSupport,
-)
+from scripts.release_tools_test_support import SDK_SHA256, ReleaseToolsTestSupport
 
 COMMIT = "c" * 40
 SDK = "1.3.0-alpha.20261125001016"
@@ -129,9 +125,14 @@ class FakeGitHub:
             "state": "uploaded", "digest": "sha256:" + digest_of(content)})
         return asset_id
 
+    def add_starter(self, release: dict, name: str) -> int:
+        asset_id = self.add_asset(release, name, b"")
+        release["assets"][-1].update(state="starter", digest=None)
+        return asset_id
+
     def public_release(self, tag: str, assets: dict[str, bytes], **overrides) -> dict:
-        release = release_document(tag, draft=False, prerelease=True, immutable=True,
-                                   release_id=self._next_release, **overrides)
+        options = {"draft": False, "prerelease": True, "immutable": True, **overrides}
+        release = release_document(tag, release_id=self._next_release, **options)
         self._next_release += 1
         for name, content in assets.items():
             self.add_asset(release, name, content)
@@ -326,7 +327,7 @@ class SidecarTests(unittest.TestCase):
         self.assertEqual(status, 404)
 
 
-class StatusTests(ReleaseToolsTestSupport):
+class StatusTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -375,7 +376,7 @@ class StatusTests(ReleaseToolsTestSupport):
     def test_a_moved_tag_is_refused(self):
         api = self.public()
         api.refs[TAG] = "e" * 40
-        with self.assertRaises(publisher.NightlyPublishError):
+        with self.assertRaisesRegex(ValueError, "remote release tag moved"):
             self.status(api)
 
     def test_a_release_for_another_tag_is_refused(self):
@@ -433,6 +434,15 @@ class StatusTests(ReleaseToolsTestSupport):
         self.assertTrue(publisher.status({**env, "GITHUB_OUTPUT": str(output)},
                                          api)["existing"])
 
+    def test_public_release_does_not_accept_or_delete_a_starter_asset(self):
+        api = self.public()
+        release = api.releases[api.tag_ids[TAG]]
+        windows = publisher.expected_assets(RELEASE_VERSION, "windows-x64")[0]
+        api.add_starter(release, windows)
+        with self.assertRaisesRegex(publisher.NightlyPublishError, "not in the uploaded state"):
+            self.status(api)
+        self.assertEqual(api.writes(), [])
+
     def test_an_asset_without_a_digest_is_refused(self):
         api = self.public()
         for release in api.releases.values():
@@ -453,72 +463,52 @@ class StatusTests(ReleaseToolsTestSupport):
         self.assertEqual(self.recorded(), [])
 
 
-class CandidateFixture(ReleaseToolsTestSupport):
-    """One real Nightly package built from a release-repository fixture."""
-
+class CandidateFixture(ReleaseToolsTestSupport, unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        self.repo, self.commit, self.tree, self.binary, self.worker, self.package = \
-            build_candidate(self.root / "repo", "linux-x64", with_smoke_gate=True)
+        self.root = Path(self.temporary.name).resolve()
+        self.repo, self.commit = self.make_release_repo(self.root / "repo")
+        self.tree = self.git(self.repo, "rev-parse", "HEAD^{tree}")
+        self.tag = nightly_tag(SDK, self.commit)
+        self.version = nightly_release_version("0.7.0", SDK, self.commit)
+        self.archive, self.checksum = publisher.expected_assets(self.version, "linux-x64")
 
-    def package_directory(self, platform: str = "linux-x64") -> Path:
-        return self.package
+    def environment(self, **overrides: str) -> dict[str, str]:
+        return environment(GITHUB_SHA=self.commit, NIGHTLY_TAG=self.tag,
+                           NIGHTLY_RELEASE_VERSION=self.version, **overrides)
 
     def stage(self, *platforms: str) -> Path:
         root = Path(tempfile.mkdtemp(dir=self.root))
         for platform in platforms:
             directory = root / artifact_name(platform)
             directory.mkdir()
-            extension = ".zip" if platform.startswith("windows-") else ".tar.gz"
-            name = f"cjdoc-{RELEASE_VERSION}-{platform}{extension}"
-            shutil.copyfile(self.package / name, directory / name)
-            shutil.copyfile(self.package / f"{name}.sha256", directory / f"{name}.sha256")
+            for name in publisher.expected_assets(self.version, platform):
+                shutil.copyfile(self.package_directory() / name, directory / name)
         return root
 
 
-def build_candidate(repo_root: Path, platform: str, *,
-                    with_smoke_gate: bool = True,
-                    receipt_overrides: dict | None = None
-                    ) -> tuple[Path, str, str, Path, Path, Path]:
-    """Build one real Nightly archive and its checksum sidecar in a fixture repo."""
-    helper = ReleaseToolsTestSupport()
-    repo, _ = helper.make_release_repo(repo_root)
-    wrapper = repo / "scripts/with_sts_cjpm.sh"
-    wrapper.parent.mkdir(parents=True, exist_ok=True)
-    wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-    (wrapper.parent / "sts_compile_override.py").write_bytes(
-        (PROJECT_ROOT / "scripts/sts_compile_override.py").read_bytes())
-    helper.git(repo, "add", "-A")
-    helper.git(repo, "-c", "user.name=t", "-c", "user.email=t@example.test",
-               "commit", "-q", "-m", "wrapper")
-    commit = helper.git(repo, "rev-parse", "HEAD")
-    tree = helper.git(repo, "rev-parse", "HEAD^{tree}")
-    binary = repo / "target/release/bin/main"
-    binary.parent.mkdir(parents=True, exist_ok=True)
-    binary.write_text("#!/bin/sh\necho 'cjdoc 0.7.0'\n", encoding="utf-8")
-    binary.chmod(0o755)
-    worker = ReleaseToolsTestSupport.make_worker(binary)
-    receipt = helper.make_candidate_receipt_for(
-        repo, binary, worker, commit, platform,
-        sdk_version=SDK, stdx_version=STDX_VERSION, stdx_sha256=STDX_SHA256)
-    receipt["source"].update({"tag": TAG, "releaseVersion": RELEASE_VERSION,
-                              "tree": tree, "dirty": False})
-    receipt["execution"] = {"runId": RUN_ID, "runAttempt": RUN_ATTEMPT,
-                            "job": publisher.CANDIDATE_JOB}
-    receipt["gates"] = {"stages.json": "e" * 64}
-    if with_smoke_gate:
-        receipt["gates"]["real-repository.json"] = "f" * 64
-    if receipt_overrides:
-        receipt.update(receipt_overrides)
-    output = repo / "target/release-package"
-    package_release.build_archive(
-        repo, binary, platform, output, source_commit=commit,
-        sdk_version=SDK, sdk_sha256=SDK_SHA256, release_version=RELEASE_VERSION,
-        stdx_version=STDX_VERSION, stdx_sha256=STDX_SHA256,
-        candidate_receipt=receipt, worker=worker)
-    return repo, commit, tree, binary, worker, output
+    def package_directory(self) -> Path:
+        output = self.repo / "target/release-package"
+        if output.exists():
+            return output
+        binary = self.repo / "target/release/bin/main"
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_bytes(b"Nightly CLI")
+        worker = self.make_worker(binary, content=b"Nightly CHIR worker")
+        receipt = self.make_candidate_receipt_for(
+            self.repo, binary, worker, self.commit,
+            sdk_version=SDK, stdx_version=STDX_VERSION, stdx_sha256=STDX_SHA256)
+        receipt["source"].update(tag=self.tag, releaseVersion=self.version)
+        receipt["execution"] = {"runId": RUN_ID, "runAttempt": RUN_ATTEMPT,
+                                "job": publisher.CANDIDATE_JOB}
+        receipt["gates"] = {"stages.json": "e" * 64, "real-repository.json": "f" * 64}
+        package_release.build_archive(
+            self.repo, binary, "linux-x64", output, source_commit=self.commit,
+            sdk_version=SDK, sdk_sha256=SDK_SHA256, release_version=self.version,
+            stdx_version=STDX_VERSION, stdx_sha256=STDX_SHA256,
+            candidate_receipt=receipt, worker=worker)
+        return output
 
 
 class PackageValidationTests(CandidateFixture):
@@ -528,7 +518,7 @@ class PackageValidationTests(CandidateFixture):
         if mutate is not None:
             mutate(target)
         publisher.validate_platform(
-            target, "linux-x64", publisher.load_inputs(environment()),
+            target, "linux-x64", publisher.load_inputs(self.environment()),
             tree or self.tree, repo or self.repo)
 
     def test_the_built_package_is_accepted(self):
@@ -536,8 +526,8 @@ class PackageValidationTests(CandidateFixture):
 
     def test_a_tampered_sidecar_is_refused(self):
         def mutate(directory: Path) -> None:
-            (directory / LINUX_CHECKSUM).write_text(
-                f"{'0' * 64}  {LINUX_ARCHIVE}\n", encoding="ascii")
+            (directory / self.checksum).write_text(
+                f"{'0' * 64}  {self.archive}\n", encoding="ascii")
 
         with self.assertRaises(publisher.NightlyPublishError):
             self.validate(mutate=mutate)
@@ -545,8 +535,8 @@ class PackageValidationTests(CandidateFixture):
     def test_a_sidecar_naming_another_archive_is_refused(self):
         def mutate(directory: Path) -> None:
             content = b"archive bytes"
-            (directory / LINUX_ARCHIVE).write_bytes(content)
-            (directory / LINUX_CHECKSUM).write_text(
+            (directory / self.archive).write_bytes(content)
+            (directory / self.checksum).write_text(
                 f"{digest_of(content)}  other.tar.gz\n", encoding="ascii")
 
         with self.assertRaises(publisher.NightlyPublishError):
@@ -559,12 +549,12 @@ class PackageValidationTests(CandidateFixture):
 
     def test_a_missing_sidecar_is_refused(self):
         with self.assertRaises(publisher.NightlyPublishError):
-            self.validate(mutate=lambda directory: (directory / LINUX_CHECKSUM).unlink())
+            self.validate(mutate=lambda directory: (directory / self.checksum).unlink())
 
     def test_a_directory_in_place_of_the_archive_is_refused(self):
         def mutate(directory: Path) -> None:
-            (directory / LINUX_ARCHIVE).unlink()
-            (directory / LINUX_ARCHIVE).mkdir()
+            (directory / self.archive).unlink()
+            (directory / self.archive).mkdir()
 
         with self.assertRaises(publisher.NightlyPublishError):
             self.validate(mutate=mutate)
@@ -655,15 +645,15 @@ class ReceiptValidationTests(unittest.TestCase):
 
 class PublishGuardTests(CandidateFixture):
     def publish(self, api: FakeGitHub, root: Path) -> dict:
-        return publisher.publish(root, env=environment(), api=api, repo=self.repo,
+        return publisher.publish(root, env=self.environment(), api=api, repo=self.repo,
                                  sleep=lambda _: None)
 
     def test_a_missing_job_listing_is_refused(self):
         with self.assertRaises(publisher.NightlyPublishError):
-            self.publish(FakeGitHub(refs={TAG: self.commit}), self.stage("linux-x64"))
+            self.publish(FakeGitHub(), self.stage())
 
     def test_a_running_job_is_not_terminal(self):
-        api = FakeGitHub(refs={TAG: self.commit},
+        api = FakeGitHub(refs={self.tag: self.commit},
                          jobs=[job("linux-x64", None, status="in_progress"),
                                job("windows-x64", "failure"),
                                job("macos-arm64", "failure")])
@@ -672,7 +662,7 @@ class PublishGuardTests(CandidateFixture):
         self.assertEqual(api.writes(), [])
 
     def test_a_repeated_candidate_job_is_refused(self):
-        api = FakeGitHub(refs={TAG: self.commit},
+        api = FakeGitHub(refs={self.tag: self.commit},
                          jobs=[job("linux-x64", "success"), job("linux-x64", "success"),
                                job("windows-x64", "failure"),
                                job("macos-arm64", "failure")])
@@ -681,7 +671,7 @@ class PublishGuardTests(CandidateFixture):
         self.assertEqual(api.writes(), [])
 
     def test_zero_successes_publish_nothing(self):
-        api = FakeGitHub(refs={TAG: self.commit},
+        api = FakeGitHub(refs={self.tag: self.commit},
                          jobs=[job(platform, "failure")
                                for platform in publisher.PLATFORMS])
         with self.assertRaises(publisher.NightlyPublishError) as caught:
@@ -690,7 +680,7 @@ class PublishGuardTests(CandidateFixture):
         self.assertEqual(api.writes(), [])
 
     def test_a_missing_success_artifact_is_refused(self):
-        api = FakeGitHub(refs={TAG: self.commit},
+        api = FakeGitHub(refs={self.tag: self.commit},
                          jobs=[job("linux-x64", "success"),
                                job("windows-x64", "failure"),
                                job("macos-arm64", "failure")])
@@ -699,7 +689,7 @@ class PublishGuardTests(CandidateFixture):
         self.assertEqual(api.writes(), [])
 
     def test_an_unknown_artifact_directory_is_refused(self):
-        api = FakeGitHub(refs={TAG: self.commit},
+        api = FakeGitHub(refs={self.tag: self.commit},
                          jobs=[job("linux-x64", "success"),
                                job("windows-x64", "failure"),
                                job("macos-arm64", "failure")])
@@ -710,7 +700,7 @@ class PublishGuardTests(CandidateFixture):
         self.assertEqual(api.writes(), [])
 
     def test_an_artifact_from_another_attempt_is_refused(self):
-        api = FakeGitHub(refs={TAG: self.commit},
+        api = FakeGitHub(refs={self.tag: self.commit},
                          jobs=[job("linux-x64", "success"),
                                job("windows-x64", "failure"),
                                job("macos-arm64", "failure")])
@@ -728,19 +718,19 @@ class PublishFlowTests(CandidateFixture):
                 job("macos-arm64", "failure")]
 
     def publish(self, api: FakeGitHub, root: Path) -> dict:
-        return publisher.publish(root, env=environment(), api=api, repo=self.repo,
+        return publisher.publish(root, env=self.environment(), api=api, repo=self.repo,
                                  sleep=lambda _: None)
 
     def local_assets(self) -> dict[str, bytes]:
-        return {LINUX_ARCHIVE: (self.package / LINUX_ARCHIVE).read_bytes(),
-                LINUX_CHECKSUM: (self.package / LINUX_CHECKSUM).read_bytes()}
+        package = self.package_directory()
+        return {name: (package / name).read_bytes() for name in (self.archive, self.checksum)}
 
     def test_a_partial_success_publishes_one_immutable_prerelease(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
         result = self.publish(api, self.stage("linux-x64"))
         self.assertEqual(result["status"], "published")
         self.assertEqual(result["available"], ["linux-x64"])
-        release = api.releases[api.tag_ids[TAG]]
+        release = api.releases[api.tag_ids[self.tag]]
         self.assertFalse(release["draft"])
         self.assertTrue(release["immutable"])
         self.assertTrue(release["prerelease"])
@@ -749,38 +739,34 @@ class PublishFlowTests(CandidateFixture):
         self.assertIn(f"/actions/runs/{RUN_ID}/attempts/{RUN_ATTEMPT}", release["body"])
         self.assertIn("`linux-x64`: published", release["body"])
         self.assertIn("job conclusion `failure`", release["body"])
-        self.assertEqual(sorted(api.uploads), sorted([LINUX_ARCHIVE, LINUX_CHECKSUM]))
+        self.assertCountEqual(api.uploads, [self.archive, self.checksum])
 
     def test_a_platform_unavailable_at_resolution_is_named_as_such(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
-        env = environment(NIGHTLY_MATRIX=json.dumps(
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
+        env = self.environment(NIGHTLY_MATRIX=json.dumps(
             matrix(unavailable={"windows-x64": "no stdx build"})))
         publisher.publish(self.stage("linux-x64"), env=env, api=api, repo=self.repo,
                           sleep=lambda _: None)
-        release = api.releases[api.tag_ids[TAG]]
+        release = api.releases[api.tag_ids[self.tag]]
         self.assertIn("unavailable (no stdx build)", release["body"])
 
     def test_publication_is_skipped_when_the_same_assets_are_public(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
-        api.public_release(TAG, self.local_assets())
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
+        api.public_release(self.tag, self.local_assets())
         result = self.publish(api, self.stage("linux-x64"))
         self.assertEqual(result["status"], "unchanged")
         self.assertEqual(api.writes(), [])
 
     def test_a_public_release_with_other_assets_is_never_modified(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
-        windows = publisher.expected_assets(RELEASE_VERSION, "windows-x64")[0]
-        api.public_release(TAG, self.local_assets() | {windows: b"another archive"})
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
+        windows = publisher.expected_assets(self.version, "windows-x64")[0]
+        api.public_release(self.tag, self.local_assets() | {windows: b"another archive"})
         with self.assertRaises(publisher.NightlyPublishError):
             self.publish(api, self.stage("linux-x64"))
         self.assertEqual(api.writes(), [])
 
     def test_a_public_release_that_appears_before_the_write_is_never_modified(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
-        original = api.public_release
-
-        class Racing(FakeGitHub):
-            pass
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
 
         calls = {"count": 0}
         real = publisher.existing_public_release
@@ -789,28 +775,45 @@ class PublishFlowTests(CandidateFixture):
             calls["count"] += 1
             if calls["count"] == 2:
                 # The release became public between the two identity reads.
-                original(TAG, {"stray.txt": b"stray"})
+                api.public_release(self.tag, {"stray.txt": b"stray"})
             return real(client, inputs)
 
-        with unittest.mock.patch.object(publisher, "existing_public_release",
-                                        racing_existing):
+        with patch.object(publisher, "existing_public_release", racing_existing):
             with self.assertRaises(publisher.NightlyPublishError):
                 self.publish(api, self.stage("linux-x64"))
         self.assertEqual(api.uploads, [])
 
     def test_a_stale_asset_on_the_owned_draft_is_replaced(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
-        draft = api.draft_release(TAG)
-        stale = publisher.expected_assets(RELEASE_VERSION, "windows-x64")[0]
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
+        draft = api.draft_release(self.tag)
+        stale = publisher.expected_assets(self.version, "windows-x64")[0]
         api.add_asset(draft, stale, b"stale bytes from an interrupted attempt")
         self.publish(api, self.stage("linux-x64"))
         self.assertNotIn(stale, [asset["name"] for asset in draft["assets"]])
-        self.assertEqual(sorted(api.uploads), sorted([LINUX_ARCHIVE, LINUX_CHECKSUM]))
+        self.assertCountEqual(api.uploads, [self.archive, self.checksum])
+
+    def test_an_empty_starter_is_replaced_on_the_owned_draft(self):
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
+        draft = api.draft_release(self.tag)
+        starter_id = api.add_starter(draft, self.archive)
+        self.publish(api, self.stage("linux-x64"))
+        self.assertIn(("DELETE", f"repos/o/r/releases/assets/{starter_id}"), api.writes())
+        self.assertCountEqual(api.uploads, [self.archive, self.checksum])
+        self.assertFalse(draft["draft"])
+
+    def test_a_nonempty_starter_blocks_draft_recovery(self):
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
+        draft = api.draft_release(self.tag)
+        api.add_starter(draft, self.archive)
+        draft["assets"][0]["size"] = 1
+        with self.assertRaisesRegex(publisher.NightlyPublishError, "not in the uploaded state"):
+            self.publish(api, self.stage("linux-x64"))
+        self.assertEqual(api.writes(), [])
 
     def test_a_draft_this_workflow_does_not_own_is_left_alone(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
-        draft = api.draft_release(TAG, body="hand-written notes")
-        api.add_asset(draft, "someone-elses.zip", b"bytes")
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
+        draft = api.draft_release(self.tag, body="hand-written notes")
+        api.add_starter(draft, self.archive)
         with self.assertRaises(publisher.NightlyPublishError) as caught:
             self.publish(api, self.stage("linux-x64"))
         self.assertIn("not owned", str(caught.exception))
@@ -819,33 +822,33 @@ class PublishFlowTests(CandidateFixture):
     def test_an_absent_tag_is_created_as_a_lightweight_ref(self):
         api = FakeGitHub(jobs=self.jobs())
         self.publish(api, self.stage("linux-x64"))
-        self.assertEqual(api.refs[TAG], self.commit)
+        self.assertEqual(api.refs[self.tag], self.commit)
         self.assertEqual([call for call in api.calls
                           if call == ("POST", "repos/o/r/git/refs")], [
             ("POST", "repos/o/r/git/refs")])
 
     def test_a_tag_that_names_another_commit_stops_publication(self):
-        api = FakeGitHub(refs={TAG: "e" * 40}, jobs=self.jobs())
+        api = FakeGitHub(refs={self.tag: "e" * 40}, jobs=self.jobs())
         with self.assertRaises(publisher.NightlyPublishError):
             self.publish(api, self.stage("linux-x64"))
         self.assertEqual(api.writes(), [])
 
     def test_an_immutable_repository_setting_that_is_disabled_stops_publication(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
         api.immutable_setting = {"enabled": False, "enforced_by_owner": False}
         with self.assertRaises(publisher.NightlyPublishError):
             self.publish(api, self.stage("linux-x64"))
         self.assertEqual(api.writes(), [])
 
     def test_an_unreadable_immutable_setting_stops_publication(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs(),
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs(),
                          immutable_readable=False)
         with self.assertRaisesRegex(publisher.NightlyPublishError, "NIGHTLY_RELEASE_SETTINGS_TOKEN"):
             self.publish(api, self.stage("linux-x64"))
         self.assertEqual(api.writes(), [])
 
     def test_a_public_release_that_stays_draft_after_the_write_is_refused(self):
-        api = FakeGitHub(refs={TAG: self.commit}, jobs=self.jobs())
+        api = FakeGitHub(refs={self.tag: self.commit}, jobs=self.jobs())
         original = api.send
 
         def no_publish(method, path, body=None):
@@ -854,7 +857,7 @@ class PublishFlowTests(CandidateFixture):
                 return None
             return original(method, path, body)
 
-        with unittest.mock.patch.object(api, "send", no_publish):
+        with patch.object(api, "send", no_publish):
             with self.assertRaises(publisher.NightlyPublishError):
                 self.publish(api, self.stage("linux-x64"))
 
