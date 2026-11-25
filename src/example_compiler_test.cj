@@ -884,7 +884,7 @@ private func attributedFor(bodyBlocks: Array<String>,
     var first = true
     for (block in bodyBlocks) {
         if (!first) { joined.append("\n") }
-        joined.append(block)
+        joined.append(block.trimAscii())
         first = false
     }
     attributeExampleCompilerOutput(joined.toString(), bodyStartLine, bodyEndLine)
@@ -936,6 +936,16 @@ class ExampleFailureAttributionTest {
         @Expect(attribution.hasContextFailure, false)
         @Expect(attribution.bodyMessageContains("missingApi"), true)
         @Expect(attribution.bodyMessageContains("let result"), false)
+    }
+
+    @TestCase
+    func onlyTheFirstTrailerLineSharesBodyAttribution(): Unit {
+        let closingBrace = "error: expected expression\n ==> <generated-example>:8:1:"
+        let afterBrace = "error: unrelated location\n ==> <generated-example>:9:1:"
+        let attribution = attributedFor([closingBrace, afterBrace], 6, 7)
+        @Expect(attribution.bodyMessageContains("expected expression"), true)
+        @Expect(attribution.bodyMessageContains("unrelated location"), false)
+        @Expect(attribution.contextBlocks.size, 1)
     }
 
     @TestCase
