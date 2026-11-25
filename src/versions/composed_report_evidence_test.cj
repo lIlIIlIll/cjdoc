@@ -82,7 +82,7 @@ class ComposedReportEvidenceTest {
             ("1.3.0/validation.html", "API diff: not attached to this generation"),
             ("1.3.0/html/en/validation.html", "API diff: not attached to this generation"),
             ("1.3.0/html/zh-CN/validation.html", "API diff：本次生成未附带")
-        ] {
+        ]) {
             let html = composedArtifact(artifacts, path)
             @Expect(composedSlotState(html, "api-diff"), "attached")
             // Root- and language-scoped pages both link the one composed report.

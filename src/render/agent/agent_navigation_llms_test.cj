@@ -136,9 +136,10 @@ class AgentNavigationLlmsTest {
         for ((heading, link) in [
             ("### Project overview", "concepts/index.html"),
             ("### Modules", "concepts/modules/routesample.html"),
+            ("### Package overviews", "concepts/packages/routesample.html"),
             ("### Guides", "concepts/guides/my-guide.html"),
             ("### Guides", "concepts/other.html")
-        ] {
+        ]) {
             @Expect(concepts.contains(heading))
             @Expect(concepts.contains("](<" + link + ">"))
         }
@@ -192,7 +193,7 @@ class AgentNavigationLlmsTest {
         // A deliberately small part budget proves the continuation chain is
         // real rather than one page that happens to fit.
         appendAgentNavigationArtifacts(artifacts, context, pages, None,
-            includeValidation: true, limit: 4096)
+            includeValidation: true, limit: 2048)
         let rendered = artifacts.toArray()
         var parts: Int64 = 0
         for (artifact in rendered where artifact.path.startsWith("html/navigation-index")) {

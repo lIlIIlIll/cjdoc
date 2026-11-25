@@ -93,7 +93,7 @@ class ValidationReportEvidenceTest {
             locale: "en", reports: reports)
         let page = reportArtifact(artifacts, "html/validation.html")
         for ((kind, path) in [("api-diff", "agent/reports/api-diff.json"),
-            ("validation", "agent/reports/validation.json")] {
+            ("validation", "agent/reports/validation.json")]) {
             @Expect(slotState(page, kind), "attached")
             @Expect(page.contains("href=\"" + path + "\""))
             @Expect(reportArtifact(artifacts, "html/" + path).size > 0)
@@ -108,7 +108,7 @@ class ValidationReportEvidenceTest {
             ["html"], locale: "en")
         let absent = reportArtifact(absentArtifacts, "html/validation.html")
         for ((kind, path) in [("api-diff", "agent/reports/api-diff.json"),
-            ("validation", "agent/reports/validation.json")] {
+            ("validation", "agent/reports/validation.json")]) {
             @Expect(slotState(absent, kind), "absent")
             @Expect(!absent.contains("href=\"" + path + "\""))
         }
@@ -123,7 +123,7 @@ class ValidationReportEvidenceTest {
             reportDocumentation(languages: ["en", "zh-CN"]), ["html"], allLanguages: true,
             reports: reports)
         for ((language, wording) in [("en", "not a passing check or a compatibility verdict"),
-            ("zh-CN", "不代表检查通过或兼容性结论")] {
+            ("zh-CN", "不代表检查通过或兼容性结论")]) {
             let page = reportArtifact(artifacts, "html/" + language + "/validation.html")
             @Expect(slotState(page, "api-diff"), "attached")
             @Expect(page.contains("href=\"" + reportAttachmentPath("api-diff") + "\""))
@@ -138,7 +138,7 @@ class ValidationReportEvidenceTest {
         let artifacts = renderDocumentationFormatsWithOptions(
             reportDocumentation(languages: ["en", "zh-CN"]), ["html"], allLanguages: true)
         for ((language, href) in [("en", "../../api-diff.json"),
-            ("zh-CN", "../../api-diff.json")] {
+            ("zh-CN", "../../api-diff.json")]) {
             let original = reportArtifact(artifacts, "html/" + language + "/validation.html")
             @Expect(slotState(original, "api-diff"), "absent")
             let composed = attachReportEvidence(original, "api-diff", href)
