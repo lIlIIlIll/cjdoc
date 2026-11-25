@@ -17,7 +17,7 @@ try:
     from .reader_aria_transition import check_aria_pair
     from .reader_ir_transition import TRANSITION_NAME, compare_ir_transition
     from .reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
-    from .reader_search_identity import compare_search_identities, verify_search_identity
+    from .reader_search_identity import compare_search_identities, verify_reader_doc_ir_schema, verify_search_identity
     from .test_agent_artifacts import ContractError, document
 except ImportError:
     from strict_json import strict_load, strict_loads, strict_dumps
@@ -26,7 +26,7 @@ except ImportError:
     from reader_aria_transition import check_aria_pair
     from reader_ir_transition import TRANSITION_NAME, compare_ir_transition
     from reader_register import REPO, REFERENCE_TEMPLATE, validate_browser_contract, validate_transition_budget
-    from reader_search_identity import compare_search_identities, verify_search_identity
+    from reader_search_identity import compare_search_identities, verify_reader_doc_ir_schema, verify_search_identity
     from test_agent_artifacts import ContractError, document
 
 FONT_INVENTORY_FAMILIES = (
@@ -401,6 +401,9 @@ def compare(baseline: Path, after: Path, manifest_file: Path, budget_file: Path)
                      document(after, b["site"] + "/search-index.json").parent)
         measurements += compare_browser(strict_load(old_browser), strict_load(new_browser),
                                         manifest, budgets, failures, sites)
+    if transition is not None:
+        for root in (baseline, after):
+            verify_reader_doc_ir_schema(strict_load(root / "native-json/docs.json"))
     return {"schemaVersion": "cjdoc.reader-comparison/1", "status": "failed" if failures else "pass",
             "pass": not failures, "failures": failures, "measurements": measurements,
             "baselineGenerationSha256": digest(old_file), "afterGenerationSha256": digest(new_file),

@@ -228,8 +228,18 @@ internal func querySearch(projection: QueryProjection, request: JsonObject,
         outcome.text = "Documentation query failed: ${error.status}. ${error.message}"
         return outcome
     }
+    let facetBinding = if (request.get("commentFieldFacets").isSome()) {
+        querySearchCursorDigest(request, contentBinding, projectionSet.projectionId, profile,
+            selectedInputs)
+    } else { "" }
     let execution = search_engine.executeDocumentationSearchAcross(projectionSet, request,
-        Some(admitted), Some(filterOnly), offset)
+        Some(admitted), Some(filterOnly), offset, facetBinding: facetBinding,
+        moduleAdmitted: { module =>
+            let requested = queryString(request, "moduleId")
+            (requested.isEmpty() || requested == module.moduleId ||
+                module.moduleName == Some(requested)) &&
+                queryScopeAdmits(module.documentSet, module.dependency, request)
+        })
     let executionStatus = queryString(execution, "status")
     let executionError = queryString(execution, "errorCode")
     outcome.status = executionStatus
@@ -248,9 +258,7 @@ internal func querySearch(projection: QueryProjection, request: JsonObject,
     }
     outcome.contentComplete = querySourceComplete(selectedInputs)
     if (!executionError.isEmpty()) {
-        let message = if (executionError == "cursor_out_of_range") {
-            "Continuation cursor is beyond the current result set."
-        } else { "Search execution could not use the requested profile or request fields." }
+        let message = queryString(execution, "errorMessage")
         outcome.error = Some(queryErrorNode(executionError, message,
             Option<Int64>.None, Option<Int64>.None))
         outcome.selectedSections = querySectionList(QUERY_SUMMARY_SECTIONS)

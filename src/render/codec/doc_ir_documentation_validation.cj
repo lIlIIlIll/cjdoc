@@ -1,7 +1,7 @@
 protected package cjdoc.render.codec
 
 import cjdoc.render.routes.safeRelativePath
-import cjdoc.render.foundation.markdownLinkDestination
+import cjdoc.render.foundation.{markdownLinkDestination, renderabilityIndex}
 import cjdoc.model.*
 import std.collection.*
 
@@ -53,6 +53,49 @@ private func validateDocumentationMetadataReferences(documentation: Documentatio
         }
         if (!tagKeys.add(documentationMetadataTagKey(tag.moduleId, tag.id))) {
             domainFail(path, "duplicate tag definition in module scope")
+        }
+        index++
+    }
+    // A field definition must be reachable from the declarations it names: a
+    // use by an unknown symbol, another module's symbol, a duplicate use or an
+    // out-of-cardinality value list is a contract violation, not a display hint.
+    if (documentation.metadata.fields.isEmpty()) { return }
+    let audience = documentation.configuration.audience
+    let visible: ?HashMap<String, Bool> = if (audience == "all") { None } else {
+        Some(renderabilityIndex(documentation, declarationsById, audience))
+    }
+    let fieldKeys = HashSet<String>()
+    index = 0
+    for (field in documentation.metadata.fields) {
+        let path = "$.metadata.fields[${index}]"
+        if (!moduleIds.contains(field.moduleId)) {
+            domainFail(path, "field references an unknown module")
+        }
+        if (!fieldKeys.add(documentationMetadataTagKey(field.moduleId, field.id))) {
+            domainFail(path, "duplicate field definition in module scope")
+        }
+        if (field.uses.isEmpty()) { domainFail(path, "field definition has no uses") }
+        let useKeys = HashSet<String>()
+        var useIndex: Int64 = 0
+        for (use in field.uses) {
+            let usePath = "${path}.uses[${useIndex}]"
+            if (!useKeys.add(use.symbolId)) { domainFail(usePath, "duplicate symbol use") }
+            let symbol = match (declarationsById.get(use.symbolId)) {
+                case Some(value) => value
+                case None => domainFail(usePath, "unknown symbol")
+            }
+            if (symbol.moduleId != field.moduleId) {
+                domainFail(usePath, "cross-module field use")
+            }
+            if (let Some(renderable) <- visible) {
+                if (!renderable.get(symbol.id).getOrDefault({ => false })) {
+                    domainFail(usePath, "field use is outside the captured audience")
+                }
+            }
+            if (!field.repeatable && use.values.size > 1) {
+                domainFail(usePath, "single-value field carries multiple values")
+            }
+            useIndex++
         }
         index++
     }

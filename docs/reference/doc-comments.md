@@ -183,6 +183,53 @@ error[CJDOC3132]: @tag requires one ASCII identifier (1-64 letters, digits, '-' 
 
 标签只属于写了该注释的声明，不从包、类型、基类、扩展或重载族继承。标签不是行为契约，不进入契约质量分或翻译覆盖率分母，也不改变源码/API 身份。配置里的标题只用于显示；查询、HTML 搜索与 facets 都按大小写敏感的完整 ID 匹配，多个 ID 取交集。
 
+## 项目注释字段
+
+项目可以在所属模块的 `cjdoc.toml` 用 `[comments]` 声明正式字段和别名（配置写法见[配置参考](configuration.md#comments项目注释规范)）。声明之后，同样的 `/** ... */` 注释里可以写字段标签：
+
+```cangjie
+package sample
+
+/**
+ * 读取指定数量。
+ * @maintainer platform
+ */
+public func read(count: Int64): Int64 { count }
+```
+
+```toml
+[comments.aliases]
+maintainer = "owner"
+
+[[comments.fields]]
+id = "owner"
+title = "负责人"
+
+[comments.fields.titles]
+en = "Owner"
+```
+
+- `@maintainer platform` 归一为正式字段 `owner`，值是 `platform`；HTML 和 Markdown API 页都显示该字段，中文标题为「负责人」，英文为「Owner」。在 HTML 搜索中按字段值 `platform` 筛选可找到该声明。
+- 字段值只取标签所在行、分隔空白之后的文本；去掉首尾 ASCII 空白，保留内部空格、大小写和标点。它不被当作 Markdown、链接或 HTML，也不会自动翻译。
+- 字段行不算正文：后续普通段落仍是说明。同一单值字段写两次（即使拼写或值相同）报 `CJDOC3141`，该声明在这个字段上没有有效值；`repeatable = true` 的字段按源码顺序保留每个合法条目。
+- 只有作者显式写出的标签才算。隐式 Markdown 摘要、自动回退的译文都不满足规则。
+- 顶层段落里完整拼写的标签才算字段；代码围栏、缩进代码、列表和引用里的同样文字是正文。
+
+字段配置错误（`CJDOC3139`）在生成前失败，退出码 `2`。注释结构错误属于错误级诊断，即使 `--lint-profile off` 也退出 `1`：
+
+| 诊断 | 触发条件 |
+|---|---|
+| `CJDOC3140` | 字段没有值、值超过 16384 个 Unicode 码点、值里有换行或分隔符、含控制字符，或字段行带属性（如 `@owner[lang=en] platform`） |
+| `CJDOC3141` | 单值字段在同一注释里出现两次；指向首次与冲突处，该字段整项无效 |
+
+规则（`[[comments.rules]]`）只在 `standard`、`strict` 下执行，严重级别来自规则本身：
+
+```
+error[CJDOC3142]: documentation is missing required @owner (required when @deprecated is present)
+```
+
+`check` 遇到错误级规则退出 `1`；只有警告时退出 `0`，加 `--deny-warnings` 退出 `1`。
+
 ## 提示标签
 
 只识别小写的 `@note`、`@warning`、`@danger`，且必须在顶层 Markdown 段落。标签之后的连续顶层普通文本行构成提示正文；空行、下一条顶层 `@...` 或注释结束会结束提示，其后的普通说明需要用空行隔开。列表、引用、代码块里的同样文字，以及 `@Warning`、`@noteish`，都按普通正文处理。

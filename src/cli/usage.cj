@@ -132,7 +132,7 @@ func commandUsage(command: String): ?String {
         case "render" =>
             Some("usage: cjdoc render --input <docs.json> [options]\n" +
                 "Re-renders a captured Doc IR file without reading the project configuration.\n\n" +
-                "  --input <docs.json>                   captured cjdoc.doc-ir/18 document (required)\n" +
+                "  --input <docs.json>                   captured cjdoc.doc-ir/19 document (required)\n" +
                 "  --format <name>                       json, markdown, html, api-surface, coverage, symbol-index; repeatable\n" +
                 "  --output <dir>                        output directory, default target/doc\n" +
                 "  --stdout                              write one JSON-producing format to standard output\n" +

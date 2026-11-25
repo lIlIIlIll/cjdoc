@@ -144,7 +144,7 @@ private func appendSearchClassification(out: RenderTextBuffer,
  */
 protected func renderSearchIndex(built: DocumentationSearchProjection): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/11\",\n  \"profile\": ")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/12\",\n  \"profile\": ")
     appendSearchJsonString(out, built.profile)
     out.append(",\n  \"contract\": ")
     out.append(searchContractJson())
@@ -199,6 +199,16 @@ protected func renderSearchIndex(built: DocumentationSearchProjection): String {
         out.append(",\"title\":"); appendSearchJsonString(out, tag.title)
         out.append("}")
     }
+    out.append("],\n  \"commentFields\": [")
+    var firstField = true
+    for (field in built.commentFieldDictionary) {
+        if (!firstField) { out.append(",") }
+        firstField = false
+        out.append("{\"scope\":${field.scope},\"id\":")
+        appendSearchJsonString(out, field.id)
+        out.append(",\"title\":"); appendSearchJsonString(out, field.title)
+        out.append(",\"repeatable\":${field.repeatable}}")
+    }
     out.append("],\n  \"entries\": [")
     var first = true
     for (entry in built.entries) {
@@ -241,7 +251,22 @@ protected func renderSearchIndex(built: DocumentationSearchProjection): String {
         appendSearchJsonString(out, searchTextExcerpt(entry.summary, maximum: built.summaryDisplayLimit))
         out.append(", \"body\": "); appendSearchJsonString(out, entry.body)
         out.append(", \"bodyTruncated\": "); out.append(entry.bodyTruncated.toString())
-        out.append(", \"classification\": "); appendSearchClassification(out, entry.classification)
+        out.append(", \"commentFields\": [")
+        var firstFieldRow = true
+        for (row in entry.commentFieldRows) {
+            if (!firstFieldRow) { out.append(",") }
+            firstFieldRow = false
+            out.append("{\"id\": "); appendSearchJsonString(out, row.id)
+            out.append(", \"values\": [")
+            var firstValue = true
+            for (value in row.values()) {
+                if (!firstValue) { out.append(",") }
+                firstValue = false
+                appendSearchJsonString(out, value)
+            }
+            out.append("]}")
+        }
+        out.append("], \"classification\": "); appendSearchClassification(out, entry.classification)
         out.append(", \"href\": "); appendSearchJsonString(out, entry.href)
         out.append(", \"exposures\": [")
         var firstExposure = true

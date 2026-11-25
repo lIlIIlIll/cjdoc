@@ -113,6 +113,7 @@ private let HTML_CHROME_STYLE = """
   padding: .15rem .55rem; border: 1px solid var(--cj-border-strong); border-radius: 999px;
   background: var(--cj-bg); color: var(--cj-muted); font-size: .75rem; cursor: pointer;
 }
+.cj-search__facet { max-width: 100%; overflow-wrap: anywhere; text-align: start; }
 .cj-search__facet:hover { color: var(--cj-fg); }
 .cj-search__facet[aria-pressed="true"] { border-color: var(--cj-accent); background: var(--cj-accent-soft); color: var(--cj-accent); font-weight: 600; }
 .cj-search__replacement { padding: .4rem .95rem; border-bottom: 1px solid var(--cj-border); }

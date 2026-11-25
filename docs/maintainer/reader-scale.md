@@ -123,7 +123,7 @@ python3 scripts/with_stdx.py --variant static -- python3 scripts/reader_capture.
 
 Linux 观测另记录实际 `environment.cpuAffinity`；它是 Node 启动进程的允许 CPU 列表，子进程继承该亲和性。需要隔离调度时，先从当前允许集合选择并登记固定 CPU 集合及物理核拓扑，再以同一 `taskset --cpu-list "$CPUSET"` 前缀运行完整 baseline/after 命令。隔离配方单独登记，不根据计时结果挑核，不改 governor，也不把未隔离配方的失败改记为通过；两侧完整 environment 仍须相等。
 
-当前采集器只消费实际发布的 `cjdoc.search-index/11`；升级搜索协议时必须同步 `reader-scale-metrics.mjs` 的输入契约。历史基线保留其源码版本对应的采集器及摘要，不能把旧协议拒绝误报为容量失败，也不能为绕过拒绝放宽预算、减少样本或生成手写索引。
+采集器识别固定基线发布的 `cjdoc.search-index/11` 和候选发布的 `/12`。比较时分别用固定 baseline checkout 和当前 checkout 的 schema，重算 `/3` 与 `/4` 的搜索投影摘要。登记的 `v17-v19-unregistered-source-no-comment-fields` 只允许 v19 新增空字段数组及约定的搜索合同差异；源文件、路由、签名、ARIA 与预算仍按原规则核验。旧 schema 只用于证据校验，不进入产品库存。
 
 已有固定原生站点时可独立重跑浏览器观测，原生生成费用仍引用原来的真实凭据，不把重跑写成重新生成：
 

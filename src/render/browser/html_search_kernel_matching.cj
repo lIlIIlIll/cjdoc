@@ -124,7 +124,7 @@ internal let HTML_SEARCH_KERNEL_MATCHING_SCRIPT = #"  const canonicalJson = valu
     if (typeof operation !== "string" || !validateValue(operation, contract.requestProperties.operation, contract)) return "request_schema";
     if (operation !== "search") {
       const searchConfigurationFields = ["mode", "profile", "filters",
-        ...contract.setPredicates.map(row => row.field)];
+        "commentFields", "commentFieldFacets", ...contract.setPredicates.map(row => row.field)];
       if (Object.keys(request).some(key => searchConfigurationFields.includes(key))) return "field_not_applicable";
       return "operation_unavailable";
     }
@@ -157,6 +157,11 @@ internal let HTML_SEARCH_KERNEL_MATCHING_SCRIPT = #"  const canonicalJson = valu
     for (const key of ["snapshotId", "language", "audience", "cfgProfile"]) {
       if (!own(effective, key)) effective[key] = prepared.scope[key];
     }
+    const fieldsResult = normalizeCommentFields(effective.commentFields);
+    if (fieldsResult.error) return {error: fieldsResult.error};
+    effective.commentFields = fieldsResult.fields;
+    const facetResult = normalizeCommentFieldFacets(effective.commentFieldFacets);
+    if (facetResult.error) return {error: facetResult.error};
     const filtersResult = normalizeFilters(effective.filters, prepared);
     if (filtersResult.error) return {error: filtersResult.error};
     effective.filters = filtersResult.filters.map(({field, op, value}) => ({field, op, value}));
@@ -166,27 +171,101 @@ internal let HTML_SEARCH_KERNEL_MATCHING_SCRIPT = #"  const canonicalJson = valu
     for (const key of Object.keys(effective)) {
       const isAbsentSetDefault = prepared.contract.setPredicates.some(row =>
         row.field === key && !own(request, key));
-      if (key !== "cursor" && !isAbsentSetDefault && own(properties, key) &&
+      if (key !== "cursor" && !(key === "commentFields" && !own(request, key)) &&
+          !isAbsentSetDefault && own(properties, key) &&
           !validateValue(effective[key], properties[key], contract)) return {error: "request_schema"};
     }
     if (effective.limit > contract.maxLimit) return {error: "request_schema"};
     const hasUserNarrowing = userNarrowing(request);
+    const catalogOnly = facetResult.facet !== null && isCommentFieldCatalogOnly(request, effective);
     effective._filterOnlyEligible = /^[ \t\n\r\f\v]*$/u.test(effective.query) &&
       hasUserNarrowing && !selectedIdentity(effective);
     return {effective, filters: filtersResult.filters, setPredicates: setResult.predicates,
-      hasUserNarrowing};
+      hasUserNarrowing, catalogOnly, facet: facetResult.facet};
+  };
+
+  // The value catalog is opt-in: absent means "do not count", so the response
+  // omits the member entirely and no counting work happens.
+  const normalizeCommentFieldFacets = value => {
+    if (value === undefined) return {facet: null};
+    if (!isObject(value)) return {error: "request_schema"};
+    for (const key of Object.keys(value)) {
+      if (key !== "id" && key !== "limit" && key !== "cursor") return {error: "request_schema"};
+    }
+    if (own(value, "id") && !validCommentFieldId(value.id)) return {error: "request_schema"};
+    if (own(value, "limit") && (!Number.isSafeInteger(value.limit) ||
+        value.limit < 1 || value.limit > 100)) return {error: "request_schema"};
+    if (own(value, "cursor") && (!nonemptyString(value.cursor) || runeCount(value.cursor) > 1024)) {
+      return {error: "request_schema"};
+    }
+    return {facet: {id: own(value, "id") ? value.id : null,
+      limit: own(value, "limit") ? value.limit : 20,
+      cursor: own(value, "cursor") ? value.cursor : null}};
+  };
+
+  // Exact author values: complete strings, case-sensitive, never normalized.
+  const normalizeCommentFields = value => {
+    if (value === undefined) return {fields: []};
+    if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
+      return {error: "request_schema"};
+    }
+    const seen = new Set();
+    const fields = [];
+    for (const row of value) {
+      if (!isObject(row) || !exactKeys(row, ["id", "value"]) ||
+          !validCommentFieldId(row.id) || !validCommentFieldValue(row.value)) return {error: "request_schema"};
+      const key = row.id + SEP + row.value;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      fields.push({id: row.id, value: row.value});
+    }
+    // Equivalent conditions share one cursor identity regardless of order.
+    fields.sort((left, right) => {
+      const order = compareBytes(left.id, right.id);
+      return order || compareBytes(left.value, right.value);
+    });
+    return {fields};
+  };
+  const commentFieldScopeError = (prepared, request) => {
+    if (!request.commentFields.length) return null;
+    const requested = new Set(request.commentFields.map(row => row.id));
+    const found = new Set();
+    for (const field of prepared.commentFields.all) {
+      if (!requested.has(field.id) || !moduleFieldsAdmit(prepared.modules[field.scope], request)) continue;
+      if (found.has(field.id)) return "comment_field_scope_required";
+      found.add(field.id);
+    }
+    return null;
+  };
+  const commentFieldsAdmit = (facts, requested) => {
+    if (!requested.length) return true;
+    if (facts.concept) return false;
+    for (const row of requested) {
+      let found = false;
+      for (const stored of facts.commentFields) {
+        if (stored.id === row.id && stored.values.includes(row.value)) { found = true; break; }
+      }
+      if (!found) return false;
+    }
+    return true;
   };
 
   const filterValueMatches = (stored, filter) => {
-    if (!stored || typeof stored.raw !== "string") return false;
-    if (filter.operator.primitive === "exact_string_equal") return stored.raw === filter.value;
-    if (filter.operator.primitive === "ascii_fold_contains") return stored.folded.includes(filter.foldedValue);
+    if (typeof stored !== "string") return false;
+    if (filter.operator.primitive === "exact_string_equal") return stored === filter.value;
+    if (filter.operator.primitive === "ascii_fold_contains") {
+      return (hasUnpairedSurrogate(stored) ? "" : fold(stored)).includes(filter.foldedValue);
+    }
     return false;
   };
+  // An ordinary text query needs no filter facts. Read the already-validated
+  // raw entry or exposure only when a predicate selects one of its properties.
   const contextAdmits = (context, filters) => filters.every(filter =>
     propertyArray(filter.definition.property).some(property => {
-      if (!context || !context.filterProperties.has(property)) return false;
-      return context.filterProperties.get(property).some(value => filterValueMatches(value, filter));
+      if (!context || !own(context.raw, property)) return false;
+      const stored = context.raw[property];
+      return Array.isArray(stored) ? stored.some(value => filterValueMatches(value, filter))
+        : filterValueMatches(stored, filter);
     }));
   const NO_EXPOSURES = Object.freeze([]);
   const filterExposures = (facts, exposures, entryFilters, contextual) => {
@@ -391,9 +470,18 @@ internal let HTML_SEARCH_KERNEL_MATCHING_SCRIPT = #"  const canonicalJson = valu
     if (request.packageName !== undefined && facts.packageName !== request.packageName) return false;
     return request.kind === undefined || facts.kind === request.kind;
   };
+  const isCommentFieldCatalogOnly = (request, effective) => {
+    if (!/^[ \t\n\r\f\v]*$/u.test(effective.query) || effective.commentFields.length) return false;
+    const options = new Set(["operation", "schemaVersion", "query", "mode", "profile", "limit", "cursor",
+      "commentFieldFacets", "languageFallback", "snapshotId", "moduleId", "language",
+      "audience", "cfgProfile", "documentSetId", "apiVersion", "library",
+      "dependencyInstanceId", "target", "cfg", "latest"]);
+    return Object.keys(request).every(key => options.has(key) ||
+      (key === "filters" && request.filters.length === 0));
+  };
   const userNarrowing = request => {
     const executionFields = new Set(["schemaVersion", "operation", "mode", "profile", "limit",
-      "cursor", "query", "filters", "latest", "languageFallback"]);
+      "cursor", "query", "filters", "latest", "languageFallback", "commentFieldFacets"]);
     return request.latest === true || (Array.isArray(request.filters) && request.filters.length > 0) ||
       Object.keys(request).some(name => !executionFields.has(name));
   };

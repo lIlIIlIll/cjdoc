@@ -177,6 +177,9 @@ protected class SearchProjectedEntry {
     protected let tagIds: Array<String>
     protected let metadataText: String
     protected var tagFacets: Array<SearchProjectionTag> = []
+    // Published comment field values of this declaration. Kept out of `body` so a
+    // custom value is never truncated by the body budget or ranked as a name.
+    protected var commentFieldRows: Array<SearchCommentFieldUse> = []
     protected let exposures = ArrayList<SearchExposure>()
     protected let sections = ArrayList<SearchSection>()
     protected let externalDocs = ArrayList<ExternalDocumentationReference>()
@@ -219,6 +222,34 @@ protected class SearchProjectedEntry {
     }
 }
 
+/** One published comment field namespace, shared by every member using it. */
+protected class SearchProjectionCommentField {
+    protected let scope: Int64
+    protected let id: String
+    protected let title: String
+    protected let repeatable: Bool
+
+    protected init(scope: Int64, id: String, title: String, repeatable: Bool) {
+        this.scope = scope
+        this.id = id
+        this.title = title
+        this.repeatable = repeatable
+    }
+}
+
+/** One declaration's values for one field, in author order. */
+protected class SearchCommentFieldUse {
+    protected let id: String
+    private let valuesStorage: ArrayList<String>
+
+    protected init(id: String, values: Array<String>) {
+        this.id = id
+        this.valuesStorage = ArrayList<String>(values)
+    }
+
+    protected func values(): ArrayList<String> { valuesStorage }
+}
+
 /**
  * The immutable retrieval projection of one captured publication.
  *
@@ -244,6 +275,7 @@ protected class DocumentationSearchProjection {
     protected let modules = ArrayList<SearchScopeModule>()
     protected let entries = ArrayList<SearchProjectedEntry>()
     protected let tagDictionary = ArrayList<SearchProjectionTag>()
+    protected let commentFieldDictionary = ArrayList<SearchProjectionCommentField>()
     private let moduleIndex = HashMap<String, Int64>()
     private let entryIndex = HashMap<String, SearchProjectedEntry>()
 

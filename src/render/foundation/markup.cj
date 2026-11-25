@@ -12,6 +12,101 @@ protected func isVisibleForAudience(declaration: SymbolDoc, audience: String): B
     }
 }
 
+private func visibleThroughOwners(symbol: SymbolDoc, audience: String,
+    index: HashMap<String, SymbolDoc>): Bool {
+    var current: ?SymbolDoc = Some(symbol)
+    let visited = HashSet<String>()
+    while (current.isSome()) {
+        let value = current.getOrThrow()
+        if (!visited.add(value.id)) { return false }
+        if (!isVisibleForAudience(value, audience)) { return false }
+        current = match (value.ownerId) {
+            case Some(ownerId) => index.get(ownerId)
+            case None => None
+        }
+    }
+    true
+}
+
+private func visibleExtensionContainerIds(declarations: Iterable<SymbolDoc>,
+    index: HashMap<String, SymbolDoc>, audience: String): HashSet<String> {
+    let ownersWithVisibleMembers = HashSet<String>()
+    for (member in declarations) {
+        if (!isVisibleForAudience(member, audience)) { continue }
+        match (member.ownerId) {
+            case Some(ownerId) => let _ = ownersWithVisibleMembers.add(ownerId)
+            case None => ()
+        }
+    }
+    let result = HashSet<String>()
+    for (extension in declarations) {
+        if (extension.kind != "extend" || !ownersWithVisibleMembers.contains(extension.id)) {
+            continue
+        }
+        for (relation in extension.symbolRelationships) {
+            if (relation.kind != "extensionTarget" || relation.state != "resolved") { continue }
+            match (relation.targetSymbolId) {
+                case Some(targetId) => match (index.get(targetId)) {
+                    case Some(target) =>
+                        if (visibleThroughOwners(target, audience, index)) {
+                            let _ = result.add(extension.id)
+                            break
+                        }
+                    case None => ()
+                }
+                case None => ()
+            }
+        }
+    }
+    result
+}
+
+protected func renderabilityIndex(documentation: DocumentationSet,
+    index: HashMap<String, SymbolDoc>, audience: String): HashMap<String, Bool> {
+    renderabilityIndex(documentation.declarations, index, audience)
+}
+
+protected func renderabilityIndex(declarations: Iterable<SymbolDoc>,
+    index: HashMap<String, SymbolDoc>, audience: String): HashMap<String, Bool> {
+    let results = HashMap<String, Bool>()
+    let visibleExtensionContainers = visibleExtensionContainerIds(declarations, index, audience)
+    for (root in declarations) {
+        if (results.contains(root.id)) { continue }
+        let path = ArrayList<SymbolDoc>()
+        var current: ?SymbolDoc = Some(root)
+        var inherited = true
+        while (current.isSome()) {
+            let symbol = current.getOrThrow()
+            match (results.get(symbol.id)) {
+                case Some(value) =>
+                    inherited = value
+                    break
+                case None => ()
+            }
+            path.add(symbol)
+            if (!isVisibleForAudience(symbol, audience) &&
+                !visibleExtensionContainers.contains(symbol.id)) {
+                inherited = false
+                break
+            }
+            current = match (symbol.ownerId) {
+                case Some(ownerId) => index.get(ownerId)
+                case None => None
+            }
+        }
+        var position = path.size
+        while (position > 0) {
+            position--
+            let symbol = path[position]
+            inherited = inherited &&
+                (isVisibleForAudience(symbol, audience) ||
+                    visibleExtensionContainers.contains(symbol.id))
+            results[symbol.id] = inherited
+        }
+    }
+    results
+}
+
 internal func appendMarkdownPlainText(out: RenderTextBuffer, node: MarkdownNode): Unit {
     match (node.kind) {
         case "text" | "code_span" | "code_block" | "html_inline" | "html_block" =>

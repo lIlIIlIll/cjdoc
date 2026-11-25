@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -26,6 +27,32 @@ def _require(condition: bool, message: str) -> None:
 MANIFEST_PAIRS = (("cjdoc.machine-manifest/1", "cjdoc.read/1"),
                   ("cjdoc.machine-manifest/2", "cjdoc.read/2"),
                   ("cjdoc.machine-manifest/3", "cjdoc.read/3"))
+SCHEMA_DIR = Path(__file__).resolve().parent.parent / "docs/schema"
+LEGACY_INDEX = "cjdoc.search-index/11"
+CURRENT_INDEX = "cjdoc.search-index/12"
+BASELINE_CONTRACT_SHA256 = "3bed34e5882e1d131189b5162f6ae281504acb68c1239fca605dcd5d71bd7ae1"
+BASELINE_SCHEMAS = {
+    "search-index-v11": "c218233c3ee773b0460a49b76caab2ad83c01ea9e2ee30feae02318e76cea3f3",
+    "doc-ir-v17": "a83f100c26a17fa7b8f3b3c4bd11cec869d275b6837d29f92e9a96373127f437",
+    "symbol-index": "88770d602a73b85600617fe9f2780a84960065a302d87c5314601b8cd392962b",
+}
+
+
+def baseline_schema(name: str) -> dict:
+    root = os.environ.get("CJDOC_READER_BASELINE_SCHEMAS")
+    _require(bool(root), "CJDOC_READER_BASELINE_SCHEMAS must name the pinned checkout's docs/schema")
+    encoded = (Path(root) / (name + ".schema.json")).read_bytes()
+    _require(hashlib.sha256(encoded).hexdigest() == BASELINE_SCHEMAS[name],
+             "schema differs from the pinned baseline checkout: " + name)
+    return strict_loads(encoded, description=name)
+
+
+def verify_reader_doc_ir_schema(document: dict) -> None:
+    if document.get("schemaVersion") == "cjdoc.doc-ir/17":
+        schema = baseline_schema("doc-ir-v17")
+    else:
+        schema = strict_load(SCHEMA_DIR / "doc-ir-v19.schema.json")
+    check_schema(document, schema, "docs.json")
 
 
 def _raw_contract(encoded: str) -> str:
@@ -72,7 +99,7 @@ def _script_data(encoded: str) -> tuple[dict, dict]:
 
 
 def projection_fingerprint(index: dict, raw_contract: str) -> str:
-    """Recover the schema11 producer's ordered UTF-8 length-prefixed facts."""
+    """Recover each producer's ordered UTF-8 length-prefixed facts."""
     parts: list[bytes] = []
 
     def field(name: str, value: str) -> None:
@@ -102,7 +129,8 @@ def projection_fingerprint(index: dict, raw_contract: str) -> str:
         if value is not None:
             fields(prefix, value, names)
 
-    field("format", "cjdoc.search-projection/3")
+    legacy = index["schemaVersion"] == LEGACY_INDEX
+    field("format", "cjdoc.search-projection/3" if legacy else "cjdoc.search-projection/4")
     field("contract", raw_contract)
     field("profile", index["profile"])
     fields("", index["scope"],
@@ -120,6 +148,10 @@ def projection_fingerprint(index: dict, raw_contract: str) -> str:
     field("tagDictionaryCount", str(len(index["tags"])))
     for tag in index["tags"]:
         fields("tag.", tag, "scope id title")
+    if not legacy:
+        field("commentFieldCount", str(len(index["commentFields"])))
+        for definition in index["commentFields"]:
+            fields("commentField.", definition, "scope id title repeatable")
     field("entryCount", str(len(index["entries"])))
     for entry in index["entries"]:
         fields("entry.", entry, "id canonicalId snapshotId concept scope genericArity")
@@ -133,6 +165,11 @@ def projection_fingerprint(index: dict, raw_contract: str) -> str:
         for name in ("ownerName", "ownerQualifiedName", "symbolKey", "returnType", "returnCanonical"):
             field("entry." + name, entry[name] or "")
         fields("entry.", entry, "href summary body bodyTruncated")
+        if not legacy:
+            for row in entry["commentFields"]:
+                field("entry.field.id", row["id"])
+                for value in row["values"]:
+                    field("entry.field.value", value)
         classification = entry["classification"]
         group = classification["group"]
         field("classification.group", "false" if group is None else "true")
@@ -182,11 +219,15 @@ def _verified_bytes(site: Path, name: str, record: dict) -> bytes:
 
 
 def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None = None) -> dict:
-    schema_dir = schema_dir or Path(__file__).resolve().parent.parent / "docs/schema"
+    schema_dir = schema_dir or SCHEMA_DIR
     encoded = _verified_bytes(site, "search-index.json", resources["search-index.json"]).decode("utf-8")
     wrapper = _verified_bytes(site, "search-index.js", resources["search-index.js"]).decode("utf-8")
     index = strict_loads(encoded, description="search index")
-    check_schema(index, strict_load(schema_dir / "search-index-v11.schema.json"), "search-index.json")
+    version = index.get("schemaVersion")
+    _require(version in {LEGACY_INDEX, CURRENT_INDEX}, "unsupported search index version")
+    legacy = version == LEGACY_INDEX
+    schema = baseline_schema("search-index-v11") if legacy else strict_load(schema_dir / "search-index-v12.schema.json")
+    check_schema(index, schema, "search-index.json")
     scripted_index, signatures = _script_data(wrapper)
     _require(scripted_index == index, "script data differs from the JSON index")
     manifest = strict_load(document(site, "agent/manifest.json"))
@@ -211,6 +252,15 @@ def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None 
                                 ("publicationRevision", "publicationRevision")):
         _require(index["scope"][name] == manifest["scope"][manifest_name], "publisher scope differs: " + name)
     contract = _raw_contract(encoded)
+    if legacy:
+        contract_path = os.environ.get("CJDOC_READER_BASELINE_CONTRACT")
+        _require(bool(contract_path), "CJDOC_READER_BASELINE_CONTRACT must name the pinned producer's contract")
+        pinned = Path(contract_path).read_bytes()
+        _require(hashlib.sha256(pinned).hexdigest() == BASELINE_CONTRACT_SHA256,
+                 "contract file differs from the pinned baseline generator")
+        _require(contract == pinned.decode("utf-8").rstrip("\n"),
+                 "raw contract differs from the pinned baseline generator")
+        verify_reader_doc_ir_schema(packaged_ir)
     projection = projection_fingerprint(index, contract)
     _require(projection == index["projectionId"] == index["coverage"]["projectionId"],
              "search projection identity is forged")
@@ -223,7 +273,8 @@ def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None 
         payload = _verified_bytes(site, record["path"], rows[0])
         inventory_sha = record["sha256"]
         inventory = strict_loads(payload, description="machine symbol inventory")
-        check_schema(inventory, strict_load(schema_dir / "symbol-index.schema.json"), record["path"])
+        symbol_schema = baseline_schema("symbol-index") if legacy else strict_load(schema_dir / "symbol-index.schema.json")
+        check_schema(inventory, symbol_schema, record["path"])
     return {"index": index, "signatures": signatures, "contractText": contract,
             "snapshotId": snapshot, "projectionId": projection,
             "docIr": packaged_ir, "docIrSha256": doc_record["sha256"],
@@ -232,17 +283,53 @@ def verify_search_identity(site: Path, resources: dict, schema_dir: Path | None 
             "inventory": inventory, "symbolIndexSha256": inventory_sha}
 
 
+def normalized_search_pair(before: dict, after: dict, *, registered: bool) -> tuple[dict, dict]:
+    """Return independent copies with only the registered empty-field delta removed."""
+    old, new = deepcopy(before["index"]), deepcopy(after["index"])
+    if not registered or old["schemaVersion"] == new["schemaVersion"]:
+        _require(before["contractText"] == after["contractText"], "raw embedded contract changed")
+        return old, new
+    _require((old["schemaVersion"], new["schemaVersion"]) == (LEGACY_INDEX, CURRENT_INDEX),
+             "unsupported registered search versions")
+    verify_reader_doc_ir_schema(after["docIr"])
+    _require(new.get("commentFields") == [] and
+             all(entry.get("commentFields") == [] for entry in new["entries"]),
+             "registered search transition requires empty comment fields")
+    del new["commentFields"]
+    for entry in new["entries"]:
+        del entry["commentFields"]
+    new["schemaVersion"] = old["schemaVersion"]
+    contract = deepcopy(old["contract"])
+    identifier = {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$", "minLength": 1, "maxLength": 64}
+    expected = {
+        "commentFields": {"type": "array", "minItems": 1, "maxItems": 64,
+                          "items": {"type": "object", "additionalProperties": False,
+                                    "required": ["id", "value"], "properties": {
+                                        "id": identifier,
+                                        "value": {"type": "string", "minLength": 1, "maxLength": 16384}}}},
+        "commentFieldFacets": {"type": "object", "additionalProperties": False, "properties": {
+            "id": identifier, "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            "cursor": {"type": "string", "minLength": 1, "maxLength": 1024}}},
+    }
+    contract["version"] = "cjdoc.search-contract/3"
+    contract["requestProperties"]["schemaVersion"] = {"const": "cjdoc.query-request/4"}
+    contract["requestProperties"].update(expected)
+    contract["searchFields"].extend(expected)
+    encoded = json.dumps(contract, ensure_ascii=False, separators=(",", ":"))
+    _require(after["contractText"] == encoded and new["contract"] == contract,
+             "embedded contract changed beyond the exact registered additions")
+    new["contract"] = old["contract"]
+    return old, new
+
+
 def compare_search_identities(before: dict, after: dict) -> None:
-    _require(before["contractText"] == after["contractText"], "raw embedded contract changed")
     _require(before["signatures"] == after["signatures"], "native script signatures changed")
-    compared = []
-    for observation in (before, after):
-        index = deepcopy(observation["index"])
+    compared = normalized_search_pair(before, after, registered=True)
+    for index in compared:
         for name in ("snapshotId", "sourceSnapshotId"):
             index["scope"][name] = "<registered-paired-snapshot>"
         for entry in index["entries"]:
             entry["snapshotId"] = "<registered-paired-snapshot>"
         index["projectionId"] = "<registered-paired-projection>"
         index["coverage"]["projectionId"] = "<registered-paired-projection>"
-        compared.append(index)
     _require(compared[0] == compared[1], "search payload changed beyond the proved paired identities")

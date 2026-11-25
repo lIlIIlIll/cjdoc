@@ -34,6 +34,33 @@ internal func appendDocumentationMetadata(out: StringBuilder, value: Documentati
         appendDocumentationMetadataTitles(out, tag.titles)
         out.append("}")
     }
+    out.append("],\"fields\":[")
+    first = true
+    for (field in value.fields) {
+        if (!first) { out.append(",") }
+        first = false
+        out.append("{\"moduleId\":${escapeJsonString(field.moduleId)},")
+        out.append("\"id\":${escapeJsonString(field.id)},")
+        out.append("\"title\":${escapeJsonString(field.title)},")
+        out.append("\"titles\":")
+        appendDocumentationMetadataTitles(out, field.titles)
+        out.append(",\"repeatable\":${field.repeatable},")
+        out.append("\"uses\":[")
+        var firstUse = true
+        for (use in field.uses) {
+            if (!firstUse) { out.append(",") }
+            firstUse = false
+            out.append("{\"symbolId\":${escapeJsonString(use.symbolId)},\"values\":[")
+            var firstValue = true
+            for (item in use.values) {
+                if (!firstValue) { out.append(",") }
+                firstValue = false
+                out.append(escapeJsonString(item))
+            }
+            out.append("]}")
+        }
+        out.append("]}")
+    }
     out.append("]}")
 }
 
@@ -51,7 +78,7 @@ private func appendDocumentationMetadataTitles(out: StringBuilder,
 }
 
 internal func decodeDocumentationMetadata(node: JsonNode, path: String): DocumentationMetadata {
-    let value = strictObject(node, path, ["groups", "tags"])
+    let value = strictObject(node, path, ["groups", "tags", "fields"])
     let groupNodes = try { arrayAt(value, "groups", path) } catch (_: Exception) {
         fail("${path}.groups", "expected array")
     }
@@ -96,8 +123,56 @@ internal func decodeDocumentationMetadata(node: JsonNode, path: String): Documen
             fail(itemPath, error.message)
         }
     }
+    let fieldNodes = try { arrayAt(value, "fields", path) } catch (_: Exception) {
+        fail("${path}.fields", "expected array")
+    }
+    if (fieldNodes.size() > 2048) { fail("${path}.fields", "metadata definition limit exceeded") }
+    let fields = ArrayList<DocumentationFieldDefinition>()
+    for (item in jsonArrayValues(fieldNodes)) {
+        let itemPath = "${path}.fields[${fields.size}]"
+        let field = strictObject(item, itemPath,
+            ["moduleId", "id", "title", "titles", "repeatable", "uses"])
+        let titles = decodeDocumentationMetadataTitles(required(field, "titles", itemPath),
+            "${itemPath}.titles")
+        let repeatableNode = required(field, "repeatable", itemPath)
+        let repeatable = try {
+            repeatableNode.asBool()
+        } catch (_: Exception) {
+            fail("${itemPath}.repeatable", "expected boolean")
+        }
+        let useNodes = try { arrayAt(field, "uses", itemPath) } catch (_: Exception) {
+            fail("${itemPath}.uses", "expected array")
+        }
+        let uses = ArrayList<DocumentationFieldUse>()
+        for (useItem in jsonArrayValues(useNodes)) {
+            let usePath = "${itemPath}.uses[${uses.size}]"
+            let use = strictObject(useItem, usePath, ["symbolId", "values"])
+            let valueNodes = try { arrayAt(use, "values", usePath) } catch (_: Exception) {
+                fail("${usePath}.values", "expected array")
+            }
+            let values = ArrayList<String>()
+            for (valueNode in jsonArrayValues(valueNodes)) {
+                let valuePath = "${usePath}.values[${values.size}]"
+                if (valueNode.kind() != JsonKind.String) { fail(valuePath, "expected string") }
+                values.add(valueNode.asString())
+            }
+            try {
+                uses.add(DocumentationFieldUse(stringAt(use, "symbolId", usePath), values.toArray()))
+            } catch (error: IllegalArgumentException) {
+                fail(usePath, error.message)
+            }
+        }
+        try {
+            fields.add(DocumentationFieldDefinition(stringAt(field, "moduleId", itemPath),
+                stringAt(field, "id", itemPath), stringAt(field, "title", itemPath),
+                titles: titles, repeatable: repeatable, uses: uses.toArray()))
+        } catch (error: IllegalArgumentException) {
+            fail(itemPath, error.message)
+        }
+    }
     try {
-        DocumentationMetadata(groups: groups.toArray(), tags: tags.toArray())
+        DocumentationMetadata(groups: groups.toArray(), tags: tags.toArray(),
+            fields: fields.toArray())
     } catch (error: IllegalArgumentException) {
         fail(path, error.message)
     }

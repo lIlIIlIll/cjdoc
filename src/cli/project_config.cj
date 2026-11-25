@@ -1,7 +1,7 @@
 protected package cjdoc.cli
 
 import cjdoc.dependency.validateDependencySourceName
-import cjdoc.manifest.metadataHeaderCandidate
+import cjdoc.manifest.{commentsHeaderCandidate, metadataHeaderCandidate}
 import cjdoc.filesystem.readTextBounded
 import cjdoc.manifest.{
     TomlLineScanner, TomlStringArrayState, collectTomlStrings, decodeTomlString,
@@ -235,6 +235,12 @@ private class ProjectConfigScanner {
             // Its owning reader validates quoted/dotted paths, table shape,
             // record scope and duplicate definitions without a second grammar.
             return ("metadata", "")
+        }
+        if (commentsHeaderCandidate(inner)) {
+            // `[comments]` has one owning reader too: aliases, field records,
+            // translated titles and rules are validated there, so this scanner
+            // only refuses the table names it does not recognize.
+            return ("comments", "")
         }
         if (inner == "i18n" || inner == "lint" || inner == "highlight" ||
             inner == "coverage" || inner == "coverage.translation") {

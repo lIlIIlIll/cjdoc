@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v18.schema.json",
-  "title": "cjdoc Doc IR v18",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v19.schema.json",
+  "title": "cjdoc Doc IR v19",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "metadata", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/18"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/19"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
@@ -984,12 +984,37 @@
         "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}}
       }
     },
+    "documentationFieldUse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["symbolId", "values"],
+      "properties": {
+        "symbolId": {"type": "string", "minLength": 1},
+        "values": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/documentationFieldValue"}}
+      }
+    },
+    "documentationFieldDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["moduleId", "id", "title", "titles", "repeatable", "uses"],
+      "properties": {
+        "moduleId": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "title": {"$ref": "#/$defs/metadataTitleText"},
+        "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}},
+        "repeatable": {"type": "boolean"},
+        "uses": {"type": "array", "minItems": 1, "maxItems": 131072,
+          "items": {"$ref": "#/$defs/documentationFieldUse"}}
+      }
+    },
+    "documentationFieldValue": {
+      "type": "string", "minLength": 1, "maxLength": 16384
+    },
     "documentationMetadata": {
       "type": "object", "additionalProperties": false,
-      "required": ["groups", "tags"],
+      "required": ["groups", "tags", "fields"],
       "properties": {
         "groups": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationGroupDefinition"}},
-        "tags": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationTagDefinition"}}
+        "tags": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationTagDefinition"}},
+        "fields": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationFieldDefinition"}}
       }
     },
     "diagnostic": {

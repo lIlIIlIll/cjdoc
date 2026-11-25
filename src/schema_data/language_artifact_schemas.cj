@@ -130,13 +130,13 @@ public let API_DIFF_SCHEMA = """
 private let SEARCH_INDEX_SCHEMA_TEMPLATE = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index-v11.schema.json",
-  "title": "cjdoc search index v11",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index-v12.schema.json",
+  "title": "cjdoc search index v12",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "profile", "contract", "projectionId", "scope", "coverage", "modules", "tags", "entries"],
+  "required": ["schemaVersion", "profile", "contract", "projectionId", "scope", "coverage", "modules", "tags", "commentFields", "entries"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.search-index/11"},
+    "schemaVersion": {"const": "cjdoc.search-index/12"},
     "profile": {"type": "string", "minLength": 1},
     "contract": {"$ref": "#/$defs/searchContract"},
     "projectionId": {"type": "string", "minLength": 1},
@@ -164,6 +164,7 @@ private let SEARCH_INDEX_SCHEMA_TEMPLATE = """
       }},
     "modules": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/module"}},
     "tags": {"type": "array", "items": {"$ref": "#/$defs/tagDictionaryEntry"}},
+    "commentFields": {"type": "array", "items": {"$ref": "#/$defs/commentFieldDictionaryEntry"}},
     "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}}
   },
   "$defs": {
@@ -195,7 +196,7 @@ private let SEARCH_INDEX_SCHEMA_TEMPLATE = """
         "requestProperties", "globalFields", "searchFields", "filterFields", "filterOps", "setPredicates",
         "preciseRules", "discoveryRules"],
       "properties": {
-        "version": {"const": "cjdoc.search-contract/2"},
+        "version": {"const": "cjdoc.search-contract/3"},
         "maxRequestBytes": {"type": "integer", "minimum": 1},
         "textPolicy": {"$ref": "#/$defs/textPolicy"},
         "defaultMode": {"type": "string", "minLength": 1},
@@ -278,6 +279,20 @@ private let SEARCH_INDEX_SCHEMA_TEMPLATE = """
         "id": {"$ref": "#/$defs/classificationId"},
         "title": {"$ref": "#/$defs/classificationTitle"}
       }},
+    "commentFieldDictionaryEntry": {"type": "object", "additionalProperties": false,
+      "required": ["scope", "id", "title", "repeatable"],
+      "properties": {
+        "scope": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 256},
+        "repeatable": {"type": "boolean"}
+      }},
+    "commentFieldUse": {"type": "object", "additionalProperties": false,
+      "required": ["id", "values"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "values": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "maxLength": 16384}}
+      }},
     "module": {"type": "object", "additionalProperties": false,
       "required": ["moduleId", "moduleName", "documentSet", "dependency",
         "dependencyInstanceState"],
@@ -356,7 +371,7 @@ private let SEARCH_INDEX_SCHEMA_TEMPLATE = """
       "required": ["id", "canonicalId", "snapshotId", "scope", "concept", "genericArity", "ownerId",
         "name", "packageName", "qualifiedName", "kind", "ownerName", "ownerQualifiedName", "symbolKey",
         "parameterTypes", "returnType", "returnCanonical", "summary", "summaryDisplay", "body",
-        "bodyTruncated", "href", "exposures", "externalDocs", "bindings", "sections", "classification"],
+        "bodyTruncated", "href", "exposures", "externalDocs", "bindings", "sections", "classification", "commentFields"],
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "canonicalId": {"type": "string", "minLength": 1},
@@ -389,7 +404,8 @@ private let SEARCH_INDEX_SCHEMA_TEMPLATE = """
         "externalDocs": {"type": "array", "items": {"$ref": "#/$defs/externalDoc"}},
         "bindings": {"type": "array", "items": {"$ref": "#/$defs/binding"}},
         "sections": {"type": "array", "items": {"$ref": "#/$defs/section"}},
-        "classification": {"$ref": "#/$defs/documentationClassification"}
+        "classification": {"$ref": "#/$defs/documentationClassification"},
+        "commentFields": {"type": "array", "items": {"$ref": "#/$defs/commentFieldUse"}}
       },
       "allOf": [
         {"if": {"properties": {"concept": {"const": true}}},

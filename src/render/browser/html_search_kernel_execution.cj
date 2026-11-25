@@ -2,7 +2,13 @@ protected package cjdoc.render.browser
 
 internal let HTML_SEARCH_KERNEL_EXECUTION_SCRIPT = #"  const cursorCanonicalRequest = request => {
     const canonical = {};
-    for (const key of Object.keys(request)) if (key !== "cursor") canonical[key] = request[key];
+    for (const key of Object.keys(request)) {
+      if (key === "cursor") continue;
+      if (key === "commentFieldFacets") {
+        const {id, limit} = request[key];
+        canonical[key] = id === undefined ? {limit: limit ?? 20} : {id, limit: limit ?? 20};
+      } else canonical[key] = request[key];
+    }
     return canonicalJson(canonical);
   };
   const sha256Utf8 = value => {
@@ -113,7 +119,7 @@ internal let HTML_SEARCH_KERNEL_EXECUTION_SCRIPT = #"  const cursorCanonicalRequ
     const queryEmpty = !query || /^[ \t\n\r\f\v]*$/u.test(query);
     const hasNarrowing = normalizedResult.hasUserNarrowing;
     const selected = selectedIdentity(normalized);
-    const filterOnly = queryEmpty && hasNarrowing && !selected;
+    const filterOnly = queryEmpty && (hasNarrowing || normalizedResult.catalogOnly) && !selected;
     if (queryEmpty && !filterOnly && !selected) {
       return {unique: [], filterOnly, queryEmpty, hasNarrowing};
     }
@@ -130,6 +136,7 @@ internal let HTML_SEARCH_KERNEL_EXECUTION_SCRIPT = #"  const cursorCanonicalRequ
       if (restrictCanonicalIds && !restrictCanonicalIds.has(group.canonicalId)) continue;
       if (!moduleScopeAdmits(facts, prepared.modules, normalized)) continue;
       if (!selectorAdmits(facts, normalized)) continue;
+      if (!commentFieldsAdmit(facts, normalized.commentFields)) continue;
       const matches = entryFilters.length || contextual.length
         ? filterExposures(facts, group.exposures, entryFilters, contextual) : NO_EXPOSURES;
       if (matches === null || !setPredicatesAdmit(facts, normalizedResult.setPredicates)) continue;
@@ -159,6 +166,73 @@ internal let HTML_SEARCH_KERNEL_EXECUTION_SCRIPT = #"  const cursorCanonicalRequ
     scoped.sort(compareCandidate);
     // Index preparation already groups entries by their verified snapshot and canonical ID.
     return {unique: scoped, filterOnly, queryEmpty, hasNarrowing};
+  };
+  // Counted value catalog. Counting happens over every admitted declaration, so a
+  // repeated value, an exposure alias or a page window cannot inflate a count.
+  const commentFieldFacetPrefix = "cjdoc.comment-field-facets/1:";
+  const commentFieldFacetCursor = (offset, digest) => commentFieldFacetPrefix + offset + ":" + digest;
+  const readCommentFieldFacetCursor = (cursor, digest) => {
+    if (cursor === null) return {offset: 0};
+    const match = /^cjdoc\.comment-field-facets\/1:(0|[1-9][0-9]*):([0-9a-f]{64})$/u.exec(cursor);
+    if (!match) return {error: "cursor_format"};
+    const offset = Number(match[1]);
+    if (!Number.isSafeInteger(offset)) return {error: "cursor_format"};
+    if (match[2] !== digest) return {error: "cursor_binding"};
+    return {offset};
+  };
+  const commentFieldFacetRows = (unique, facet, prepared) => {
+    const titles = new Map();
+    for (const field of prepared.commentFields.all) {
+      titles.set(field.scope + SEP + field.id, field.title);
+    }
+    const counts = new Map();
+    for (const item of unique) {
+      const entry = item.group.entry;
+      if (entry.concept) continue;
+      const seen = new Set();
+      for (const row of entry.commentFields) {
+        if (facet.id !== null && row.id !== facet.id) continue;
+        const title = titles.get(entry.scope + SEP + row.id) || row.id;
+        for (const value of row.values) {
+          const key = entry.snapshotId + SEP + entry.scope + SEP + row.id + SEP + value;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const current = counts.get(key);
+          if (current) current.count += 1;
+          else counts.set(key, {snapshotId: entry.snapshotId, scope: entry.scope,
+            moduleId: prepared.modules[entry.scope].moduleId, id: row.id, title, value, count: 1});
+        }
+      }
+    }
+    const rows = [...counts.values()];
+    rows.sort((left, right) => {
+      let order = compareBytes(left.snapshotId, right.snapshotId);
+      if (!order) order = compareBytes(left.moduleId, right.moduleId);
+      if (!order) order = compareBytes(left.id, right.id);
+      if (!order) order = compareBytes(left.value, right.value);
+      return order;
+    });
+    return rows;
+  };
+  const commentFieldFacetPage = (rows, start, limit, digest) => {
+    const items = [];
+    let bytes = '{"items":[],"next":}'.length;
+    let position = start;
+    while (position < rows.length && items.length < limit) {
+      const {snapshotId, moduleId, id, title, value, count} = rows[position];
+      const item = {scope: {snapshotId, moduleId}, id, title, value, count};
+      const itemBytes = utf8Bytes(JSON.stringify(item)).length + (items.length ? 1 : 0);
+      const trailer = position + 1 < rows.length
+        ? commentFieldFacetCursor(position + 1, digest).length + 2 : 4;
+      if (bytes + itemBytes + trailer > 1048576) {
+        if (items.length) break;
+        return null;
+      }
+      items.push(item);
+      bytes += itemBytes;
+      position += 1;
+    }
+    return {items, next: position < rows.length ? commentFieldFacetCursor(position, digest) : null};
   };
   const tagFacetRows = unique => {
     const counts = new Map();
@@ -198,24 +272,35 @@ internal let HTML_SEARCH_KERNEL_EXECUTION_SCRIPT = #"  const cursorCanonicalRequ
     const requestError = validateSearchRequest(normalizedResult, prepared);
     if (requestError) return fail(requestError.status, requestError.error);
     const normalized = normalizedResult.effective;
+    const requested = normalizedResult.facet;
+    const facetDigest = requested ? sha256Utf8("cjdoc.comment-field-facets-binding/1:" +
+      cursorDigest(normalized, prepared)) : "";
+    const start = requested ? readCommentFieldFacetCursor(requested.cursor, facetDigest) : {offset: 0};
+    if (start.error) return fail("stale_cursor", start.error, "not_executed",
+      {coverage: prepared.coverage});
+    const scopeError = commentFieldScopeError(prepared, normalized);
+    if (scopeError) return fail("scope_mismatch", scopeError, "not_executed",
+      {coverage: prepared.coverage});
     const {unique, filterOnly, queryEmpty, hasNarrowing} = collectCandidates(prepared, normalizedResult);
+    const catalogOnly = normalizedResult.catalogOnly;
+    const total = catalogOnly ? 0 : unique.length;
     let offset = 0;
     if (normalized.cursor !== undefined) {
       const parsedCursor = checkCursor(normalized.cursor, normalized, prepared);
       if (parsedCursor.error) return fail("stale_cursor", parsedCursor.error, "not_executed",
         {coverage: prepared.coverage});
       offset = parsedCursor.offset;
-      if (offset > unique.length) return fail("stale_cursor", "cursor_out_of_range", "not_executed",
-        {offset, total: unique.length, coverage: prepared.coverage});
+      if (offset > total) return fail("stale_cursor", "cursor_out_of_range", "not_executed",
+        {offset, total, coverage: prepared.coverage});
     }
     const limit = normalized.limit;
-    const end = Math.min(unique.length, offset + limit);
+    const end = Math.min(total, offset + limit);
     const page = unique.slice(offset, end);
     const items = page.map(item => ({snapshotId: item.group.snapshotId,
       canonicalId: item.group.canonicalId, score: item.evidence.score, reason: item.evidence.reason,
       matchedExposureIds: item.exposureIds || [], anchor: item.anchor,
       classification: item.group.entry.classification}));
-    const complete = end >= unique.length;
+    const complete = end >= total;
     const next = limit > 0 && !complete ? makeCursor(end, normalized, prepared) : null;
     const hasEvidence = unique.length > 0;
     let status = hasEvidence ? "ok" : "not_found";
@@ -231,8 +316,22 @@ internal let HTML_SEARCH_KERNEL_EXECUTION_SCRIPT = #"  const cursorCanonicalRequ
       reason = "no_match_with_incomplete_api_collection";
     }
     if (limit === 0 && hasEvidence) reason = "zero_limit_requested";
-    return success(status, reason, items, offset, unique.length, complete, next,
-      prepared.coverage, {tags: tagFacetRows(unique)});
+    const facets = {tags: catalogOnly ? [] : tagFacetRows(unique)};
+    if (requested) {
+      const rows = commentFieldFacetRows(unique, requested, prepared);
+      if (start.offset > rows.length) return fail("stale_cursor", "cursor_out_of_range",
+        "not_executed", {coverage: prepared.coverage});
+      const page = commentFieldFacetPage(rows, start.offset, requested.limit, facetDigest);
+      if (!page) return fail("resource_limit", "comment_field_facet_byte_limit",
+        "not_executed", {coverage: prepared.coverage});
+      facets.commentFields = page;
+    }
+    if (catalogOnly) {
+      status = prepared.scope.apiCollectionState === "resolved" ? "ok" : "source_incomplete";
+      reason = "comment_field_catalog";
+    }
+    return success(status, reason, items, offset, total, complete, next,
+      prepared.coverage, facets);
   };
   const unavailable = (status, errorCode) => ({status, errorCode, canonicalIds: []});
   const createEntryFilter = (index, canonicalIds) => {

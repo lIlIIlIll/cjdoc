@@ -208,7 +208,7 @@ def validate_query_result_schema(value: dict, properties: dict) -> None:
             result.get("properties", {}).get("facets") != {"$ref": "#/$defs/queryFacets"} or \
             facets.get("additionalProperties") is not False or \
             facets.get("required") != ["tags"] or \
-            set(facets.get("properties", {})) != {"tags"} or \
+            set(facets.get("properties", {})) != {"tags", "commentFields"} or \
             facets.get("properties", {}).get("tags", {}).get("items") != {
                 "$ref": "#/$defs/queryTagFacet"} or \
             facet.get("additionalProperties") is not False or \
@@ -233,6 +233,19 @@ def validate_query_result_schema(value: dict, properties: dict) -> None:
             item.get("properties", {}).get("classification") != {
                 "$ref": "#/$defs/documentationClassification"}:
         raise ValueError("query-result item classification is not required")
+    comment_page = definition(value, "queryCommentFieldFacetPage")
+    comment_row = definition(value, "queryCommentFieldFacet")
+    if facets["properties"]["commentFields"] != {"$ref": "#/$defs/queryCommentFieldFacetPage"} or \
+            comment_page.get("additionalProperties") is not False or \
+            set(comment_page.get("required", [])) != {"items", "next"} or \
+            comment_page.get("properties") != {
+                "items": {"type": "array", "maxItems": 100,
+                          "items": {"$ref": "#/$defs/queryCommentFieldFacet"}},
+                "next": {"type": ["string", "null"]}} or \
+            comment_row.get("additionalProperties") is not False or \
+            set(comment_row.get("required", [])) != {"scope", "id", "title", "value", "count"} or \
+            set(comment_row.get("properties", {})) != {"scope", "id", "title", "value", "count"}:
+        raise ValueError("query-result comment field facet contract is invalid")
 
 
 def validate_artifact_schema(name: str, value: dict, properties: dict,
@@ -316,8 +329,8 @@ def validate_doc_ir_metadata(name: str, value: dict, properties: dict) -> None:
     metadata = definition(value, "documentationMetadata")
     if properties.get("metadata") != {"$ref": "#/$defs/documentationMetadata"} or \
             metadata.get("additionalProperties") is not False or \
-            metadata.get("required") != ["groups", "tags"] or \
-            set(metadata.get("properties", {})) != {"groups", "tags"}:
+            metadata.get("required") != ["groups", "tags", "fields"] or \
+            set(metadata.get("properties", {})) != {"groups", "tags", "fields"}:
         raise ValueError(f"{name} metadata root shape is invalid")
     metadata_shapes = {
         "documentationTitle": ({"language", "title"}, {"language", "title"}),
@@ -329,6 +342,11 @@ def validate_doc_ir_metadata(name: str, value: dict, properties: dict) -> None:
             {"moduleId", "id", "title", "titles"},
             {"moduleId", "id", "title", "titles"},
         ),
+        "documentationFieldDefinition": (
+            {"moduleId", "id", "title", "titles", "repeatable", "uses"},
+            {"moduleId", "id", "title", "titles", "repeatable", "uses"},
+        ),
+        "documentationFieldUse": ({"symbolId", "values"}, {"symbolId", "values"}),
     }
     for definition_name, (required_fields, property_fields) in metadata_shapes.items():
         shape = definition(value, definition_name)
@@ -410,7 +428,7 @@ def validate_doc_ir_schema(name: str, value: dict, properties: dict) -> None:
         raise ValueError(f"{name} schema critical definitions are missing")
     validate_doc_ir_collection_shapes(name, properties)
     validate_doc_ir_provenance(name, value, definitions)
-    if name in ("doc-ir", "doc-ir-v18"):
+    if name in ("doc-ir", "doc-ir-v19"):
         validate_doc_ir_metadata(name, value, properties)
         validate_doc_ir_markdown(name, definitions)
 
@@ -530,7 +548,7 @@ def validate_search_index_schema(name: str, value: dict, properties: dict) -> No
         "ownerId", "name", "qualifiedName", "kind", "packageName", "ownerName",
         "ownerQualifiedName", "symbolKey", "parameterTypes", "returnType",
         "returnCanonical", "summary", "summaryDisplay", "body", "bodyTruncated",
-        "href", "exposures", "sections", "externalDocs", "bindings", "classification"
+        "href", "exposures", "sections", "externalDocs", "bindings", "classification", "commentFields"
     }
     coverage_required = {
         "profile", "projectionId", "bodyTextLimit", "bodyComplete", "truncatedEntries"
@@ -544,7 +562,7 @@ def validate_search_index_schema(name: str, value: dict, properties: dict) -> No
     }
     root_required = {
         "schemaVersion", "profile", "contract", "projectionId", "scope", "coverage",
-        "modules", "tags", "entries"
+        "modules", "tags", "commentFields", "entries"
     }
     tags = properties.get("tags")
     if (
@@ -581,7 +599,7 @@ def validate_search_index_schema(name: str, value: dict, properties: dict) -> No
             or set(search_contract.get("required", [])) != search_contract_fields
             or set(search_contract.get("properties", {})) != search_contract_fields
             or search_contract.get("properties", {}).get("version") != {
-                "const": "cjdoc.search-contract/2"}
+                "const": "cjdoc.search-contract/3"}
             or search_contract.get("properties", {}).get("maxTags") != {
                 "type": "integer", "minimum": 1, "maximum": 64}
             or search_contract.get("properties", {}).get("setPredicates") !=
@@ -726,9 +744,9 @@ def validate_schema_version(name: str, value: dict, properties: dict) -> None:
 
 
 def validate_graph_binding(name: str, value: dict, properties: dict) -> None:
-    if name in ("doc-ir", "doc-ir-v18") and properties["documentationRevision"] != {"type": "string"}:
+    if name in ("doc-ir", "doc-ir-v19") and properties["documentationRevision"] != {"type": "string"}:
         raise ValueError(f"{name} schema documentation revision shape is invalid")
-    if name in ("doc-ir", "doc-ir-v18", "symbol-index"):
+    if name in ("doc-ir", "doc-ir-v19", "symbol-index"):
         definitions = value.get("$defs")
         for definition_name, graph_field in (
             ("dependencyInstance", "componentModuleId"), ("documentSetIdentity", "moduleId"),
@@ -759,7 +777,7 @@ def validate_schema_document(name: str, value: object,
         validate_diagnostics_schema(properties)
     elif name == "cfg-matrix":
         validate_cfg_matrix_schema(properties)
-    elif name in ("search-index", "search-index-v11"):
+    elif name in ("search-index", "search-index-v12"):
         validate_search_index_schema(name, value, properties)
     elif name == "symbol-index":
         validate_symbol_index_schema(properties)

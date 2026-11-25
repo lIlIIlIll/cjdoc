@@ -1,7 +1,8 @@
 package cjdoc
 
 import cjdoc.semantic.{SemanticProvider, SyntaxSemanticProvider}
-import cjdoc.binding.{DocumentationBinder, DocumentationSet, captureDocumentationMetadataInventory}
+import cjdoc.binding.{
+    DocumentationBinder, DocumentationSet, applyCommentSpecs, captureDocumentationMetadataInventory}
 import cjdoc.source.{DependencySourceSelection, SourceRepositoryRegistrationInput}
 import cjdoc.source.cfg.{CfgAssignment, CfgProfile}
 import cjdoc.source.discovery.SyntaxSourceProvider
@@ -23,9 +24,10 @@ class DocumentationDriver {
 
     public func generate(projectRoot: String): DocumentationSet {
         let source = sourceProvider.collect(projectRoot)
-        captureDocumentationMetadataInventory(source)
+        captureDocumentationMetadataInventory(source, projectRoot: projectRoot)
         filterSourceForCfg(source, cfgProfile)
         source.cfgProfile = cfgProfile
+        applyCommentSpecs(source)
         let semantic = semanticProvider.analyze(source)
         let documentation = DocumentationBinder().bind(source, semantic,
             expectedProvider: Some(semanticProvider.providerName()))

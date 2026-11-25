@@ -156,7 +156,7 @@ class UpdateToolsTest(unittest.TestCase):
             " print((repo/'fake-schemas'/f'{name}.schema.json').read_text(encoding='utf-8'),end='')\n"
             "elif args and args[0] == 'generate':\n"
             " out=Path(args[args.index('--output')+1]); out.mkdir(parents=True,exist_ok=True)\n"
-            " (out/'docs.json').write_text(json.dumps({'schemaVersion':'cjdoc.doc-ir/18'})+'\\n',encoding='utf-8')\n"
+            " (out/'docs.json').write_text(json.dumps({'schemaVersion':'cjdoc.doc-ir/19'})+'\\n',encoding='utf-8')\n"
             "else:\n"
             " raise SystemExit(2)\n",
             encoding="utf-8",
@@ -215,7 +215,7 @@ class UpdateToolsTest(unittest.TestCase):
                 {path.name for path in (repo / "docs/schema").iterdir()},
                 {f"{name}.schema.json" for name in SCHEMA_NAMES},
             )
-            current = json.loads((repo / "docs/schema/doc-ir-v18.schema.json").read_text())
+            current = json.loads((repo / "docs/schema/doc-ir-v19.schema.json").read_text())
             self.assertEqual(current["generation"], "new")
             self.assertEqual(list((repo / "docs").glob(".schema.*")), [])
 
@@ -226,7 +226,7 @@ class UpdateToolsTest(unittest.TestCase):
             before = {
                 path.name: path.read_bytes() for path in (repo / "docs/schema").iterdir()
             }
-            (repo / "fake-schemas/doc-ir-v18.schema.json").write_text(
+            (repo / "fake-schemas/doc-ir-v19.schema.json").write_text(
                 '{"properties":{"schemaVersion":{"const":"cjdoc.doc-ir/17"}},'
                 '"drift":true}\n', encoding="utf-8"
             )
@@ -247,8 +247,8 @@ class UpdateToolsTest(unittest.TestCase):
             result = self.run_script(repo, "update_goldens.sh")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("dirty repository fixture inputs", result.stderr)
-            self.assertFalse((repo / "tests/fixtures/golden-v18").exists())
-            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v18.*")), [])
+            self.assertFalse((repo / "tests/fixtures/golden-v19").exists())
+            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v19.*")), [])
 
     def test_snapshot_accepts_matching_bytes_despite_stale_status(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -272,27 +272,27 @@ class UpdateToolsTest(unittest.TestCase):
             )
             self.assertIn("verifiedAfter", verified)
 
-    def test_golden_update_publishes_only_a_complete_v18_set(self) -> None:
+    def test_golden_update_publishes_only_a_complete_v19_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             self.make_repo(repo)
             result = self.run_script(repo, "update_goldens.sh")
             self.assertEqual(result.returncode, 0, msg=result.stderr)
-            golden = repo / "tests/fixtures/golden-v18"
+            golden = repo / "tests/fixtures/golden-v19"
             self.assertEqual(
                 {path.name for path in golden.iterdir()},
                 {f"{name}.docs.json" for name in GOLDEN_NAMES},
             )
             for path in golden.iterdir():
-                self.assertEqual(json.loads(path.read_text())["schemaVersion"], "cjdoc.doc-ir/18")
-            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v18.*")), [])
+                self.assertEqual(json.loads(path.read_text())["schemaVersion"], "cjdoc.doc-ir/19")
+            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v19.*")), [])
 
     def test_golden_update_uses_explicit_binary_without_replacing_default(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             repo = root / "repo"
             self.make_repo(repo)
-            obsolete = repo / "tests/fixtures/golden-v17"
+            obsolete = repo / "tests/fixtures/golden-v18"
             obsolete.mkdir()
             (obsolete / "basic.docs.json").write_text("obsolete bytes\n", encoding="utf-8")
             default = repo / "target/release/bin/main"
@@ -300,13 +300,13 @@ class UpdateToolsTest(unittest.TestCase):
             binary = root / "producer path with spaces; literal" / "main"
             binary.parent.mkdir()
             text = default.read_text().replace(
-                "{'schemaVersion':'cjdoc.doc-ir/18'}",
-                "{'schemaVersion':'cjdoc.doc-ir/18','producer':'explicit'}")
+                "{'schemaVersion':'cjdoc.doc-ir/19'}",
+                "{'schemaVersion':'cjdoc.doc-ir/19','producer':'explicit'}")
             binary.write_text(text, encoding="utf-8")
             binary.chmod(0o755)
             result = self.run_script(repo, "update_goldens.sh", {"CJDOC_BINARY": binary.as_posix()})
             self.assertEqual(result.returncode, 0, result.stderr)
-            golden = repo / "tests/fixtures/golden-v18"
+            golden = repo / "tests/fixtures/golden-v19"
             self.assertEqual({path.name for path in golden.iterdir()},
                              {f"{name}.docs.json" for name in GOLDEN_NAMES})
             for path in golden.iterdir():
@@ -322,23 +322,23 @@ class UpdateToolsTest(unittest.TestCase):
                 "CJDOC_BINARY": (repo / "missing producer").as_posix()})
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("cjdoc binary is missing", result.stderr)
-            self.assertFalse((repo / "tests/fixtures/golden-v18").exists())
+            self.assertFalse((repo / "tests/fixtures/golden-v19").exists())
 
     def test_golden_update_rejects_noncurrent_output_without_partial_publish(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             self.make_repo(repo)
-            obsolete = repo / "tests/fixtures/golden-v17"
+            obsolete = repo / "tests/fixtures/golden-v18"
             obsolete.mkdir()
             (obsolete / "basic.docs.json").write_text("obsolete bytes\n", encoding="utf-8")
-            golden = repo / "tests/fixtures/golden-v18"
+            golden = repo / "tests/fixtures/golden-v19"
             golden.mkdir()
             for name in GOLDEN_NAMES:
                 (golden / f"{name}.docs.json").write_text("previous bytes\n", encoding="utf-8")
             before = {path.name: path.read_bytes() for path in golden.iterdir()}
             binary = repo / "target/release/bin/main"
             binary.write_text(
-                binary.read_text().replace("cjdoc.doc-ir/18", "cjdoc.doc-ir/17"),
+                binary.read_text().replace("cjdoc.doc-ir/19", "cjdoc.doc-ir/18"),
                 encoding="utf-8",
             )
             result = self.run_script(repo, "update_goldens.sh")
@@ -346,7 +346,7 @@ class UpdateToolsTest(unittest.TestCase):
             self.assertEqual({path.name: path.read_bytes() for path in golden.iterdir()}, before)
             self.assertEqual((obsolete / "basic.docs.json").read_text(encoding="utf-8"),
                              "obsolete bytes\n")
-            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v18.*")), [])
+            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v19.*")), [])
 
     def test_update_tools_reject_a_symlinked_target_root(self) -> None:
         for script in ("update_goldens.sh", "update_schemas.sh"):
@@ -400,7 +400,7 @@ class UpdateToolsTest(unittest.TestCase):
             result = self.run_script(repo, "update_goldens.sh", environment)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("requires expected commit and subtree tree ids", result.stderr)
-            self.assertFalse((repo / "tests/fixtures/golden-v18").exists())
+            self.assertFalse((repo / "tests/fixtures/golden-v19").exists())
 
     def test_golden_update_accepts_clean_commit_bound_override(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

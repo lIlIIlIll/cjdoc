@@ -2,7 +2,7 @@
 
 `cjdoc query` 与 `mcp` 共用一个只读查询核心，输入是显式给出的已捕获文档快照。查询不扫描项目源码、不重新解析依赖、不选择或调用 SDK、不运行编译器、不下载内容、不联网。运行原生 `cjdoc` 本身仍需要其适配的仓颉运行时库。
 
-请求字段定义见 `cjdoc schema query-request`（`cjdoc.query-request/3`），结果字段定义见 `cjdoc schema query-result`（`cjdoc.query-result/4`）。产物与 wire 版本见[产物参考](artifacts.md)，域状态分层见[状态与限制](states-and-limits.md#查询完整性与状态)。
+请求字段定义见 `cjdoc schema query-request`（`cjdoc.query-request/4`），结果字段定义见 `cjdoc schema query-result`（`cjdoc.query-result/5`）。产物与 wire 版本见[产物参考](artifacts.md)，域状态分层见[状态与限制](states-and-limits.md#查询完整性与状态)。
 
 ## 快速索引
 
@@ -23,20 +23,20 @@ cjdoc query --snapshot target/doc/docs.json --request request.json
 
 - `--snapshot` 给 1–64 个显式路径，可以是当前 `docs.json`、HTML 文档根下的 `agent/manifest.json`，或版本目录的 `versions.json`。`versions.json` 会按其版本目录展开。
 - `--request` 恰好一个，`-` 表示从 stdin 读一个 UTF-8 JSON 对象。
-- 命令把一个 `cjdoc.query-result/4` 对象写到 stdout，退出码由结果 `status` 决定。
+- 命令把一个 `cjdoc.query-result/5` 对象写到 stdout，退出码由结果 `status` 决定。
 - 参数或输入层面的失败仍尽量用同一个 result envelope 输出；`mcp` 的启动/传输失败写 stderr。
 
 启动加载的总量限制：展开后快照合计最多 64 个；规范化 Doc IR 合计最多 64 MiB；加载清单、文档及其资源的累计读取量最多 512 MiB。这些与单次请求的 `limit`、`maxBytes`、结果字节上限分别计算。请求本身最多 1 MiB、嵌套深度 64，不接受超限、损坏或含重复键的 JSON。
 
-## 请求 `cjdoc.query-request/3`
+## 请求 `cjdoc.query-request/4`
 
-请求是严格 JSON object，只允许 schema 列出的字段。`operation` 必填，取 `resolve_docs`、`search`、`get_symbol`；若给出 `schemaVersion`，必须是 `cjdoc.query-request/3`。未知键返回 `invalid_request`（`unknown_field`），字段与操作不匹配返回 `invalid_request`（`field_not_applicable`）。
+请求是严格 JSON object，只允许 schema 列出的字段。`operation` 必填，取 `resolve_docs`、`search`、`get_symbol`；若给出 `schemaVersion`，必须是 `cjdoc.query-request/4`。未知键返回 `invalid_request`（`unknown_field`），字段与操作不匹配返回 `invalid_request`（`field_not_applicable`）。
 
 ### 通用字段
 
 | 字段 | 类型与范围 | 含义 |
 |---|---|---|
-| `schemaVersion` | 常量 `cjdoc.query-request/3` | 可选 |
+| `schemaVersion` | 常量 `cjdoc.query-request/4` | 可选 |
 | `operation` | `resolve_docs`、`search`、`get_symbol` | 必填 |
 | `snapshotId` | 字符串 1–256 | 选定已加载快照 |
 | `language` | 字符串 1–64 | 阅读语言 |
@@ -51,7 +51,7 @@ cjdoc query --snapshot target/doc/docs.json --request request.json
 | 操作 | 允许的字段 |
 |---|---|
 | `resolve_docs` | 通用字段 + `query`（≤4096）、`contextSnapshotId`、`contextModuleId`、`dependencyInstanceId`、`documentSetId`、`moduleId`、`packageName`、`apiVersion`、`library`、`target`、`cfg`、`latest`、`compatible`、`limit`、`cursor`、`maxBytes` |
-| `search` | 通用字段 + `query`（≤4096）、`symbolId`、`symbolKey`、`name`、`qualifiedName`、`parameterTypes`（≤1024 项）、`genericArity`（0–1024）、`kind`、`moduleId`、`packageName`、`documentSetId`、`apiVersion`、`library`、`dependencyInstanceId`、`target`、`cfg`、`latest`、`limit`、`cursor`、`mode`、`profile`、`filters`、`tags` |
+| `search` | 通用字段 + `query`（≤4096）、`symbolId`、`symbolKey`、`name`、`qualifiedName`、`parameterTypes`（≤1024 项）、`genericArity`（0–1024）、`kind`、`moduleId`、`packageName`、`documentSetId`、`apiVersion`、`library`、`dependencyInstanceId`、`target`、`cfg`、`latest`、`limit`、`cursor`、`mode`、`profile`、`filters`、`tags`、`commentFields`、`commentFieldFacets` |
 | `get_symbol`（范围） | 通用字段 + `moduleId`、`packageName`、`kind`、`documentSetId`、`apiVersion`、`dependencyInstanceId`、`library`、`target`、`cfg` |
 | `get_symbol`（身份） | `symbolId`、`symbolKey`、`pageId` 三者恰好一个 |
 | `get_symbol`（内容） | `preset` 或 `sections`（互斥）、`maxBytes`；`relations`、`relatedSnapshotIds`、`cursor`、`limit` |
@@ -72,6 +72,46 @@ cjdoc query --snapshot target/doc/docs.json --request request.json
 `eq` 大小写敏感；`contains` 只折叠 ASCII `A`–`Z`，不做 Unicode 规范化或 locale 折叠。参数条件针对单个参数值，不把多个参数合并。标签按完整 ID 匹配，标题、正文提及或 ID 前缀都不是成员关系。
 
 没有文字 query，但有有效 scope、filter、tag 或重载选择器时，会枚举满足条件的结果，`match.reason` 为 `filter_only`、分值为 0。完全没有文字也没有有效条件时返回空结果。只给 `mode`、`profile`、`limit`、`cursor`、`languageFallback` 或 `latest: false` 不触发枚举。
+
+### 项目注释字段
+
+`commentFields` 按字段值筛选声明，`commentFieldFacets` 按需列出候选值及各自命中数。两者都只读当前快照已发布的字段；字段定义来自各模块 `cjdoc.toml` 的 `[comments]`（见[配置参考](configuration.md#comments项目注释规范)），`filters` 里的 `owner` 仍指声明所有者。
+
+```bash
+cjdoc query --snapshot target/doc/docs.json --request request.json
+```
+
+```json
+{"operation":"search","commentFields":[{"id":"owner","value":"platform"}]}
+```
+
+- `commentFields` 是 1–64 条 `{id, value}`；`id` 符合 `[a-z][a-z0-9-]{0,63}`，`value` 长 1–16384。匹配是完整字符串、大小写敏感、不做归一化，所以 `Platform` 不命中 `platform`。
+- 同一条件里的多项取 AND，并与已有 `filters`、`tags`、重载选择器一起取 AND；命中声明的 `match.reason` 为 `filter_only`、分值为 0。
+- 只有正文提到该值、没有写字段标签的声明不会命中；私有声明在 `external` 受众下不参与。
+- 范围里没有该字段定义时返回 `not_found`；同名字段在多个模块或多个快照都存在时返回 `scope_mismatch`，需先用下面的目录请求取得限定身份。
+
+候选值与计数默认不计算，显式请求才返回：
+
+```json
+{"operation":"search","commentFieldFacets":{"id":"owner","limit":20}}
+```
+
+响应在 `result.facets.commentFields` 给出 `{items, next}`，每行是各自独立的 `(snapshotId, moduleId, id, title, value, count)`：
+
+```json
+{"status":"ok",
+ "result":{"items":[],
+   "facets":{"tags":[],"commentFields":{"items":[
+     {"scope":{"snapshotId":"cjdoc:snapshot:v1:…","moduleId":"cjdoc:module:v1:root"},
+      "id":"owner","title":"负责人","value":"platform","count":1}],
+    "next":null}}}}
+```
+
+- 省略 `commentFieldFacets` 时不做计数，响应里**没有** `facets.commentFields` 这个成员（不是空数组、也不是 `null`）；`{}` 表示只请求目录。
+- `id` 限定字段名，`limit` 为 1–100、默认 20，`cursor` 至多 1024 字符。只有目录请求时 `result.items` 为空，不构成“全库没有命中”的结论。
+- `count` 统计当前所有条件都成立的全部声明，在命中分页的 `limit`/`offset` 之前计算；`limit: 0`、翻页、重复值或重导出都不改变计数，同一声明不重复计数。
+- 分页按 `(snapshotId, moduleId, id, value)` 的 UTF-8 字节序稳定推进；`next` 为 `null` 表示目录已到末尾。把 `next` 原样放回 `commentFieldFacets.cursor` 取下一页。
+- 目录游标绑定投影与目录条件（`id`、`limit`）；改值、换语言/快照、改 `id` 或 `limit` 后旧游标返回 `stale_cursor`。命中页的 `cursor` 与目录的 `next` 是两个独立游标，不能互换。
 
 ### `get_symbol` 的章节与预算
 
@@ -123,11 +163,11 @@ cjdoc query --snapshot target/doc/docs.json --request request.json
 
 结果按 `(snapshotId, canonical symbol/page ID)` 去重；不同 snapshot、module、owner、origin 不合并。排序先按分值降序，再按 snapshot ID、canonical ID、reason 的 UTF-8 字节序稳定排列。`result.facets.tags` 按当前全部过滤条件统计可见 canonical 声明，按 ID 而不是标题展示。
 
-## 结果 `cjdoc.query-result/4`
+## 结果 `cjdoc.query-result/5`
 
 | 字段 | 内容 |
 |---|---|
-| `schemaVersion` | 恒为 `cjdoc.query-result/4` |
+| `schemaVersion` | 恒为 `cjdoc.query-result/5` |
 | `status`、`operation` | 查询域状态与操作名 |
 | `scope.requested` | 原始请求 |
 | `scope.catalogId` | 加载内容身份 |
@@ -204,11 +244,11 @@ cjdoc mcp --snapshot target/doc/html/agent/manifest.json
 
 ### 工具结果
 
-`tools/call` 结果的 `structuredContent` 是完整 `cjdoc.query-result/4` envelope，`content[0].text` 是同一 envelope 的 `text` 字段。`isError` 只对 `ok`、`ambiguous`、`not_found`、`source_incomplete` 为 `false`；其他查询状态是 tool execution error，但仍以正常工具结果结构返回，而不是 JSON-RPC 协议错误，因此调用方仍能读到完整状态与 `error` envelope。
+`tools/call` 结果的 `structuredContent` 是完整 `cjdoc.query-result/5` envelope，`content[0].text` 是同一 envelope 的 `text` 字段。`isError` 只对 `ok`、`ambiguous`、`not_found`、`source_incomplete` 为 `false`；其他查询状态是 tool execution error，但仍以正常工具结果结构返回，而不是 JSON-RPC 协议错误，因此调用方仍能读到完整状态与 `error` envelope。
 
 ### 错误分层与限制
 
-JSON-RPC 协议层错误码：`-32700` parse error、`-32600` invalid request（含尚未 ready）、`-32601` method not found、`-32602` invalid params、`-32603` internal error。未知工具、`params` 非 object、重复传 `operation`、无效初始化参数属于协议/工具调用层错误；请求字段、查询 scope、预算问题由 query core 的 `cjdoc.query-result/4` 状态报告，两者不混用。
+JSON-RPC 协议层错误码：`-32700` parse error、`-32600` invalid request（含尚未 ready）、`-32601` method not found、`-32602` invalid params、`-32603` internal error。未知工具、`params` 非 object、重复传 `operation`、无效初始化参数属于协议/工具调用层错误；请求字段、查询 scope、预算问题由 query core 的 `cjdoc.query-result/5` 状态报告，两者不混用。
 
 MCP 每条输入最多 1 MiB、JSON 深度 64；工具 schema 最多 8 MiB；响应外层最多 130 MiB（含 `structuredContent`、`content[0].text` 与 JSON-RPC 封装）。正常 `query` 只返回核心 envelope，三者上限互相独立。
 

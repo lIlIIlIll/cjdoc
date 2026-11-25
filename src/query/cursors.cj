@@ -98,13 +98,12 @@ private func querySearchScopeValue(inputs: ArrayList<QuerySnapshotInput>,
     }, stable: true)
     let values = ArrayList<String>()
     for (input in ordered) {
-        values.add(match (field) {
-            case "snapshotId" => input.snapshot.snapshotId
-            case "language" => input.snapshot.locale
-            case "audience" => input.documentation.configuration.audience
-            case "cfgProfile" => input.documentation.configuration.cfgProfile
-            case _ => ""
-        })
+        let value = if (field == "snapshotId") { input.snapshot.snapshotId }
+            else if (field == "language") { input.snapshot.locale }
+            else if (field == "audience") { input.documentation.configuration.audience }
+            else if (field == "cfgProfile") { input.documentation.configuration.cfgProfile }
+            else { "" }
+        values.add(value)
     }
     if (values.isEmpty()) { return JsonNode.nullValue }
     var allSame = true
@@ -125,7 +124,7 @@ private func queryCanonicalSearchRequest(request: JsonObject,
         let key = request.nameAt(index)
         if (["cursor", "filters", "tags", "mode", "profile", "limit", "query", "schemaVersion",
             "operation", "snapshotId", "language", "audience", "cfgProfile",
-            "languageFallback", "latest"].contains(key)) { continue }
+            "languageFallback", "latest", "commentFields", "commentFieldFacets"].contains(key)) { continue }
         canonical.put(key, request.valueAt(index))
     }
     canonical.put("schemaVersion", JsonNode.string(search_engine.searchContractRequestVersion()))
@@ -160,10 +159,25 @@ private func queryCanonicalSearchRequest(request: JsonObject,
         tags.add(JsonNode.string(tag))
     }
     canonical.put("tags", tags)
+    let commentFields = JsonArray()
+    for ((id, value) in search_engine.searchRequestCommentFields(request)) {
+        let item = JsonObject()
+        item.put("id", JsonNode.string(id))
+        item.put("value", JsonNode.string(value))
+        commentFields.add(item)
+    }
+    canonical.put("commentFields", commentFields)
+    if (let Some(node) <- request.get("commentFieldFacets")) {
+        let facet = node.asObject()
+        let options = JsonObject()
+        if (let Some(id) <- facet.get("id")) { options.put("id", id) }
+        options.put("limit", JsonNode.int64(queryInt(facet, "limit", fallback: 20)))
+        canonical.put("commentFieldFacets", options)
+    }
     canonical
 }
 
-private func querySearchCursorDigest(request: JsonObject, contentIdentity: String,
+internal func querySearchCursorDigest(request: JsonObject, contentIdentity: String,
     projectionId: String, profile: String,
     selectedInputs: ArrayList<QuerySnapshotInput>): String {
     let contentBinding = contentIdentity + "\n" + projectionId

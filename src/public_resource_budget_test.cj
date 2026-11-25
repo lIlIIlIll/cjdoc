@@ -135,7 +135,7 @@ class PublicResourceBudgetTest {
         let encoded = api_render.encodeDocIr(accepted)
         let items = serializedArrayItemOccurrences(encoded)
         @Expect(items, api_model.DOC_IR_MAX_SCHEMA_ARRAY_ITEMS)
-        @Expect(items > 100000)
+        @Expect(items, 147456)
         @Expect(serializedObjectOccurrences(encoded) < api_model.DOC_IR_MAX_SCHEMA_OBJECTS)
         @Expect(encoded.size < api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)
         let replay = api_render.decodeDocIr(encoded)

@@ -6,7 +6,7 @@
       "minDeclarations": 1,
       "name": "basic",
       "project": "tests/fixtures/projects/basic",
-      "referenceDocsSha256": "769ec6a3fc13a9b66e425f70eb448d0f55c1cc3d350c09ccffba9a74a5927584",
+      "referenceDocsSha256": "26be0180e4854eefd0dd58f24d7089502e6964bc7203e741491d90745950de14",
       "variants": {
         "cold": {
           "baselineMedianElapsedMs": 1056,
@@ -26,7 +26,7 @@
       "minDeclarations": 1,
       "name": "self",
       "project": ".",
-      "referenceDocsSha256": "c8c256a4f8526abc758798ee970653e9c7f3293e67d3d9b5931b62f95055e9b6",
+      "referenceDocsSha256": "08f810f77f1f8895a14990175298f6f74096dfb48e343107c44899e4f07b4c30",
       "variants": {
         "cold": {
           "baselineMedianElapsedMs": 98320,

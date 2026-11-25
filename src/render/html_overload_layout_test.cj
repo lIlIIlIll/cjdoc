@@ -7,7 +7,7 @@ import cjdoc.render.routes.{
     historicalSymbolPagePath, label, pageRootPrefix, portableFileNameKey, symbolAnchor, symbolReadablePagePath}
 import cjdoc.render.codec.{decodeDocIr, encodeDocIr}
 import cjdoc.model.*
-import cjdoc.render.browser.HTML_READER_BUNDLE
+import cjdoc.render.browser.htmlReaderBundle
 import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -179,11 +179,12 @@ class HtmlOverloadContractLayoutTest {
     func memberScriptsKeepTheDataHookContract(): Unit {
         // The controller implementation is free to change, but the hooks the
         // server markup exposes are a contract and must keep being consumed.
+        let bundle = htmlReaderBundle(false)
         for (hook in ["data-cjdoc-overload-group", "data-cjdoc-member-actions",
             "data-cjdoc-member-filter", "data-cjdoc-member-origin",
             "data-cjdoc-members-expand", "data-cjdoc-members-collapse",
             "data-cjdoc-copy-link", "data-cjdoc-copy-status"]) {
-            @Expect(HTML_READER_BUNDLE.contains(hook), true)
+            @Expect(bundle.contains(hook), true)
         }
     }
 

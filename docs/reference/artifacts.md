@@ -141,10 +141,10 @@ target/doc/
 | 路径 | schema | 说明 |
 |---|---|---|
 | `navigation-index.json` | `cjdoc.navigation-index/2` | 导航索引首片，含 `completeness` 与 `pagination`（`offset`、`returned`、`total`、`part`、`parts`、`next`、`pathBase`）；必须沿 `next` 读到结束，首片不是完整枚举 |
-| `search-index.json`、`search-index.js` | `cjdoc.search-index/11`，内嵌 `cjdoc.search-contract/2` | 静态站搜索用 `discovery` + `bounded-static`，只支持 `search` |
+| `search-index.json`、`search-index.js` | `cjdoc.search-index/12`，内嵌 `cjdoc.search-contract/3` | 静态站搜索用 `discovery` + `bounded-static`，只支持 `search` |
 | `symbol-index.json` | `cjdoc.symbol-index/2` | 符号库存，与 `--format symbol-index` 内容同类 |
 | `agent/manifest.json` | `cjdoc.machine-manifest/3` | 绑定快照、发布修订、作用域、资源哈希，以及每个 HTML/Markdown/JSON 表示的相对路径 |
-| `agent/docs.json` | `cjdoc.doc-ir/18` | 与 manifest 对应的自包含 Doc IR |
+| `agent/docs.json` | `cjdoc.doc-ir/19` | 与 manifest 对应的自包含 Doc IR |
 | `agent/symbols/*.json` | `cjdoc.declaration/3` | 单条声明的独立表示，含分类与源码投影 |
 | `agent/pages/*.json`、`agent/pages/*.md` | `cjdoc.page/2` | 概念页、包页或项目页的独立表示 |
 | `agent/packages/*` | `cjdoc.page/2`、`cjdoc.declaration/3` | 包页与包内声明的 Markdown/JSON 表示 |
@@ -231,10 +231,10 @@ versions/
 
 | `cjdoc schema` 名字 | wire 版本 | 说明 |
 |---|---|---|
-| `doc-ir`、`doc-ir-v18` | `cjdoc.doc-ir/18` | 两个名字都输出当前 Doc IR；解码器只接受 v18 |
+| `doc-ir`、`doc-ir-v19` | `cjdoc.doc-ir/19` | 两个名字都输出当前 Doc IR；解码器只接受 v19 |
 | `diagnostics` | `cjdoc.diagnostics/2` | 诊断数组 envelope |
 | `cfg-matrix` | `cjdoc.cfg-matrix/2` | 多 cfg profile 的 Doc IR 集合 |
-| `search-index`、`search-index-v11` | `cjdoc.search-index/11` | 两个名字相同 |
+| `search-index`、`search-index-v12` | `cjdoc.search-index/12` | 两个名字相同 |
 | `symbol-index` | `cjdoc.symbol-index/2` | 符号库存 |
 | `navigation-index`、`navigation-index-v2` | `cjdoc.navigation-index/2` | 无后缀名字指向 v2 |
 | `navigation-index-v1` | `cjdoc.navigation-index/1` | 冻结的旧结构，缺 v2 的完整性与续取语义 |
@@ -249,16 +249,16 @@ versions/
 | `declaration` | `cjdoc.declaration/3` | 单条声明的独立表示 |
 | `page` | `cjdoc.page/2` | 单个概念页的独立表示 |
 | `machine-manifest` | `cjdoc.machine-manifest/3`、`/2`、`/1` | 发布写 `/3`；schema 也描述可验证读取的 `/2` 和 `/1` 包 |
-| `query-request` | `cjdoc.query-request/3` | 固定快照查询请求 |
-| `query-result` | `cjdoc.query-result/4` | 查询结果 envelope |
-| `search-contract` | `cjdoc.search-contract/2` | 不是 JSON Schema，是搜索行为契约数据 |
+| `query-request` | `cjdoc.query-request/4` | 固定快照查询请求 |
+| `query-result` | `cjdoc.query-result/5` | 查询结果 envelope |
+| `search-contract` | `cjdoc.search-contract/3` | 不是 JSON Schema，是搜索行为契约数据 |
 | `source-provenance` | `cjdoc.source-provenance/1` | 调用方 source receipt 的输入契约，不是默认输出文件 |
 
 别名不是不同 wire 版本：`navigation-index` 与 `navigation-index-v2` 都是 v2，只有显式写 `navigation-index-v1` 才拿到 v1。`cjdoc.version/1`（`html/version.json`）与 `cjdoc.serve-status/1`（serve 状态接口）不在 `schema list` 里，它们是产物字段的契约。仓库里的 `docs/schema/` 保留同名静态 JSON Schema 文件，运行时以 `cjdoc schema <name>` 的输出为准。
 
 ### current-only 的适用范围
 
-`cjdoc.doc-ir/18` 是当前 Doc IR wire：`render`、query 加载器与解码器都不迁移 `/17` 或更早版本，旧 JSON 必须从原始源码重新生成。这条规则只针对 Doc IR；其他协议各自有版本号，`navigation-index-v1` 就是明确保留的冻结 schema。
+`cjdoc.doc-ir/19` 是当前 Doc IR wire：`render`、query 加载器与解码器都不迁移 `/18` 或更早版本，旧 JSON 必须从原始源码重新生成。这条规则只针对 Doc IR；其他协议各自有版本号，`navigation-index-v1` 就是明确保留的冻结 schema。
 
 ## 其他命令写出的文件
 
@@ -267,7 +267,7 @@ versions/
 | `cjdoc diff --format json` | `cjdoc.api-diff/2` 报告写到 stdout，不是文档 `--format` 之一 |
 | `cjdoc diff --format text` | 人类可读摘要与条目，写到 stdout |
 | `cjdoc versions compose` | `cjdoc.versions/2` manifest 与各版本站点副本 |
-| `cjdoc query` | 单个 `cjdoc.query-result/4` envelope，写到 stdout |
+| `cjdoc query` | 单个 `cjdoc.query-result/5` envelope，写到 stdout |
 | `cjdoc mcp` | 每行一个 JSON-RPC 2.0 对象，写到 stdout |
 | `cjdoc check` | 只写诊断到 stderr，不写输出目录 |
 

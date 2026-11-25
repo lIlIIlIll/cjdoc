@@ -211,7 +211,8 @@ internal func appendInlineMemberDetail(w: HtmlWriter,
     }
     appendMemberOriginContext(w, projection, entry, rootPrefix, locale)
     appendDocumentationHtml(w, index, member, rootPrefix, assetLookup, typeLinkIndex,
-        headingBase: sectionHeadingLevel, locale: locale, sectionHeadingLevel: sectionHeadingLevel)
+        headingBase: sectionHeadingLevel, locale: locale, sectionHeadingLevel: sectionHeadingLevel,
+        projection: projection)
     let headingTag = "h${min(6, sectionHeadingLevel)}"
     appendReaderRelationships(w, index, member, rootPrefix, typeLinkIndex, locale,
         headingTag: headingTag)
@@ -705,7 +706,7 @@ private func appendSymbolPageBody(w: HtmlWriter, documentation: DocumentationSet
     typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
     appendDocumentationHtml(w, index, symbol, rootPrefix, assetLookup,
         typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !hasMemberPage,
-        includeIntroduction: !hasMemberPage)
+        includeIntroduction: !hasMemberPage, projection: projection)
     if (!hasMemberPage) {
         appendReaderRelationships(w, index, symbol, rootPrefix, typeLinkIndex, locale)
     }

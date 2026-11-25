@@ -100,11 +100,11 @@ def verify_golden_set(repo: Path, version: int) -> None:
 
 
 def load_frozen_doc_ir_definitions(directory: Path) -> dict:
-    # Artifact schemas embed the current Doc IR v18 declarations; load that
+    # Artifact schemas embed the current Doc IR declarations; load that
     # model once and reject forks in every consumer schema.
-    model = strict_load(directory / "doc-ir-v18.schema.json", description="doc-ir-v18 schema")
+    model = strict_load(directory / "doc-ir-v19.schema.json", description="doc-ir-v19 schema")
     if not isinstance(model, dict) or not isinstance(model.get("$defs"), dict):
-        raise ValueError("doc-ir-v18 schema definitions are missing")
+        raise ValueError("doc-ir-v19 schema definitions are missing")
     return model["$defs"]
 
 

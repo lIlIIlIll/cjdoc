@@ -343,7 +343,7 @@ internal func appendDocumentationHtml(w: HtmlWriter,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     headingBase!: Int64 = 3, includeContracts!: Bool = true,
     includeIntroduction!: Bool = true, locale!: String = "en",
-    sectionHeadingLevel!: Int64 = 3): Unit {
+    sectionHeadingLevel!: Int64 = 3, projection!: ?RenderProjection = None): Unit {
     let blockHeading = "h${min(6, sectionHeadingLevel)}"
     match (symbol.documentation) {
         case Some(comment) =>
@@ -371,6 +371,7 @@ internal func appendDocumentationHtml(w: HtmlWriter,
                 assetLookup, markdownContext)
             appendTagMetadataHtml(w, comment, locale, blockHeading, assetLookup, rootPrefix,
                 markdownContext)
+            appendProjectCommentFieldsHtml(w, projection, symbol, locale, blockHeading)
         case None =>
             w.textElement("p", label(locale,
                 "No documentation is available for this declaration.", "此声明暂无文档。"),
@@ -381,6 +382,40 @@ internal func appendDocumentationHtml(w: HtmlWriter,
             appendReturnDocumentationHtml(w, symbol, None, typeLinkIndex,
                 rootPrefix, locale, blockHeading, assetLookup, None)
     }
+}
+
+/**
+ * Render this declaration's own project comment field values.
+ *
+ * Values are plain author text: they are never parsed as Markdown, linked, or
+ * inherited from an owner or a sibling overload. A declaration without values
+ * gets no placeholder section.
+ */
+private func appendProjectCommentFieldsHtml(w: HtmlWriter, projection: ?RenderProjection,
+    symbol: SymbolDoc, locale: String, headingTag: String): Unit {
+    let rows = match (projection.flatMap({ value => value.commentFields(symbol.id) })) {
+        case Some(values) => values
+        case None => return
+    }
+    w.open("section", attrs: [htmlClass("cj-doc-fields"), htmlAttr("data-cjdoc-doc-fields", "")])
+    w.open(headingTag, attrs: [htmlClass("cj-doc-fields__title")])
+    w.text(label(locale, "Comment fields", "注释字段"))
+    w.close(headingTag)
+    w.open("dl", attrs: [htmlClass("cj-doc-fields__list")])
+    for (row in rows) {
+        w.open("dt", attrs: [htmlClass("cj-doc-fields__label"),
+            htmlAttr("data-cjdoc-doc-field", row.id)])
+        w.text(row.titleFor(locale))
+        w.close("dt")
+        w.open("dd", attrs: [htmlClass("cj-doc-fields__values")])
+        for (value in row.values()) {
+            w.textElement("span", value, attrs: [htmlClass("cj-doc-fields__value")])
+        }
+        w.close("dd")
+    }
+    w.close("dl")
+    w.close("section")
+    w.newline()
 }
 
 private func appendTagSubjectHtml(w: HtmlWriter, tag: DocTag,

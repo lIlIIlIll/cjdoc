@@ -319,10 +319,10 @@ private class DocCommentParseState {
         }
     }
 
-    func consumeExampleLine(line: String, tagEligible: Bool): Bool {
+    func consumeExampleLine(line: String, isTagBoundary: Bool): Bool {
         match (currentExample) {
             case Some(example) =>
-                if (tagEligible && isStructuredDocTag(line.trimAscii())) {
+                if (isTagBoundary) {
                     currentExample = None
                     false
                 } else {
@@ -349,6 +349,24 @@ private class DocCommentParseState {
         currentTag = None
         currentAdmonition = None
     }
+
+    func consumeFieldBoundary(): Unit {
+        currentTag = None
+        currentAdmonition = None
+    }
+
+    func authoredItem(name: String): ?DocTag {
+        if (name == "example") { return currentExample }
+        if (isAdmonitionKind(name)) { return currentAdmonition }
+        if (name == "replacement" && !replacements.isEmpty()) {
+            return Some(replacements[replacements.size - 1])
+        }
+        if (let Some(tag) <- currentTag) {
+            if (tag.name == name) { return Some(tag) }
+        }
+        None
+    }
+
     private func appendBodyBoundary(): Unit {
         if (!body.isEmpty() && !body[body.size - 1].isEmpty()) { body.add("") }
     }
@@ -497,17 +515,38 @@ protected func parseDocComment(raw: String): DocComment {
     parseDocCommentAt(raw, None<SourceLocation>)
 }
 
-protected func parseDocCommentAt(raw: String, source: ?SourceLocation): DocComment {
-    let lines = cleanDocLines(raw)
+protected func parseDocCommentAt(raw: String, source: ?SourceLocation,
+    spec!: ?CommentSpec = None): DocComment {
+    let prepared: ?CommentSpecLines = match (spec) {
+        case Some(value) => if (value.isEmpty()) { None } else { Some(CommentSpecLines(raw, source, value)) }
+        case None => None
+    }
+    let lines = match (prepared) {
+        case Some(value) => value.lines
+        case None => cleanDocLines(raw)
+    }
     let state = DocCommentParseState()
-    let rows: Array<LocalizedCommentLineMap> =
-        if (source.isSome() && raw.contains("@replacement")) { localizedCommentRows(raw) } else { [] }
-    let structure = markdownBlockStructure(rawJoinLines(lines))
-    let tagEligible = topLevelParagraphLines(lines, structure)
+    let rows: Array<LocalizedCommentLineMap> = match (prepared) {
+        case Some(value) => value.rows
+        case None => if (source.isSome() && raw.contains("@replacement")) {
+            localizedCommentRows(raw)
+        } else { [] }
+    }
+    let tagEligible = match (prepared) {
+        case Some(value) => value.eligible
+        case None => topLevelParagraphLines(lines, markdownBlockStructure(rawJoinLines(lines)))
+    }
     var lineIndex: Int64 = 0
     while (lineIndex < lines.size) {
         let line = lines[lineIndex]
-        if (state.consumeExampleLine(line, tagEligible[lineIndex])) {
+        let head: ?CommentTagHeader = match (prepared) {
+            case Some(value) => value.headers[lineIndex]
+            case None => None
+        }
+        let tagBoundary = state.currentExample.isSome() &&
+            (if (prepared.isSome()) { head.isSome() }
+                else { tagEligible[lineIndex] && isStructuredDocTag(line.trimAscii()) })
+        if (state.consumeExampleLine(line, tagBoundary)) {
             lineIndex++
             continue
         }
@@ -519,6 +558,20 @@ protected func parseDocCommentAt(raw: String, source: ?SourceLocation): DocComme
             state.appendBodyLine(line)
             lineIndex++
             continue
+        }
+        if (let Some(found) <- head) {
+            if (found.field) {
+                state.consumeFieldBoundary()
+                lineIndex++
+                continue
+            }
+            let occurrence = prepared.getOrThrow().occurrencesByLine[lineIndex].getOrThrow()
+            let tagText = normalizedBuiltinTagText(line, found)
+            if (state.consumeStructuredTag(line, tagText, occurrence.source)) {
+                if (found.error.isNone()) { occurrence.tag = state.authoredItem(found.formal) }
+                lineIndex++
+                continue
+            }
         }
         let tagText = line.trimAscii()
         let tagSource: ?SourceLocation =
@@ -532,5 +585,11 @@ protected func parseDocCommentAt(raw: String, source: ?SourceLocation): DocComme
     }
     let comment = state.toDocComment(raw)
     comment.commentSource = source
+    if (let Some(value) <- prepared) {
+        comment.preparedPolicy = prepared
+        comment.occurrences = value.occurrences.toArray()
+        comment.fieldValues.add(all: value.validFieldValues())
+        comment.problems.add(all: value.problems)
+    }
     comment
 }

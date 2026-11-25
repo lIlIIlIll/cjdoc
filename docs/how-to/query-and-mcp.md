@@ -75,7 +75,7 @@ from pathlib import Path
 
 manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 request = {
-    "schemaVersion": "cjdoc.query-request/3",
+    "schemaVersion": "cjdoc.query-request/4",
     "operation": "search",
     "snapshotId": manifest["snapshotId"],
     "query": "greet",
@@ -138,7 +138,7 @@ from pathlib import Path
 result = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 identity = result["result"]["items"][0]["identity"]
 request = {
-    "schemaVersion": "cjdoc.query-request/3",
+    "schemaVersion": "cjdoc.query-request/4",
     "operation": "get_symbol",
     "snapshotId": identity["snapshotId"],
     "symbolId": identity["symbolId"],
@@ -158,11 +158,30 @@ cjdoc query --snapshot "$MANIFEST" \
 要确定某个库或包对应哪份文档，用 `resolve_docs`，并直接把请求写到标准输入：
 
 ```bash
-printf '%s\n' '{"schemaVersion":"cjdoc.query-request/3","operation":"resolve_docs","query":"querydemo"}' \
+printf '%s\n' '{"schemaVersion":"cjdoc.query-request/4","operation":"resolve_docs","query":"querydemo"}' \
   | cjdoc query --snapshot "$MANIFEST" --request -
 ```
 
 **预期结果**：`text` 首行为 `# resolve_docs: ok`，`selection` 里列出匹配的文档。多个候选时用响应里的范围与身份收窄请求，而不是按名字猜一个版本。
+
+### 按注释字段找 API
+
+先按[注释规范示例](../reference/configuration.md#comments项目注释规范)为所属模块配置字段，
+在一个公开 API 上写 `@maintainer platform`，再生成站点。网页搜索可选择
+「注释字段」里的「负责人」（英文为 `Owner`），再选择值 `platform`，无需输入关键词。
+
+```bash
+printf '%s\n' '{"operation":"search","commentFields":[{"id":"owner","value":"platform"}]}' \
+  | cjdoc query --snapshot "$MANIFEST" --request -
+```
+
+**预期结果**：`status` 为 `ok`，命中包括该 API，不包括只在正文中提到 `platform` 的 API。
+在 MCP 中，将同一参数对象交给 `search` 工具即可。
+
+若返回 `comment_field_scope_required`，用 `{"operation":"search","commentFieldFacets":{"id":"owner"}}`
+查询候选值。结果在 `result.facets.commentFields.items`；取目标行 `scope` 的 `snapshotId`、`moduleId`
+加到原筛选请求后重试。`next` 不为 `null` 时，将它作为 `commentFieldFacets.cursor`
+读下一页；仅请求目录不会返回 API 命中。
 
 ## 第四步：把本地 MCP 服务加入客户端
 
@@ -230,7 +249,7 @@ PY
 | `not_found`，退出码 `0` | 当前捕获范围里没有匹配；检查名称与范围。结果不完整时可能是 `source_incomplete`，不能据此断言上游没有此 API |
 | `ambiguous`，退出码 `0` | 有多个候选；用返回的文档、模块和符号身份收窄请求 |
 | `stale_cursor`，退出码 `2` | cursor 与这次查询不一致；删除 cursor 从第一页重查 |
-| `invalid_request`，退出码 `2` | 字段不合法。例如 `maxBytes` 小于 1024 会得到 `Request does not satisfy cjdoc.query-request/3. Invalid field 'maxBytes'.` |
+| `invalid_request`，退出码 `2` | 字段不合法。例如 `maxBytes` 小于 1024 会得到 `Request does not satisfy cjdoc.query-request/4. Invalid field 'maxBytes'.` |
 | `scope_mismatch`，退出码 `2` | 请求的 `snapshotId` 不在本次加载的目录里，消息如 `The requested documentation scope is not loaded in this query catalog.`；改选快照 |
 | `budget_exceeded`、`resource_limit`、`unavailable`，退出码 `3` | 读具体原因。预算不足时按返回的 `requiredBytes` 调整；硬资源限制或快照不可读不能靠反复续页解决 |
 | `unavailable` 且 `scope.snapshots` 为空，退出码 `3` | `--snapshot` 指向的文件不存在或不是可读快照 |

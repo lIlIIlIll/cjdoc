@@ -67,7 +67,7 @@ class ProjectConfigurationCliTest(unittest.TestCase):
 
     def read_document(self, path):
         document = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(document["schemaVersion"], "cjdoc.doc-ir/18")
+        self.assertEqual(document["schemaVersion"], "cjdoc.doc-ir/19")
         self.assertIn("answer", {item["name"] for item in document["declarations"]})
         return document
 
@@ -107,6 +107,113 @@ class ProjectConfigurationCliTest(unittest.TestCase):
         checked = self.invoke("check", "--project", self.project, "--no-cache")
         self.assertEqual(checked.returncode, 0, checked.stderr)
         self.assertFalse((self.project / "published").exists())
+
+    def test_comment_rule_exit_status_and_structure_errors(self):
+        source = self.project / "src/api.cj"
+        prefix = "package configuration_demo\n"
+        declaration = "public func answer(): Unit {}\n"
+        source.write_text(prefix + "/**\n * Answer.\n * @deprecated\n */\n" + declaration, encoding="utf-8")
+        config = ('[comments.aliases]\nmaintainer2-team = "owner"\n'
+                  '[[comments.fields]]\nid = "owner"\ntitle = "负责人"\n')
+        rule = '[[comments.rules]]\nrequire = "owner"\nwhen-present = "deprecated"\n'
+        args = ("check", "--project", self.project, "--no-cache", "--semantic", "source")
+        self.configure(config + rule + 'severity = "warning"\n')
+        warning = self.invoke(*args)
+        self.assertEqual(warning.returncode, 0, warning.stderr)
+        self.assertRegex(warning.stderr, r"warning\[CJDOC3142\]:.*answer.*owner.*deprecated")
+        self.assertEqual(self.invoke(*args, "--deny-warnings").returncode, 1)
+        self.configure(config + rule)
+        error = self.invoke(*args)
+        self.assertEqual(error.returncode, 1, error.stderr)
+        self.assertIn("error[CJDOC3142]", error.stderr)
+        off = self.invoke(*args, "--lint-profile", "off")
+        self.assertEqual(off.returncode, 0, off.stderr)
+        self.assertNotIn("CJDOC3142", off.stderr)
+
+        source.write_text(prefix + "/**\n * Answer.\n * @owner[lang=en] invalid\n"
+                          " * @maintainer2-team platform\n */\n" + declaration, encoding="utf-8")
+        structure = self.invoke(*args, "--lint-profile", "off")
+        self.assertEqual(structure.returncode, 1, structure.stderr)
+        self.assertIn("error[CJDOC3140]", structure.stderr)
+        self.assertIn("error[CJDOC3141]", structure.stderr)
+        self.configure(config + '[[comments.rules]]\nrequire = "maintainer2-team"\n')
+        invalid = self.invoke(*args, "--lint-profile", "off")
+        self.assertEqual(invalid.returncode, 2, invalid.stderr)
+        self.assertIn("CJDOC3139", invalid.stderr)
+
+    def test_comment_alias_is_reinterpreted_after_a_source_cache_hit(self):
+        source = self.project / "src/api.cj"
+        source.write_text("package configuration_demo\n/**\n * Answer.\n"
+                          " * @maintainer2-team platform\n */\n"
+                          "public func answer(): Unit {}\n", encoding="utf-8")
+        args = ("generate", "--project", self.project, "--format", "json", "--stdout",
+                "--lint-profile", "off")
+        cache = self.root / "source-cache"
+        self.configure('[[comments.fields]]\nid = "owner"\ntitle = "负责人"\n')
+        before = self.invoke(*args, "--cache-dir", cache)
+        self.assertEqual(before.returncode, 0, before.stderr)
+        self.assertEqual(json.loads(before.stdout)["metadata"]["fields"], [])
+        self.assertTrue(any(path.is_file() for path in cache.rglob("*")), "source cache was not populated")
+        self.configure('[comments.aliases]\nmaintainer2-team = "owner"\n'
+                       '[[comments.fields]]\nid = "owner"\ntitle = "负责人"\n')
+        cached = self.invoke(*args, "--cache-dir", cache)
+        uncached = self.invoke(*args, "--no-cache")
+        self.assertEqual(cached.returncode, 0, cached.stderr)
+        self.assertEqual(uncached.returncode, 0, uncached.stderr)
+        self.assertEqual(cached.stdout, uncached.stdout)
+        field, = json.loads(cached.stdout)["metadata"]["fields"]
+        self.assertEqual([use["values"] for use in field["uses"]], [["platform"]])
+
+    def test_comment_field_identity_is_scoped_to_module_and_snapshot(self):
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        (workspace / "cjpm.toml").write_text('[workspace]\nmembers = ["alpha", "beta"]\n', encoding="utf-8")
+        for name, value in (("alpha", "platform"), ("beta", "other")):
+            member = workspace / name
+            (member / "src").mkdir(parents=True)
+            (member / "cjpm.toml").write_text(
+                f'[package]\nname = "{name}"\nversion = "1.0.0"\n'
+                'cjc-version = "1.2.0"\noutput-type = "static"\n', encoding="utf-8")
+            (member / "cjdoc.toml").write_text(
+                f'[[comments.fields]]\nid = "owner"\ntitle = "{name} Owner"\nrepeatable = true\n', encoding="utf-8")
+            (member / "src/api.cj").write_text(
+                f'package {name}\n/**\n * Documented.\n * @owner {value}\n * @owner {value}\n */\n'
+                f'public func {name}(): Unit {{}}\n', encoding="utf-8")
+
+        paths = []
+        for revision in ("current", "next"):
+            output = self.root / revision
+            produced = self.invoke("generate", "--project", workspace, "--semantic", "source",
+                                   "--no-cache", "--lint-profile", "off", "--format", "json",
+                                   "--format", "html", "--doc-version", revision, "--output", output)
+            self.assertEqual(produced.returncode, 0, produced.stderr)
+            paths.append(output / "docs.json")
+
+        def query(snapshots, args, exit_code=0):
+            command = [self.binary, "query", *[value for path in snapshots for value in ("--snapshot", path)],
+                       "--request", "-"]
+            result = subprocess.run(command, cwd=self.cwd, capture_output=True, text=True, timeout=120,
+                                    input=json.dumps({"operation": "search", "mode": "discovery", **args}))
+            self.assertEqual(result.returncode, exit_code, result.stderr)
+            return json.loads(result.stdout)
+
+        predicate = {"commentFields": [{"id": "owner", "value": "platform"}]}
+        catalog = {"limit": 0, "commentFieldFacets": {"id": "owner"}}
+        first = query(paths[:1], predicate, 2)
+        self.assertEqual((first["status"], first["error"]["code"]), ("scope_mismatch", "comment_field_scope_required"))
+        rows = query(paths[:1], catalog)["result"]["facets"]["commentFields"]["items"]
+        self.assertEqual({(row["title"], row["value"], row["count"]) for row in rows},
+                         {("alpha Owner", "platform", 1), ("beta Owner", "other", 1)})
+        scope = next(row["scope"] for row in rows if row["value"] == "platform")
+        module = {"moduleId": scope["moduleId"]}
+        multiple = query(paths, predicate | module, 2)
+        self.assertEqual(multiple["error"]["code"], "comment_field_scope_required")
+        rows = query(paths, catalog | module)["result"]["facets"]["commentFields"]["items"]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(len({row["scope"]["snapshotId"] for row in rows}), 2)
+        self.assertTrue(all(row["value"] == "platform" and row["count"] == 1 for row in rows))
+        one = query(paths, predicate | scope)
+        self.assertEqual(one["completeness"]["query"]["total"], 1)
 
     def test_metadata_header_variants_preserve_groups_tags_and_translations(self):
         (self.project / "src/api.cj").write_text(

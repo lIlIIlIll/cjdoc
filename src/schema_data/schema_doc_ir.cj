@@ -1,16 +1,16 @@
 package cjdoc.schema_data
 
 // Current distribution-time schema contracts; docs/schema copies are emitted by cjdoc schema.
-private let DOC_IR_V18_ROOT = """
+private let DOC_IR_ROOT = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v18.schema.json",
-  "title": "cjdoc Doc IR v18",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v19.schema.json",
+  "title": "cjdoc Doc IR v19",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "metadata", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/18"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/19"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
@@ -136,7 +136,7 @@ private let DOC_IR_V18_ROOT = """
     },
 """
 
-private let DOC_IR_V18_WORKSPACE = """
+private let DOC_IR_WORKSPACE = """
     "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
     "nullableString": {"type": ["string", "null"]},
     "moduleId": {"type": "string", "pattern": "^cjdoc:module:v1:.+$"},
@@ -227,7 +227,7 @@ private let DOC_IR_V18_WORKSPACE = """
     },
 """
 
-private let DOC_IR_V18_ASSETS_AND_METADATA = """
+private let DOC_IR_ASSETS_AND_METADATA = """
     "asset": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "mediaType", "sourcePath", "base64"],
@@ -299,12 +299,37 @@ private let DOC_IR_V18_ASSETS_AND_METADATA = """
         "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}}
       }
     },
+    "documentationFieldUse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["symbolId", "values"],
+      "properties": {
+        "symbolId": {"type": "string", "minLength": 1},
+        "values": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/documentationFieldValue"}}
+      }
+    },
+    "documentationFieldDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["moduleId", "id", "title", "titles", "repeatable", "uses"],
+      "properties": {
+        "moduleId": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "title": {"$ref": "#/$defs/metadataTitleText"},
+        "titles": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/documentationTitle"}},
+        "repeatable": {"type": "boolean"},
+        "uses": {"type": "array", "minItems": 1, "maxItems": 131072,
+          "items": {"$ref": "#/$defs/documentationFieldUse"}}
+      }
+    },
+    "documentationFieldValue": {
+      "type": "string", "minLength": 1, "maxLength": 16384
+    },
     "documentationMetadata": {
       "type": "object", "additionalProperties": false,
-      "required": ["groups", "tags"],
+      "required": ["groups", "tags", "fields"],
       "properties": {
         "groups": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationGroupDefinition"}},
-        "tags": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationTagDefinition"}}
+        "tags": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationTagDefinition"}},
+        "fields": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/documentationFieldDefinition"}}
       }
     },
     "diagnostic": {
@@ -322,19 +347,19 @@ private let DOC_IR_V18_ASSETS_AND_METADATA = """
 """
 
 // Assemble the versioned schema in published field order.
-private func buildDocIrV18Schema(): String {
-    let out = StringBuilder(DOC_IR_V18_ROOT.size + DOC_IR_V18_EXTERNAL_NAVIGATION.size +
-        DOC_IR_V18_WORKSPACE.size + DOC_IR_V18_SOURCE_AND_TYPES.size + DOC_IR_V18_COMMENTS.size +
-        DOC_IR_V18_DECLARATIONS.size + DOC_IR_V18_ASSETS_AND_METADATA.size)
-    out.append(DOC_IR_V18_ROOT)
-    out.append(DOC_IR_V18_EXTERNAL_NAVIGATION)
-    out.append(DOC_IR_V18_WORKSPACE)
-    out.append(DOC_IR_V18_SOURCE_AND_TYPES)
-    out.append(DOC_IR_V18_COMMENTS)
-    out.append(DOC_IR_V18_DECLARATIONS)
-    out.append(DOC_IR_V18_ASSETS_AND_METADATA)
+private func buildDocIrSchema(): String {
+    let out = StringBuilder(DOC_IR_ROOT.size + DOC_IR_EXTERNAL_NAVIGATION.size +
+        DOC_IR_WORKSPACE.size + DOC_IR_SOURCE_AND_TYPES.size + DOC_IR_COMMENTS.size +
+        DOC_IR_DECLARATIONS.size + DOC_IR_ASSETS_AND_METADATA.size)
+    out.append(DOC_IR_ROOT)
+    out.append(DOC_IR_EXTERNAL_NAVIGATION)
+    out.append(DOC_IR_WORKSPACE)
+    out.append(DOC_IR_SOURCE_AND_TYPES)
+    out.append(DOC_IR_COMMENTS)
+    out.append(DOC_IR_DECLARATIONS)
+    out.append(DOC_IR_ASSETS_AND_METADATA)
     out.toString()
 }
 
-public let DOC_IR_V18_SCHEMA = buildDocIrV18Schema()
-public let DOC_IR_SCHEMA = DOC_IR_V18_SCHEMA.replace("doc-ir-v18.schema.json", "doc-ir.schema.json")
+public let DOC_IR_V19_SCHEMA = buildDocIrSchema()
+public let DOC_IR_SCHEMA = DOC_IR_V19_SCHEMA.replace("doc-ir-v19.schema.json", "doc-ir.schema.json")

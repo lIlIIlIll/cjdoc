@@ -144,7 +144,7 @@ def main() -> None:
     run(binary, "generate", "--project", FIXTURE, "--format", "json", "--format", "html",
         "--format", "markdown", "--agent-full", "--output", captured, "--no-cache")
     document = read_json(captured / "docs.json")
-    assert document.get("schemaVersion") == "cjdoc.doc-ir/18"
+    assert document.get("schemaVersion") == "cjdoc.doc-ir/19"
     assert all("repositoryPath" not in module for module in document["modules"])
     declaration = find_declaration(document, "inspectSnapshot")
     file_doc = next(file for file in document["files"] if file["path"] == "src/api.cj")
@@ -183,7 +183,7 @@ def main() -> None:
         "operation": "get_symbol", "symbolId": symbol_id, "sections": ["source"],
         "maxBytes": 65536,
     })
-    assert query.get("schemaVersion") == "cjdoc.query-result/4"
+    assert query.get("schemaVersion") == "cjdoc.query-result/5"
     query_source = query["result"]["items"][0]["source"]
     assert query_source == source, "Agent and query source evidence disagree"
     report = next(item for item in query["sources"] if item["kind"] == "source")

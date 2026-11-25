@@ -3,6 +3,8 @@ protected package cjdoc.render.search
 import cjdoc.render.publication.DeclarationClassification
 import std.collection.*
 
+import yjson.JsonObject
+
 /** One internal search hit; the native bridge maps this to QueryOutcome. */
 protected class SearchHit {
     protected let snapshotId: String
@@ -74,6 +76,9 @@ protected class SearchExecutionResult {
     protected var next: ?String = None
     protected var reason: String = ""
     protected let facets = ArrayList<SearchTagFacet>()
+    // Absent when the request did not ask for a value catalog: the executor then
+    // performs no counting work at all.
+    protected var commentFacetPage: ?JsonObject = None
     protected var coverage: ?SearchCoverage = None
 
     protected init() {}

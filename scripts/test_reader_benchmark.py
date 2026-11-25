@@ -54,7 +54,8 @@ def ir_transition_pair():
         }],
     }
     after = deepcopy(before)
-    after["schemaVersion"] = "cjdoc.doc-ir/18"
+    after["schemaVersion"] = "cjdoc.doc-ir/19"
+    after["metadata"]["fields"] = []
     del after["modules"][0]["repositoryPath"]
     after["files"][0]["provenance"] = {
         "state": "unavailable", "reason": "no_project_repository",
@@ -130,7 +131,7 @@ def raw_object_member(encoded, wanted):
 def write_search_site(site, doc_ir, locale="en", *, body="Searchable body",
                       signature="public func target(): Unit", contract_change=False,
                       snapshot_override=None, projection_override=None, script_suffix="",
-                      search_schema_version="cjdoc.search-index/11"):
+                      search_schema_version="cjdoc.search-index/12"):
     site = Path(site)
     (site / "agent").mkdir(parents=True, exist_ok=True)
     revision = "fixture-revision"
@@ -141,7 +142,7 @@ def write_search_site(site, doc_ir, locale="en", *, body="Searchable body",
     snapshot_id = publisher_snapshot_id(doc_ir_bytes.decode("utf-8"), revision)
     if snapshot_override is not None:
         snapshot_id = snapshot_override
-    schema_path = Path(__file__).resolve().parent.parent / "docs/schema/search-index-v11.schema.json"
+    schema_path = Path(__file__).resolve().parent.parent / "docs/schema/search-index-v12.schema.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     contract = schema_example(schema["$defs"]["searchContract"], schema)
     if contract_change:
@@ -163,6 +164,7 @@ def write_search_site(site, doc_ir, locale="en", *, body="Searchable body",
         },
         "modules": [],
         "tags": [],
+        "commentFields": [],
         "entries": [{
             "id": "native:target", "canonicalId": "native:target", "snapshotId": snapshot_id,
             "scope": -1, "concept": True, "genericArity": 0, "ownerId": None,
@@ -173,6 +175,7 @@ def write_search_site(site, doc_ir, locale="en", *, body="Searchable body",
             "bodyTruncated": False, "href": "concepts/target.html",
             "exposures": [], "externalDocs": [], "bindings": [], "sections": [],
             "classification": {"group": None, "tags": []},
+            "commentFields": [],
         }],
     }
     encoded_index = json.dumps(index, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -302,7 +305,7 @@ def write_route_site(site, doc_ir, locale="en", *, pair=2, addresses=None, packa
     doc_ir_path.write_bytes(doc_ir_bytes)
     doc_ir_sha = hashlib.sha256(doc_ir_bytes).hexdigest()
     snapshot_id = publisher_snapshot_id(doc_ir_bytes.decode("utf-8"), revision, projection)
-    schema_path = Path(__file__).resolve().parent.parent / "docs/schema/search-index-v11.schema.json"
+    schema_path = Path(__file__).resolve().parent.parent / "docs/schema/search-index-v12.schema.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     contract = schema_example(schema["$defs"]["searchContract"], schema)
     entries = []
@@ -320,6 +323,7 @@ def write_route_site(site, doc_ir, locale="en", *, pair=2, addresses=None, packa
             "bindings": [], "sections": [{"kind": "declaration", "anchor": "cjdoc-section-declaration",
                                           "text": qualified}],
             "classification": {"group": None, "tags": []},
+            "commentFields": [],
         })
         symbols.append({
             "id": symbol, "canonicalId": symbol, "identity": "", "documentSetId": "",
@@ -332,7 +336,7 @@ def write_route_site(site, doc_ir, locale="en", *, pair=2, addresses=None, packa
             "href": href, "relations": [], "references": [], "typeNavigations": [],
         })
     index = {
-        "schemaVersion": "cjdoc.search-index/11", "profile": "bounded-static",
+        "schemaVersion": "cjdoc.search-index/12", "profile": "bounded-static",
         "contract": contract, "projectionId": "pending",
         "scope": {"snapshotId": snapshot_id, "sourceSnapshotId": snapshot_id,
                   "publicationRevision": revision, "project": "fixture", "language": locale,
@@ -342,7 +346,7 @@ def write_route_site(site, doc_ir, locale="en", *, pair=2, addresses=None, packa
         "modules": [{"moduleId": "module:reader_scale", "moduleName": "reader_scale",
                      "documentSet": None, "dependency": None,
                      "dependencyInstanceState": "not_applicable"}],
-        "tags": [], "entries": entries,
+        "tags": [], "commentFields": [], "entries": entries,
     }
     encoded_index = json.dumps(index, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     projection_id = projection_fingerprint(index, raw_object_member(encoded_index, "contract"))
@@ -915,7 +919,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                     check_native_ir(baseline, candidate, old, new, profile, budget["docIrTransition"])
             self.assertEqual(budget, frozen)
 
-    def test_ir_registration_accepts_only_the_exact_v17_v18_defaults(self):
+    def test_ir_registration_accepts_only_the_exact_v17_v19_defaults(self):
         before, after = ir_transition_pair()
         registration = register_ir_observation(before, "a" * 64, after["generator"]["version"])
         before_copy, after_copy = deepcopy(before), deepcopy(after)
@@ -947,7 +951,9 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 register_ir_observation(invalid, "a" * 64, after["generator"]["version"])
 
         invalid_after = [
-            ("wrong version", lambda document: document.update(schemaVersion="cjdoc.doc-ir/17")),
+            ("wrong version", lambda document: document.update(schemaVersion="cjdoc.doc-ir/18")),
+            ("missing comment fields", lambda document: document["metadata"].pop("fields")),
+            ("captured comment fields", lambda document: document["metadata"].update(fields=[{}])),
             ("obsolete module field", lambda document: document["modules"][0].update(repositoryPath=None)),
             ("missing source provenance", lambda document: document["files"][0].pop("provenance")),
             ("missing source digest", lambda document: document["files"][0]["provenance"].pop("sourceDigest")),
@@ -1083,7 +1089,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                     site_name = f"sites/{locale}"
                     _, resources, _, _ = write_search_site(
                         observation / site_name, model, locale,
-                        search_schema_version="cjdoc.search-index/10" if label == "after" else "cjdoc.search-index/11")
+                        search_schema_version="cjdoc.search-index/10" if label == "after" else "cjdoc.search-index/12")
                     browser_name = f"browser-{locale}.json"
                     browser = {"schemaVersion": "cjdoc.reader-browser/2", "recipe": "fixture",
                                "sourceSha256": "b" * 64, "taskManifestSha256": file_digest(manifest),

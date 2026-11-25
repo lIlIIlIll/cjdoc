@@ -12,11 +12,11 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
 {
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "$id":"https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-result.schema.json",
-  "title":"cjdoc documentation query result v3",
+  "title":"cjdoc documentation query result v5",
   "type":"object","additionalProperties":false,
   "required":["schemaVersion","status","operation","scope","selection","result","completeness","sources","text","error"],
   "properties":{
-    "schemaVersion":{"const":"cjdoc.query-result/4"},
+    "schemaVersion":{"const":"cjdoc.query-result/5"},
     "status":{"enum":["ok","ambiguous","not_found","source_incomplete","budget_exceeded","stale_cursor","invalid_request","scope_mismatch","resource_limit","unavailable"]},
     "operation":{"type":"string"},
     "scope":{"type":"object","additionalProperties":false,"required":["requested","catalogId","snapshots"],"properties":{
@@ -195,8 +195,25 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
       "matchLevel":{"enum":["exact","compatible","manual","none"]},"reason":{"type":"string"},"score":{"type":"integer"},"inventoryPinned":{"type":"boolean"},"sourceBinding":{"enum":["matched","mismatch","conflict","unavailable"]},"admitted":{"type":"boolean"}
     }},
     "queryFacets":{"type":"object","additionalProperties":false,"required":["tags"],"properties":{
-      "tags":{"type":"array","items":{"$ref":"#/$defs/queryTagFacet"}}
+      "tags":{"type":"array","items":{"$ref":"#/$defs/queryTagFacet"}},
+      "commentFields":{"$ref":"#/$defs/queryCommentFieldFacetPage"}
     }},
+    "queryCommentFieldFacetPage":{"type":"object","additionalProperties":false,
+      "required":["items","next"],"properties":{
+        "items":{"type":"array","maxItems":100,"items":{"$ref":"#/$defs/queryCommentFieldFacet"}},
+        "next":{"type":["string","null"]}
+      }},
+    "queryCommentFieldFacet":{"type":"object","additionalProperties":false,
+      "required":["scope","id","title","value","count"],"properties":{
+        "scope":{"type":"object","additionalProperties":false,
+          "required":["snapshotId","moduleId"],"properties":{
+            "snapshotId":{"type":"string","minLength":1},
+            "moduleId":{"$ref":"#/$defs/moduleId"}}},
+        "id":{"type":"string","pattern":"^[a-z][a-z0-9-]{0,63}$"},
+        "title":{"type":"string","minLength":1,"maxLength":256},
+        "value":{"type":"string","minLength":1,"maxLength":16384},
+        "count":{"type":"integer","minimum":1}
+      }},
     "queryTagFacet":{"type":"object","additionalProperties":false,
       "required":["scope","id","title","count"],"properties":{
         "scope":{"type":"object","additionalProperties":false,

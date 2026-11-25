@@ -9,6 +9,7 @@ protected class DocumentationBinder {
     protected func bind(source: SourceSnapshot, semanticResult: SemanticResult, expectedProvider!: ?String = None): DocumentationSet {
         let documentation = DocumentationSet(source.projectName)
         documentation.metadataInventory = source.metadataInventory
+        documentation.commentSpecs.add(all: source.commentSpecs)
         for (module in source.modules) {
             documentation.modules.add(copyModule(module))
         }

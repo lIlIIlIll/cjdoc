@@ -93,30 +93,31 @@ internal let HTML_API_LINK_SCRIPT = #"
 })();
 "#
 
-private func buildHtmlSearchScript(): String {
-    let out = StringBuilder(HTML_SEARCH_KERNEL_PRIMITIVES_SCRIPT.size + HTML_SEARCH_KERNEL_INDEX_SCRIPT.size +
-        HTML_SEARCH_KERNEL_MATCHING_SCRIPT.size + HTML_SEARCH_KERNEL_EXECUTION_SCRIPT.size +
-        HTML_SEARCH_CONTROLLER_SETUP_SCRIPT.size + HTML_SEARCH_CONTROLLER_RESULTS_SCRIPT.size +
-        HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT.size + HTML_READING_OUTLINE_SCRIPT.size +
-        HTML_READING_SETTINGS_SCRIPT.size + HTML_READING_COPY_SCRIPT.size + HTML_READING_MEMBERS_SCRIPT.size)
-    out.append(HTML_SEARCH_KERNEL_PRIMITIVES_SCRIPT)
-    out.append(HTML_SEARCH_KERNEL_INDEX_SCRIPT)
-    out.append(HTML_SEARCH_KERNEL_MATCHING_SCRIPT)
-    out.append(HTML_SEARCH_KERNEL_EXECUTION_SCRIPT)
-    out.append(HTML_SEARCH_CONTROLLER_SETUP_SCRIPT)
-    out.append(HTML_SEARCH_CONTROLLER_RESULTS_SCRIPT)
-    out.append(HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT)
-    out.append(HTML_READING_OUTLINE_SCRIPT)
-    out.append(HTML_READING_SETTINGS_SCRIPT)
-    out.append(HTML_READING_COPY_SCRIPT)
-    out.append(HTML_READING_MEMBERS_SCRIPT)
-    out.toString()
+// The asset test excludes multiline literals sensitive to indentation.
+private func appendReaderFragment(out: StringBuilder, script: String): Unit {
+    var start = 0
+    while (start < script.size) {
+        var end = start
+        while (end < script.size && script[end] != b'\n') { end++ }
+        while (start < end && (script[start] == b' ' || script[start] == b'\t')) { start++ }
+        if (start < end && !(end - start >= 2 && script[start] == b'/' && script[start + 1] == b'/')) {
+            out.append(script[start..end])
+            out.append("\n")
+        }
+        start = end + 1
+    }
 }
 
-private let HTML_SEARCH_SCRIPT = buildHtmlSearchScript()
-
-// Keep the source indented with one compaction pass for nested bundle lines.
-// The canonical asset test excludes literals sensitive to line indentation.
-protected let HTML_READER_BUNDLE =
-    (HTML_API_LINK_SCRIPT + HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
-    .replace("\n    ", "\n")
+/** Emit only the dialog code used by the published search index. */
+protected func htmlReaderBundle(hasCommentFields: Bool): String {
+    let out = StringBuilder(170000)
+    for (fragment in [HTML_API_LINK_SCRIPT, HTML_SIDEBAR_SCRIPT, HTML_SEARCH_KERNEL_PRIMITIVES_SCRIPT,
+        HTML_SEARCH_KERNEL_INDEX_SCRIPT, HTML_SEARCH_KERNEL_MATCHING_SCRIPT, HTML_SEARCH_KERNEL_EXECUTION_SCRIPT,
+        HTML_SEARCH_CONTROLLER_SETUP_SCRIPT, HTML_SEARCH_CONTROLLER_RESULTS_SCRIPT,
+        if (hasCommentFields) { HTML_SEARCH_CONTROLLER_FIELDS_SCRIPT } else { "const fieldController = null;\n" },
+        HTML_SEARCH_CONTROLLER_INTERACTION_SCRIPT, HTML_READING_OUTLINE_SCRIPT, HTML_READING_SETTINGS_SCRIPT,
+        HTML_READING_COPY_SCRIPT, HTML_READING_MEMBERS_SCRIPT, LANGUAGE_NAVIGATION_SCRIPT]) {
+        appendReaderFragment(out, fragment)
+    }
+    out.toString()
+}

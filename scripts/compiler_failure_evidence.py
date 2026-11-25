@@ -63,6 +63,22 @@ _SIGNATURES = (
      "The compiler emitted a fatal diagnostic."),
     ("compiler-exception", re.compile(r"\b(?:unhandled|uncaught) exception\b", re.IGNORECASE),
      "The compiler process reported an exception."),
+    ("compiler-child-crash", re.compile(
+        r"^[ \t]*error: [^\r\n]*command failed with exit code (?:134|137|138|139|3221225477)\b",
+        re.IGNORECASE | re.MULTILINE),
+     "A compiler child command reported a crash or signal-derived exit code."),
+    ("compiler-diagnostic", re.compile(r"^[ \t]*error:[ \t]", re.MULTILINE),
+     "Build output contained a compiler-style error diagnostic."),
+    ("package-compilation-failure", re.compile(
+        r"^[ \t]*Error: failed to compile package\b", re.MULTILINE),
+     "The package manager reported a compilation failure."),
+    ("linker-failure", re.compile(r"^[ \t]*(?:ld: |clang: error: linker command failed\b)",
+                                  re.MULTILINE),
+     "Build output contained a linker diagnostic."),
+    ("dependency-fetch-failure", re.compile(
+        r"^[ \t]*(?:fatal: (?:unable to access|could not read from remote repository)\b|"
+        r"error: RPC failed\b)", re.IGNORECASE | re.MULTILINE),
+     "The build reported a dependency transport failure."),
 )
 
 

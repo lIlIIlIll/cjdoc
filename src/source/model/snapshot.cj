@@ -1,6 +1,6 @@
 protected package cjdoc.source.model
 
-import cjdoc.documentation.comments.DocComment
+import cjdoc.documentation.comments.{CommentSpec, DocComment}
 import cjdoc.documentation.metadata.DocumentationMetadataInventory
 import cjdoc.model as public_model
 import cjdoc.source.{Diagnostic, SourceLocation}
@@ -339,6 +339,9 @@ protected class SourceSnapshot {
     protected let modules = ArrayList<SourceModule>()
     protected let metadataModuleRoots = ArrayList<SourceMetadataModuleRoot>()
     protected var metadataInventory = DocumentationMetadataInventory()
+    // Module-scoped author comment policies, captured after source collection
+    // and before semantics and binding. Never serialized into Doc IR.
+    protected let commentSpecs = HashMap<String, CommentSpec>()
     protected var cfgProfile = CfgProfile()
     protected var manifestText: ?String = None
     protected let packages = ArrayList<SourcePackage>()

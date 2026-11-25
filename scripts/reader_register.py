@@ -15,14 +15,14 @@ try:
     from .reader_api_routes_transition import register_api_route_transition
     from .reader_aria_transition import register_aria_transition
     from .reader_ir_transition import TRANSITION_NAME, register_ir_observation, register_ir_transition
-    from .reader_search_identity import verify_search_identity
+    from .reader_search_identity import verify_reader_doc_ir_schema, verify_search_identity
     from .strict_json import strict_dumps, strict_loads
     from .test_agent_artifacts import document
 except ImportError:
     from reader_api_routes_transition import register_api_route_transition
     from reader_aria_transition import register_aria_transition
     from reader_ir_transition import TRANSITION_NAME, register_ir_observation, register_ir_transition
-    from reader_search_identity import verify_search_identity
+    from reader_search_identity import verify_reader_doc_ir_schema, verify_search_identity
     from strict_json import strict_dumps, strict_loads
     from test_agent_artifacts import document
 
@@ -172,6 +172,9 @@ def main() -> int:
     result = register(args.baseline, args.template, args.presentation,
                       doc_ir_transition=args.doc_ir_transition, aria_transition=args.aria_transition,
                       api_routes_transition=args.api_routes_transition)
+    if args.doc_ir_transition is not None:
+        verify_reader_doc_ir_schema(strict_loads((args.baseline / "native-json/docs.json").read_bytes(),
+                                                description="baseline native Doc IR"))
     with args.output.open("x", encoding="utf-8") as output:
         output.write(strict_dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     print(strict_dumps({"status": result["baseline"]["status"],

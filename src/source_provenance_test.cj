@@ -126,7 +126,7 @@ class SourceProvenanceCaptureTest {
         let symbol = sourceProvenanceFixtureSymbol(documentation)
         @Expect(symbol.source.path, "src/api.cj")
         @Expect(symbol.source.start.line, 4)
-        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/18")
+        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/19")
     }
 
     @TestCase

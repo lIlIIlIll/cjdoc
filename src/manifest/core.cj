@@ -257,6 +257,8 @@ protected func decodeTomlString(line: String, quoteAt: Int64): TomlDecodedString
 protected class TomlLineScanner {
     private var multilineDelimiter: ?Byte = None
 
+    protected prop inMultilineString: Bool { get() { multilineDelimiter.isSome() } }
+
     private func tripleAt(line: String, index: Int64, marker: Byte): Bool {
         index + 2 < line.size && line[index] == marker && line[index + 1] == marker &&
             line[index + 2] == marker

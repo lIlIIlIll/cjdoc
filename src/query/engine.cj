@@ -38,7 +38,7 @@ protected class QueryExecution {
         contentIdentity = queryContentIdentity(baseCatalogId, inputs)
     }
 
-    /** Dispatch one already validated `cjdoc.query-request/3` object. */
+    /** Dispatch one already validated `cjdoc.query-request/4` object. */
     protected func dispatch(request: JsonObject): JsonObject {
         let operation = queryString(request, "operation")
         // A named snapshot is resolved against the frozen catalog first, so the
@@ -438,7 +438,7 @@ internal func queryFailureResult(request: JsonObject, inputs: ArrayList<QuerySna
  * The published failure envelope for a request that never reached execution.
  *
  * Startup rejection (a bad command line, an unreadable snapshot, an unsupported
- * document root) is reported in exactly the same `cjdoc.query-result/4` shape as
+ * document root) is reported in exactly the same `cjdoc.query-result/5` shape as
  * a rejected request, so a machine client has one decoding path for both.
  */
 protected func queryStartupFailure(catalogId: String, status: String, code: String,

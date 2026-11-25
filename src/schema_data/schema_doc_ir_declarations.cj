@@ -1,6 +1,6 @@
 package cjdoc.schema_data
 
-internal let DOC_IR_V18_SOURCE_AND_TYPES = """
+internal let DOC_IR_SOURCE_AND_TYPES = """
     "sourceDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "nullableSourceDigest": {"anyOf": [{"$ref": "#/$defs/sourceDigest"}, {"type": "null"}]},
     "sourceRepositoryPath": {
@@ -151,7 +151,7 @@ internal let DOC_IR_V18_SOURCE_AND_TYPES = """
     },
 """
 
-internal let DOC_IR_V18_DECLARATIONS = """
+internal let DOC_IR_DECLARATIONS = """
     "semanticInfo": {
       "type": "object", "additionalProperties": false,
       "required": ["state", "provider", "canonicalSignature"],

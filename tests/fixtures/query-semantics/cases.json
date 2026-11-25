@@ -1189,6 +1189,12 @@
       ]
     },
     "declaration_tags": {
+      "commentFields": {
+        "annotated": "boundedBody",
+        "prose": "proseOnly",
+        "title": {"en": "Owner", "zh-CN": "负责人"},
+        "directory": ["operations", "platform", "zeta", "équipe"]
+      },
       "symbolRefs": {
         "Reader": {
           "qualifiedName": "declaration_tags.StreamReader",
@@ -1237,6 +1243,10 @@
         "boundedBody": {
           "qualifiedName": "declaration_tags.boundedBody",
           "signature": "public func boundedBody(): Unit"
+        },
+        "proseOnly": {
+          "qualifiedName": "declaration_tags.proseOnly",
+          "signature": "public func proseOnly(): Unit"
         },
         "edit128": {
           "qualifiedName": "declaration_tags.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

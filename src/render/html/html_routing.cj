@@ -2,14 +2,13 @@ protected package cjdoc.render.html
 
 import cjdoc.render.routes.{ApiHtmlRoutes, agentDeclarationMarkdownPath, apiHtmlFileHref, apiHtmlWebPath}
 import cjdoc.render.publication.{
-    DeclarationGroupCatalog, SourceReferenceProjection, indexSymbols, isTypeDeclaration,
-    renderabilityIndex}
+    DeclarationGroupCatalog, SourceReferenceProjection, indexSymbols, isTypeDeclaration}
 import cjdoc.render.routes.{
     ApiRouteProjection, boundedHtmlSlug, routeKey, historicalPackagePagePath, symbolPagePath,
     symbolReadablePagePath, navigationHref, isCapturedLocalApiLink, publicApiRootPrefix, label,
     pageRootPrefix}
 import cjdoc.render.codec.{assetMediaExtension, decodeAssetBase64}
-import cjdoc.render.foundation.RenderArtifactStore
+import cjdoc.render.foundation.{RenderArtifactStore, renderabilityIndex}
 import cjdoc.model.*
 import std.collection.*
 import std.sort.*
@@ -93,6 +92,32 @@ protected class ProjectedModule {
     init(source: ModuleDoc) { this.source = source }
 }
 
+/** One published field row of the declaration being rendered. */
+protected class DocFieldRow {
+    protected let id: String
+    protected let title: String
+    private let titlesStorage: ArrayList<DocumentationTitle>
+    private let valuesStorage: ArrayList<String>
+
+    protected init(id: String, title: String, titles: Array<DocumentationTitle>,
+        values: Array<String>) {
+        this.id = id
+        this.title = title
+        this.titlesStorage = ArrayList<DocumentationTitle>(titles)
+        this.valuesStorage = ArrayList<String>(values)
+    }
+
+    /** Title for the page language, else the declared default title. */
+    protected func titleFor(language: String): String {
+        for (entry in titlesStorage) {
+            if (entry.language == language) { return entry.title }
+        }
+        title
+    }
+
+    protected func values(): ArrayList<String> { valuesStorage }
+}
+
 protected class RenderProjection {
     protected let allIndex: HashMap<String, SymbolDoc>
     protected let sourceReferences: SourceReferenceProjection
@@ -119,6 +144,9 @@ protected class RenderProjection {
     }
 
     private let apiGuideIndexes = HashMap<String, CapturedApiGuideIndex>()
+    // One index from canonical symbol to its published field values, so an API
+    // page or inline member never walks the whole metadata dictionary.
+    private let commentFieldsBySymbol = HashMap<String, ArrayList<DocFieldRow>>()
 
     protected func symbolFileHref(symbolId: String): String {
         apiRoutes.getOrThrow().fileHref(symbolId)
@@ -156,6 +184,11 @@ protected class RenderProjection {
         }
     }
 
+    /** This declaration's own published field values; owners are never inherited. */
+    protected func commentFields(symbolId: String): ?ArrayList<DocFieldRow> {
+        commentFieldsBySymbol.get(symbolId)
+    }
+
     protected func members(owner: SymbolDoc): HtmlMemberBrowser {
         match (memberBrowsers.get(owner.id)) {
             case Some(value) => value
@@ -175,7 +208,7 @@ protected class RenderProjection {
         this.unprefixedApiLocale = unprefixedApiLocale
         this.sourceReferences = SourceReferenceProjection(documentation)
         allIndex = indexSymbols(documentation)
-        let renderable = renderabilityIndex(documentation, allIndex)
+        let renderable = renderabilityIndex(documentation, allIndex, documentation.configuration.audience)
         for (symbol in documentation.declarations) {
             if (renderable[symbol.id]) {
                 visibleSymbols.add(symbol)
@@ -184,6 +217,18 @@ protected class RenderProjection {
         }
         catalog = DeclarationGroupCatalog(documentation.metadata, visibleSymbols,
             documentation.readingLanguage.getOrDefault({ => "en" }))
+        for (field in documentation.metadata.fields) {
+            for (use in field.uses) {
+                let row = DocFieldRow(field.id, field.title, field.titles.toArray(), use.values.toArray())
+                match (commentFieldsBySymbol.get(use.symbolId)) {
+                    case Some(rows) => rows.add(row)
+                    case None =>
+                        let rows = ArrayList<DocFieldRow>()
+                        rows.add(row)
+                        commentFieldsBySymbol[use.symbolId] = rows
+                }
+            }
+        }
 
         for (symbol in visibleSymbols) {
             let groups = if (symbol.ownerId.isSome()) { membersByOwner } else { topLevelByPackage }

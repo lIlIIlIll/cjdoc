@@ -83,7 +83,7 @@ def validate_products(output: Path, locale: str) -> tuple[Path, dict, dict, Path
     site = output / locale
     snapshot = site / "docs.json"
     document = read_json(snapshot)
-    assert document.get("schemaVersion") == "cjdoc.doc-ir/18"
+    assert document.get("schemaVersion") == "cjdoc.doc-ir/19"
     declaration = next(symbol for symbol in document["declarations"]
                        if symbol.get("name") == "commit")
     comment = declaration["documentation"]
@@ -204,7 +204,7 @@ def main() -> None:
         "language": "en", "maxBytes": 65536,
     }
     cli_result = query_cli(binary, snapshot, request)
-    assert cli_result.get("schemaVersion") == "cjdoc.query-result/4"
+    assert cli_result.get("schemaVersion") == "cjdoc.query-result/5"
     assert cli_result.get("status") == "ok"
     item = cli_result["result"]["items"][0]
     description = next(section for section in item["sections"]

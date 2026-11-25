@@ -43,6 +43,26 @@ private func memberSectionCategories(symbols: ArrayList<SymbolDoc>):
     ordered
 }
 
+private func appendCommentFieldsMarkdown(out: RenderTextBuffer, projection: RenderProjection,
+    symbol: SymbolDoc, locale: String): Unit {
+    let rows = match (projection.commentFields(symbol.id)) {
+        case Some(values) => values
+        case None => return
+    }
+    out.append("**${label(locale, "Comment fields", "注释字段")}**\n\n")
+    for (row in rows) {
+        out.append("- ")
+        appendEscapedMarkdownText(out, row.titleFor(locale).replace("&", "&amp;"))
+        out.append("\n")
+        for (value in row.values()) {
+            out.append("  - ")
+            appendMarkdownCodeSpan(out, value)
+            out.append("\n")
+        }
+    }
+    out.append("\n")
+}
+
 private func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     assetLookup: HashMap<String, String>, heading: String, locale: String,
     pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
@@ -66,6 +86,7 @@ private func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
             headingAnchorPrefix: anchor)
         case None => ()
     }
+    appendCommentFieldsMarkdown(out, projection, symbol, locale)
     out.append("- "); appendEscapedMarkdownText(out, "${symbol.kind} · ${symbol.visibility}")
     out.append("\n- "); appendMarkdownCodeSpan(out,
         "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
@@ -264,6 +285,7 @@ private func appendMarkdownContainerArtifacts(artifacts: RenderArtifactStore,
                 symbolIndex: Some(projection.visibleIndex), headingAnchorPrefix: symbolAnchor(symbol))
             case None => ()
         }
+        appendCommentFieldsMarkdown(out, projection, symbol, locale)
         out.append("- ${label(locale, "Location", "位置")}: ")
         appendMarkdownCodeSpan(out, "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
         out.append("\n")

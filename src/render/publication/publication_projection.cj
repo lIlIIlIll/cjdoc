@@ -1,6 +1,7 @@
 protected package cjdoc.render.publication
 
 import cjdoc.render.codec.{decodeDocIr, encodeDocIr, DOC_IR_CODEC_MAX_NESTING_DEPTH}
+import cjdoc.render.foundation.renderabilityIndex
 import cjdoc.model.*
 import std.collection.*
 import yjson.*
@@ -549,7 +550,8 @@ private func publicationProjectAssets(root: JsonNode, assets: HashSet<String>): 
     publicationReplaceArray(root, "assets", retained)
 }
 
-private func publicationProjectMetadata(root: JsonNode, retained: DocumentationMetadata): Unit {
+private func publicationProjectMetadata(root: JsonNode, retained: DocumentationMetadata,
+    kept: HashSet<String>): Unit {
     let metadataNode = root.asObject().get("metadata").getOrThrow()
     let retainedGroups = HashSet<String>()
     for (group in retained.groups) {
@@ -578,6 +580,18 @@ private func publicationProjectMetadata(root: JsonNode, retained: DocumentationM
         if (retainedTags.contains(key)) { tags.add(tagNode) }
     }
     publicationReplaceArray(metadataNode, "tags", tags)
+
+    let fields = ArrayList<JsonNode>()
+    for (field in publicationElements(metadataNode, "fields")) {
+        let uses = ArrayList<JsonNode>()
+        for (use in publicationElements(field, "uses")) {
+            if (kept.contains(publicationText(use, "symbolId"))) { uses.add(use) }
+        }
+        if (uses.isEmpty()) { continue }
+        publicationReplaceArray(field, "uses", uses)
+        fields.add(field)
+    }
+    publicationReplaceArray(metadataNode, "fields", fields)
 }
 
 private func publicationProjectTree(root: JsonNode, context: PublicationContext,
@@ -600,7 +614,7 @@ private func publicationProjectTree(root: JsonNode, context: PublicationContext,
     publicationSanitizeReferences(root, hidden, assets)
     publicationProjectAssets(root, assets)
     publicationSanitizeNavigationTree(root, context)
-    publicationProjectMetadata(root, metadata)
+    publicationProjectMetadata(root, metadata, context.kept)
     publicationWrite(root)
 }
 
@@ -645,41 +659,26 @@ public func projectPublicationDocumentation(documentation: DocumentationSet,
     let root = publicationParse(encodeDocIr(documentation))
     let documentSetAudiences = publicationDocumentSetAudiences(root)
     let redact = publicationAudienceRank(selected).getOrThrow() < 2
-    // Selection must observe the requested audience, so a narrowed projection
-    // first rewrites the detached configuration and retires evidence captured
-    // for the wider audience. An unchanged audience reuses the caller's model
-    // read-only, which avoids a second whole-document decode.
-    let requested = if (selected == configured) {
-        documentation
-    } else {
-        match (publicationObject(root)) {
-            case Some(object) => match (object.get("configuration")) {
-                case Some(configuration) => if (configuration.kind() == JsonKind.Object) {
-                    configuration.asObject().put("audience", JsonNode.string(selected))
-                }
-                case None => ()
-            }
-            case None => ()
-        }
-        let staging = PublicationContext(selected, HashSet<String>(), HashSet<String>(),
-            documentSetAudiences)
-        publicationSanitizeNavigationTree(root, staging)
-        decodeDocIr(publicationWrite(root))
+    // Select against the requested audience before changing the detached JSON.
+    // Strict decoding only sees the final tree, never a narrowed configuration
+    // alongside field uses (or link evidence) from the wider audience.
+    let renderable = renderabilityIndex(documentation, indexSymbols(documentation), selected)
+    if (selected != configured) {
+        root.asObject().get("configuration").getOrThrow().asObject()
+            .put("audience", JsonNode.string(selected))
     }
-    // Select exactly what the renderer would publish for the requested audience.
-    let renderable = renderabilityIndex(requested, indexSymbols(requested))
     let kept = HashSet<String>()
     for ((id, visible) in renderable where visible) { let _ = kept.add(id) }
     let hidden = HashSet<String>()
-    for (declaration in requested.declarations) {
+    for (declaration in documentation.declarations) {
         if (!kept.contains(declaration.id)) { let _ = hidden.add(declaration.id) }
     }
     let context = PublicationContext(selected, kept, hidden, documentSetAudiences)
     let keptDeclarations = ArrayList<SymbolDoc>()
-    for (declaration in requested.declarations where kept.contains(declaration.id)) {
+    for (declaration in documentation.declarations where kept.contains(declaration.id)) {
         keptDeclarations.add(declaration)
     }
-    let metadata = documentationMetadataForDeclarations(requested.metadata,
+    let metadata = documentationMetadataForDeclarations(documentation.metadata,
         keptDeclarations.toArray())
     decodeDocIr(publicationProjectTree(root, context, redact, metadata))
 }

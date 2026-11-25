@@ -5,7 +5,7 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
         "defaultLimit", "maxLimit", "maxFilters", "maxTags", "staticBodyTextLimit",
         "summaryDisplayLimit", "signatureDisplayLimit", "requestProperties", "globalFields",
         "searchFields", "filterFields", "filterOps", "setPredicates", "preciseRules", "discoveryRules"]) ||
-        contract.version !== "cjdoc.search-contract/2" ||
+        contract.version !== "cjdoc.search-contract/3" ||
         !isObject(contract.requestProperties) || !stringArray(contract.globalFields) ||
         !stringArray(contract.searchFields) || !Array.isArray(contract.filterFields) || contract.filterFields.length === 0 ||
         !Array.isArray(contract.filterOps) || contract.filterOps.length === 0 ||
@@ -223,19 +223,39 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
     return {all: Object.freeze(all), byScope};
   };
 
-  const prepareFilterProperties = (source, fields) => {
-    const properties = new Map();
-    for (const property of fields) {
-      if (!own(source, property)) continue;
-      const value = source[property];
-      const values = Array.isArray(value) ? value : [value];
-      properties.set(property, values.map(raw => ({
-        raw, folded: typeof raw === "string" && !hasUnpairedSurrogate(raw) ? fold(raw) : ""
-      })));
+  const COMMENT_FIELD_ID = /^[a-z][a-z0-9-]{0,63}$/u;
+  const validCommentFieldId = value => typeof value === "string" && COMMENT_FIELD_ID.test(value);
+  const validCommentFieldValue = value => nonemptyString(value) && runeCount(value) <= 16384 &&
+    /[^ \t]/u.test(value) && !/[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029]/u.test(value);
+  const prepareCommentFieldDictionary = (rows, modules) => {
+    if (!Array.isArray(rows)) return null;
+    const all = [];
+    const byScope = new Map();
+    let previous = null;
+    for (const row of rows) {
+      if (!exactKeys(row, ["scope", "id", "title", "repeatable"]) ||
+          !Number.isSafeInteger(row.scope) || row.scope < 0 || row.scope >= modules.length ||
+          !validCommentFieldId(row.id) || !validMetadataTitle(row.title) ||
+          typeof row.repeatable !== "boolean") return null;
+      const module = modules[row.scope];
+      if (previous && (previous.scope > row.scope ||
+          (previous.scope === row.scope && compareBytes(previous.id, row.id) >= 0))) return null;
+      previous = row;
+      let scoped = byScope.get(row.scope);
+      if (!scoped) { scoped = new Map(); byScope.set(row.scope, scoped); }
+      if (scoped.has(row.id)) return null;
+      const definition = Object.freeze({
+        scope: row.scope, moduleId: module.moduleId, id: row.id, title: row.title,
+        repeatable: row.repeatable, key: row.scope + SEP + row.id
+      });
+      scoped.set(row.id, definition);
+      all.push(definition);
     }
-    return properties;
+    return {all: Object.freeze(all), byScope};
   };
-  const prepareEntry = (entry, modules, snapshot, fields, tagDictionary) => {
+
+  const NO_FIELD_ROWS = Object.freeze([]);
+  const prepareEntry = (entry, modules, snapshot, tagDictionary, commentFields) => {
     if (!isObject(entry) || own(entry, "tagIds") ||
         !nonemptyString(entry.id) || entry.snapshotId !== snapshot.id || !nonemptyString(entry.canonicalId) ||
         typeof entry.concept !== "boolean" || !Number.isSafeInteger(entry.scope) ||
@@ -251,6 +271,7 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
         typeof entry.href !== "string" || !validClassification(entry.classification, entry.concept) ||
         !Array.isArray(entry.exposures) || !Array.isArray(entry.externalDocs) ||
         !Array.isArray(entry.bindings) || !Array.isArray(entry.sections) ||
+        !Array.isArray(entry.commentFields) ||
         !entry.sections.every(validSection) || !entry.exposures.every(exposure =>
           isObject(exposure) && nonemptyString(exposure.id) &&
           Number.isSafeInteger(exposure.scope) && exposure.scope >= 0 &&
@@ -258,6 +279,20 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
           nonemptyString(exposure.qualifiedName) && nonemptyString(exposure.packageName))) return null;
     if ([entry.kind, entry.summary, entry.summaryDisplay, entry.body, entry.href,
         ...entry.parameterTypes].some(hasUnpairedSurrogate)) return null;
+    const scopedFields = !entry.concept && entry.commentFields.length
+      ? commentFields.byScope.get(entry.scope) : null;
+    const fieldRows = entry.commentFields.length ? [] : NO_FIELD_ROWS;
+    let previousFieldId = null;
+    for (const row of entry.commentFields) {
+      if (!exactKeys(row, ["id", "values"]) || !validCommentFieldId(row.id) ||
+          !Array.isArray(row.values) || row.values.length === 0 ||
+          !row.values.every(validCommentFieldValue)) return null;
+      if (previousFieldId !== null && compareBytes(previousFieldId, row.id) >= 0) return null;
+      previousFieldId = row.id;
+      const definition = scopedFields && scopedFields.get(row.id);
+      if (!definition || (!definition.repeatable && row.values.length > 1)) return null;
+      fieldRows.push(Object.freeze({id: row.id, values: Object.freeze(row.values.slice())}));
+    }
     if (entry.concept) {
       if (entry.scope !== -1 || entry.kind !== "concept" || entry.genericArity !== 0 ||
           entry.packageName !== null || entry.qualifiedName !== null || entry.ownerId !== null ||
@@ -288,8 +323,7 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
     }
     const exposures = entry.exposures.map(exposure => ({
       raw: exposure,
-      idBytes: utf8Bytes(exposure.id),
-      filterProperties: prepareFilterProperties(exposure, fields)
+      idBytes: utf8Bytes(exposure.id)
     }));
     exposures.sort((a, b) => compareByteArrays(a.idBytes, b.idBytes));
     const name = entry.name || "";
@@ -313,12 +347,13 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
       packageName, ownerName, symbolKey: entry.symbolKey || "",
       genericArity: entry.genericArity, parameterTypes, exposures, sections: entry.sections,
       classification, tagIds: Object.freeze(classification.tags.map(tag => tag.id)),
+      commentFields: Object.freeze(fieldRows),
       tagFacets: Object.freeze(tagFacts), metadataText,
-      filterProperties: prepareFilterProperties(entry, fields),
       nameFold: fold(name), qualifiedFold: fold(qualifiedName),
       identifierFold: fold([qualifiedName, name, ownerName].join("\n")),
       structuredFold: fold(structured + "\n" + metadataText),
-      documentationFold: fold(entry.summary + "\n" + entry.body + "\n" + metadataText),
+      documentationFold: fold(entry.summary + "\n" + entry.body + "\n" + metadataText +
+        (fieldRows.length ? "\n" + fieldRows.flatMap(row => row.values).join("\n") : "")),
       nameWords, ownerWords: wordParts(ownerName),
       nameAcronym: acronym(nameWords), qualifiedAcronym: acronym(wordParts(qualifiedName))
     };
@@ -336,12 +371,12 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
   };
   const buildPreparedIndex = index => {
     const invalid = {error: "search_index_invalid"};
-    if (index.schemaVersion !== "cjdoc.search-index/11") {
+    if (index.schemaVersion !== "cjdoc.search-index/12") {
       return {error: "search_index_version_unsupported"};
     }
     if (!validateContract(index.contract)) return {error: "search_contract_unavailable"};
     if (!exactKeys(index, ["schemaVersion", "profile", "contract", "projectionId", "scope",
-        "coverage", "modules", "tags", "entries"]) ||
+        "coverage", "modules", "tags", "commentFields", "entries"]) ||
         index.profile !== "bounded-static" || !nonemptyString(index.projectionId) ||
         !validIndexScope(index.scope) || !Array.isArray(index.modules) || index.modules.length > 4096 ||
         !Array.isArray(index.tags) || !Array.isArray(index.entries) ||
@@ -355,17 +390,20 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
     }
     const tagDictionary = prepareTagDictionary(index.tags, modules, index.scope);
     if (!tagDictionary) return invalid;
+    const commentFields = prepareCommentFieldDictionary(index.commentFields, modules, index.scope);
+    if (!commentFields) return invalid;
+    const usedFieldKeys = new Set();
     const entries = [];
     const byIdentity = new Map();
     const byCanonicalId = new Map();
     const usedTagKeys = new Set();
     // Every entry must bind to the same publication snapshot and filter contract.
     const snapshot = {id: index.scope.snapshotId, bytes: utf8Bytes(index.scope.snapshotId)};
-    const fields = new Set(index.contract.filterFields.flatMap(field => propertyArray(field.property)));
     for (const entry of index.entries) {
-      const facts = prepareEntry(entry, modules, snapshot, fields, tagDictionary.byScope);
+      const facts = prepareEntry(entry, modules, snapshot, tagDictionary.byScope, commentFields);
       if (!facts) return invalid;
       for (const tag of facts.tagFacets) usedTagKeys.add(tag.key);
+      for (const row of facts.commentFields) usedFieldKeys.add(facts.scope + SEP + row.id);
       const snapshotGroup = byIdentity.get(facts.snapshotId) || new Map();
       byIdentity.set(facts.snapshotId, snapshotGroup);
       let group = snapshotGroup.get(facts.canonicalId);
@@ -387,11 +425,12 @@ internal let HTML_SEARCH_KERNEL_INDEX_SCRIPT = #"  const validateContract = cont
       }
     }
     if (tagDictionary.all.some(tag => !usedTagKeys.has(tag.key))) return invalid;
+    if (commentFields.all.some(field => !usedFieldKeys.has(field.key))) return invalid;
     for (const group of entries) {
       group.exposures.sort((a, b) => compareByteArrays(a.idBytes, b.idBytes));
     }
     return {contract: index.contract, modules, entries, byIdentity, byCanonicalId,
-      tagDictionary, scope: frozenCopy(index.scope), coverage: frozenCopy(index.coverage),
+      tagDictionary, commentFields, scope: frozenCopy(index.scope), coverage: frozenCopy(index.coverage),
       projectionId: index.projectionId,
       contentBinding: index.projectionId + "\n" + canonicalJson(index.scope)};
   };
