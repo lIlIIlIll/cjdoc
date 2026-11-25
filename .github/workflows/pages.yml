@@ -987,7 +987,9 @@ jobs:
     timeout-minutes: 10
     concurrency:
       group: github-pages-publication
-      cancel-in-progress: false
+      # An old event may arrive after the current job starts waiting; it must
+      # not cancel the newer job before either can recheck the live main ref.
+      queue: max
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -84,7 +84,9 @@ def check_applicability(binary, root, project, common):
     for paths in ([str(surface), str(surface)], ["--baseline", str(surface), "--current", str(surface)]):
         diff = invoke([binary, "diff"], *paths, "--format", "json", "--deny-breaking-api",
                       "--deny-potentially-breaking-api")
-        assert diff.returncode == 0 and not json.loads(diff.stdout)["changes"], diff
+        assert diff.returncode == 0, diff
+        report = json.loads(diff.stdout)
+        assert [entry["classification"] for entry in report["entries"]] == ["unchanged"], report
     checked = invoke([binary, "check", *common], "--api-surface-baseline", str(surface))
     assert checked.returncode == 0, checked
 
