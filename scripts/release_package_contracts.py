@@ -41,6 +41,7 @@ RELEASE_SEMVER = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
 )
+NIGHTLY_SDK_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]{14}")
 
 
 def release_core(release_version: str) -> str:
@@ -58,6 +59,42 @@ def release_version_from_tag(tag: str) -> str:
             f"release tag {tag!r} is not v followed by a SemVer release version"
         )
     return value
+
+
+def nightly_tag(sdk_version: str, source_commit: str) -> str:
+    if not NIGHTLY_SDK_VERSION.fullmatch(sdk_version) or not COMMIT.fullmatch(source_commit):
+        raise ValueError("Nightly requires a full Nightly SDK version and source commit")
+    return f"nightly-{sdk_version}-{source_commit}"
+
+
+def nightly_release_version(package_version: str, sdk_version: str, source_commit: str) -> str:
+    nightly_tag(sdk_version, source_commit)
+    if not SEMVER.fullmatch(package_version):
+        raise ValueError("Nightly requires a stable three-part package version")
+    return f"{package_version}-nightly.sdk{sdk_version}.g{source_commit}"
+
+
+def candidate_release_version(tag: str, package_version: str,
+                              sdk_version: str, source_commit: str) -> str:
+    if tag.startswith("nightly-"):
+        if tag != nightly_tag(sdk_version, source_commit):
+            raise ValueError("Nightly tag does not match the SDK version and source commit")
+        return nightly_release_version(package_version, sdk_version, source_commit)
+    return release_version_from_tag(tag)
+
+
+def validate_release_stdx_version(version: str, sdk_version: str, source_commit: str,
+                                  stdx_version: str) -> None:
+    nightly = isinstance(sdk_version, str) and NIGHTLY_SDK_VERSION.fullmatch(sdk_version)
+    if nightly and version == nightly_release_version(
+            release_core(version), sdk_version, source_commit):
+        if not isinstance(stdx_version, str) or not re.fullmatch(
+                re.escape(sdk_version) + r"\.[1-9][0-9]*", stdx_version):
+            raise ValueError("Nightly stdx version must identify a component of the same SDK version")
+    elif not isinstance(stdx_version, str) or not SEMVER.fullmatch(stdx_version):
+        raise ValueError("stdx version must be a stable three-part SemVer")
+
+
 MAX_MEMBERS = 128
 MAX_ARCHIVE_SIZE = 512 * 1024 * 1024
 MAX_MEMBER_SIZE = 512 * 1024 * 1024

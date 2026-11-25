@@ -1,0 +1,171 @@
+name: Nightly release
+
+on:
+  schedule:
+    - cron: "37 19 * * *" # UTC; independent of the scheduled STS check
+  workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: Exact Cangjie Nightly SDK version (empty selects the newest upstream version)
+        type: string
+        required: false
+      publish:
+        description: Publish an immutable prerelease (main only); otherwise just verify the candidates
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve Nightly SDK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.sdk.outputs.matrix }}
+      sdk_version: ${{ steps.sdk.outputs.sdk_version }}
+      release_version: ${{ steps.sdk.outputs.release_version }}
+      tag: ${{ steps.sdk.outputs.tag }}
+      existing: ${{ steps.release.outputs.existing }}
+    steps:
+      - name: Require main for publication
+        if: github.event_name == 'schedule' || inputs.publish
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo '::error::Nightly publication runs only from main.'
+            exit 1
+          fi
+
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Freeze upstream SDK and stdx inputs
+        id: sdk
+        shell: bash
+        env:
+          REQUESTED_SDK: ${{ inputs.sdk_version }}
+        run: |
+          python scripts/nightly_sdk.py --repo . --commit "$GITHUB_SHA" \
+            --version "$REQUESTED_SDK" --github-output "$GITHUB_OUTPUT"
+
+      - name: Check for an existing published Nightly
+        id: release
+        if: github.event_name == 'schedule' || inputs.publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_SDK_VERSION: ${{ steps.sdk.outputs.sdk_version }}
+          NIGHTLY_RELEASE_VERSION: ${{ steps.sdk.outputs.release_version }}
+          NIGHTLY_TAG: ${{ steps.sdk.outputs.tag }}
+          NIGHTLY_MATRIX: ${{ steps.sdk.outputs.matrix }}
+        run: python scripts/nightly_publish.py status
+
+  candidate:
+    name: Nightly candidate / ${{ matrix.platform }}
+    needs: resolve
+    if: needs.resolve.outputs.existing != 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    env:
+      CJDOC_PYTHON: python
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+      cjHeapSize: "512MB"
+      NIGHTLY_PLATFORM: ${{ matrix.platform }}
+      NIGHTLY_UNAVAILABLE_REASON: ${{ matrix.unavailable_reason }}
+      NIGHTLY_SDK_VERSION: ${{ needs.resolve.outputs.sdk_version }}
+      NIGHTLY_STDX_VERSION: ${{ matrix.stdx_version }}
+      NIGHTLY_SDK_URL: ${{ matrix.sdk_url }}
+      NIGHTLY_SDK_SHA256: ${{ matrix.sdk_sha256 }}
+      NIGHTLY_STDX_URL: ${{ matrix.stdx_url }}
+      NIGHTLY_STDX_SHA256: ${{ matrix.stdx_sha256 }}
+      NIGHTLY_TAG: ${{ needs.resolve.outputs.tag }}
+    steps:
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
+
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Accept and package, with up to three retries
+        shell: bash
+        run: bash scripts/nightly_candidate.sh
+
+      - name: Upload the accepted package and checksum
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/nightly-assets/
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish Nightly prerelease
+    needs: [resolve, candidate]
+    if: >-
+      !cancelled() && needs.resolve.result == 'success' &&
+      needs.resolve.outputs.existing != 'true' &&
+      (needs.candidate.result == 'success' || needs.candidate.result == 'failure') &&
+      github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Download candidates from this run and attempt
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: nightly-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/nightly-candidates
+          # Each archive already carries its own platform/run/attempt directory.
+          merge-multiple: true
+
+      - name: Verify and publish successful platforms together
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_RELEASE_SETTINGS_TOKEN: ${{ secrets.NIGHTLY_RELEASE_SETTINGS_TOKEN }}
+          NIGHTLY_SDK_VERSION: ${{ needs.resolve.outputs.sdk_version }}
+          NIGHTLY_RELEASE_VERSION: ${{ needs.resolve.outputs.release_version }}
+          NIGHTLY_TAG: ${{ needs.resolve.outputs.tag }}
+          NIGHTLY_MATRIX: ${{ needs.resolve.outputs.matrix }}
+        run: python scripts/nightly_publish.py publish --assets "$RUNNER_TEMP/nightly-candidates"
