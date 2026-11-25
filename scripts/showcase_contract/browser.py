@@ -13,6 +13,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import importlib.metadata
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import threading
@@ -166,38 +167,36 @@ def _report_browser_identity(browser_version: str) -> None:
     })
 
 
-def check_portal_preview(page) -> None:
-    """Check the homepage preview before entering the native API journey."""
+def check_specimen(page) -> None:
+    """The framed specimen is the native page the primary action opens, and stays inert until asked."""
     from playwright.sync_api import expect
 
-    preview = page.locator("[data-portal-preview]")
-    select = preview.locator("[data-portal-select]")
-    filter_box = preview.locator("[data-portal-filter]")
-    current = preview.locator('[data-portal-version="demo-v2"]')
-    previous = preview.locator('[data-portal-version="demo-v1"]')
-    expect(current).to_be_visible()
-    expect(previous).to_be_hidden()
-    expect(current.locator("[data-portal-member]:visible")).to_have_count(3)
-    filter_box.fill("add")
-    expect(current.locator("[data-portal-member]:visible")).to_have_count(2)
-    select.select_option("demo-v1")
-    expect(current).to_be_hidden()
-    expect(previous).to_be_visible()
-    expect(previous.locator("[data-portal-member]:visible")).to_have_count(2)
-    expect(previous.locator("summary").filter(has_text="public func add(value: Int64): Unit")).to_be_visible()
-    filter_box.fill("__no_preview_member__")
-    expect(previous.locator("[data-portal-empty]")).to_be_visible()
-    expect(previous.locator("[data-portal-member]:visible")).to_have_count(0)
-    filter_box.fill("")
-    select.select_option("demo-v2")
-    expect(current.locator("[data-portal-member]:visible")).to_have_count(3)
-    row = current.locator("[data-portal-member]").filter(has_text="public func add(value: String): Unit")
-    row.locator("summary").click()
-    expect(row.locator("a")).to_be_visible()
-    row.locator("summary").click()
+    figure = page.locator("[data-showcase-specimen]")
+    frame_element = figure.locator("iframe")
+    shield = figure.locator("[data-showcase-specimen-shield]")
+    expect(frame_element).to_have_count(1)
+    primary = page.locator("[data-showcase-primary]").get_attribute("href")
+    if urlsplit(frame_element.get_attribute("src")).path != urlsplit(primary).path:
+        raise AssertionError("homepage specimen does not frame the page its primary action opens")
+    framed = page.frame_locator("[data-showcase-specimen] iframe")
+    expect(framed.locator("body")).to_have_attribute("data-cjdoc-doc-version", re.compile(r"^demo-v\d+$"))
+    expect(framed.locator("h1")).to_have_count(1)
+    if not frame_element.evaluate("frame => frame.inert"):
+        raise AssertionError("homepage specimen must stay inert before the reader activates it")
+    expect(shield).to_be_visible()
+    shield.click()
+    expect(shield).to_have_count(0)
+    if frame_element.evaluate("frame => frame.inert"):
+        raise AssertionError("activating the homepage specimen did not release the frame")
+    # The framed reader caches its theme at start-up; the homepage must reload it so
+    # its own settings label agrees with the colors, not just repaint the root.
+    page.locator("[data-showcase-theme]").click()
+    page.locator('[data-showcase-theme-value="paper"]').click()
+    expect(framed.locator("html")).to_have_attribute("data-theme", "paper")
+    expect(framed.locator("[data-cjdoc-theme-label]")).to_have_text(re.compile("纸色|Paper"))
     page.evaluate("document.activeElement.blur(); window.scrollTo(0, 0)")
     if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
-        raise AssertionError("homepage preview overflows its viewport")
+        raise AssertionError("homepage specimen overflows its viewport")
 
 
 def exercise(browser, target: dict, key: tuple, base: str, site: Site, output: Path, homes: dict) -> dict:
@@ -229,7 +228,7 @@ def exercise(browser, target: dict, key: tuple, base: str, site: Site, output: P
             initial_actions += 1
         home_key = (target["locale"], width, height, key[3], SCENARIOS[key[2]][-1])
         if home_key not in homes:
-            check_portal_preview(page)
+            check_specimen(page)
             home = Journey(page, site, base, target, key[3])
             images = screenshots(home, tuple(str(part) for part in (*home_key, "homepage")), output)
             homes[home_key] = {"locale": target["locale"], "mode": key[3], "prefix": SCENARIOS[key[2]][-1],

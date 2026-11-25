@@ -17,6 +17,34 @@
     const value = document.documentElement.dataset.themeChoice;
     return choices.some(([key]) => key === value) ? value : 'system';
   };
+  // The framed reader caches its theme when it starts, so a live attribute change
+  // would leave its own settings out of step. Reload it with ?theme= instead; it
+  // reads that before storage, and a cross-origin file:// frame accepts it too.
+  const frameRoot = (frame) => {
+    try { return frame.contentDocument && frame.contentDocument.documentElement; } catch (_) { return null; }
+  };
+  const themeFrame = (frame, next) => {
+    const root = frameRoot(frame);
+    if (root) {
+      const href = frame.contentWindow.location.href;
+      if (href === 'about:blank') return;
+      const value = root.getAttribute('data-theme');
+      if (next === 'system' ? value === null : value === next) return;
+      const url = new URL(href);
+      url.searchParams.set('theme', next);
+      frame.contentWindow.location.replace(url.href);
+      return;
+    }
+    try {
+      const url = new URL(frame.src);
+      const current = url.searchParams.get('theme');
+      if (current === next || (next === 'system' && current === null)) return;
+      url.searchParams.set('theme', next);
+      frame.src = url.href;
+    } catch (_) {}
+  };
+  const specimenFrames = () => [...document.querySelectorAll('[data-showcase-specimen] iframe')];
+  const themeSpecimens = (next) => specimenFrames().forEach((frame) => themeFrame(frame, next));
   const applyTheme = (next) => {
     if (!choices.some(([key]) => key === next)) return;
     document.documentElement.dataset.themeChoice = next;
@@ -24,6 +52,7 @@
       ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : next;
     if (globalThis.__CJDOC_THEME__) globalThis.__CJDOC_THEME__.persist(next);
     else { try { localStorage.setItem('cjdoc-theme', next); } catch (_) {} }
+    themeSpecimens(next);
   };
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -57,7 +86,9 @@
     trigger.className = 'showcase-theme-trigger';
     trigger.textContent = '';
     const label = element('span', 'showcase-theme-label');
-    trigger.append(paletteIcon(), label, element('span', 'showcase-theme-chevron', '⌄'));
+    const chevron = element('span', 'showcase-theme-chevron');
+    chevron.setAttribute('aria-hidden', 'true');
+    trigger.append(paletteIcon(), label, chevron);
     trigger.setAttribute('aria-controls', 'showcase-theme-menu');
     trigger.setAttribute('aria-expanded', 'false');
 
@@ -99,7 +130,7 @@
     const sync = () => {
       const active = currentTheme();
       const entry = choices.find(([key]) => key === active);
-      label.textContent = (zh ? '主题：' : 'Theme: ') + entry[1];
+      label.textContent = entry[1];
       trigger.setAttribute('aria-label', (zh ? '选择主题：' : 'Select theme: ') + entry[1]);
       buttons.forEach((button) => button.setAttribute('aria-pressed',
         button.dataset.showcaseThemeValue === active ? 'true' : 'false'));
@@ -203,27 +234,27 @@
     button.dataset.copyResult = copied ? 'copied' : 'unavailable';
     say(copied ? (zh ? '已复制' : 'Copied') : (zh ? '剪贴板不可用，请手动选择代码' : 'Clipboard unavailable; select the code manually'));
   }));
-  document.querySelectorAll('[data-portal-preview]').forEach(preview => {
-    const controls = preview.querySelector('[data-portal-controls]');
-    const select = controls.querySelector('[data-portal-select]');
-    const input = controls.querySelector('[data-portal-filter]');
-    const versions = [...preview.querySelectorAll('[data-portal-version]')];
-    const update = () => {
-      const query = input.value.trim().toLowerCase();
-      versions.forEach(version => {
-        version.hidden = version.dataset.portalVersion !== select.value;
-        let matches = 0;
-        version.querySelectorAll('[data-portal-member]').forEach(member => {
-          member.hidden = !member.querySelector('summary').textContent.toLowerCase().includes(query);
-          if (!member.hidden) matches += 1;
-        });
-        version.querySelector('[data-portal-empty]').hidden = matches !== 0;
-      });
-    };
-    select.addEventListener('change', update);
-    input.addEventListener('input', update);
-    update();
-    controls.hidden = false;
+  // Without scripts the shield opens the full page; with them it unlocks the
+  // inert frame in place, so wheel scrolling never gets trapped uninvited.
+  document.querySelectorAll('[data-showcase-specimen]').forEach((figure) => {
+    const frame = figure.querySelector('iframe');
+    const shield = figure.querySelector('[data-showcase-specimen-shield]');
+    if (!frame || !shield) return;
+    // Match the frame's first page to the homepage, including a URL-only ?theme=
+    // that storage never sees; later in-frame navigation keeps the reader's choice.
+    frame.addEventListener('load', () => themeFrame(frame, currentTheme()), {once: true});
+    themeFrame(frame, currentTheme());
+    const button = element('button', shield.className);
+    button.type = 'button';
+    button.dataset.showcaseSpecimenShield = '';
+    button.appendChild(element('span', '', shield.dataset.tryLabel || shield.textContent));
+    shield.replaceWith(button);
+    button.addEventListener('click', () => {
+      frame.inert = false;
+      figure.dataset.live = '';
+      button.remove();
+      frame.focus();
+    });
   });
   if (location.protocol === 'file:') document.querySelectorAll('[data-offline-download]').forEach(link => {
     link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true');

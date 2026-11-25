@@ -323,7 +323,7 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
     (site / "showcase-features.json").write_bytes(canonical_json(resolved))
     (site / "build.json").write_bytes(canonical_json(metadata))
     with stage_timing.phase("showcase.homepage"):
-        homepage.publish(repo, site, resolved, metadata, routes)
+        homepage.publish(repo, site, resolved, metadata)
     with stage_timing.phase("showcase.offline-archive"):
         create_archive(site)
     with stage_timing.phase("showcase.link-validate"):
