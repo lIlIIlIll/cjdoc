@@ -149,8 +149,8 @@ target/doc/
 | `agent/pages/*.json`、`agent/pages/*.md` | `cjdoc.page/2` | 概念页、包页或项目页的独立表示 |
 | `agent/packages/*` | `cjdoc.page/2`、`cjdoc.declaration/3` | 包页与包内声明的 Markdown/JSON 表示 |
 | `agent-full-index.json` | `cjdoc.agent-full-index/1` | 全文分片描述：顺序、`unitCount`、`partByteLimit`、各分片范围与摘要 |
-| `llms.txt` | 无 schema | 精简发现入口，链接目录、表示 manifest 与全文入口；不是全站枚举 |
-| `validation.html` | — | HTML 站点的验证结果页；可附加验证或 API 差异报告 |
+| `llms.txt` | 无 schema | 精简发现入口，按概念页自身 kind 分组的指南区与独立的 API packages 区，并链接目录、表示 manifest 与全文入口；不是全站枚举，超出预算时指向 `navigation-index.json` 续页 |
+| `validation.html` | — | HTML 站点的验证结果页；每个报告种类显示已附带并链接 `agent/reports/<kind>.json`，或明确显示本次未附带；已附带不代表检查通过或兼容 |
 
 `agent/manifest.json` 是路径映射的事实来源；不要由标题、签名或 slug 推算路径。读取 `agent-full-index.json` 时要对照 manifest 的 `snapshotId` 与 `publicationRevision`，并校验分片 SHA-256、范围与续取信息。
 

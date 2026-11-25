@@ -14,9 +14,17 @@ import std.collection.*
  * dropping the destination.
  */
 protected func documentationRouteHref(value: String): SafeUrl {
+    SafeUrl.siteRoute(documentationRouteValue(value))
+}
+
+/**
+ * The single encoding rule for captured route strings, shared by navigation and
+ * Markdown body links so one destination is never encoded twice or differently.
+ */
+internal func documentationRouteValue(value: String): String {
     match (SafeUrl.site(value)) {
-        case Some(url) => url
-        case None => SafeUrl.siteRoute(percentEncodeRoute(value))
+        case Some(_) => value
+        case None => percentEncodeRoute(value)
     }
 }
 

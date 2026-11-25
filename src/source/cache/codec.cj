@@ -1,9 +1,10 @@
 protected package cjdoc.source.cache
 
 import cjdoc.source.model.{
-    SourceParameter, SourceTypeRelationship, SourceImportItem, SourceReExport,
-    SourceSymbolRelationship, SourceDeclaration, CapturedSourceIndex, CapturedSourceFacts,
-    DeclarationOrigin, UnsupportedDeclaration, OrphanDocComment, MacroInvocation}
+    SourceParameter, SourceTypeRelationship, SourceImportItem, SourceImportFacts,
+    SourceReExport, SourceSymbolRelationship, SourceDeclaration, CapturedSourceIndex,
+    CapturedSourceFacts, DeclarationOrigin, UnsupportedDeclaration, OrphanDocComment,
+    MacroInvocation}
 import cjdoc.source.Diagnostic
 import cjdoc.source.{SourceLocation, MAX_SOURCE_CACHE_BYTES, MAX_SOURCE_CACHE_ITEMS}
 import cjdoc.source.lexing.sourceApiSignatureTokens
@@ -124,6 +125,53 @@ internal func cacheAddLocation(writer: SourceCacheWriter, value: SourceLocation)
 
 internal func cacheReadLocation(reader: SourceCacheReader): SourceLocation {
     SourceLocation(reader.next(), reader.nextInt(), reader.nextInt(), reader.nextInt(), reader.nextInt())
+}
+
+internal func cacheAddImportFacts(writer: SourceCacheWriter, value: SourceImportFacts): Unit {
+    writer.add(value.modifier)
+    writer.add(value.kind)
+    writer.add(value.organization)
+    if (!writer.addCount(value.prefixPaths.size)) { return }
+    for (part in value.prefixPaths) {
+        writer.add(part)
+        if (!writer.canContinue()) { return }
+    }
+    writer.add(value.member)
+    cacheAddOptionalString(writer, value.alias)
+    if (!writer.addCount(value.items.size)) { return }
+    for (item in value.items) {
+        writer.add(item.name)
+        cacheAddOptionalString(writer, item.alias)
+        if (!writer.canContinue()) { return }
+    }
+    writer.add(value.source.isSome())
+    if (let Some(source) <- value.source) { cacheAddLocation(writer, source) }
+}
+
+protected func cacheReadImportFacts(reader: SourceCacheReader): SourceImportFacts {
+    let modifier = reader.next()
+    let kind = reader.next()
+    let organization = reader.next()
+    let prefixCount = reader.nextCount()
+    let prefixPaths = ArrayList<String>()
+    var index: Int64 = 0
+    while (index < prefixCount) {
+        prefixPaths.add(reader.next())
+        index++
+    }
+    let member = reader.next()
+    let alias = cacheReadOptionalString(reader)
+    let itemCount = reader.nextCount()
+    let items = ArrayList<SourceImportItem>()
+    index = 0
+    while (index < itemCount) {
+        let name = reader.next()
+        items.add(SourceImportItem(name, alias: cacheReadOptionalString(reader)))
+        index++
+    }
+    let source = if (reader.nextBool()) { Some(cacheReadLocation(reader)) } else { None<SourceLocation> }
+    SourceImportFacts(modifier, kind, organization, prefixPaths: prefixPaths.toArray(),
+        member: member, alias: alias, items: items.toArray(), source: source)
 }
 
 internal func cacheAddOptionalString(writer: SourceCacheWriter, value: ?String): Unit {

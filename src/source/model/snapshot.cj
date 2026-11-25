@@ -254,13 +254,17 @@ protected class SourceFileOrigin {
     protected let moduleId: String
     protected let imports: Array<String>
     protected let packageImports: Array<String>
+    // AST-reported import structure. Textual `imports` and `packageImports` stay
+    // for display and re-export checks; dependency selection uses these facts so
+    // legal whitespace, modifiers, aliases and selection lists stay equivalent.
+    protected let importFacts: Array<SourceImportFacts>
     protected let capturedSource: String
 
     protected init(logicalPath: String, actualPath: String, actualRoot: String,
         logicalPrefix: String, moduleId: String, capturedFacts!: ?CapturedSourceFacts = None,
         provenance!: ?public_model.SourceProvenance = None, packageName!: String = "",
         imports!: Array<String> = [], packageImports!: Array<String> = [],
-        capturedSource!: String = "") {
+        importFacts!: Array<SourceImportFacts> = [], capturedSource!: String = "") {
         this.logicalPath = logicalPath
         this.actualPath = actualPath
         this.actualRoot = actualRoot
@@ -271,6 +275,7 @@ protected class SourceFileOrigin {
         this.moduleId = moduleId
         this.imports = imports
         this.packageImports = packageImports
+        this.importFacts = importFacts
         this.capturedSource = capturedSource
     }
 }

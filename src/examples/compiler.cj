@@ -60,46 +60,63 @@ internal func compilerOutput(stdout: Array<Byte>, stderr: Array<Byte>, generated
     normalizeExampleOutput(combined, generated, temporary)
 }
 
-// A `must-fail` pin is only satisfied by a failure the compiler attributed to the
-// generated example file. A rejected compiler option or an uncompilable package also
-// exits non-zero, but names no source file, so it must not be credited to the pin.
+internal func joinedExampleFailureBlocks(blocks: Array<String>): String {
+    let out = StringBuilder()
+    var first = true
+    for (block in blocks) {
+        if (!first) { out.append("\n") }
+        out.append(block)
+        first = false
+    }
+    out.toString()
+}
+
+// A `must-fail` pin is satisfied only by a diagnostic `cjc` reports inside the
+// example body. The generated file also holds the package clause and the captured
+// imports, and a rejected compiler option names no file at all, so neither may be
+// credited to the pin. A context failure is always reported separately, including
+// when the body fails too, because a pin never makes an unbuildable context valid.
 private func judgeFailedCompile(documentation: DocumentationSet,
     target: ExampleCompilationTarget, outputText: String, exitCode: Int64,
-    failureSeverity: ?String): Unit {
+    attribution: ExampleCompileAttribution, failureSeverity: ?String): Unit {
     let label = exampleLabel(target.symbol, target.title)
-    let detail = exampleFailureDetail(outputText, exitCode)
-    if (target.expectsFailure) {
-        if (!outputText.contains("<generated-example>")) {
-            // The context failure keeps its own code; the pin is additionally refused,
-            // because an uncompilable package would otherwise satisfy `must-fail`.
-            addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3031",
-                "declaring package could not be compiled for @example '${label}': ${detail}")
+    let contextDetail = joinedExampleFailureBlocks(attribution.contextBlocks)
+    let detail = if (!contextDetail.isEmpty()) { contextDetail }
+        else { exampleFailureDetail(outputText, exitCode) }
+    if (!attribution.hasBodyFailure) {
+        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3031",
+            "declaring package could not be compiled for @example '${label}': ${detail}")
+        if (target.expectsFailure) {
             addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                 "@example '${label}' pinned to fail did not fail inside the example: ${detail}")
-        } else {
-            match (target.failureContains) {
-                case Some(fragment) => if (!outputText.contains(fragment)) {
-                    addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
-                        "@example '${label}' failed without the pinned message '${fragment}'")
-                }
-                case None => ()
-            }
         }
         return
     }
-    let attributed = outputText.contains("<generated-example>")
-    let code = if (attributed) { "CJDOC3030" } else { "CJDOC3031" }
-    let prefix = if (attributed) {
-        "@example '${label}' failed to compile"
-    } else {
-        "declaring package could not be compiled for @example '${label}'"
+    if (attribution.hasContextFailure) {
+        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3031",
+            "declaring package could not be compiled for @example '${label}': ${contextDetail}")
     }
-    let severity = if (attributed) { failureSeverity } else { Some("error") }
-    match (severity) {
-        case Some(value) => addExampleDiagnostic(documentation, target.symbol, value, code,
-            "${prefix}: ${detail}")
+    let bodyDetail = joinedExampleFailureBlocks(attribution.bodyBlocks)
+    if (target.expectsFailure) {
+        match (target.failureContains) {
+            case Some(fragment) => if (!attribution.bodyText().contains(fragment)) {
+                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
+                    "@example '${label}' failed without the pinned message '${fragment}': ${bodyDetail}")
+            }
+            case None => ()
+        }
+        return
+    }
+    match (failureSeverity) {
+        case Some(value) => addExampleDiagnostic(documentation, target.symbol, value,
+            "CJDOC3030", "@example '${label}' failed to compile: ${bodyDetail}")
         case None => ()
     }
+}
+
+private func exampleFailureAttribution(outputText: String,
+    source: SyntheticExampleSource): ExampleCompileAttribution {
+    attributeExampleCompilerOutput(outputText, source.bodyStartLine, source.bodyEndLine)
 }
 
 private func compileExampleTarget(documentation: DocumentationSet,
@@ -119,7 +136,7 @@ private func compileExampleTarget(documentation: DocumentationSet,
     }
     if (!preparation.failure.isEmpty()) {
         judgeFailedCompile(documentation, target, preparation.failure, 1,
-            failureSeverity)
+            attributeExampleCompilerOutput(preparation.failure, 0, 0), failureSeverity)
         return
     }
     let temporary = try {
@@ -145,16 +162,17 @@ private func compileExampleTarget(documentation: DocumentationSet,
             }
         } else {
             let output = temporary.join("__cjdoc_example.a")
-            File.writeTo(generated, syntheticExampleSource(unit, target).toArray())
+            let staged = syntheticExampleSource(unit, target)
+            File.writeTo(generated, staged.text.toArray())
             let (exitCode, stdout, stderr) = executeWithBoundedOutput("cjc",
                 exampleCompilerArguments(documentation, unit, target, generated, output,
                     sourcePaths: sourcePaths, staticExecutable: false,
                     packageArtifacts: packageArtifacts),
                 workingDirectory: Some(temporary))
             if (exitCode != 0) {
-                judgeFailedCompile(documentation, target,
-                    compilerOutput(stdout, stderr, generated, temporary), exitCode,
-                    failureSeverity)
+                let compilerText = compilerOutput(stdout, stderr, generated, temporary)
+                judgeFailedCompile(documentation, target, compilerText, exitCode,
+                    exampleFailureAttribution(compilerText, staged), failureSeverity)
             } else if (target.expectsFailure) {
                 addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                     "@example '${label}' is pinned to fail but compiled successfully")

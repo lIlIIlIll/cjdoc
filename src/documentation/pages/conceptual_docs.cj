@@ -5,33 +5,8 @@ import cjdoc.model as public_model
 import std.collection.*
 import std.fs.*
 
-protected let CONCEPTUAL_CONFIG_MAX_BYTES: Int64 = 64 * 1024
 protected let CONCEPTUAL_PAGE_MAX_BYTES: Int64 = 256 * 1024
 protected let CONCEPTUAL_MAX_PAGES: Int64 = 128
-
-protected class ConceptualPageSpec {
-    var source = ""
-    var route = ""
-    var title = ""
-    var id = ""
-    var language: ?String = None
-    var kind = "guide"
-    var packageName = ""
-    let sections = ArrayList<public_model.DocumentationSection>()
-
-    init(source!: String = "", route!: String = "", title!: String = "") {
-        this.source = source
-        this.route = route
-        this.title = title
-    }
-}
-
-protected class ConceptualDocsConfig {
-    var enabled = false
-    var indexSource = "docs/index.md"
-    let pages = ArrayList<ConceptualPageSpec>()
-    let packageSources = HashMap<String, String>()
-}
 
 protected class ConceptualApiBinding {
     let target: String
@@ -73,49 +48,6 @@ protected class ConceptualPage {
         this.kind = kind
         this.markdown = markdown
     }
-}
-
-private func conceptualValue(value: String): String {
-    var cleaned = value.trimAscii()
-    var quoted = false
-    var escaped = false
-    var index: Int64 = 0
-    while (index < cleaned.size) {
-        let byte = cleaned[index]
-        if (byte == b'"' && !escaped) { quoted = !quoted }
-        if (byte == b'\\' && quoted) {
-            escaped = !escaped
-            index++
-            continue
-        }
-        if (byte == b'#' && !quoted) {
-            cleaned = cleaned[..index].trimAscii()
-            break
-        }
-        escaped = false
-        index++
-    }
-    if (cleaned.startsWith("\"") && cleaned.endsWith("\"") && cleaned.size >= 2) {
-        return cleaned.removePrefix("\"").removeSuffix("\"")
-    }
-    cleaned
-}
-
-private func conceptualSection(line: String): String {
-    line.removePrefix("[").removeSuffix("]").trimAscii()
-}
-
-private func conceptualSafeRelative(value: String): Bool {
-    if (value.isEmpty() || value.startsWith("/") || value.startsWith("\\") ||
-        value.contains("\\") || value.contains("..") || value.contains(":")) { return false }
-    true
-}
-private func conceptualSafeRoute(value: String): Bool {
-    if (!conceptualSafeRelative(value) || value.contains("?") || value.contains("#")) { return false }
-    for (byte in value.toArray()) {
-        if (byte < 0x20 || byte == 0x7F) { return false }
-    }
-    true
 }
 
 private func conceptualBindingAttribute(line: String, key: String): String {
@@ -279,110 +211,6 @@ private func conceptualResolveBindings(page: ConceptualPage,
                 "unresolved conceptual API binding '${binding.target}' in ${page.source}"))
         }
     }
-}
-
-private func conceptualPathFromValue(value: String, setting: String): String {
-    let path = conceptualValue(value)
-    if (!conceptualSafeRelative(path) || !path.endsWith(".md")) {
-        throw IllegalArgumentException("[docs] ${setting} must be a safe relative Markdown path")
-    }
-    path
-}
-
-private func finishConceptualPage(config: ConceptualDocsConfig, current: ?ConceptualPageSpec): Unit {
-    match (current) {
-        case Some(page) =>
-            if (page.source.isEmpty()) {
-                throw IllegalArgumentException("[[docs.pages]] requires source")
-            }
-            if (!conceptualSafeRelative(page.source) || !page.source.endsWith(".md")) {
-                throw IllegalArgumentException("[[docs.pages]] source must be a safe relative Markdown path")
-            }
-            if (!page.route.isEmpty() && !conceptualSafeRoute(page.route)) {
-                throw IllegalArgumentException("[[docs.pages]] route must be a safe relative path")
-            }
-            config.pages.add(page)
-        case None => ()
-    }
-}
-
-private func loadConceptualDocsConfig(projectRoot: String): ConceptualDocsConfig {
-    let config = ConceptualDocsConfig()
-    let root = Path(projectRoot)
-    let configPath = root.join("cjdoc.toml")
-    if (!exists(configPath)) { return config }
-    let text = readTextBounded(configPath, CONCEPTUAL_CONFIG_MAX_BYTES)
-    var section = ""
-    var current: ?ConceptualPageSpec = None
-    for (rawLine in text.split("\n")) {
-        let line = rawLine.trimAscii()
-        if (line.isEmpty() || line.startsWith("#")) { continue }
-        if (line == "[[docs.pages]]") {
-            finishConceptualPage(config, current)
-            current = Some(ConceptualPageSpec())
-            section = "docs.pages"
-            config.enabled = true
-            continue
-        }
-        if (line.startsWith("[") && line.endsWith("]")) {
-            if (line == "[docs.pages.sections]" && current.isSome()) {
-                section = "docs.pages.sections"
-                continue
-            }
-            finishConceptualPage(config, current)
-            current = None
-            section = conceptualSection(line)
-            if (section == "docs" || section == "docs.packages" || section.startsWith("docs.packages.")) {
-                config.enabled = true
-            }
-            continue
-        }
-        let equals = line.indexOf("=")
-        if (equals.isNone()) { continue }
-        let splitAt = equals.getOrThrow()
-        let key = line[..splitAt].trimAscii()
-        let value = line[splitAt + 1..].trimAscii()
-        if (section == "docs") {
-            if (key == "index" || key == "index-source") {
-                config.indexSource = conceptualPathFromValue(value, key)
-            }
-        } else if (section == "docs.pages" && current.isSome()) {
-            let page = current.getOrThrow()
-            if (key == "source" || key == "path") {
-                page.source = conceptualPathFromValue(value, key)
-            } else if (key == "route") {
-                page.route = conceptualValue(value)
-            } else if (key == "title") {
-                page.title = conceptualValue(value)
-            } else if (key == "id") {
-                page.id = conceptualValue(value)
-            } else if (key == "language") {
-                page.language = Some(public_model.documentationLanguage(conceptualValue(value)))
-            } else if (key == "kind") {
-                page.kind = conceptualValue(value)
-            } else if (key == "package") {
-                page.packageName = conceptualValue(value)
-            }
-        } else if (section == "docs.pages.sections" && current.isSome()) {
-            current.getOrThrow().sections.add(public_model.DocumentationSection(conceptualValue(key), conceptualValue(value)))
-        } else if (section == "docs.packages") {
-            let source = conceptualPathFromValue(value, "package overview")
-            if (!conceptualSafeRelative(key)) {
-                throw IllegalArgumentException("[docs.packages] package name is unsafe")
-            }
-            config.packageSources[key] = source
-        } else if (section.startsWith("docs.packages.")) {
-            let packageName = section.removePrefix("docs.packages.")
-            if (!conceptualSafeRelative(packageName)) {
-                throw IllegalArgumentException("[docs.packages] package name is unsafe")
-            }
-            if (key == "source" || key == "path" || key == "overview") {
-                config.packageSources[packageName] = conceptualPathFromValue(value, key)
-            }
-        }
-    }
-    finishConceptualPage(config, current)
-    config
 }
 
 private func conceptualSlug(value: String): String {

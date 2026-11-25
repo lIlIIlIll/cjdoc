@@ -2,7 +2,8 @@ protected package cjdoc.render.agent
 
 import cjdoc.render.foundation.RenderResourceLimitException
 import cjdoc.render.codec.{escapeJsonString, nullableString}
-import cjdoc.render.foundation.{RENDER_ARTIFACT_LIMIT, RenderArtifactStore}
+import cjdoc.render.foundation.{
+    RENDER_ARTIFACT_LIMIT, RenderArtifactStore, ReportAttachmentView, reportAttachmentPath}
 import cjdoc.model.*
 import std.collection.*
 import yjson.*
@@ -50,13 +51,26 @@ private func capturedReportIdentity(value: JsonObject, name: String): ?String {
     }
 }
 
+/** The read-only attachment facts the HTML evidence page needs, without payloads. */
+protected func reportAttachmentViews(snapshotId: String,
+    reports: Array<DocumentationReportAttachment>): Array<ReportAttachmentView> {
+    let views = ArrayList<ReportAttachmentView>()
+    for (report in reports) {
+        views.add(ReportAttachmentView(report.kind,
+            reportAttachmentPath(report.kind), snapshotId,
+            baselineSnapshotId: report.baselineSnapshotId,
+            currentSnapshotId: report.currentSnapshotId))
+    }
+    views.toArray()
+}
+
 internal func appendCapturedReportArtifacts(artifacts: RenderArtifactStore,
     context: DocumentationReadSnapshot, reports: Array<DocumentationReportAttachment>): String {
     let kinds = HashSet<String>()
     let out = StringBuilder()
     for (report in reports) {
         if (!kinds.add(report.kind)) { throw IllegalArgumentException("duplicate captured report kind") }
-        let path = "agent/reports/" + report.kind + ".json"
+        let path = reportAttachmentPath(report.kind)
         let _ = artifacts.addText("html/" + path, "application/json", report.report)
         if (kinds.size > 1) { out.append(",") }
         out.append("{\"kind\":${escapeJsonString(report.kind)},\"path\":${escapeJsonString(path)}," +

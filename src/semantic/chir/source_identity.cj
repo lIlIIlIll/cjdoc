@@ -1,7 +1,8 @@
 protected package cjdoc.semantic.chir
 
 import cjdoc.source.discovery.sourcePackagePathPrefixLength
-import cjdoc.source.model.{SourcePackage, SourceFileOrigin, SourceSnapshot}
+import cjdoc.source.model.{
+    SourceImportFacts, SourcePackage, SourceFileOrigin, SourceSnapshot}
 import std.collection.*
 import std.fs.*
 import std.sort.*
@@ -43,41 +44,6 @@ internal func chirPackageOrigins(source: SourceSnapshot, moduleId: String,
     result.toArray()
 }
 
-private func chirImportAliasSeparator(value: String): ?Int64 {
-    let bytes = value.toArray()
-    var index: Int64 = 0
-    while (index + 1 < bytes.size) {
-        if (bytes[index] == b'a' && bytes[index + 1] == b's') {
-            let before = index == 0 || bytes[index - 1] == b' ' || bytes[index - 1] == b'\t'
-            let after = index + 2 >= bytes.size || bytes[index + 2] == b' ' ||
-                bytes[index + 2] == b'\t'
-            if (before && after) { return Some(index) }
-        }
-        index++
-    }
-    None
-}
-
-private func chirImportReference(importText: String): (String, String) {
-    let trimmed = importText.trimAscii()
-    let value = if (trimmed.startsWith("public ")) {
-        trimmed.removePrefix("public ").trimAscii()
-    } else {
-        trimmed
-    }
-    if (!value.startsWith("import ")) { return ("", "") }
-    var importedName = value[7..].trimAscii()
-    if (let Some(alias) <- chirImportAliasSeparator(importedName)) {
-        importedName = importedName[..alias].trimAscii()
-    }
-    match (importedName.indexOf("::")) {
-        case Some(index) =>
-            if (index <= 0 || index + 2 >= importedName.size) { return ("", "") }
-            (importedName[..index].trimAscii(), importedName[index + 2..].trimAscii())
-        case None => ("", importedName)
-    }
-}
-
 private func chirImportMatchingPathLength(importedPath: String, packageName: String): Int64 {
     let length = sourcePackagePathPrefixLength(packageName, importedPath)
     if (length < 0 || importedPath.size == length) { return length }
@@ -86,25 +52,29 @@ private func chirImportMatchingPathLength(importedPath: String, packageName: Str
         boundary == b'\n' || boundary == b'\r') { length } else { -1 }
 }
 
-// An import selects a package only when it names that package's longest matching
-// path, so a sibling whose name merely shares a prefix is not a dependency.
-private func chirImportReferencesPackage(importText: String, dependencyPackage: SourcePackage,
-    candidates: Array<SourcePackage>, source: SourceSnapshot): Bool {
-    let reference = chirImportReference(importText)
-    let organization = reference[0]
-    let importedPath = reference[1]
+// An import selects a package only when one of its AST-derived reference paths
+// selects that package's longest matching candidate. Legal whitespace, `private`
+// or `internal`, aliases and `{...}` lists are already resolved by the frontend,
+// so no legal spelling can drop a dependency here.
+private func chirImportReferencesPackage(facts: SourceImportFacts,
+    dependencyPackage: SourcePackage, candidates: Array[SourcePackage],
+    source: SourceSnapshot): Bool {
+    let organization = facts.organization
     if (!chirImportMatchesOrganization(dependencyPackage, organization,
         chirModuleOrganization(source, dependencyPackage.moduleId))) { return false }
-    let selectedLength = chirImportMatchingPathLength(importedPath, dependencyPackage.name)
-    if (selectedLength < 0) { return false }
-    var longest: Int64 = -1
-    for (candidate in candidates) {
-        if (!chirImportMatchesOrganization(candidate, organization,
-            chirModuleOrganization(source, candidate.moduleId))) { continue }
-        let length = chirImportMatchingPathLength(importedPath, candidate.name)
-        if (length > longest) { longest = length }
+    for (importedPath in facts.referencePaths()) {
+        let selectedLength = chirImportMatchingPathLength(importedPath, dependencyPackage.name)
+        if (selectedLength < 0) { continue }
+        var longest: Int64 = -1
+        for (candidate in candidates) {
+            if (!chirImportMatchesOrganization(candidate, organization,
+                chirModuleOrganization(source, candidate.moduleId))) { continue }
+            let length = chirImportMatchingPathLength(importedPath, candidate.name)
+            if (length > longest) { longest = length }
+        }
+        if (selectedLength == longest) { return true }
     }
-    selectedLength == longest
+    false
 }
 
 private func chirImportMatchesOrganization(packageDoc: SourcePackage,
@@ -126,8 +96,8 @@ private func chirPackageDependsOn(source: SourceSnapshot, moduleId: String, pack
         for (logicalPath in pkg.sourceFiles) {
             for (origin in source.sourceFileOrigins) {
                 if (origin.moduleId != moduleId || origin.logicalPath != logicalPath) { continue }
-                for (importText in origin.imports) {
-                    if (chirImportReferencesPackage(importText, dependency, candidates, source)) {
+                for (facts in origin.importFacts) {
+                    if (chirImportReferencesPackage(facts, dependency, candidates, source)) {
                         return true
                     }
                 }

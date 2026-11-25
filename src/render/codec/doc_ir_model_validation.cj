@@ -441,3 +441,105 @@ internal func validReExportId(value: String): Bool {
     true
 }
 
+// A re-export names the package it imported directly and exposes declarations
+// that package makes visible, including everything its own resolved re-exports
+// forward. Validating the closure keeps one storable target identity without
+// accepting a forged reference to a hidden, unreachable, or missing declaration.
+internal class ReExportReachability {
+    private let packagesByKey = HashMap<String, PackageDoc>()
+    private let moduleDependencies = HashMap<String, HashSet<String>>()
+    private let closureCache = HashMap<String, HashSet<String>>()
+    private let reachableCache = HashMap<String, HashSet<String>>()
+    private var work: Int64 = 0
+
+    init(documentation: DocumentationSet) {
+        for (pkg in documentation.packages) {
+            packagesByKey[compositeKey(pkg.moduleId, pkg.name)] = pkg
+        }
+        for (module in documentation.modules) {
+            moduleDependencies[module.id] = HashSet<String>(module.dependencyIds)
+        }
+    }
+
+    private func consume(amount: Int64): Bool {
+        if (work + amount > DOC_IR_MAX_REEXPORT_EDGES) { return false }
+        work += amount
+        true
+    }
+
+    private func reachableModules(start: String): ?HashSet<String> {
+        match (reachableCache.get(start)) {
+            case Some(value) => return Some(value)
+            case None => ()
+        }
+        let result = HashSet<String>()
+        let _ = result.add(start)
+        let pending = ArrayList<String>([start])
+        var cursor: Int64 = 0
+        while (cursor < pending.size) {
+            let current = pending[cursor]
+            cursor++
+            let dependencies = match (moduleDependencies.get(current)) {
+                case Some(value) => value
+                case None => continue
+            }
+            if (!consume(dependencies.size)) { return None }
+            for (dependency in dependencies) {
+                if (result.add(dependency)) { pending.add(dependency) }
+            }
+        }
+        reachableCache[start] = result
+        Some(result)
+    }
+
+    // The direct package must be importable from the exporting module: it is that
+    // module itself, or a module reachable through its declared dependency edges.
+    func moduleReaches(exporterModuleId: String, targetModuleId: String): Bool {
+        if (exporterModuleId == targetModuleId) { return true }
+        let reachable = match (reachableModules(exporterModuleId)) {
+            case Some(value) => value
+            case None => return false
+        }
+        reachable.contains(targetModuleId)
+    }
+
+    // Symbol ids the package exposes: its own top-level declarations plus the
+    // targets of its resolved re-exports, transitively through forwarded packages.
+    func closure(moduleId: String, packageName: String): ?HashSet<String> {
+        let startKey = compositeKey(moduleId, packageName)
+        match (closureCache.get(startKey)) {
+            case Some(value) => return Some(value)
+            case None => ()
+        }
+        let result = HashSet<String>()
+        let visitedPackages = HashSet<String>()
+        let pending = ArrayList<String>([startKey])
+        var cursor: Int64 = 0
+        while (cursor < pending.size) {
+            let key = pending[cursor]
+            cursor++
+            if (!visitedPackages.add(key)) { continue }
+            let pkg = match (packagesByKey.get(key)) {
+                case Some(value) => value
+                case None => return None
+            }
+            if (!consume(pkg.symbolIds.size + pkg.reExports.size)) { return None }
+            for (id in pkg.symbolIds) { let _ = result.add(id) }
+            for (reExport in pkg.reExports) {
+                let targetModuleId = match (reExport.targetModuleId) {
+                    case Some(value) => value
+                    case None => continue
+                }
+                for (binding in reExport.bindings) {
+                    for (targetId in binding.targetSymbolIds) { let _ = result.add(targetId) }
+                }
+                let targetKey = compositeKey(targetModuleId, reExport.targetPackageName)
+                if (targetKey != key && !visitedPackages.contains(targetKey)) { pending.add(targetKey) }
+            }
+        }
+        closureCache[startKey] = result
+        Some(result)
+    }
+}
+
+

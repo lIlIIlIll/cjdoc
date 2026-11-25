@@ -164,7 +164,7 @@ private class CapturedPageLinkResolver {
             if (parts[0].isEmpty() && parts.size == 2) {
                 if (let Some(anchor) <- documentationSectionAnchor(page.markdown, parts[1])) {
                     result[tree.literal] = if (relocated && !markdown) {
-                        prefix + page.route + "#" + anchor
+                        prefix + documentationRouteValue(page.route) + "#" + anchor
                     } else { "#" + if (markdown) { anchor.removePrefix("standalone--doc-") } else { anchor } }
                 }
             }
@@ -174,8 +174,11 @@ private class CapturedPageLinkResolver {
                 let selected = selectedPages[path]
                 var fragment = if (parts.size == 2) { capturedPageFragment(original, selected, parts[1]) } else { "" }
                 if (markdown) { fragment = fragment.removePrefix("standalone--doc-") }
-                result[tree.literal] = prefix +
-                    if (markdown) { selected.route.removeSuffix(".html") + ".md" } else { selected.route }
+                // One encoding rule for captured routes: navigation and body
+                // links must produce the same URL for the same page.
+                result[tree.literal] = prefix + if (markdown) {
+                    documentationRouteValue(selected.route.removeSuffix(".html")) + ".md"
+                } else { documentationRouteValue(selected.route) }
                 if (!fragment.isEmpty()) { result[tree.literal] += "#" + fragment }
             }
         }

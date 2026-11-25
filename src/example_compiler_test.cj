@@ -1,6 +1,7 @@
 package cjdoc
 
-import cjdoc.examples.memoryBoundedCommand
+import cjdoc.examples.{attributeExampleCompilerOutput, memoryBoundedCommand,
+    syntheticSourceForHeader, ExampleCompileAttribution}
 import cjdoc.model as public_model
 import cjdoc.source.cfg.CfgProfile
 import cjdoc.source.cfg.compilerBuiltinCfgAssignment as compilerBuiltinCfgValue
@@ -870,5 +871,120 @@ class ExampleReleaseEntryPointTest {
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
+    }
+}
+
+private let EXAMPLE_HEADER = "package example_compile\n\nimport std.collection.ArrayList\n\n"
+
+// Synthetic attribution cases: the generated file layout is fixed here, so these
+// assert the classifier without a compiler.
+private func attributedFor(bodyBlocks: Array<String>,
+    bodyStartLine: Int64, bodyEndLine: Int64): ExampleCompileAttribution {
+    let joined = StringBuilder()
+    var first = true
+    for (block in bodyBlocks) {
+        if (!first) { joined.append("\n") }
+        joined.append(block)
+        first = false
+    }
+    attributeExampleCompilerOutput(joined.toString(), bodyStartLine, bodyEndLine)
+}
+
+@Test
+class ExampleFailureAttributionTest {
+    @TestCase
+    func bodyRangeCoversExactlyTheExampleLines(): Unit {
+        let staged = syntheticSourceForHeader(EXAMPLE_HEADER, "let a = 1\nlet b = 2",
+            "func __cjdoc_compile_example(): Unit {\n", "}\n")
+        // Header is package + blank + import + blank + wrapper = 5 lines.
+        @Expect(staged.bodyStartLine, 6)
+        @Expect(staged.bodyEndLine, 7)
+        let lines = staged.text.split("\n")
+        @Expect(lines[5].trimAscii(), "let a = 1")
+        @Expect(lines[6].trimAscii(), "let b = 2")
+    }
+
+    @TestCase
+    func headerDiagnosticIsContextNotBody(): Unit {
+        let output = """
+            error: can not find package 'example_compile.helper'
+             ==> <generated-example>:4:16:
+              | 
+            4 | private import example_compile.helper.value
+              |                ^^^^^^^^^^^^^^^^^^^^ 
+              | 
+            1 error generated, 1 error printed.
+            """
+        let attribution = attributedFor([output], 6, 7)
+        @Expect(attribution.hasBodyFailure, false)
+        @Expect(attribution.hasContextFailure, true)
+    }
+
+    @TestCase
+    func bodyDiagnosticIsAttributedToTheExample(): Unit {
+        let output = """
+            error: undeclared identifier 'missingApi'
+             ==> <generated-example>:6:18:
+              | 
+            6 |     let result = missingApi(1, 2)
+              |                  ^ 
+              | 
+            1 error generated, 1 error printed.
+            """
+        let attribution = attributedFor([output], 6, 7)
+        @Expect(attribution.hasBodyFailure, true)
+        @Expect(attribution.hasContextFailure, false)
+        @Expect(attribution.bodyText().contains("missingApi"), true)
+    }
+
+    @TestCase
+    func mixedDiagnosticsKeepBothAttributionsSeparate(): Unit {
+        let header = """
+            error: can not find package 'example_compile.helper'
+             ==> <generated-example>:4:16:
+              | 
+            4 | private import example_compile.helper.value
+              |                ^^^^^^^^^^^^^^^^^^^^ 
+              | 
+            """
+        let body = """
+            error: mismatched types
+             ==> <generated-example>:7:20:
+              | 
+            7 |     let s: Int64 = "abc"
+              |                    ^^^^^ expected 'Int64', found 'Struct-String'
+              | 
+            """
+        let attribution = attributedFor([header, body], 6, 7)
+        @Expect(attribution.bodyBlocks.size, 1)
+        @Expect(attribution.contextBlocks.size, 1)
+        @Expect(attribution.bodyText().contains("mismatched types"), true)
+        @Expect(attribution.bodyText().contains("can not find package"), false)
+    }
+
+    @TestCase
+    func compilerOptionFailureBelongsToNoBody(): Unit {
+        let output = """
+            error: user defined condition's key can not be the same with builtin condition
+            Invalid options. Try: 'cjc --help' for more information.
+            """
+        let attribution = attributedFor([output], 6, 7)
+        @Expect(attribution.hasBodyFailure, false)
+        @Expect(attribution.hasContextFailure, true)
+    }
+
+    @TestCase
+    func otherContextFileFailureIsNeverBodyAttributed(): Unit {
+        let output = """
+            error: mismatched types
+             ==> <generated-example>:3:53:
+              | 
+            3 | public func add(left: Int64, right: Int64): Int64 { "not a number" }
+              |                                                     ^^^^^^^^^^^^^^ expected 'Int64', found 'Struct-String'
+              | 
+            """
+        let attribution = attributedFor([output], 6, 7)
+        @Expect(attribution.hasBodyFailure, false)
+        @Expect(attribution.hasContextFailure, true)
     }
 }

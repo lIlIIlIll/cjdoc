@@ -74,9 +74,7 @@ private let EXAMPLE_RUN_SUPERVISOR_ARGUMENT = "--cjdoc-run-example-supervisor"
 internal func exampleProgramSource(unit: ExampleCompilationUnit,
     target: ExampleCompilationTarget): String {
     let out = StringBuilder()
-    if (!unit.packageName.isEmpty()) { out.append("package ${unit.packageName}\n\n") }
-    for (spelling in target.imports) { out.append(spelling); out.append("\n") }
-    if (!target.imports.isEmpty()) { out.append("\n") }
+    out.append(exampleHeaderText(unit, target))
     appendExampleSupervisorSupport(out)
     out.append("main(): Unit {\n")
     out.append("    __cjdoc_runExampleSupervisor()\n")

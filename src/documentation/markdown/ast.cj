@@ -277,16 +277,20 @@ private func explicitSemanticLinkNode(target: String): public_model.MarkdownNode
         literal: target, children: [public_model.MarkdownNode("text", literal: target)])
 }
 
+// Author text before an unusable `{@link ...}` is never dropped: the search
+// cursor may advance past an unemitted fragment, but the emission cursor only
+// moves after a node is actually published. A later valid link is still bound.
 private func explicitSemanticLinkNodes(value: String): ?Array<public_model.MarkdownNode> {
     let marker = "{@link "
     let nodes = ArrayList<public_model.MarkdownNode>()
-    var cursor: Int64 = 0
+    var search: Int64 = 0
+    var emitted: Int64 = 0
     var found = false
-    while (cursor < value.size) {
-        match (value[cursor..].indexOf(marker)) {
+    while (search < value.size) {
+        match (value[search..].indexOf(marker)) {
             case None => break
             case Some(relativeOpen) =>
-                let open = cursor + relativeOpen
+                let open = search + relativeOpen
                 let targetStart = open + marker.size
                 match (value[targetStart..].indexOf("}")) {
                     case None => break
@@ -294,20 +298,25 @@ private func explicitSemanticLinkNodes(value: String): ?Array<public_model.Markd
                         let close = targetStart + relativeClose
                         let target = value[targetStart..close].trimAscii()
                         if (target.isEmpty() || target.contains("{") || target.contains("}")) {
-                            cursor = targetStart
+                            // Keep the fragment as ordinary text; rescan one byte
+                            // later so a nested valid marker is still reachable.
+                            search = open + 1
                             continue
                         }
-                        if (open > cursor) {
-                            nodes.add(public_model.MarkdownNode("text", literal: value[cursor..open]))
+                        if (open > emitted) {
+                            nodes.add(public_model.MarkdownNode("text", literal: value[emitted..open]))
                         }
                         nodes.add(explicitSemanticLinkNode(target))
-                        cursor = close + 1
+                        emitted = close + 1
+                        search = emitted
                         found = true
                 }
         }
     }
     if (!found) { return None }
-    if (cursor < value.size) { nodes.add(public_model.MarkdownNode("text", literal: value[cursor..])) }
+    if (emitted < value.size) {
+        nodes.add(public_model.MarkdownNode("text", literal: value[emitted..]))
+    }
     Some(nodes.toArray())
 }
 

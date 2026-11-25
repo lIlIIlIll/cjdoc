@@ -256,6 +256,7 @@ private func validateDocumentationInventory(documentation: DocumentationSet,
 private func validateDocumentationPackageListings(documentation: DocumentationSet,
     moduleIds: HashSet<String>, packageKeys: HashSet<String>, fileKeys: HashSet<String>,
     byId: HashMap<String, SymbolDoc>): Unit {
+    let reachability = ReExportReachability(documentation)
     let listedFileKeys = HashSet<String>()
     let listedSymbolIds = HashSet<String>()
     let reExportIds = HashSet<String>()
@@ -308,12 +309,27 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
                 domainFail("${reExportPath}.bindings",
                     "resolved symbol re-export requires at least one binding")
             }
+            var targetClosure: ?HashSet<String> = None
             match (reExport.targetModuleId) {
                 case Some(targetModuleId) =>
                     if (!moduleIds.contains(targetModuleId) ||
                         !packageKeys.contains(compositeKey(targetModuleId,
                             reExport.targetPackageName))) {
                         domainFail(reExportPath, "unknown target module/package")
+                    }
+                    // The stored package is the one the exporting module imported
+                    // directly; it must be importable from that module.
+                    if (!reachability.moduleReaches(pkg.moduleId, targetModuleId)) {
+                        domainFail(reExportPath,
+                            "target package is not reachable from the exporting module")
+                    }
+                    if (!reExport.bindings.isEmpty()) {
+                        targetClosure = match (reachability.closure(targetModuleId,
+                            reExport.targetPackageName)) {
+                            case Some(value) => Some(value)
+                            case None => domainFail(reExportPath,
+                                "re-export target reachability exceeded its work budget")
+                        }
                     }
                 case None => if (reExport.state == "resolved") {
                     domainFail("${reExportPath}.targetModuleId",
@@ -336,13 +352,15 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
                     }
                     match (byId.get(targetId)) {
                         case Some(target) =>
+                            let reachable = match (targetClosure) {
+                                case Some(values) => values.contains(targetId)
+                                case None => false
+                            }
                             if (target.ownerId.isSome() ||
                                 (target.visibility != "public" && target.visibility != "protected") ||
-                                reExport.targetModuleId.isNone() ||
-                                target.moduleId != reExport.targetModuleId.getOrThrow() ||
-                                target.packageName != reExport.targetPackageName) {
+                                !reachable) {
                                 domainFail(bindingPath,
-                                    "re-export target must be a visible top-level declaration in the target package")
+                                    "re-export target must be a visible top-level declaration reachable through the target package")
                             }
                         case None => domainFail(bindingPath, "unknown target SymbolId")
                     }
