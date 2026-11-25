@@ -314,6 +314,22 @@ jobs:
           set -euo pipefail
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
+      - name: Compute product dependency cache identity
+        id: product-cache-key
+        shell: bash
+        run: >-
+          python scripts/dependency_cache_key.py --repo .
+          --platform "${RUNNER_OS}-${RUNNER_ARCH}" --github-output "${GITHUB_OUTPUT}"
+
+      - name: Restore cjpm incremental artifacts
+        id: product-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.product-cache-key.outputs.paths }}
+          key: ${{ steps.product-cache-key.outputs.key }}
+          restore-keys: |
+            ${{ steps.product-cache-key.outputs.restore-prefix }}
+
       - name: Snapshot pristine source-edge fixture
         id: source-edge-snapshot
         if: matrix.platform == 'macos-arm64'
@@ -336,7 +352,9 @@ jobs:
           # Same mapping as the linux acceptance job: without it the Windows and
           # macOS stage artifacts record an empty cache map and cannot be classified
           # as cold or warm for DONE-03.
-          CJDOC_CACHE_STATE: cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}
+          CJDOC_CACHE_STATE: >-
+            cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }},
+            deps=${{ steps.product-cache.outputs.cache-matched-key != '' && 'hit' || 'miss' }}
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
@@ -345,6 +363,13 @@ jobs:
           # receipt valid after the ordinary stages clean their owned build tree.
           bash scripts/check.sh --manifest target/ci-build/build-manifest.json \
             --worker-binary-out target/release/bin/chir-worker-main
+
+      - name: Save successful cjpm incremental artifacts
+        if: success() && steps.product-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.product-cache-key.outputs.paths }}
+          key: ${{ steps.product-cache-key.outputs.key }}
 
       - name: Restore pristine source-edge fixture
         id: restore-source-edge

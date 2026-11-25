@@ -106,7 +106,7 @@ class CompilePhaseTests(unittest.TestCase):
         self.assertIn('-Woff', OPTION)
 
     def test_product_o2_and_unit_o1_are_selected_before_execution(self):
-        result = self.invoke('cjpm build --jobs 1 && cjpm test --jobs 1 --no-progress && cjpm run --build-args "--jobs 1"')
+        result = self.invoke('cjpm build -i --jobs 1 && cjpm test --jobs 1 --no-progress && cjpm run --build-args "--jobs 1"')
         self.assertEqual(result.returncode, 0, result.stderr)
         actual = self.records(self.observed)
         self.assertEqual([r['option'] for r in actual], [OPTION, UNIT_OPTION, OPTION])
@@ -246,7 +246,7 @@ class CompilePhaseTests(unittest.TestCase):
         manifest = worker / 'cjpm.toml'
         original = b'[package]\nname = "cjdoc_chir_worker"\n'
         manifest.write_bytes(original)
-        result = self.invoke('cjpm build --jobs 1 && cd tools/chir-worker && cjpm build --jobs 1')
+        result = self.invoke('cjpm build -i --jobs 1 && cd tools/chir-worker && cjpm build -i --jobs 1')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([r['option'] for r in self.records(self.observed)],
                          [OPTION, OPTION])

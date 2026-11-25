@@ -77,7 +77,7 @@ class ReleaseCandidateFixture(ReleaseToolsTestSupport):
                 ("cjdoc_chir_worker", self.worker, worker_digest)):
             records.append({
                 "schemaVersion": "cjdoc.sts-invocation/1", "package": package,
-                "option": option, "argv": ["build", "--jobs", "1"], "exitCode": 0,
+                "option": option, "argv": ["build", "-i", "--jobs", "1"], "exitCode": 0,
                 "binary": {"sha256": digest or verify_release_package.sha256_file(binary),
                            "size": binary.stat().st_size},
                 "policySha256": policy_sha or verify_release_package.sha256_file(

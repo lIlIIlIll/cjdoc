@@ -152,6 +152,22 @@ jobs:
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
+      - name: Compute product dependency cache identity
+        id: product-cache-key
+        shell: bash
+        run: >-
+          python scripts/dependency_cache_key.py --repo .
+          --platform "${RUNNER_OS}-${RUNNER_ARCH}" --github-output "${GITHUB_OUTPUT}"
+
+      - name: Restore cjpm incremental artifacts
+        id: product-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.product-cache-key.outputs.paths }}
+          key: ${{ steps.product-cache-key.outputs.key }}
+          restore-keys: |
+            ${{ steps.product-cache-key.outputs.restore-prefix }}
+
       - name: Snapshot pristine source-edge fixture
         id: source-edge-snapshot
         if: matrix.platform == 'macos-arm64'
@@ -209,6 +225,13 @@ jobs:
           fi
           test -f target/ci-build/build-manifest.json
           test -f "${worker_out}"
+
+      - name: Save successful cjpm incremental artifacts
+        if: success() && steps.product-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.product-cache-key.outputs.paths }}
+          key: ${{ steps.product-cache-key.outputs.key }}
 
       - name: Restore pristine source-edge fixture
         id: restore-source-edge

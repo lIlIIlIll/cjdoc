@@ -9,7 +9,13 @@
 - **Cangjie 1.2.0 STS** 的 `cjc`/`cjpm`，以及与编译器匹配的 **`stdx` release/1.2 sidecar**。`cjpm.toml` 使用固定 `commitId` 的 Git 依赖（`markdown`、`yjson`）和 `vendor/yjson_algorithms` path 依赖；`cjpm.lock` 必须与清单一致。
 - CI 使用 [`Zxilly/setup-cangjie`](https://github.com/Zxilly/setup-cangjie) 的 `sts` channel + `stdx` component（workflow 中 `cjv-version: v0.3.2`），压缩包由 `cangjie-version-manifest` 提供 SHA-256 校验。手工准备同一套工具链可用 `cjv install sts-1.2.0 --component stdx`。
 - 根 `cjpm.toml` 的 `link-option` 与 `bin-dependencies.path-option` 引用环境变量 `${CJDOC_STDX_LINK_OPTIONS}` 和 `${CANGJIE_STDX_PATH}`；没有经过 `scripts/with_stdx.py` 认证并导出这些变量时，构建不会链接到正确的 sidecar。
-- 单作业构建：`cjpm build --jobs 1`。`scripts/check.sh` 保持同一调用参数，便于三平台构建与发布回执核对。
+- 产品单作业构建：`cjpm build -i --jobs 1`。增量判定仍由 `cjpm -i` 执行；验收与发布仅在构建成功后保存缓存。
+
+### 产品依赖构建缓存
+
+Actions 在 Linux、Windows、macOS 的产品验收、Linux Pages fallback 和 Release 构建中缓存 `~/.cjpm/git`、根包 `target/release` 与 `build-script-cache/release`。缓存身份隔离 runner 平台、Cangjie target、SDK/cjpm 版本、compiler fingerprint、stdx digest、产品编译选项、根包与 CHIR worker 的清单和 lockfile、path dependencies 和构建策略输入；根包源码 hash 作为精确 key 后缀。
+
+源码变化时，restore prefix 只允许取回相同依赖与工具链的旧缓存；随后仍执行 `cjpm build -i`，由 cjpm 决定需要重编的包。缓存仅在产品构建/验收成功后写入，测试使用隔离 target，不与产品缓存混用。CHIR worker 的 target 由验收脚本临时创建并清理，不参与共享缓存。
 
 ### 正式构建的完整旗标
 
@@ -73,7 +79,7 @@ python3 scripts/with_stdx.py --variant static --print-env --
 本地单条命令推荐用 wrapper（避免手工导出含空格路径）：
 
 ```bash
-python3 scripts/with_stdx.py --variant static -- cjpm build --jobs 1
+python3 scripts/with_stdx.py --variant static -- cjpm build -i --jobs 1
 ```
 
 需要让 `scripts/check.sh` 这类间接调用也拿到环境时，通过 wrapper 启动整个命令；需要编译的阶段仍先按前文加载 `scripts/with_sts_cjpm.sh`：
@@ -87,7 +93,7 @@ python3 scripts/with_stdx.py --variant static -- bash scripts/check.sh preflight
 ## 构建与运行
 
 ```bash
-python3 scripts/with_stdx.py --variant static -- cjpm build --jobs 1
+python3 scripts/with_stdx.py --variant static -- cjpm build -i --jobs 1
 cjc -v
 cjpm -v
 ./cjdoc --version
@@ -161,7 +167,7 @@ CLI 的 `generate`、`check`、`serve` 默认通过配套 worker 使用 `stdx.ch
 在已认证 stdx 的同一环境构建：
 
 ```bash
-python3 scripts/with_stdx.py --variant static -- bash -c 'cd tools/chir-worker && cjpm build --jobs 1'
+python3 scripts/with_stdx.py --variant static -- bash -c 'cd tools/chir-worker && cjpm build -i --jobs 1'
 ```
 
 产物是 `tools/chir-worker/target/release/bin/main`（Windows 为 `main.exe`）。正式构建把它与主程序一起封存，并将 worker 暂存到主程序同级的 `chir-worker-main[.exe]`。安装时保留这个同目录关系；主程序按操作系统提供的真实可执行文件位置自动定位 worker，不依赖当前工作目录、启动别名或 PATH。

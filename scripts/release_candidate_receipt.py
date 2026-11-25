@@ -235,12 +235,12 @@ def main() -> int:
         parser.error("the CHIR worker package is not an accepted build package")
     records = read_since(args.invocation_log, 0)
     invocation_summary = verify_build_invocations(
-        records, " ".join(REQUIRED_COMPILE_OPTIONS), binary, ["build", "--jobs", "1"])
+        records, " ".join(REQUIRED_COMPILE_OPTIONS), binary, ["build", "-i", "--jobs", "1"])
     # The worker must be the artefact the recorded worker build produced. Running
     # the same verification against the same log binds the second binary instead
     # of trusting whatever worker happens to sit beside the CLI.
     worker_summary = verify_build_invocations(
-        records, " ".join(REQUIRED_COMPILE_OPTIONS), worker, ["build", "--jobs", "1"],
+        records, " ".join(REQUIRED_COMPILE_OPTIONS), worker, ["build", "-i", "--jobs", "1"],
         WORKER_PACKAGE)
     policy_digest = sha256_file(args.repo / "scripts/sts_compile_override.py")
     wrapper_digest = sha256_file(args.repo / "scripts/with_sts_cjpm.sh")
@@ -273,7 +273,7 @@ def main() -> int:
             "stdxDigest": os.environ.get("CJDOC_STDX_DIGEST", ""),
             "toolchainFingerprint": os.environ.get("CJDOC_TOOLCHAIN_FINGERPRINT", ""),
         },
-        "build": {"command": ["cjpm", "build", "--jobs", "1"],
+        "build": {"command": ["cjpm", "build", "-i", "--jobs", "1"],
                   "effectiveCompileOptions": list(args.compile_option),
                   "invocationLogSha256": sha256_file(args.invocation_log),
                   "invocationSummary": invocation_summary,

@@ -137,7 +137,7 @@ def observed_option(repo: Path) -> str:
             "CJDOC_STS_INVOCATION_LOG": str(staging / "probe-invocations.jsonl"),
             "PATH": f"{probe_bin}{os.pathsep}{environment.get('PATH', '')}",
         })
-        command = f". {shlex.quote(str(repo / WRAPPER))} && cjpm build --jobs 1"
+        command = f". {shlex.quote(str(repo / WRAPPER))} && cjpm build -i --jobs 1"
         try:
             result = subprocess.run([shell, "-c", command], cwd=staging, env=environment,
                                     capture_output=True, text=True, timeout=900)

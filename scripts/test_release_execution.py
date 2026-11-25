@@ -59,7 +59,7 @@ def write_probe_scripts(repo: Path) -> None:
     (scripts / "check.sh").write_text(
         "set -euo pipefail\n"
         "printf '%s\\n' acceptance >> \"$PROBE_TRACE\"\n"
-        "cjpm build --jobs 1\n"
+        "cjpm build -i --jobs 1\n"
         "case \"$PROBE_FAULT\" in\n"
         f"  renormalize) printf 'package source_edges_fixture\\n' > {SOURCE_EDGE} ;;\n"
         "  dirty-source) printf '// changed\\n' >> other.cj ;;\n"
@@ -159,15 +159,15 @@ class ReleaseExecutionTest(unittest.TestCase):
             with self.subTest(platform=platform):
                 result, trace, _ = self.invoke(platform)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(trace.count("build:build --jobs 1"), 1, trace)
+                self.assertEqual(trace.count("build:build -i --jobs 1"), 1, trace)
                 self.assertLess(trace.index("release_build_parameters.py"), trace.index("acceptance"))
-                self.assertLess(trace.index("acceptance"), trace.index("build:build --jobs 1"))
+                self.assertLess(trace.index("acceptance"), trace.index("build:build -i --jobs 1"))
                 self.assertGreater(trace.index("verified-binary"), trace.index("accepted"))
 
     def test_a_second_build_is_not_required_to_accept_the_first(self):
         result, trace, _ = self.invoke("windows-x64", reject_repeat=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(trace.count("build:build --jobs 1"), 1, trace)
+        self.assertEqual(trace.count("build:build -i --jobs 1"), 1, trace)
 
     def test_acceptance_failure_keeps_its_exit_and_prevents_binary_verification(self):
         result, trace, _ = self.invoke("linux-x64", gate_exit=9)

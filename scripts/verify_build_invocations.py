@@ -147,7 +147,7 @@ def main() -> int:
     parser.add_argument("--since", type=int, default=0)
     parser.add_argument("--expect-compile-option", default=REQUIRED_OPTION)
     parser.add_argument("--binary", type=Path)
-    parser.add_argument("--expect-command", default="cjpm build --jobs 1",
+    parser.add_argument("--expect-command", default="cjpm build -i --jobs 1",
                         help="the command the release vouches for, space separated")
     parser.add_argument("--package", default="cjdoc")
     args = parser.parse_args()

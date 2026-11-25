@@ -129,7 +129,7 @@ class BuildParameterTests(unittest.TestCase):
                            RUNNER_TEMP=self.temporary.name, CJDOC_PYTHON=sys.executable,
                            CJDOC_PROBE_OBSERVED=str(observed), CJDOC_STS_INVOCATION_LOG=str(log))
         environment['PATH'] = str(probe) + os.pathsep + environment.get('PATH', '')
-        command = ". " + shlex.quote(str(self.repo / WRAPPER)) + "; cjpm build --jobs 1"
+        command = ". " + shlex.quote(str(self.repo / WRAPPER)) + "; cjpm build -i --jobs 1"
         result = subprocess.run([params.usable_shell(), '-c', command], cwd=self.repo,
                                 env=environment, text=True, capture_output=True, timeout=60)
         self.assertEqual(result.returncode, 37, result.stderr)

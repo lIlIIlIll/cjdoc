@@ -179,7 +179,7 @@ class ReleaseToolsTestSupport:
                           "stdxVersion": stdx_version, "stdxArchiveSha256": stdx_sha256,
                           "compilerVersion": f"Cangjie Compiler: {sdk_version}", "cjpmVersion": sdk_version,
                           "stdxDigest": "b" * 64, "toolchainFingerprint": "c" * 64},
-            "build": {"command": ["cjpm", "build", "--jobs", "1"],
+            "build": {"command": ["cjpm", "build", "-i", "--jobs", "1"],
                       "effectiveCompileOptions": list(PRODUCT_OPTIONS),
                       "buildConfigurationSha256": "d" * 64},
             "binary": {"path": "target/release/bin/main",
