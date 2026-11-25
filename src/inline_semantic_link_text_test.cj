@@ -90,22 +90,26 @@ class InlineSemanticLinkAuthorTextTest {
             let decodedComment = decodedSymbol.getOrThrow().documentation.getOrThrow()
             @Expect(semanticLinkRenderedText(decodedComment.markdown),
                 "Prefix {@link } middle value tail.")
-            for (format in ["html", "markdown"]) {
-                let artifacts = api_render.renderDocumentationFormatsWithOptions(decoded, [format],
-                    locale: "en")
-                var body = ""
-                for (artifact in artifacts) { body += artifact.content }
-                // Markdown output escapes literal braces; both forms keep the
-                // author words, the valid link, and the trailing sentence.
-                @Expect(body.contains("Prefix "))
-                @Expect(body.contains(" middle "))
-                @Expect(body.contains("value"))
-                @Expect(body.contains(" tail."))
-                if (format == "html") {
-                    @Expect(body.contains("Prefix {@link } middle "))
-                    @Expect(body.contains(">value</a>"))
+            var htmlVerified = false
+            for (artifact in api_render.renderDocumentationFormatsWithOptions(decoded, ["html"], locale: "en")
+                where artifact.path.endsWith("/value/index.html")) {
+                @Expect(artifact.content.contains("Prefix {@link } middle "))
+                @Expect(artifact.content.contains(">value</a> tail."))
+                htmlVerified = true
+            }
+            @Expect(htmlVerified)
+
+            let expected = "Prefix {@link } middle value tail."
+            var markdownVerified = false
+            for (artifact in api_render.renderDocumentationFormatsWithOptions(decoded, ["markdown"], locale: "en")
+                where artifact.path.startsWith("markdown/packages/")) {
+                // A visible-text comparison must decode Markdown escapes first.
+                if (semanticLinkRenderedText(parseStandaloneMarkdown(artifact.content)).contains(expected)) {
+                    @Expect(artifact.content.contains("[value]("))
+                    markdownVerified = true
                 }
             }
+            @Expect(markdownVerified)
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
