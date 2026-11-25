@@ -169,6 +169,45 @@ class ReExportReachabilityTest(unittest.TestCase):
         result = run([self.binary, "render", "--input", capture, "--format", "json", "--stdout"], expect=2)
         self.assertIn("importedName", result.stderr)
 
+    def test_long_chain_proves_each_suffix_without_blessing_sibling_edges(self):
+        with tempfile.TemporaryDirectory(prefix="cjdoc-reexport-chain-") as temp:
+            root = Path(temp)
+            project = root / "chain"
+            source = project / "src"
+            source.mkdir(parents=True)
+            (project / "cjpm.toml").write_text(MANIFEST, encoding="utf-8")
+            packages = [PACKAGE, *(f"{PACKAGE}.p{index:04d}" for index in range(1000))]
+            for package, backing in zip(packages, packages[1:] + [None]):
+                directory = source if package == PACKAGE else source / package.rsplit(".", 1)[1]
+                directory.mkdir(exist_ok=True)
+                declaration = (f"public import {backing}.value" if backing else
+                               "public func value(): Int64 { 42 }")
+                (directory / "api.cj").write_text(f"package {package}\n{declaration}\n",
+                                                   encoding="utf-8")
+
+            doc = self.generate(project, "--no-cache", "--jobs", "4")
+            target = next(decl["id"] for decl in doc["declarations"] if decl["name"] == "value")
+            bindings = [(entry["state"], binding["targetSymbolIds"])
+                        for package in doc["packages"] for entry in package["reExports"]
+                        for binding in entry["bindings"]]
+            self.assertEqual(bindings, [("resolved", [target])] * 1000)
+            shutil.rmtree(project)
+            capture = root / "chain.json"
+            capture.write_text(json.dumps(doc), encoding="utf-8")
+            render = [self.binary, "render", "--input", capture, "--format", "json", "--stdout"]
+            self.assertEqual(selected_bindings(json.loads(run(render).stdout)), selected_bindings(doc))
+
+            # A sibling with the same exposure and ID is visited along with the
+            # valid branch, but its backing package does not export this spelling.
+            relay = exports(doc, packages[1])
+            forged = copy.deepcopy(relay[0])
+            forged.update(id="cjdoc:reexport:v1:" + "f" * 64, kind="alias",
+                          alias="value", targetPackageName=packages[-1])
+            forged["bindings"][0]["importedName"] = "nonexistent"
+            relay.insert(0, forged)
+            capture.write_text(json.dumps(doc), encoding="utf-8")
+            self.assertIn("re-export target must be", run(render, expect=2).stderr)
+
     def test_backing_declaration_is_required_even_through_cycles(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-reexport-cycle-") as temp:
             root = Path(temp)

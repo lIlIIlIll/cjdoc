@@ -89,7 +89,9 @@ private func blockBelongsToBody(block: String, generatedLabel: String,
         case Some(value) => value
         case None => return false
     }
-    path == generatedLabel && bodyStartLine <= line && line <= bodyEndLine
+    // The first trailer line is the wrapper's sole closing brace. A parser
+    // error on that token can result from an unfinished expression in the body.
+    path == generatedLabel && bodyStartLine <= line && line - 1 <= bodyEndLine
 }
 
 private func diagnosticSeverity(line: String): Int64 {

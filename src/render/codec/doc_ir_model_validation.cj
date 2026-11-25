@@ -517,16 +517,24 @@ internal class ReExportReachability {
         let initial = (moduleId, packageName, inputName)
         let initialKey = exposureKey(initial, target.id)
         if (provedExposures.contains(initialKey)) { return true }
-        let pending = ArrayList<(String, String, String)>([initial])
+        let pending = ArrayList<(String, String, String, String, Int64)>(
+            [(moduleId, packageName, inputName, initialKey, -1)])
         let visited = HashSet<String>([initialKey])
         var cursor: Int64 = 0
         while (cursor < pending.size) {
-            let hop = pending[cursor]
+            let current = cursor
             cursor++
-            let (module, name, selected) = hop
+            let (module, name, selected, key, _) = pending[current]
             if ((module == target.moduleId && name == target.packageName && selected == target.name) ||
-                provedExposures.contains(exposureKey(hop, target.id))) {
-                let _ = provedExposures.add(initialKey)
+                provedExposures.contains(key)) {
+                // Only predecessors of the witness are proven. Other queued
+                // exposures may still point at an unproductive cycle or dead end.
+                var proof = current
+                while (proof >= 0) {
+                    let (_, _, _, provenKey, predecessor) = pending[proof]
+                    let _ = provedExposures.add(provenKey)
+                    proof = predecessor
+                }
                 return true
             }
             let pkg = match (packagesByKey.get(compositeKey(module, name))) {
@@ -546,8 +554,11 @@ internal class ReExportReachability {
                     if (binding.exposedName != selected) { continue }
                     if (!consume(binding.targetSymbolIds.size)) { return false }
                     if (!bindingIncludesTarget(binding, target.id)) { continue }
-                    let next = (nextModule, reExport.targetPackageName, binding.importedName)
-                    if (visited.add(exposureKey(next, target.id))) { pending.add(next) }
+                    let destination = reExport.targetPackageName
+                    let nextKey = exposureKey((nextModule, destination, binding.importedName), target.id)
+                    if (visited.add(nextKey)) {
+                        pending.add((nextModule, destination, binding.importedName, nextKey, current))
+                    }
                 }
             }
         }

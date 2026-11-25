@@ -73,11 +73,11 @@ internal func joinedExampleFailureBlocks(blocks: Array<String>): String {
     out.toString()
 }
 
-// A `must-fail` pin is satisfied only by a diagnostic `cjc` reports inside the
-// example body. The generated file also holds the package clause and the captured
-// imports, and a rejected compiler option names no file at all, so neither may be
-// credited to the pin. A context failure is always reported separately, including
-// when the body fails too, because a pin never makes an unbuildable context valid.
+// A `must-fail` pin can be satisfied by a body diagnostic, including one at
+// the generated closing brace after an unfinished expression. The generated file
+// also holds the package clause and captured imports. A rejected compiler option
+// names no file; neither is credited to the pin. A context failure is reported
+// separately even when the body fails, since a pin cannot fix its context.
 private func judgeFailedCompile(documentation: DocumentationSet,
     target: ExampleCompilationTarget, outputText: String, exitCode: Int64,
     attribution: ExampleCompileAttribution, failureSeverity: ?String): Unit {

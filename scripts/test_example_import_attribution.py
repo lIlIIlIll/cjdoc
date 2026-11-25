@@ -43,7 +43,7 @@ output-type = "static"
 DOC_COMMENT = '''/**
  * Answer.
  * @return Value.
- * @example Sample {__PIN____ERROR__}
+ * @example Sample__DIRECTIVES__
  * ```cangjie
  * __BODY__
  * ```
@@ -93,7 +93,7 @@ class ImportVariants:
             header = example_import + "\n" + import_line
         (project / "src" / "api.cj").write_text(
             f"package {PACKAGE}\n{header}\n"
-            + DOC_COMMENT.replace("__PIN__", directive).replace("__ERROR__", "")
+            + DOC_COMMENT.replace("__DIRECTIVES__", f" {{{directive}}}" if directive else "")
             .replace("__BODY__", body)
             + "public func answer(): Int64 { value() }\n", encoding="utf-8")
         (project / "src" / "helper" / "api.cj").write_text(
@@ -252,6 +252,27 @@ class MustFailAttributionTest(unittest.TestCase):
         self.assertEqual(code, 0, summary)
         self.assertEqual([item for item in self.codes(summary)
                           if item in ("CJDOC3030", "CJDOC3031", "CJDOC3070")], [], summary)
+
+    def test_incomplete_final_expression_satisfies_a_matching_pin(self):
+        project = self.variants.project("trailer-pin", f"import {HELPER}.value",
+                                        pin="must-fail", error="expected expression",
+                                        body="let result =")
+        code, summary = self.check(project)
+        self.assertEqual(code, 0, summary)
+        self.assertFalse({"CJDOC3030", "CJDOC3031", "CJDOC3070"} & set(self.codes(summary)))
+
+    def test_incomplete_final_expression_honors_the_configured_warning(self):
+        project = self.variants.project("trailer-warning", f"import {HELPER}.value",
+                                        pin="", body="let result =")
+        (project / "cjdoc.toml").write_text(
+            '[lint]\nexample-not-compiling = "warning"\n', encoding="utf-8")
+        code, summary = self.check(project)
+        self.assertEqual(code, 0, summary)
+        failures = [(key, message) for key, message in summary
+                    if key in ("CJDOC3030", "CJDOC3031", "CJDOC3070")]
+        (code, message), = failures
+        self.assertEqual(code, "CJDOC3030")
+        self.assertIn("expected expression", message)
 
     def test_mixed_body_and_other_file_errors_still_reject_the_context(self):
         project = self.variants.project("mixed-errors", f"private import {HELPER}.value",
