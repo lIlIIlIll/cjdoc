@@ -3,6 +3,7 @@ protected package cjdoc.cli
 import cjdoc.render as public_render
 import cjdoc.stdlib_docs.{hasBuiltInStandardLibraryDocsBase,
     isValidStandardLibraryDocsBaseUrl, isValidStandardLibraryDocsVersion}
+import std.collection.ArrayList
 
 private func validateHtmlFontOptions(options: NewCliOptions): Unit {
     for ((value, option) in [(options.htmlFontSans, "--html-font-sans"),

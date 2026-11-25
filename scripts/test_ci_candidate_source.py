@@ -74,11 +74,6 @@ class ResolveTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
-    def require_ready(self, runs, artifacts, attempts):
-        fake_run, _ = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
-        with mock.patch("subprocess.run", fake_run):
-            return source.require_ready("o/r", COMMIT, "", "", "push")
-
     def resolve(self, runs, artifacts, attempts, **kwargs):
         fake_run, _ = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
         with mock.patch("subprocess.run", fake_run), \
@@ -143,9 +138,8 @@ class ResolveTests(unittest.TestCase):
         resolved = self.resolve(runs, artifacts, attempts)
         self.assertFalse(resolved["reuse"])
 
-    def test_a_still_running_matrix_is_adopted_but_cannot_publish(self):
-        # The crux of CI-05.1: the marker exists, so the candidate may be consumed
-        # while Windows/macOS are still running...
+    def test_automatic_discovery_can_adopt_a_live_candidate_before_the_matrix_ends(self):
+        # Discovery is separate from Pages publication, which requires a terminal event.
         runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "in_progress",
                  "conclusion": None}]
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
@@ -156,9 +150,6 @@ class ResolveTests(unittest.TestCase):
         resolved = self.resolve(runs, artifacts, attempts)
         self.assertTrue(resolved["reuse"], resolved)
         self.assertEqual(resolved["runConclusion"], None)
-        # ...but it must never publish until the run really succeeded.
-        with self.assertRaises(source.ResolutionError):
-            self.require_ready(runs, artifacts, attempts)
 
     def test_a_run_that_concluded_with_failure_is_not_adopted(self):
         runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed",
@@ -288,43 +279,6 @@ class MarkerBindingTests(unittest.TestCase):
         with self.assertRaises(source.ResolutionError):
             source.mark("o/r", 5, 1, COMMIT, TREE, "cjdoc-linux-candidate-5-1",
                         self.root / "absent.tar", self.marker_dir)
-
-
-class RequireReadyTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-
-    def require(self, runs, artifacts, attempts, **kwargs):
-        fake_run, _ = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
-        with mock.patch("subprocess.run", fake_run):
-            return source.require_ready("o/r", COMMIT, "", "", "push")
-
-    def test_requires_a_ready_candidate(self):
-        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "success"}]
-        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
-                     [_marker(77, 1)],
-                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
-        attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "success"}}
-        self.assertEqual(self.require(runs, artifacts, attempts)["runId"], 77)
-
-    def test_a_later_matrix_failure_leaves_the_matrix_without_a_ready_candidate(self):
-        # The Linux candidate is live but the CI run as a whole failed, so its
-        # attempt does not report success and publication must be refused.
-        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "failure"}]
-        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
-                     [_marker(77, 1)],
-                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
-        attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "failure"}}
-        with self.assertRaises(source.ResolutionError):
-            self.require(runs, artifacts, attempts)
-
-    def test_no_ci_run_at_all_is_refused(self):
-        with self.assertRaises(source.ResolutionError):
-            self.require([], {}, {})
 
 
 if __name__ == "__main__":

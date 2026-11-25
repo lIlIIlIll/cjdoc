@@ -379,41 +379,40 @@ authenticates, which is precisely the kind of change that must not be made on an
 unmeasured basis. Revisit only if `cacheRestoreMs` becomes measurable, or if a
 future measurement reports the restore cost for both shapes from the same runner.
 
-## CI-05.1: Pages starts at Linux candidate readiness
+## CI-05.1: Pages follows successful main CI
 
-Previously `resolve-candidate` polled for a *successful CI run*, which only
-exists once every platform of the matrix has finished. Measured wait on real
-`main` pushes (`wallclock-pages-*.json`, artifact `ci-timing-*`):
+Automatic publication starts on the `CI` completion event for a successful main
+push. Pages refuses a different repository, commit, run or attempt, reuses the
+exact candidate via its readiness marker, and verifies the marker, candidate
+archive and source tree before assembling. Publication never waits for a
+running platform; queuing or a slow runner cannot exhaust a Pages polling window.
+
+PRs use a local build and upload a preview, not a deployment. A manual dispatch
+without a usable CI candidate validates locally only. To deploy from a manual
+dispatch, select a successful main-push run and its exact candidate attempt.
+Immediately before calling the Pages action, check the consumed CI attempt
+again, confirm the commit is still main, and skip if that commit already has a
+successful Pages deployment. The actual deployment jobs are serialized.
+
+Historically, polling for a successful matrix delayed adoption on real main
+pushes (`wallclock-pages-*.json`, artifact `ci-timing-*`):
 
 | Run | `resolve-candidate` | CI Linux candidate | Pages `assemble-site` start |
 | --- | ---: | --- | --- |
 | `38357201253` | 919 s (bounded 900 s wait expired) | 06:31:49 → 06:35:54 | 06:51:13 |
 | `38332333489` | 921 s | candidate ready 01:29:5x | 01:48:03 |
 
-The candidate is ready roughly 4 minutes in, while Pages waited the full 900 s
-timeout. CI now publishes a readiness-marker artifact as soon as the Linux
-candidate uploads, and Pages consumes that marker, so assembly starts at
-candidate readiness. Publication is unchanged: `verify-site` re-checks that the
-consumed run's own attempt concluded successfully, so a later matrix failure
-still blocks the deploy.
-
-Mechanism evidence (real, not synthetic): on PR #106 the marker
-`cjdoc-linux-candidate-ready-38362363108-1` existed while Windows and macOS were
-still running, and `scripts/ci_candidate_source.py resolve` adopted it
-(`reuse: true`) while `require-ready` refused to publish
-(`run attempt is in_progress/, not a successful completed CI attempt`). The
-removed wait is bounded by the historical numbers above (~15 minutes); a
+The earlier optimization allowed Pages to adopt a ready Linux candidate while
+Windows and macOS still ran. On PR #106 the marker
+`cjdoc-linux-candidate-ready-38362363108-1` existed before the matrix terminated;
+`resolve` returned `reuse: true` and the former publication poll refused the
+in-progress attempt.
+The possible overlap was bounded by the historical numbers above (~15 minutes); a
 matched before/after wall-clock pair on the same revision is tracked by #96.
 
-### The publication gate's bound must fit inside its job timeout
+### Historical polling failures
 
-`verify-site` is the one job between a verified site and a deploy, and it waits
-(bounded) for the consumed CI run to become terminal before it may publish. Its
-job timeout therefore has to **exceed** the gate's own bound plus the step's
-setup, or the runner kills the job mid-wait and the gate never reaches its
-fail-closed path.
-
-That is not a theoretical relation. With `timeout-minutes: 20` on `verify-site`
+The former `verify-site` poll had a fixed deadline. With a 20-minute job timeout
 and `DEFAULT_GATE_SECONDS = 1800`, every `main` push was cancelled at the gate:
 
 | head | gate window (start → job killed) | consumed CI run finished | late by |
@@ -425,36 +424,12 @@ and `DEFAULT_GATE_SECONDS = 1800`, every `main` push was cancelled at the gate:
 | `c2b3f46c` | 19:47:06 → 20:07:02 | 20:08:35 | 93 s |
 | `92054bc9` | 20:46:01 → 21:06:04 | 21:06:56 | 52 s |
 
-Consequences of the kill, all of which were observed: the job still burned its
-20-minute budget, the failure was reported as `cancelled` rather than a gate
-refusal, and every step after the gate — the branch receipt, the browser-history
-upload, the validation-evidence upload, `Configure GitHub Pages`,
-`Upload Pages artifact` and the whole `deploy` job — was skipped. `main` has
-therefore published no site since 2026-10-18 (`acbc88b7` and `b0c3e5fb` both
-published; the six pushes from `56208661` on did not), while the same job
-succeeded on `pull_request`, where the candidate source is built locally and the
-gate has nothing to wait for (that is why every PR run passed: measured
-`jobspan` 1.4-1.7 minutes, with the gate step taking ~13-25 s).
-
-The consumed run finished after the window in all six cases, so raising the job
-timeout alone is not enough: the gate bound is now 3600 s with an explicit 300 s
-setup allowance, and `verify-site` is 70 minutes (4200 s), leaving ~5 minutes of
-slack over the relation. Both numbers are pinned by
-`test_the_publication_gate_fits_inside_its_job_timeout`, which fails if the job
-timeout stops exceeding the gate bound plus its allowance — the same invariant
-the repo already enforced for `resolve-candidate`'s 900 s wait, which is how the
-asymmetry went unnoticed.
-
-Two limits of this fix, stated rather than papered over. First, the 300 s setup
-allowance is deliberate slack, not a measured bound: the job's checkout, Python
-setup and four artifact downloads all run before the gate step, and they are
-observed to take seconds to a couple of minutes, but nothing enforces 300 s. If
-setup ever grew past the slack, the job timeout would again be the shorter bound.
-Second, `attempt_status` and the other API reads run `gh` **without** a
-`timeout=`, so a blocked call cannot reach the gate's own deadline check — that
-predates this change and is not addressed here. The guard itself now reads only an
-**uncommented, job-level** `timeout-minutes`, because a naive first-occurrence
-match would accept a commented `70` sitting above an active `20`.
+The job timeout killed the gate before it could report a refusal, and skipped
+branch receipts and deployment. Increasing the window to 3600 s did not fix
+the race: [Pages run 45610716815](https://github.com/lIlIIlIll/cjdoc/actions/runs/45610716815)
+still stopped before [CI run 45610716903](https://github.com/lIlIIlIll/cjdoc/actions/runs/45610716903)
+finished successfully. The terminal event replaces the poll; it does not change
+or omit any of the site validation branches.
 
 ## CI-06: parallelisation and the multi-locale extraction
 
@@ -568,7 +543,7 @@ merged until the maintainer merges it.
 | 02.2-02.5 parallel final verification | `source-reproduction`, `browser-shard`, `reading-regressions`, `verify-site` | the three branches run in parallel and `verify-site` re-binds every branch to the sealed site | Pages jobs on run `38373947823` (all branches success, verify success) |
 | 03.1-03.8 browser sharding | `scripts/showcase_contract/browser_sharding.py`, `browser.py` | `tests/showcase_contract/test_browser_sharding.py` | 24 sharding tests OK, including negative cases and a real-data balance test |
 | 04.1-04.8 layered CI | `scripts/check.sh` stages driven by `ci.yml` | each consumer stage is handed the binary and identity it needs | `ci.yml` `linux-acceptance` stage list; `scripts/test_release_candidate.py` guards the layout |
-| 05.1 Pages starts at candidate readiness | `scripts/ci_candidate_source.py`, readiness marker in `build-linux-candidate.yml`, `pages.yml` adoption + `require-ready` | `scripts/test_ci_candidate_source.py`; live adoption of a real in-flight run | 18 unit tests OK; `resolve` returned `reuse: true` for run `38362363108` while its matrix was still running, and `require-ready` refused to publish (`in_progress`) |
+| 05.1 Pages follows successful CI | `pages.yml`, `scripts/pages_workflow.py`, readiness marker | `scripts/test_pages_workflow.py` exercises delayed completion and exact-attempt publication | historical polling failure: Pages run `45610716815` vs CI run `45610716903` |
 | 05.2-05.6 shared toolchain and identity | one reusable `build-linux-candidate.yml`; `ci_stage.py verify-identity` | the same workflow builds the candidate for CI and Pages; each consumer re-verifies the manifest | `verify-identity` runs in both the CI acceptance job and the Pages site job |
 | 06.1 showcase phase attribution | `showcase_build.stage_timing` phase ids | the per-phase table in this document | `showcase-stages.json` from run `38332333489` |
 | 06.2-06.3 overlap only what is independent | `scripts/showcase_build/parallel.py`, `integration.py` | real serial/overlapped A/B on one machine | 507.8 s and 476.4 s serial vs 391.4 s overlapped (1.22-1.30x), same binary and provenance |
