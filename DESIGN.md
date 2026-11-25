@@ -142,6 +142,15 @@ Desktop grid: `17rem | minmax(0, 1fr) | 14rem`, capped at 100rem, under a 3.25re
 
 Navigation tree: every package; the current package's types; the current type's members. The server renders a bounded window of five entries (current ±2, shifted at the edges; the first five when there is no current entry) and a "Full package index" / "All members" link; the script completes a partial branch from `sidebar-index.js` and builds other branches only when expanded or matched by a filter. One filter narrows packages, types and members by name and expands the matching ancestors.
 
+### Showcase homepage
+
+The Pages homepage (`site/index.html`, `site/showcase.css`) is a short marketing surface built on the same theme roles; `showcase.css` mirrors the eight theme token blocks so the homepage and the page it frames always match.
+
+- **First viewport:** a two-line headline (first line in `muted`, second in `fg`, up to 4.25rem, -0.03em) beside a one-sentence lead, the primary action and a copyable `cjdoc generate` command; below it, a framed, same-site `<iframe>` of a real generated page fills the rest of the viewport. The frame is `inert` until the reader presses "Try it here" (without scripts that control is a plain link to the same page), so wheel scrolling never gets captured uninvited. Theme changes are pushed into the frame.
+- **Sections:** quick start as three numbered steps (the number is the sequence, accent colored), the feature catalogue as task groups in a `1fr | 2fr` grid with a sticky group title, the reproduction command, and a three-column link index. Sections are divided by hairlines only; no cards.
+- **Feature entries:** title, task sentence, optional "Limit" line, a status line (filled dot = implemented, half dot = partial, ring = not implemented, then the demonstration state) and the entry link. Status is always text plus shape, never color alone.
+- **Icons:** arrow, external, copy, check, globe and pointer are drawn 16px SVG masks colored by `currentColor`; no Unicode glyphs stand in for icons.
+
 ## Elevation & Depth
 
 Flat at rest. Rules and tonal surfaces separate rows, signatures and toolbars. Only temporary tools overlap the page and carry `--cj-shadow`: the search and settings dialogs, the language menu, the mobile drawer and the touch member-action menu. Dialog backdrops dim the page.

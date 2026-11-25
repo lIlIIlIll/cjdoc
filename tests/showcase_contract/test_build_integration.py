@@ -220,22 +220,22 @@ class BuildIntegrationTests(unittest.TestCase):
             self.write("homepage-repo/docs/assets/brand/mark.svg", mark)
         output = self.root / "homepage-output"
         output.mkdir(exist_ok=True)
-        with patch("showcase_build.homepage.first", return_value={"resolved": {"href": "demo/"}}), patch("showcase_build.homepage.cards", return_value=""), patch("showcase_build.homepage.coverage", return_value=""), patch("showcase_build.homepage.getting_started", return_value=""), patch("showcase_build.homepage.preview", return_value=""):
+        with patch("showcase_build.homepage.first", return_value={"resolved": {"href": "demo/"}}), patch("showcase_build.homepage.cards", return_value=""), patch("showcase_build.homepage.coverage", return_value=""):
             homepage.publish(repo, output, {"revision": "f" * 40},
-                             {"source": {"repository": "https://github.com/example-owner/cjdoc-fork"}}, Site(output))
+                             {"source": {"repository": "https://github.com/example-owner/cjdoc-fork"}})
         return output
 
     def test_homepage_requires_a_regular_brand_mark(self) -> None:
-        template = '<!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES --><!-- SHOWCASE_PORTAL_PREVIEW -->'
+        template = '<!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES -->'
         with self.assertRaisesRegex(ContractError, "brand mark"):
             self.publish_homepage_fixture(template, None)
 
     def test_homepage_requires_exactly_one_brand_mark_slot_and_hides_inline_svg(self) -> None:
         mark = '<svg xmlns="http://www.w3.org/2000/svg" class="brand-mark"></svg>'
-        template = '<!-- CJDOC_BRAND_MARK --><!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES --><!-- SHOWCASE_PORTAL_PREVIEW -->'
+        template = '<!-- CJDOC_BRAND_MARK --><!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES -->'
         with self.assertRaisesRegex(ContractError, "exactly one CJDOC_BRAND_MARK"):
             self.publish_homepage_fixture(template, mark)
-        template = '<!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES --><!-- SHOWCASE_PORTAL_PREVIEW -->'
+        template = '<!-- CJDOC_BRAND_MARK --><!-- SHOWCASE_FEATURES -->'
         output = self.publish_homepage_fixture(template, mark)
         for page in ("index.html", "en.html"):
             content = (output / page).read_text(encoding="utf-8")

@@ -11,133 +11,155 @@
 <script src="theme-bootstrap.js"></script>
 <script src="showcase.js" defer></script>
 </head>
-<body class="portal-home" data-cjdoc-doc-version="showcase">
+<body class="home" data-cjdoc-doc-version="showcase">
 <a class="skip-link" href="#main">__SKIP__</a>
-<header class="site-header portal-header">
-  <a class="brand" href="__HOME__"><!-- CJDOC_BRAND_MARK -->cjdoc</a>
-  <nav aria-label="__NAVIGATION__">
-    <div class="portal-nav-links">
+<header class="site-header">
+  <div class="shell site-header__inner">
+    <a class="brand" href="__HOME__"><!-- CJDOC_BRAND_MARK -->cjdoc</a>
+    <nav class="site-nav" aria-label="__NAVIGATION__">
       <a href="#get-started">__QUICK__</a>
-      <a href="#demo">__DEMO__</a>
-      <a href="__HOW_TO_URL__">__HOW_TO__</a>
-      <a href="__REPOSITORY__">GitHub <span aria-hidden="true">↗</span></a>
-    </div>
-    <div class="portal-nav-settings">
-      <a href="index.html" lang="zh-CN">中文</a>
-      <a href="en.html" lang="en">English</a>
+      <a href="#capabilities">__FEATURES__</a>
+      <a href="__DOCS_URL__">__MANUAL__</a>
+      <a href="__REPOSITORY__">GitHub</a>
+    </nav>
+    <div class="site-tools">
+      <a class="lang-toggle" href="__OTHER_HREF__" lang="__OTHER_LOCALE__" hreflang="__OTHER_LOCALE__">__OTHER_LANGUAGE__</a>
       <button type="button" data-showcase-theme>__THEME__</button>
     </div>
-  </nav>
+  </div>
 </header>
 <main id="main">
-  <section class="portal-intro">
-    <div>
-      <h1>__HEADLINE__</h1>
+  <section class="intro shell" aria-labelledby="intro-title">
+    <h1 id="intro-title"><span>__HEADLINE_1__</span><span>__HEADLINE_2__</span></h1>
+    <div class="intro__side">
       <p class="lead">__LEAD__</p>
-    </div>
-    <div class="actions">
-      <a class="button primary" data-showcase-primary href="__PRIMARY__">__OPEN__ <span aria-hidden="true">↗</span></a>
-      <a class="button" data-showcase-quickstart href="#get-started">__QUICK__ <span aria-hidden="true">→</span></a>
+      <div class="intro__actions">
+        <a class="button button--primary" data-showcase-primary href="__API_PAGE__">__OPEN__</a>
+        <div class="command"><code id="hero-command">cjdoc generate --project . --format html</code><button type="button" class="copy" data-showcase-copy="hero-command">__COPY__</button></div>
+      </div>
     </div>
   </section>
-  <div class="portal-layout">
-    <div class="portal-main-column">
-      <section id="demo" aria-labelledby="demo-title">
-        <div class="portal-heading">
-          <h2 id="demo-title">__DEMO__</h2>
-          <a href="__GUIDE__">__READ_GUIDE__ ↗</a>
+
+  <section class="specimen" aria-labelledby="specimen-title">
+    <h2 id="specimen-title" class="visually-hidden">__DEMO__</h2>
+    <figure class="specimen__figure shell-wide" data-showcase-specimen>
+      <div class="specimen__window">
+        <div class="specimen__bar">
+          <span class="specimen__path">PocketKit <span aria-hidden="true">/</span> TextCatalog <span class="specimen__version">__SPECIMEN_VERSION__</span></span>
+          <a class="link-arrow" href="__API_PAGE__">__OPEN_FULL__</a>
         </div>
-        <div class="portal-demo">
-          <div class="portal-bar">
-            <span>__EXAMPLE__ · Cangjie · demo-v2</span>
-            <button type="button" data-showcase-copy="hero-code">__COPY__</button>
-          </div>
-          <pre class="portal-example"><code id="hero-code"><span class="portal-keyword">let</span> catalog = <span class="portal-type">TextCatalog</span>()
-catalog.add(<span class="portal-string">"hello"</span>)
-println(catalog.at(0))</code></pre>
-          <div class="portal-output"><span>__EXPECTED__</span><code>hello</code></div>
-          <!-- SHOWCASE_PORTAL_PREVIEW -->
-          <div class="portal-demo-footer">
-            <span>__BOUNDARY__</span>
-            <a href="__SOURCE__">__SOURCE_LABEL__ ↗</a>
-          </div>
+        <div class="specimen__view">
+          <iframe src="__API_PAGE__" title="__SPECIMEN_TITLE__" inert></iframe>
+          <a class="specimen__shield" href="__API_PAGE__" data-showcase-specimen-shield data-try-label="__TRY__"><span>__OPEN_FULL__</span></a>
         </div>
-      </section>
-      <!-- SHOWCASE_GET_STARTED -->
+      </div>
+      <figcaption>__SPECIMEN_NOTE__ <a class="link-external" href="__SOURCE__">__SOURCE_LABEL__</a></figcaption>
+    </figure>
+  </section>
+
+  <section class="start shell" id="get-started" aria-labelledby="start-title">
+    <div class="section-head">
+      <h2 id="start-title">__QUICK__</h2>
+      <p>__START_LEAD__</p>
     </div>
-    <aside class="portal-sidebar" aria-label="__NAVIGATION__">
-      <section>
-        <h2>__START_USING__</h2>
-        <ul class="portal-links">
+    <ol class="steps">
+      <li>
+        <h3>__STEP_INSTALL__</h3>
+        <p>__STEP_INSTALL_TEXT__</p>
+        <pre class="code"><code>cjdoc --version</code></pre>
+        <p class="step__links"><a class="link-arrow" href="__INSTALL_URL__">__INSTALL__</a><a class="link-external" href="__REPOSITORY__/releases">__RELEASES__</a></p>
+      </li>
+      <li>
+        <h3>__STEP_COMMENT__</h3>
+        <p>__STEP_COMMENT_TEXT__</p>
+        <pre class="code"><code><span class="tok-comment">/**
+ * __SAMPLE_SUMMARY__
+ *
+ * @param name __SAMPLE_PARAM__
+ */</span>
+<span class="tok-keyword">public func</span> greet(name: <span class="tok-type">String</span>): <span class="tok-type">String</span> {
+    <span class="tok-keyword">return</span> <span class="tok-string">"Hello, ${name}!"</span>
+}</code></pre>
+      </li>
+      <li>
+        <h3>__STEP_GENERATE__</h3>
+        <p>__STEP_GENERATE_TEXT__</p>
+        <div class="command command--block"><code id="own-project-command">cjdoc generate --project . --format html</code><button type="button" class="copy" data-showcase-copy="own-project-command">__COPY__</button></div>
+        <p class="step__links"><a class="link-arrow" href="__FIRST_SITE_URL__">__FIRST_SITE__</a></p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="capabilities shell" id="capabilities" aria-labelledby="feature-title">
+    <div class="section-head">
+      <h2 id="feature-title">__FEATURES__</h2>
+      <!-- SHOWCASE_COVERAGE -->
+    </div>
+    <div class="feature-groups"><!-- SHOWCASE_FEATURES --></div>
+  </section>
+
+  <section class="reproduce shell" aria-labelledby="reproduce-title">
+    <div>
+      <h2 id="reproduce-title">__REPRODUCE__</h2>
+      <p>__QUICK_TEXT__</p>
+      <p><a class="link-arrow" href="downloads/__LOCALE__.html">__DOWNLOADS__</a></p>
+    </div>
+    <div class="command command--block"><code id="reproduce-command">python3 examples/pocketkit/reproduce.py \
+  --cjdoc /absolute/path/to/cjdoc \
+  --output ./generated --locale both</code><button type="button" class="copy" data-showcase-copy="reproduce-command">__COPY__</button></div>
+  </section>
+
+  <section class="resources shell" aria-labelledby="resources-title">
+    <h2 id="resources-title">__MACHINE__</h2>
+    <div class="resources__grid">
+      <div>
+        <h3>__READ_LABEL__</h3>
+        <ul>
+          <li><a href="__API_PAGE__">__EXAMPLE_HTML__</a></li>
+          <li><a href="__GUIDE__">__READ_GUIDE__</a></li>
+          <li><a href="api/index.html">__SELF_API__</a></li>
+          <li><a href="__DIFF_TARGET__">__DIFF_LABEL__</a></li>
+          <li><a href="__CHECK_TARGET__">__NATIVE_CHECK_LABEL__</a></li>
+          <li><a href="__QUALITY_TARGET__">__COVERAGE_LABEL__</a></li>
+          <li><a href="demo/index.html">__LEGACY__</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>__DATA_LABEL__</h3>
+        <ul>
+          <li><a href="artifacts/docs.json">JSON / Doc IR</a></li>
+          <li><a href="artifacts/navigation-index.json">__NAV_LABEL__</a></li>
+          <li><a href="artifacts/llms.txt">llms.txt</a></li>
+          <li><a href="__HOW_TO_URL__">__MARKDOWN__</a></li>
+          <li><a href="artifacts/coverage.json">__COVERAGE_LABEL__ (JSON)</a></li>
+          <li><a href="artifacts/api-diff.json">__DIFF_LABEL__ (JSON)</a></li>
+          <li><a href="artifacts/native-check.json">__NATIVE_CHECK_LABEL__ (JSON)</a></li>
+          <li><a href="schemas/index.html">__SCHEMAS__</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>__MANUAL__</h3>
+        <ul>
           <li><a href="__INSTALL_URL__">__INSTALL__</a></li>
           <li><a href="__FIRST_SITE_URL__">__FIRST_SITE__</a></li>
           <li><a href="__HOW_TO_URL__">__HOW_TO__</a></li>
           <li><a href="__CONFIG_URL__">__CONFIG__</a></li>
           <li><a href="__DOCS_URL__">__DOCS__</a></li>
         </ul>
-      </section>
-      <section>
-        <h2>__EXPLORE__</h2>
-        <ul class="portal-links">
-          <li><a href="__DIFF_TARGET__">__DIFF_LABEL__</a></li>
-          <li><a href="__CHECK_TARGET__">__NATIVE_CHECK_LABEL__</a></li>
-          <li><a href="__QUALITY_TARGET__">__COVERAGE_LABEL__</a></li>
-          <li><a href="downloads/__LOCALE__.html">__DOWNLOADS__</a></li>
-          <li><a href="#showcase-features">__FEATURES__</a></li>
-        </ul>
-      </section>
-    </aside>
-  </div>
-  <section class="portal-artifacts" aria-labelledby="machine-title">
-    <h2 id="machine-title">__MACHINE__</h2>
-    <div class="artifact-links">
-      <a href="__API_PAGE__">HTML</a>
-      <a href="artifacts/docs.json">JSON / Doc IR</a>
-      <a href="__HOW_TO_URL__">Markdown (__GENERATE__)</a>
-      <a href="artifacts/navigation-index.json">__NAV_LABEL__</a>
-      <a href="artifacts/llms.txt">llms.txt</a>
-      <a href="api/index.html">cjdoc API</a>
-    </div>
-  </section>
-  <section class="portal-catalog" id="showcase-features" aria-labelledby="feature-title">
-    <div class="portal-heading">
-      <h2 id="feature-title">__FEATURES__</h2>
-      <a href="showcase-features.json">__MANIFEST__ ↗</a>
-    </div>
-    <!-- SHOWCASE_COVERAGE -->
-    <div class="feature-groups"><!-- SHOWCASE_FEATURES --></div>
-  </section>
-  <section class="quickstart portal-reproduce" aria-labelledby="quick-title">
-    <div>
-      <h2 id="quick-title">__REPRODUCE__</h2>
-      <p>__QUICK_TEXT__</p>
-      <a href="downloads/__LOCALE__.html">__DOWNLOADS__ →</a>
-    </div>
-    <div>
-      <pre><code id="reproduce-command">python3 examples/pocketkit/reproduce.py \
-  --cjdoc /absolute/path/to/cjdoc \
-  --output ./generated --locale both</code></pre>
-      <button type="button" data-showcase-copy="reproduce-command">__COPY__</button>
-    </div>
-  </section>
-  <section class="portal-artifacts portal-secondary-artifacts" aria-labelledby="integrator-title">
-    <h2 id="integrator-title">__INTEGRATORS__</h2>
-    <div class="artifact-links">
-      <a href="schemas/index.html">__SCHEMAS__</a>
-      <a href="artifacts/coverage.json">__COVERAGE_LABEL__ (JSON)</a>
-      <a href="artifacts/api-diff.json">__DIFF_LABEL__ (JSON)</a>
-      <a href="artifacts/native-check.json">__NATIVE_CHECK_LABEL__ (JSON)</a>
-      <a href="demo/index.html">__LEGACY__</a>
+      </div>
     </div>
   </section>
 </main>
-<footer>
-  <details>
-    <summary>__BUILD_LABEL__</summary>
-    <p>__PROVENANCE__</p>
-    <pre>__BUILD__</pre>
-    <a href="build.json">build.json</a> · <a href="showcase-plan.json">__PLAN_LABEL__</a>
-  </details>
+<footer class="site-footer">
+  <div class="shell site-footer__inner">
+    <p class="brand brand--quiet">cjdoc</p>
+    <details>
+      <summary>__BUILD_LABEL__</summary>
+      <p>__PROVENANCE__</p>
+      <pre>__BUILD__</pre>
+      <p><a href="build.json">build.json</a> · <a href="showcase-plan.json">__PLAN_LABEL__</a> · <a href="showcase-features.json">__MANIFEST__</a></p>
+    </details>
+  </div>
 </footer>
 <p class="visually-hidden" aria-live="polite" data-showcase-status></p>
 </body>

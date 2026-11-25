@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,7 +22,6 @@ from report_views.reports import (FILTER_SCRIPT, coverage_view, declaration_link
 from showcase_build.homepage import cards, publish
 from showcase_build.navigation import SCRIPT, VersionLinks
 from showcase_contract.browser_reports import expected_coverage_rows
-from showcase_contract.site import Site
 
 
 class PublishedLinks(HTMLParser):
@@ -260,12 +258,7 @@ if(attrs.href!=="../demo-v1/report-coverage.html"||attrs["data-cjdoc-version-sta
             {"id": feature["id"] + "-" + locale, "locale": locale, "version": "demo-v2",
              "resolved": {"href": locale + "/api.html"}}
             for locale in ("zh-CN", "en")] if feature["targets"] else []} for feature in features]}
-        # This fixture tests revision-pinned manual links, not native API projection.
-        routes = Site(self.root)
-        with patch("showcase_build.homepage.preview", return_value="") as render_preview:
-            publish(ROOT, self.root, manifest, {"source": {"repository": repository}}, routes)
-        self.assertEqual([call.args for call in render_preview.call_args_list],
-                         [(routes, manifest, "zh-CN"), (routes, manifest, "en")])
+        publish(ROOT, self.root, manifest, {"source": {"repository": repository}})
         destinations = {
             "zh-CN": {
                 "安装说明": "getting-started/install.md",
