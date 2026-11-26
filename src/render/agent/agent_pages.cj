@@ -110,7 +110,7 @@ internal func appendAgentPageArtifacts(artifacts: RenderArtifactStore,
         let jsonPath = agentPackageJsonPath(source.moduleId, source.name)
         let markdown = agentPackageMarkdown(context, source)
         let raw = StringBuilder()
-        appendPackage(raw, source)
+        appendPackage(raw, source, capturedSelectors: false)
         let _ = artifacts.addText("html/" + markdownPath, "text/markdown; charset=utf-8", markdown)
         let _ = artifacts.addText("html/" + jsonPath, "application/json",
             agentPageEnvelope(context, id, "package", Some(source.moduleId),

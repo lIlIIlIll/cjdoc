@@ -15,6 +15,30 @@ private func queryCapturedSourceRange(node: JsonNode): query_model.SourceRange {
             queryInt(end, "byteOffset")))
 }
 
+// Query results expose the visible name and targets. The imported spelling is
+// evidence for replaying Doc IR, not part of query-result/5's binding shape.
+private func queryReExportProjection(captured: JsonObject): JsonObject {
+    let result = JsonNode.object()
+    for (index in 0..captured.size()) {
+        let key = captured.nameAt(index)
+        if (key != "bindings") {
+            result.put(key, captured.valueAt(index))
+            continue
+        }
+        let bindings = captured.valueAt(index).asArray()
+        let projected = JsonNode.array()
+        for (position in 0..bindings.size()) {
+            let binding = bindings[position].asObject()
+            let row = JsonNode.object()
+            row.put("exposedName", binding.get("exposedName").getOrThrow())
+            row.put("targetSymbolIds", binding.get("targetSymbolIds").getOrThrow())
+            projected.add(row)
+        }
+        result.put(key, projected)
+    }
+    result
+}
+
 
 internal func queryCapturedImportContexts(raw: JsonObject,
     snapshot: query_render.DocumentationReadSnapshot): JsonArray {
@@ -32,10 +56,9 @@ internal func queryCapturedImportContexts(raw: JsonObject,
                 case Some(value) => queryDocumentSetNode(value)
                 case None => JsonNode.nullValue
             })
-            // The complete captured record includes unresolved/ambiguous imports.
-            // This context does not assert a binding to any particular symbol.
-            context.put("reExport", imports[position])
+            // Keep unresolved and ambiguous records without claiming a target.
             let reExport = imports[position].asObject()
+            context.put("reExport", queryReExportProjection(reExport))
             let sourceRange = queryCapturedSourceRange(
                 reExport.get("source").getOrThrow())
             context.put("source", JsonNode.parse(query_render.sourceReferenceJson(

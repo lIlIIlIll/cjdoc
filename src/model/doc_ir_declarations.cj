@@ -26,13 +26,15 @@ public class PackageDoc {
 
 public class ReExportBinding {
     public let exposedName: String
+    public let importedName: String
     private let targetSymbolIdsStorage: ArrayList<String>
 
-    public init(exposedName: String, targetSymbolIds!: Array<String> = []) {
-        if (exposedName.isEmpty() || targetSymbolIds.isEmpty()) {
-            throw IllegalArgumentException("re-export binding requires a name and target symbols")
+    public init(exposedName: String, importedName: String, targetSymbolIds!: Array<String> = []) {
+        if (exposedName.isEmpty() || importedName.isEmpty() || targetSymbolIds.isEmpty()) {
+            throw IllegalArgumentException("re-export binding requires imported and exposed names and target symbols")
         }
         this.exposedName = exposedName
+        this.importedName = importedName
         this.targetSymbolIdsStorage = ArrayList<String>(targetSymbolIds)
     }
 

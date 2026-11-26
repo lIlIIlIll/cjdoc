@@ -240,7 +240,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertEqual(tuple(value["required"]), required, name)
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("doc-ir")},
-            {"doc-ir", "doc-ir-v19"},
+            {"doc-ir", "doc-ir-v20"},
         )
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("search-index")},
@@ -259,7 +259,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                      "machine-manifest", "query-request", "query-result", "source-provenance"):
             self.assertIn(name, SCHEMA_NAMES)
         self.assertIn("navigation-index", SCHEMA_NAMES)
-        for name in ("doc-ir", "doc-ir-v19"):
+        for name in ("doc-ir", "doc-ir-v20"):
             value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
             self.assertNotIn("evidenceKey", value["$defs"]["tag"]["properties"])
             self.assertIn("navigation", value["$defs"]["tag"]["properties"])
@@ -268,10 +268,14 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
     def test_current_golden_inventory_rejects_obsolete_version_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            obsolete = repo / "tests/fixtures/golden-v18"
-            obsolete.mkdir()
-            with self.assertRaises(ValueError):
-                verify_repository_inputs.verify_golden_set(repo, CURRENT_GOLDEN_VERSION)
+            for version in (CURRENT_GOLDEN_VERSION - 2, CURRENT_GOLDEN_VERSION - 1,
+                            CURRENT_GOLDEN_VERSION + 1):
+                with self.subTest(version=version):
+                    obsolete = repo / f"tests/fixtures/golden-v{version}"
+                    obsolete.mkdir()
+                    with self.assertRaisesRegex(ValueError, f"obsolete v{version} golden"):
+                        verify_repository_inputs.verify_golden_set(repo, CURRENT_GOLDEN_VERSION)
+                    obsolete.rmdir()
 
     def test_current_golden_validation_rejects_changed_roundtrip_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

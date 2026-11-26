@@ -69,7 +69,7 @@ class ApiCollectionStateContractTest {
             @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(current.replace(field,
                 "  \"apiCollectionState\": \"complete\",\n")))
             for (version in 6..18) {
-                let unsupported = current.replace("cjdoc.doc-ir/19", "cjdoc.doc-ir/${version}")
+                let unsupported = current.replace("cjdoc.doc-ir/20", "cjdoc.doc-ir/${version}")
                 @Expect(unsupported != current)
                 @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(unsupported))
             }

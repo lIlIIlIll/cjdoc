@@ -67,7 +67,7 @@ class ProjectConfigurationCliTest(unittest.TestCase):
 
     def read_document(self, path):
         document = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(document["schemaVersion"], "cjdoc.doc-ir/19")
+        self.assertEqual(document["schemaVersion"], "cjdoc.doc-ir/20")
         self.assertIn("answer", {item["name"] for item in document["declarations"]})
         return document
 

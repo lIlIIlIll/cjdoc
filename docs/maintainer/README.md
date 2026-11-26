@@ -22,7 +22,7 @@
 |---|---|---|
 | 仓库工作规范 | [AGENTS.md](../../AGENTS.md) | 架构边界、修改规则、代码风格、Review 规则 |
 | 构建与本地验收 | [build.md](build.md) | SDK 1.2.0 STS + stdx sidecar、产品 `-O2 --fno-chir-function-inlining -Woff deprecated` / 单测专属 `-O1`、`scripts/check.sh`、可选 CHIR worker |
-| Doc IR 与 schema | [doc-ir.md](doc-ir.md) | Doc IR v19、current-only decoder、schema/golden 更新、metadata 捕获、查询与声明 wire 版本 |
+| Doc IR 与 schema | [doc-ir.md](doc-ir.md) | Doc IR v20、current-only decoder、schema/golden 更新、metadata 捕获、查询与声明 wire 版本 |
 | 跨文档链接 | [document-links.md](document-links.md) | `--doc-source`/`--doc-inventory-pin`/`--build-context` 契约、identity、DL05/E2E2、验收脚本 |
 | 发布流程 | [release-process.md](release-process.md) | 证据层级、性能基线、三平台 CI、tag release 与 checklist |
 | CI/Pages 编排测量 | [ci-orchestration.md](ci-orchestration.md) | issue #82 的配对样本语义、阶段耗时来源与并行决策 |
@@ -37,7 +37,7 @@
 | 验收记录 | [acceptance/](acceptance/) | 按 issue 归档的验收映射与复现入口 |
 | 历史实现报告 | [implementation-report-v0.6.md](implementation-report-v0.6.md) | v0.6.0 的历史报告，仅作归档，不是当前证据 |
 | 调查记录 | [../research/](../research/) | CHIR、`std.ast`、高亮边界等时间点调查记录 |
-| 发布 schema | [../schema/](../schema/) | 当前发布的 25 个 schema 文件，由 `scripts/update_schemas.sh` 从构建产物同步 |
+| 发布 schema | [../schema/](../schema/) | `scripts/update_schemas.sh` 从构建产物同步；`just schema` 检查当前登记清单及产物字节 |
 
 ## 源码入口
 

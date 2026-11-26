@@ -147,18 +147,20 @@ private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): 
 }
 
 
+private func composedValidationPage(filePath: String): Bool {
+    filePath == "validation.html" || filePath.endsWith("/validation.html")
+}
+
+// Composition attaches one report to an already-published document root. The
+// page may live at the root or under a language directory, so the shared slot
+// markup is rewritten by kind/path instead of matching one bilingual string;
+// every validation page in the site therefore reports the same attachment.
 private func attachComposedApiDiffEvidence(html: String, site: VersionSite,
     outputPath: String, filePath: String): String {
-    if (site.spec.apiDiffSource.isNone() || filePath != "validation.html") { return html }
+    if (site.spec.apiDiffSource.isNone() || !composedValidationPage(filePath)) { return html }
     let diffPath = versionOutputPath(site, "api-diff.json")
     let href = versionRelativeHref(outputPath, diffPath)
-    let link = "<a href=\"" + public_render.escapeStandaloneHtml(href) + "\">api-diff.json</a>"
-    var result = html
-    result = result.replace("API diff: not attached to this generation", "API diff: attached: " + link)
-    result = result.replace("API diff：本次生成未附带", "API diff：已附带：" + link)
-    result = result.replace("No comparison report was attached to this generation. Run the explicit cjdoc diff command to inspect version-to-version changes; this page does not infer compatibility.", "Attached comparison report: " + link + ".")
-    result = result.replace("本次生成未附带比较报告。请显式运行 cjdoc diff 命令检查版本间变化；本页面不会推断兼容性。", "已附带比较报告：" + link + "。")
-    result
+    public_render.attachReportEvidence(html, "api-diff", href)
 }
 
 private func versionAliasBody(html: String): Bool {

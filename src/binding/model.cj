@@ -91,10 +91,12 @@ protected class SymbolDoc {
 
 protected class ReExportBinding {
     protected let exposedName: String
+    protected let importedName: String
     protected let targetSymbolIds = ArrayList<String>()
 
-    protected init(exposedName: String, targetSymbolIds!: Array<String> = []) {
+    protected init(exposedName: String, importedName: String, targetSymbolIds!: Array<String> = []) {
         this.exposedName = exposedName
+        this.importedName = importedName
         this.targetSymbolIds.add(all: targetSymbolIds)
     }
 }

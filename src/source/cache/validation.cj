@@ -1,7 +1,8 @@
 protected package cjdoc.source.cache
 
 import cjdoc.source.model.ParsedSourceFile
-import cjdoc.source.model.{SourceParameter, SourceDeclaration, CapturedSourceIndex}
+import cjdoc.source.model.{
+    SourceParameter, SourceDeclaration, CapturedSourceIndex, sourceImportFactsValid}
 import cjdoc.source.{SourceLocation, SOURCE_CACHE_FORMAT, MAX_SOURCE_CACHE_BYTES, MAX_SOURCE_CACHE_ITEMS}
 import cjdoc.source.frontend.{positionLess, isFunctionLike}
 import cjdoc.digest.Sha256Digest
@@ -23,6 +24,11 @@ internal func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile,
     cacheAddOptionalString(writer, parsed.packageName)
     cacheAddStrings(writer, parsed.imports)
     cacheAddStrings(writer, parsed.packageImports)
+    if (!writer.addCount(parsed.importFacts.size)) { return None }
+    for (facts in parsed.importFacts) {
+        cacheAddImportFacts(writer, facts)
+        if (!writer.canContinue()) { return None }
+    }
     if (!writer.addCount(parsed.declarations.size)) { return None }
     for (declaration in parsed.declarations) {
         cacheAddDeclaration(writer, declaration)
@@ -258,4 +264,29 @@ internal func cachedParameterDefaultsMatchSignature(declaration: SourceDeclarati
         index++
     }
     false
+}
+
+// Import facts drive dependency selection, so a decoded entry must describe every
+// cached statement and stay structurally legal. Textual imports keep comments and
+// modifiers and may be longer, so only their count and the presence of a usable
+// reference path are required to agree.
+internal func validateCachedImportFacts(parsed: ParsedSourceFile,
+    capturedSourceIndex: CapturedSourceIndex): Unit {
+    if (parsed.importFacts.isEmpty() && parsed.imports.isEmpty()) { return }
+    if (parsed.importFacts.size != parsed.imports.size) {
+        throw IllegalArgumentException("cached import structure does not match cached imports")
+    }
+    for (facts in parsed.importFacts) {
+        if (!sourceImportFactsValid(facts)) {
+            throw IllegalArgumentException("invalid cached import structure")
+        }
+        match (facts.source) {
+            case Some(location) =>
+                if (!sourceCacheLocationMatchesCaptured(location, parsed.input.logicalPath,
+                    capturedSourceIndex)) {
+                    throw IllegalArgumentException("invalid cached import location")
+                }
+            case None => throw IllegalArgumentException("cached import structure has no location")
+        }
+    }
 }

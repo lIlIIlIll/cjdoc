@@ -94,6 +94,8 @@ python3 scripts/agent_evaluation_proof.py verify \
 
 `verify` 生成逐任务/路径判分模板。人工评审每个固定 requiredFacts，记录原回答片段、supported/contradicted/omitted 判定和真实源码/Doc IR 证据；每个引用也单独判定。证据需有固定源文件 hash、行范围/原文，或指定 Doc IR 的声明与字段。自然语言不使用关键词命中代替判分。
 
+每条 `supported` / `contradicted` 事实和 `verified` / `rejected` 引用至少需要一项源码或 Doc IR 证据。`answer` 证据仅证明模型说过什么；其 `quote` 必须逐字出现在同一任务、同一路径的捕获原文中，不能为事实或引用自证。
+
 Doc IR 证据必须来自捕获 manifest 中的文件 hash，并绑定真实源码的 library/version/content identity。声明归属按 `componentModuleId`，不能把消费者根模块 ID 或导入文档集的 root 借给依赖声明。可以用另一版本或依赖的真实证据证明差异，但 `apiSelection = 1` 仍需当前任务主库/版本的证据。报告重新检查源文件和 Doc IR 未变化；编译回执必须与原始程序、编译退出/超时、实际 ELF、原始日志字节/hash、运行程序及沙箱策略一致。
 
 行为判分还需显式的全程序人工审查；它不是自动控制流证明或关键词匹配：

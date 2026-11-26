@@ -75,11 +75,10 @@ def verify_golden_set(repo: Path, version: int) -> None:
     directory = repo / f"tests/fixtures/golden-v{version}"
     if directory.is_symlink() or not directory.is_dir():
         raise ValueError(f"v{version} golden directory must be a regular repository directory")
-    obsolete = repo / f"tests/fixtures/golden-v{version - 1}"
-    if obsolete.exists() or obsolete.is_symlink():
-        raise ValueError(
-            f"obsolete v{version - 1} golden inventory must not be retained"
-        )
+    for candidate in sorted(directory.parent.glob("golden-v[0-9]*")):
+        suffix = candidate.name.removeprefix("golden-v")
+        if candidate != directory and suffix.isascii() and suffix.isdecimal():
+            raise ValueError(f"obsolete v{suffix} golden inventory must not be retained")
     expected = {f"{name}.docs.json" for name in GOLDEN_NAMES}
     actual = {path.name for path in directory.glob("*.docs.json")}
     missing = sorted(expected - actual)
@@ -102,9 +101,9 @@ def verify_golden_set(repo: Path, version: int) -> None:
 def load_frozen_doc_ir_definitions(directory: Path) -> dict:
     # Artifact schemas embed the current Doc IR declarations; load that
     # model once and reject forks in every consumer schema.
-    model = strict_load(directory / "doc-ir-v19.schema.json", description="doc-ir-v19 schema")
+    model = strict_load(directory / "doc-ir-v20.schema.json", description="doc-ir-v20 schema")
     if not isinstance(model, dict) or not isinstance(model.get("$defs"), dict):
-        raise ValueError("doc-ir-v19 schema definitions are missing")
+        raise ValueError("doc-ir-v20 schema definitions are missing")
     return model["$defs"]
 
 

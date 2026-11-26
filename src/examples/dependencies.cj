@@ -3,9 +3,10 @@ protected package cjdoc.examples
 import cjdoc.binding.{DocumentationSet, PackageDoc, ModuleDoc}
 import cjdoc.source.relativePathFromResolved
 import cjdoc.source.discovery.sourcePackagePathPrefixLength
-import cjdoc.source.model.SourceFileOrigin
+import cjdoc.source.model.{SourceFileOrigin, SourceImportFacts}
 import cjdoc.filesystem.hostPathIsWithin
 import cjdoc.source.cfg.{CfgProfile, appendCompilerCfgArguments}
+import cjdoc.source.frontend.sourceImportFactsFromText
 import cjdoc.process.executeWithBoundedOutput
 import std.collection.*
 import std.env.*
@@ -174,76 +175,33 @@ private func selectExamplePackage(documentation: DocumentationSet, ownerModuleId
     (None<PackageDoc>, candidates.size > 1)
 }
 
-private func exampleAliasSeparator(value: String): ?Int64 {
-    let bytes = value.toArray()
-    var index: Int64 = 0
-    while (index + 1 < bytes.size) {
-        if (bytes[index] == b'a' && bytes[index + 1] == b's') {
-            let before = index == 0 || bytes[index - 1] == b' ' || bytes[index - 1] == b'\t'
-            let after = index + 2 >= bytes.size || bytes[index + 2] == b' ' ||
-                bytes[index + 2] == b'\t'
-            if (before && after) { return Some(index) }
+private func appendExampleFactPackages(result: ArrayList<String>, facts: SourceImportFacts): Unit {
+    for (reference in facts.referencePaths()) {
+        let qualified = if (facts.organization.isEmpty()) {
+            reference
+        } else {
+            facts.organization + "::" + reference
         }
-        index++
-    }
-    None
-}
-
-private func exampleImportPackageReference(importText: String): ?String {
-    let trimmed = importText.trimAscii()
-    let value = if (trimmed.startsWith("public ")) {
-        trimmed.removePrefix("public ").trimAscii()
-    } else {
-        trimmed
-    }
-    if (!value.startsWith("import ")) { return None }
-    var imported = value[7..].trimAscii()
-    let alias = exampleAliasSeparator(imported)
-    if (let Some(index) <- alias) { imported = imported[..index].trimAscii() }
-    let bytes = imported.toArray()
-    var end = bytes.size
-    var hasPackageSelector = false
-    var index: Int64 = 0
-    while (index < bytes.size) {
-        if (bytes[index] == b'{' || bytes[index] == b'*') {
-            end = index
-            hasPackageSelector = true
-            break
-        }
-        index++
-    }
-    var path = imported[..end].trimAscii()
-    let pathBytes = path.toArray()
-    if (!pathBytes.isEmpty() && pathBytes[pathBytes.size - 1] == b'.') {
-        path = path[..path.size - 1].trimAscii()
-    }
-    if (alias.isNone() && !hasPackageSelector) {
-        let parts = path.toArray()
-        var dot: Int64 = parts.size
-        while (dot > 0) {
-            dot--
-            if (parts[dot] == b'.') { break }
-        }
-        if (dot > 0) { path = path[..dot] }
-    }
-    if (path.isEmpty()) { return None }
-    match (path.indexOf("::")) {
-        case Some(orgIndex) =>
-            if (orgIndex <= 0 || orgIndex + 2 >= path.size) { None } else {
-                Some(path[..orgIndex] + "::" + path[orgIndex + 2..])
-            }
-        case None => Some(path)
+        if (!result.contains(qualified)) { result.add(qualified) }
     }
 }
 
-private func exampleImportPackageReferences(origin: SourceFileOrigin): Array<String> {
+// Normal source capture and cache validation produce one AST fact per source
+// statement. A synthetic or incomplete origin can instead contribute per-entry
+// facts; merge them with any captured paths without dropping the known imports.
+private func exampleFactPackageReferences(origin: SourceFileOrigin): Array<String> {
     let result = ArrayList<String>()
-    for (importText in origin.imports) {
-        if (let Some(reference) <- exampleImportPackageReference(importText)) {
+    for (facts in origin.importFacts) { appendExampleFactPackages(result, facts) }
+    if (origin.imports.isEmpty() || origin.importFacts.size != origin.imports.size) {
+        for (reference in origin.packageImports) {
             if (!result.contains(reference)) { result.add(reference) }
         }
+        for (importText in origin.imports) {
+            for (facts in sourceImportFactsFromText(origin.logicalPath, importText)) {
+                appendExampleFactPackages(result, facts)
+            }
+        }
     }
-    if (result.isEmpty()) { result.add(all: origin.packageImports) }
     result.toArray()
 }
 
@@ -307,7 +265,7 @@ internal func requiredExamplePackages(documentation: DocumentationSet,
     var index: Int64 = 0
     while (index < unit.sourceOrigins.size) {
         let origin = unit.sourceOrigins[index]
-        for (packageReference in exampleImportPackageReferences(origin)) {
+        for (packageReference in exampleFactPackageReferences(origin)) {
             let failure = addExampleImportedPackage(documentation, ownerModuleId, packageReference,
                 reachableCache, required, seen)
             if (!failure.isEmpty()) { return ([], failure) }
@@ -321,7 +279,7 @@ internal func requiredExamplePackages(documentation: DocumentationSet,
         ownerModuleId = packageDoc.moduleId
         for (origin in documentation.sourceFileOrigins where
             origin.moduleId == packageDoc.moduleId && origin.packageName == packageDoc.name) {
-            for (packageReference in exampleImportPackageReferences(origin)) {
+            for (packageReference in exampleFactPackageReferences(origin)) {
                 let failure = addExampleImportedPackage(documentation, ownerModuleId, packageReference,
                     reachableCache, required, seen)
                 if (!failure.isEmpty()) { return ([], failure) }
@@ -424,7 +382,7 @@ private func examplePackageDependenciesReady(documentation: DocumentationSet,
     let reachable = cachedExampleReachableModules(documentation, packageDoc.moduleId, reachableCache)
     for (origin in documentation.sourceFileOrigins where
         origin.moduleId == packageDoc.moduleId && origin.packageName == packageDoc.name) {
-        for (packageReference in exampleImportPackageReferences(origin)) {
+        for (packageReference in exampleFactPackageReferences(origin)) {
             let (selected, _) = selectExampleImportPackage(documentation, packageDoc.moduleId,
                 packageReference, reachable)
             match (selected) {

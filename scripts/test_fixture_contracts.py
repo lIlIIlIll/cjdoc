@@ -80,7 +80,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/19")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/20")
         metadata = document.get("metadata")
         self.assertIsInstance(metadata, dict)
         self.assertEqual(set(metadata), {"groups", "tags", "fields"})

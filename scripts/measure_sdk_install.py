@@ -92,14 +92,13 @@ def variant_a_warm(cache: Path, compiler_name: str, compiler_sha256: str,
 
 
 def variant_b_warm(archive_dir: Path, compiler_name: str, compiler_sha256: str,
-                   stdx_name: str, stdx_sha256: str) -> dict:
+                   stdx_name: str, stdx_sha256: str, *, scratch: Path) -> dict:
     """Warm verification and fresh extraction from the two raw archives."""
     clock = Clock()
     with clock.measure("hashMs"):
         verify_sha256(archive_dir / compiler_name, compiler_sha256)
         verify_sha256(archive_dir / stdx_name, stdx_sha256)
-    temporary = tempfile.TemporaryDirectory(prefix="cjdoc-sdk-measure-")
-    fresh = Path(temporary.name) / "extracted"
+    fresh = scratch / "extracted"
     fresh.mkdir()
     with clock.measure("extractMs"):
         extract(archive_dir / compiler_name, fresh)
@@ -107,9 +106,22 @@ def variant_b_warm(archive_dir: Path, compiler_name: str, compiler_sha256: str,
     sdk, stdx = sdk_root(fresh), stdx_root(fresh)
     if sdk is None or stdx is None:
         raise SystemExit("measured archives do not contain both roots")
-    result = {"clock": clock, "sdkRoot": sdk.as_posix(), "stdxRoot": stdx.as_posix(),
-              "_temporary": temporary}
-    return result
+    return {"clock": clock, "sdkRoot": sdk.as_posix(), "stdxRoot": stdx.as_posix()}
+
+
+def measure_warm_sample(work: Path, prepare, cold_identity: dict) -> dict:
+    started = time.perf_counter()
+    with tempfile.TemporaryDirectory(dir=work, prefix="cycle-") as temporary:
+        outcome = prepare(Path(temporary))
+        ready = time.perf_counter()
+        observed = identity(Path(outcome["sdkRoot"]), Path(outcome["stdxRoot"]))
+        if observed != cold_identity:
+            raise ValueError("warm identity differs from the cold install")
+        checked = time.perf_counter()
+    # Measure the complete warm preparation and the cleanup, but not the
+    # independent identity comparison that needs the tree to remain live.
+    cleanup = time.perf_counter() - checked
+    return {**outcome["clock"].durations, "totalMs": round(((ready - started) + cleanup) * 1000, 3)}
 
 
 def identity(sdk: Path, stdx: Path) -> dict[str, object]:
@@ -199,25 +211,20 @@ def main() -> int:
     shutil.copyfile(args.stdx_archive, cache_b / args.stdx_name)
 
     cold_identity = identity(sdk_a, stdx_a)
+    prepare = {
+        VARIANTS[0]: lambda _scratch: variant_a_warm(
+            cache_a, args.compiler_name, args.compiler_sha256, args.stdx_name, args.stdx_sha256),
+        VARIANTS[1]: lambda scratch: variant_b_warm(
+            cache_b, args.compiler_name, args.compiler_sha256, args.stdx_name, args.stdx_sha256,
+            scratch=scratch),
+    }
     samples: dict[str, list[dict]] = {name: [] for name in VARIANTS}
     failures: list[dict] = []
     for cycle in range(args.cycles):
         for variant in VARIANTS:
             try:
-                with tempfile.TemporaryDirectory(dir=work, prefix="cycle-") as scratch:
-                    started = time.perf_counter()
-                    if variant == VARIANTS[0]:
-                        outcome = variant_a_warm(cache_a, args.compiler_name, args.compiler_sha256,
-                                                 args.stdx_name, args.stdx_sha256)
-                    else:
-                        outcome = variant_b_warm(cache_b, args.compiler_name, args.compiler_sha256,
-                                                 args.stdx_name, args.stdx_sha256)
-                    total = (time.perf_counter() - started) * 1000
-                    observed = identity(Path(outcome["sdkRoot"]), Path(outcome["stdxRoot"]))
-                    if observed != cold_identity:
-                        raise SystemExit(f"{variant}: warm identity differs from the cold install")
-                    samples[variant].append({"cycle": cycle, **outcome["clock"].durations,
-                                             "totalMs": round(total, 3)})
+                sample = measure_warm_sample(work, prepare[variant], cold_identity)
+                samples[variant].append({"cycle": cycle, **sample})
             except Exception as error:  # noqa: BLE001 - recorded, never hidden
                 failures.append({"variant": variant, "cycle": cycle, "error": str(error)})
 
@@ -225,12 +232,11 @@ def main() -> int:
         "schemaVersion": MEASURE_SCHEMA,
         "cycles": args.cycles,
         "measures": ["hashMs", "validateMs", "extractMs", "totalMs"],
-        "notMeasured": ["cacheRestoreMs"],
-        "scope": ("Times only the work this script performs. Fetching and unpacking "
-                  "the cache is done by the workflow's actions/cache step and is not "
-                  "included, so this is post-restore validation plus extraction timing, "
-                  "not end-to-end cache-hit cost. Do not promote a cache shape on this "
-                  "number alone."),
+        "notMeasured": ["cacheRestoreMs", "independentIdentityCheckMs"],
+        "scope": ("Both variants include post-restore verification, extraction and temporary "
+                  "directory cleanup in totalMs. Independent identity checks and fetching "
+                  "and unpacking actions/cache are excluded. This is not end-to-end "
+                  "cache-hit cost. Do not promote a cache shape on this number alone."),
         "variants": {
             name: {"samples": samples[name],
                    "medianMs": round(statistics.median([item["totalMs"] for item in samples[name]]), 3)

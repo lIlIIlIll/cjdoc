@@ -75,7 +75,8 @@ internal func rasterPngDimensions(value: Array<Byte>): ?RasterDimensions {
     var colorType: Byte = 0
     var chunks: Int64 = 0
     var hasPalette = false
-    var hasImageData = false
+    var seenIdat = false
+    var hasImagePayload = false
     var endedImageData = false
     while (index + 12 <= value.size) {
         let length = rasterBig32(value, index)
@@ -109,20 +110,21 @@ internal func rasterPngDimensions(value: Array<Byte>): ?RasterDimensions {
                 value[payload + 12] > 1) { return None }
         } else if (isIhdr) { return None }
         if (isPlte) {
-            if (hasPalette || hasImageData || length < 3 || length > 768 || length % 3 != 0 ||
+            if (hasPalette || seenIdat || length < 3 || length > 768 || length % 3 != 0 ||
                 colorType == 0 || colorType == 4) { return None }
             hasPalette = true
         }
         if (isIdat) {
-            if (endedImageData || length == 0 || (colorType == 3 && !hasPalette)) { return None }
-            hasImageData = true
-        } else if (hasImageData && !isIend) { endedImageData = true }
+            if (endedImageData || (colorType == 3 && !hasPalette)) { return None }
+            seenIdat = true
+            hasImagePayload = hasImagePayload || length > 0
+        } else if (seenIdat && !isIend) { endedImageData = true }
         let critical = value[kind] >= b'A' && value[kind] <= b'Z'
         if (critical && !isIhdr && !isPlte && !isIdat && !isIend) { return None }
         index = crcOffset + 4
         chunks++
         if (isIend) {
-            if (length != 0 || !hasImageData || index != value.size) { return None }
+            if (length != 0 || !hasImagePayload || index != value.size) { return None }
             return Some(RasterDimensions(width, height))
         }
     }

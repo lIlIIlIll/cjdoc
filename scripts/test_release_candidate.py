@@ -618,7 +618,7 @@ class HardeningRegressionTest(unittest.TestCase):
 
 
 class RoutingAndSelectionTest(unittest.TestCase):
-    """Guards for plan transport, LPT ordering and the bounded candidate wait."""
+    """Guards for plan transport and LPT ordering."""
 
     def test_ci_passes_the_plan_through_the_environment(self) -> None:
         ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -638,32 +638,6 @@ class RoutingAndSelectionTest(unittest.TestCase):
         # Longest-processing-time requires descending cost order.
         self.assertIn("by_cost", weighted)
         self.assertIn("sorted(ordered, key=lambda home: -sum(", weighted)
-
-    def test_the_candidate_wait_fits_inside_its_job_timeout(self) -> None:
-        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
-        resolve = pages.split("resolve-candidate:", 1)[1].split("\n  local-candidate:", 1)[0]
-        timeout = int(resolve.split("timeout-minutes:", 1)[1].split("\n", 1)[0].strip())
-        # The bounded wait moved into the resolver module with the rest of the
-        # policy, so this invariant now spans the module default and the job.
-        from scripts import ci_candidate_source
-        wait = ci_candidate_source.DEFAULT_DEADLINE_SECONDS
-        self.assertGreater(timeout * 60, wait,
-                           f"job timeout {timeout}m must exceed the {wait}s wait")
-
-
-def _job_timeout_minutes(job_block: str) -> int:
-    """The active job-level `timeout-minutes` of a workflow job block.
-
-    Only uncommented lines count: a commented key is not enforced by the runner, so
-    matching it would let a guard pass while the job ran under a different bound.
-    """
-    import re
-    pattern = re.compile(r"^ {4}timeout-minutes:\s*(\d+)\s*$", re.MULTILINE)
-    found = pattern.search(job_block)
-    if not found:
-        raise AssertionError("job block declares no active job-level timeout-minutes")
-    return int(found.group(1))
-
 
 class PagesCandidatePolicyTest(unittest.TestCase):
     """The resolver's policy is security relevant, so pin each branch.
@@ -712,51 +686,6 @@ class PagesCandidatePolicyTest(unittest.TestCase):
         # Without an explicit run-id the download would silently read this run.
         marker_download = pages.split("Download the readiness marker", 1)[1].split("\n      - name:", 1)[0]
         self.assertIn("run-id: ${{ needs.resolve-candidate.outputs.run_id }}", marker_download)
-
-    def test_the_publication_gate_fits_inside_its_job_timeout(self) -> None:
-        """The gate must be able to fail closed, not be killed by the runner.
-
-        `verify-site` waits for the consumed CI run before it may publish. If its
-        job timeout is shorter than the gate's own bound plus setup, the runner
-        kills the job mid-wait: the gate never reaches its fail-closed path, the
-        job still burns its whole budget, and every downstream step (artifact
-        upload, Pages artifact, deploy) is skipped. That is exactly how `main`
-        stopped publishing: with a 20 minute timeout, six consecutive push runs
-        (`56208661`, `748892bf`, `cfa07d13`, `8c7dec5d`, `c2b3f46c`, `92054bc9`)
-        were cancelled here, and in every one of them the consumed CI run finished
-        17-981 seconds *after* the window closed, so raising the job timeout was
-        necessary but not sufficient on its own.
-        """
-        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
-        # Bound the block to this job: the next top-level job must not be searched.
-        verify = pages.split("verify-site:", 1)[1].split("\n  wallclock:\n", 1)[0]
-        # Read the ACTIVE job-level key only. A naive first-occurrence split would
-        # accept a commented-out `timeout-minutes: 70` sitting above an active
-        # `timeout-minutes: 20`, which is exactly the regression this guards; the
-        # job-level key is indented four spaces, step-level keys eight.
-        timeout_minutes = _job_timeout_minutes(verify)
-        from scripts import ci_candidate_source
-        needed = (ci_candidate_source.DEFAULT_GATE_SECONDS
-                  + ci_candidate_source.GATE_SETUP_ALLOWANCE_SECONDS)
-        self.assertGreater(timeout_minutes * 60, needed,
-                           f"verify-site timeout {timeout_minutes}m must exceed the "
-                           f"{ci_candidate_source.DEFAULT_GATE_SECONDS}s gate plus its "
-                           f"{ci_candidate_source.GATE_SETUP_ALLOWANCE_SECONDS}s setup allowance")
-        # The invariant is sized against the MODULE DEFAULT, so the step must not pass
-        # a longer override that neither number was sized for.
-        step = verify.split("Require the consumed Linux candidate to be ready and successful",
-                            1)[1].split("\n      - name:", 1)[0]
-        self.assertNotIn("--deadline-seconds", step,
-                         "the sized invariant covers the module default; an override here "
-                         "would need its own bound against the job timeout")
-
-    def test_publication_rechecks_the_consumed_run(self) -> None:
-        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
-        verify = pages.split("verify-site:", 1)[1].split("\n  wallclock:\n", 1)[0]
-        # An early start must not become an early pass: the deployed run has to be
-        # the one whose CI conclusion is still success.
-        self.assertIn("ci_candidate_source.py require-ready", verify)
-        self.assertIn("needs.resolve-candidate.outputs.candidate_source", verify)
 
     def test_the_readiness_marker_is_published_after_the_candidate_artifact(self) -> None:
         candidate = (PROJECT_ROOT / ".github/workflows/build-linux-candidate.yml").read_text(

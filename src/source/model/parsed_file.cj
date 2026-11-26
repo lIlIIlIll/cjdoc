@@ -28,6 +28,7 @@ protected class ParsedSourceFile {
     protected var capturedSource: String = ""
     protected let imports = ArrayList<String>()
     protected let packageImports = ArrayList<String>()
+    protected let importFacts = ArrayList<SourceImportFacts>()
     protected let declarations = ArrayList<SourceDeclaration>()
     protected let reExports = ArrayList<SourceReExport>()
     protected let orphanDocComments = ArrayList<OrphanDocComment>()

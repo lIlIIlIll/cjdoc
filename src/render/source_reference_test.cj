@@ -74,7 +74,7 @@ private func sourceReferenceMultiModuleDocument(): DocumentationSet {
         "cjdoc:reexport:v1:2222222222222222222222222222222222222222222222222222222222222222",
         "single", "target", "resolved", exposureRange,
         targetModuleId: Some(SOURCE_REFERENCE_TARGET_MODULE),
-        bindings: [ReExportBinding("Thing", targetSymbolIds: [SOURCE_REFERENCE_TARGET_SYMBOL])])
+        bindings: [ReExportBinding("Thing", "Thing", targetSymbolIds: [SOURCE_REFERENCE_TARGET_SYMBOL])])
     let target = SymbolDoc(SOURCE_REFERENCE_TARGET_SYMBOL, "class", "Thing", "target.Thing",
         "target", SOURCE_REFERENCE_TARGET_MODULE, "public", targetRange, "public class Thing",
         SemanticInfo("partial", "ast"))

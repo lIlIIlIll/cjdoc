@@ -47,153 +47,27 @@ func commandUsage(command: String): ?String {
     match (command) {
         case "generate" =>
             Some("usage: cjdoc generate [options]\n" +
-                "Reads the project at --project (default the current directory) and writes documentation.\n\n" +
-                "  --project <dir>                       project root, default the current directory\n" +
-                "  --format <name>                       json (default), markdown, html, api-surface, coverage, symbol-index; repeatable\n" +
-                "                                        a CLI list replaces the configured [output].formats list\n" +
-                "  --output <dir>                        output directory, default <project>/target/doc\n" +
-                "  --stdout                              write one JSON-producing format to standard output\n" +
-                "  --force-owned                         replace files in an output directory cjdoc owns\n" +
-                "  --doc-version <version>               version label for an HTML site (requires --format html)\n" +
-                "  --stdlib-doc-version <version>        standard-library documentation release to link\n" +
-                "  --stdlib-doc-base-url <https-url>     alternate standard-library docs root ending in /libs/std\n" +
-                "  --semantic <source|chir>              semantic backend, default chir; source needs no worker\n" +
-                "  --cjc <executable>                    compiler used by the CHIR backend, default cjc\n" +
-                "  --chir-worker <executable>            explicit CHIR worker; default is the installed sibling\n" +
-                "  --chir-import-path <dir>              extra CHIR import path, repeatable\n" +
-                "  --highlight-adapter <abs path>        external highlighting adapter (with --highlight-node)\n" +
-                "  --highlight-node <abs path>           Node executable for the adapter\n" +
-                "  --audience <external|package|all>     declaration audience, default external\n" +
-                "  --lint-profile <off|standard|strict>  documentation rules, default standard\n" +
-                "  --jobs <1..64>                        parallel source scans, default 1\n" +
-                "  --check-examples                       compile and run @example blocks\n" +
-                "  --deny-warnings                        fail when a warning is reported\n" +
-                "  --cfg <NAME=VALUE>                     conditional compilation value, repeatable\n" +
-                "  --include-path-dependencies            include path dependencies as documented modules\n" +
-                "  --include-cached-dependencies          include cached dependencies as documented modules\n" +
-                "  --dependency-source <NAME=PATH>        explicit dependency source, repeatable\n" +
-                "  --cjpm-cache <dir>                     cjpm dependency cache root (with --include-cached-dependencies)\n" +
-                "  --cache-dir <dir>                      cjdoc source cache, default <project>/target/cjdoc/cache/source-v11\n" +
-                "  --no-cache                             do not read or write the source cache\n" +
-                "  --cache                                use the default source cache location again\n" +
-                "  --build-context <record.json>          captured build context\n" +
-                "  --doc-source <catalog-or-dir>          external documentation catalog or directory, repeatable\n" +
-                "  --doc-inventory-pin <PATH=SHA256>      pin for one local symbol inventory, repeatable\n" +
-                "  --link-language <lang>                 language used inside links\n" +
-                "  --link-language-fallback               allow falling back to another language\n" +
-                "  --link-compatible                      keep generated links compatible across versions\n" +
-                "  --repository-url <url>                 GitHub repository URL for source links\n" +
-                "  --repository-revision <revision>       commit used by source links\n" +
-                "  --repository-root <dir>                repository-relative root of the project\n" +
-                "  --max-doc-ir-mib <1..64>               Doc IR size budget, default from [limits]\n" +
-                "  --locale <zh-CN|en>                    interface language; default follows [i18n] default-language\n" +
-                "  --all-languages                        emit one site per configured language\n" +
-                "  --require-language <zh-CN|en>          require a language to be complete, repeatable\n" +
-                "  --agent-full                           include the agent documentation tree\n" +
-                "  --validation-report <report.json>      attach a validation report to the site\n" +
-                "  --api-diff-report <report.json>        attach an API diff report to the site\n" +
-                "  --html-font-sans <families>            sans-serif font stack written into the site\n" +
-                "  --html-font-mono <families>            monospace font stack written into the site\n\n" +
-                "Project defaults come from cjdoc.toml; explicit flags override them.\n")
+                "Reads the project at --project and writes documentation.\n\n" +
+                documentOptionHelp(command) +
+                "\nProject defaults come from cjdoc.toml; explicit flags override them.\n")
         case "check" =>
             Some("usage: cjdoc check [options]\n" +
                 "Reads the project and reports diagnostics and gates; writes no site.\n\n" +
-                "  --project <dir>                       project root, default the current directory\n" +
-                "  --semantic <source|chir>              semantic backend, default chir; source needs no worker\n" +
-                "  --cjc <executable>                    compiler used by the CHIR backend, default cjc\n" +
-                "  --chir-worker <executable>            explicit CHIR worker; default is the installed sibling\n" +
-                "  --chir-import-path <dir>              extra CHIR import path, repeatable\n" +
-                "  --highlight-adapter <abs path>        external highlighting adapter (with --highlight-node)\n" +
-                "  --highlight-node <abs path>           Node executable for the adapter\n" +
-                "  --audience <external|package|all>     declaration audience, default external\n" +
-                "  --lint-profile <off|standard|strict>  documentation rules, default standard\n" +
-                "  --jobs <1..64>                        parallel source scans, default 1\n" +
-                "  --check-examples                       compile and run @example blocks\n" +
-                "  --deny-warnings                        fail when a warning is reported\n" +
-                "  --cfg <NAME=VALUE>                     conditional compilation value, repeatable\n" +
-                "  --include-path-dependencies            include path dependencies as documented modules\n" +
-                "  --include-cached-dependencies          include cached dependencies as documented modules\n" +
-                "  --dependency-source <NAME=PATH>        explicit dependency source, repeatable\n" +
-                "  --cjpm-cache <dir>                     cjpm dependency cache root (with --include-cached-dependencies)\n" +
-                "  --cache-dir <dir>                      cjdoc source cache, default <project>/target/cjdoc/cache/source-v11\n" +
-                "  --no-cache                             do not read or write the source cache\n" +
-                "  --cache                                use the default source cache location again\n" +
-                "  --build-context <record.json>          captured build context\n" +
-                "  --doc-source <catalog-or-dir>          external documentation catalog or directory, repeatable\n" +
-                "  --doc-inventory-pin <PATH=SHA256>      pin for one local symbol inventory, repeatable\n" +
-                "  --link-language <lang>                 language used inside links\n" +
-                "  --link-language-fallback               allow falling back to another language\n" +
-                "  --link-compatible                      keep generated links compatible across versions\n" +
-                "  --api-surface-baseline <file>          strict API baseline; any change fails\n" +
-                "  --min-symbol-coverage <0..100>         additional symbol coverage gate\n" +
-                "  --min-parameter-coverage <0..100>      additional parameter coverage gate\n" +
-                "  --max-doc-ir-mib <1..64>               Doc IR size budget, default from [limits]\n\n" +
-                "check applies [lint], [coverage] and [highlight]; [output] does not apply.\n")
+                documentOptionHelp(command) +
+                "\ncheck applies [lint], [coverage] and [highlight]; [output] does not apply.\n")
         case "render" =>
             Some("usage: cjdoc render --input <docs.json> [options]\n" +
-                "Re-renders a captured Doc IR file without reading the project configuration.\n\n" +
-                "  --input <docs.json>                   captured cjdoc.doc-ir/19 document (required)\n" +
-                "  --format <name>                       json, markdown, html, api-surface, coverage, symbol-index; repeatable\n" +
-                "  --output <dir>                        output directory, default target/doc\n" +
-                "  --stdout                              write one JSON-producing format to standard output\n" +
-                "  --force-owned                         replace files in an output directory cjdoc owns\n" +
-                "  --doc-version <version>               version label for an HTML site (requires --format html)\n" +
-                "  --locale <zh-CN|en>                   interface language, default zh-CN\n" +
-                "  --all-languages                        emit one site per recorded language\n" +
-                "  --agent-full                           include the agent documentation tree\n" +
-                "  --validation-report <report.json>      attach a validation report to the site\n" +
-                "  --api-diff-report <report.json>        attach an API diff report to the site\n" +
-                "  --html-font-sans <families>            sans-serif font stack written into the site\n" +
-                "  --html-font-mono <families>            monospace font stack written into the site\n" +
-                "  --max-doc-ir-mib <1..64>               Doc IR size budget, default 64\n")
+                "Re-renders a captured Doc IR file without reading project configuration.\n\n" +
+                documentOptionHelp(command))
         case "diff" =>
-            Some("usage: cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
+            Some("usage: cjdoc diff OLD NEW [options]\n" +
                 "       cjdoc diff --baseline OLD --current NEW [options]\n\n" +
-                "  --baseline <file>                     previous cjdoc.api-surface/3 snapshot\n" +
-                "  --current <file>                      current cjdoc.api-surface/3 snapshot\n" +
-                "  --format <text|json>                  report format, default text\n" +
-                "  --deny-breaking-api                   fail when a breaking change is found\n" +
-                "  --deny-potentially-breaking-api       fail when a potentially breaking change is found\n")
+                documentOptionHelp(command))
         case "serve" =>
             Some("usage: cjdoc serve [options]\n" +
-                "Generates the project, serves the HTML site, and rebuilds when inputs change.\n\n" +
-                "  --project <dir>                       project root, default the current directory\n" +
-                "  --port <port>                         loopback port, default 8080\n" +
-                "  --open                                open a browser once the first build finishes\n" +
-                "  --format <name>                       formats to generate; html is always served\n" +
-                "  --output <dir>                        output directory, default <project>/target/doc\n" +
-                "  --semantic <source|chir>              semantic backend, default chir; source needs no worker\n" +
-                "  --cjc <executable>                    compiler used by the CHIR backend, default cjc\n" +
-                "  --chir-worker <executable>            explicit CHIR worker; default is the installed sibling\n" +
-                "  --chir-import-path <dir>              extra CHIR import path, repeatable\n" +
-                "  --highlight-adapter <abs path>        external highlighting adapter (with --highlight-node)\n" +
-                "  --highlight-node <abs path>           Node executable for the adapter\n" +
-                "  --audience <external|package|all>     declaration audience, default external\n" +
-                "  --lint-profile <off|standard|strict>  documentation rules, default standard\n" +
-                "  --jobs <1..64>                        parallel source scans, default 1\n" +
-                "  --check-examples                       compile and run @example blocks\n" +
-                "  --deny-warnings                        fail the rebuild when a warning is reported\n" +
-                "  --cfg <NAME=VALUE>                     conditional compilation value, repeatable\n" +
-                "  --include-path-dependencies            include path dependencies as documented modules\n" +
-                "  --include-cached-dependencies          include cached dependencies as documented modules\n" +
-                "  --dependency-source <NAME=PATH>        explicit dependency source, repeatable\n" +
-                "  --cjpm-cache <dir>                     cjpm dependency cache root (with --include-cached-dependencies)\n" +
-                "  --cache-dir <dir>                      cjdoc source cache, default <project>/target/cjdoc/cache/source-v11\n" +
-                "  --no-cache                             do not read or write the source cache\n" +
-                "  --cache                                use the default source cache location again\n" +
-                "  --repository-url <url>                 GitHub repository URL for source links\n" +
-                "  --repository-revision <revision>       commit used by source links\n" +
-                "  --repository-root <dir>                repository-relative root of the project\n" +
-                "  --max-doc-ir-mib <1..64>               Doc IR size budget, default from [limits]\n" +
-                "  --locale <zh-CN|en>                    interface language; default follows [i18n] default-language\n" +
-                "  --require-language <zh-CN|en>          require a language to be complete, repeatable\n" +
-                "  --api-surface-baseline <file>          strict API baseline; any change fails\n" +
-                "  --min-symbol-coverage <0..100>         additional symbol coverage gate\n" +
-                "  --min-parameter-coverage <0..100>      additional parameter coverage gate\n" +
-                "  --agent-full                           include the agent documentation tree\n" +
-                "  --html-font-sans <families>            sans-serif font stack written into the site\n" +
-                "  --html-font-mono <families>            monospace font stack written into the site\n\n" +
-                "Status is available at http://127.0.0.1:<port>/__cjdoc/status.json.\n")
+                "Generates the project, serves HTML, and rebuilds when inputs change.\n\n" +
+                documentOptionHelp(command) +
+                "\nHTML is always served. Status: http://127.0.0.1:<bound-port>/__cjdoc/status.json.\n")
         case "versions" | "versions compose" =>
             Some("usage: cjdoc versions compose --version ID=PATH... --output <dir> [options]\n\n" +
                 "  --version <ID=PATH>                   generated site root, repeatable and required\n" +

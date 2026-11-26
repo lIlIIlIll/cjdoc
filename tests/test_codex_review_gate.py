@@ -663,19 +663,21 @@ class IntegrationTests(unittest.TestCase):
         # compensating revocation. The HEAD still carries invalid evidence, so the
         # run must fail loudly instead of reporting success.
         api = FakeAPI()
-        published = {"success": False}
+        events = []
         original_status = api.create_commit_status
         original_scan = api.list_open_pull_requests
 
         def failing_status(sha, decision):
-            if decision.state == "success":
-                published["success"] = True
-            elif published["success"] and sha == HEAD:
+            if sha == HEAD and decision.state != "success" and events:
+                events.append("compensating revocation attempted")
                 raise RuntimeError("status API down")
-            return original_status(sha, decision)
+            original_status(sha, decision)
+            if sha == HEAD and decision.state == "success":
+                events.append("success published")
 
         def failing_scan():
-            if published["success"]:
+            if events:
+                events.append("post-publication scan failed")
                 raise RuntimeError("transient API error")
             return original_scan()
 
@@ -683,6 +685,10 @@ class IntegrationTests(unittest.TestCase):
         api.list_open_pull_requests = failing_scan
         with self.assertRaisesRegex(RuntimeError, "withdraw every published status"):
             gate.evaluate_pr(api, 133)
+        self.assertIn((HEAD, "success"), [(sha, status.state) for sha, status in api.statuses])
+        self.assertEqual(events[:3], [
+            "success published", "post-publication scan failed", "compensating revocation attempted",
+        ])
 
     def test_summary_deleted_during_publication_is_withdrawn(self):
         # A concurrent summary-deletion run publishes `pending` while this one is
@@ -2218,39 +2224,6 @@ class IntegrationTests(unittest.TestCase):
         # Neither target may end up carrying the obsolete conclusion.
         for target in (HEAD, "b" * 40):
             self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
-
-
-    def test_failed_compensating_revocation_fails_the_run(self):
-        # The success is published, the ownership re-check fails, and so does the
-        # compensating revocation. The HEAD still carries invalid evidence, so the
-        # run must fail loudly instead of reporting success.
-        api = FakeAPI()
-        calls = {"n": 0}
-        original_scan = api.list_open_pull_requests
-        original_status = api.create_commit_status
-
-        def failing_scan():
-            calls["n"] += 1
-            if calls["n"] >= 3:  # the post-publish re-check
-                raise RuntimeError("transient API error")
-            return original_scan()
-
-        published = {"success": False}
-
-        def failing_status(sha, decision):
-            # Only the COMPENSATING revocation fails: the success has already
-            # been published, so withdrawing it must be what breaks.
-            if decision.state == "success":
-                published["success"] = True
-            elif sha == HEAD and published["success"]:
-                raise RuntimeError("status API down")
-            return original_status(sha, decision)
-
-        api.list_open_pull_requests = failing_scan
-        api.create_commit_status = failing_status
-        with self.assertRaisesRegex(RuntimeError, "withdraw every published status"):
-            gate.evaluate_pr(api, 133)
-
 
     def test_base_push_withdraws_every_candidate_head_before_evaluating(self):
         # A hard timeout mid-fanout must not leave later HEADs authorized, so all

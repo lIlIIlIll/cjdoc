@@ -250,6 +250,7 @@ internal func validateDecodedSourceCache(parsed: ParsedSourceFile,
         declarationsByKey[declaration.sourceKey] = declaration
         previous = Some(declaration)
     }
+    validateCachedImportFacts(parsed, capturedSourceIndex)
     validateCachedCommentBindings(parsed, sourceBuffer)
     for (declaration in parsed.declarations) {
         if (let Some(ownerKey) <- declaration.ownerSourceKey) {

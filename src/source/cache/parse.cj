@@ -5,11 +5,12 @@ import cjdoc.toolchain.ToolchainIdentity
 import cjdoc.source.provenance.SourceRepositoryRegistry
 import cjdoc.source.model.addSourceLimitDiagnostic
 import cjdoc.source.model.{ParsedSourceFile, SourceInputFile, withCapturedSourceFacts}
-import cjdoc.source.frontend.{
-    hasDeepSourceBinaryExpression, parseSourceTextWithAst, sourceImportTextsFromSource}
+import cjdoc.source.frontend.{hasDeepSourceBinaryExpression, parseSourceTextWithAst,
+    sourceImportTextsFromSource}
 import cjdoc.source.model.{
     SourceModule, CapturedSourceIndex, CapturedSourceFacts, SourceFileOrigin, SourceSnapshot,
     MAX_CAPTURED_SOURCE_LINES}
+import cjdoc.source.model.SourceImportFacts
 import cjdoc.source.Diagnostic
 import cjdoc.source.{SourceLocation, SOURCE_CACHE_FORMAT, MAX_SOURCE_FILE_BYTES, MAX_SOURCE_CACHE_BYTES, MAX_SOURCE_CACHE_ITEMS, SourceAuxiliaryBudget, readAuxiliaryFileBounded, SourceCacheStats}
 import cjdoc.filesystem.{BoundedFileRead, hostPathIsWithin, readFileBounded, readFileBoundedSnapshot, readTextBounded}
@@ -33,6 +34,12 @@ internal func decodeParsedSource(input: SourceInputFile, cacheKey: String,
     parsed.packageName = cacheReadOptionalString(reader)
     cacheReadStrings(reader, parsed.imports)
     cacheReadStrings(reader, parsed.packageImports)
+    var importFactCount = checkedCacheCount(reader)
+    var importFactIndex: Int64 = 0
+    while (importFactIndex < importFactCount) {
+        parsed.importFacts.add(cacheReadImportFacts(reader))
+        importFactIndex++
+    }
     var count = checkedCacheCount(reader)
     var index: Int64 = 0
     while (index < count) {
@@ -323,6 +330,17 @@ internal func parseSourceFrontend(input: SourceInputFile, fallbackPackageName: S
 }
 
 
+private func sourceCacheImportFactsMatch(first: ArrayList<SourceImportFacts>,
+    second: ArrayList<SourceImportFacts>): Bool {
+    if (first.size != second.size) { return false }
+    var index: Int64 = 0
+    while (index < first.size) {
+        if (!first[index].hasSameStatement(second[index])) { return false }
+        index++
+    }
+    true
+}
+
 private func sourceCacheStringListsMatch(first: ArrayList<String>,
     second: ArrayList<String>): Bool {
     if (first.size != second.size) { return false }
@@ -355,7 +373,8 @@ private func cachedImportMetadataMatchesSource(input: SourceInputFile,
     let sourceDerived = parseSourceFrontend(input, fallbackPackageName, importSource,
         astPreflightExecutable)
     if (sourceDerived.packageName.isNone()) { return false }
-    sourceCacheStringListsMatch(cached.imports, sourceDerived.imports) &&
+    sourceCacheImportFactsMatch(cached.importFacts, sourceDerived.importFacts) &&
+        sourceCacheStringListsMatch(cached.imports, sourceDerived.imports) &&
         sourceCacheStringListsMatch(cached.packageImports, sourceDerived.packageImports)
 }
 
@@ -532,7 +551,7 @@ private func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSou
         parsed.input.module.id, capturedFacts: parsed.capturedSourceFacts,
         provenance: Some(provenance), packageName: packageName,
         imports: parsed.imports.toArray(), packageImports: parsed.packageImports.toArray(),
-        capturedSource: parsed.capturedSource))
+        importFacts: parsed.importFacts.toArray(), capturedSource: parsed.capturedSource))
     match (parsed.cacheStatus) {
         case "hit" => cacheStats.hits++
         case "miss-written" =>

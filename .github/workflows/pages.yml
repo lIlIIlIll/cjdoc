@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/pages.yml'
       - '.github/workflows/build-linux-candidate.yml'
+      - '.github/actions/pages-browser-shard/**'
       - 'site/**'
       - 'examples/**'
       - 'scripts/**'
@@ -18,28 +19,16 @@ on:
       - 'cjpm.lock'
       - 'vendor/**'
       - 'tests/fixtures/projects/html_reference/**'
-  push:
+  # Deployment is driven by the upstream terminal event, not a race between
+  # Pages' polling deadline and the slowest CI job.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - '.github/workflows/pages.yml'
-      - '.github/workflows/build-linux-candidate.yml'
-      - 'site/**'
-      - 'examples/**'
-      - 'scripts/**'
-      - 'tests/showcase_contract/**'
-      - 'src/**'
-      - 'docs/**'
-      - 'README.md'
-      - 'cjpm.toml'
-      - 'cjdoc.toml'
-      - 'tools/**'
-      - 'cjpm.lock'
-      - 'vendor/**'
-      - 'tests/fixtures/projects/html_reference/**'
   workflow_dispatch:
     inputs:
       candidate_run_id:
-        description: CI run whose Linux candidate to reuse (empty = local build)
+        description: Successful main-push CI run to reuse (empty = validate only with a local build)
         type: string
         default: ""
       candidate_run_attempt:
@@ -65,7 +54,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: github-pages-${{ github.ref }}
+  group: github-pages-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -87,11 +76,13 @@ jobs:
   # always build locally so a fork cannot influence a published site.
   resolve-candidate:
     name: Resolve Linux candidate source
+    if: ${{ github.event_name != 'workflow_run'
+           || (github.event.workflow_run.conclusion == 'success'
+               && github.event.workflow_run.event == 'push'
+               && github.event.workflow_run.head_repository.full_name == github.repository
+               && github.event.workflow_run.head_sha == github.sha) }}
     runs-on: ubuntu-22.04
-    # Must exceed the bounded wait below (15 min), otherwise the wait can never
-    # reach its deadline and the job is killed instead of falling back to a
-    # local build.
-    timeout-minutes: 20
+    timeout-minutes: 5
     outputs:
       reuse: ${{ steps.resolve.outputs.reuse }}
       run_id: ${{ steps.resolve.outputs.run_id }}
@@ -117,12 +108,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPLICIT_RUN_ID: ${{ inputs.candidate_run_id }}
           EXPLICIT_RUN_ATTEMPT: ${{ inputs.candidate_run_attempt }}
+          EVENT_PATH: ${{ github.event_path }}
         run: |
           set -euo pipefail
-          # Readiness is decided by the Linux candidate's own readiness marker, not
-          # by "the whole CI matrix succeeded": the candidate is downloadable
-          # minutes before the Windows/macOS legs finish (issue #82, CI-05.1).
-          # Publication is still gated on the finished CI conclusion in verify-site.
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            python scripts/pages_workflow.py upstream --event "${EVENT_PATH}" --out upstream.env
+            # Values are validated positive integers emitted by the checked-in policy.
+            source upstream.env
+            EXPLICIT_RUN_ID="${run_id}"
+            EXPLICIT_RUN_ATTEMPT="${attempt}"
+          fi
           python scripts/ci_candidate_source.py resolve \
             --repository "${GITHUB_REPOSITORY}" \
             --commit "${GITHUB_SHA}" \
@@ -130,13 +125,17 @@ jobs:
             --explicit-run-id "${EXPLICIT_RUN_ID}" \
             --explicit-run-attempt "${EXPLICIT_RUN_ATTEMPT}" \
             --out "${GITHUB_OUTPUT}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]] && ! grep -qx 'reuse=true' "${GITHUB_OUTPUT}"; then
+            echo "::error::Completed CI did not supply a usable exact-attempt candidate"
+            exit 1
+          fi
 
   # Local fallback: the reusable workflow remains the single definition of the
   # toolchain and the pinned -O2 --fno-chir-function-inlining build options even when no candidate can be reused.
   local-candidate:
     name: Build Linux candidate locally
     needs: resolve-candidate
-    if: ${{ needs.resolve-candidate.outputs.reuse != 'true' }}
+    if: ${{ success() && github.event_name != 'workflow_run' && needs.resolve-candidate.outputs.reuse != 'true' }}
     uses: ./.github/workflows/build-linux-candidate.yml
     with:
       cangjie_sdk_version: "1.2.0"
@@ -224,6 +223,12 @@ jobs:
     if: ${{ always() && !cancelled() && (needs.local-candidate.result == 'success' || needs.reuse-candidate.result == 'success') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    outputs:
+      artifact_name: ${{ steps.seal.outputs.artifact_name }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      producer_attempt: ${{ steps.seal.outputs.producer_attempt }}
+      site_sha256: ${{ steps.seal.outputs.site_sha256 }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -315,6 +320,7 @@ jobs:
               --revision "${SHOWCASE_REVISION}"
 
       - name: Fingerprint the sealed site
+        id: seal
         shell: bash
         env:
           PYTHONPATH: scripts
@@ -322,7 +328,11 @@ jobs:
           set -euo pipefail
           python -m showcase_contract fingerprint --site target/showcase-site \
             > target/showcase-site.sha256
-          cat target/showcase-site.sha256
+          {
+            echo "site_sha256=$(cat target/showcase-site.sha256)"
+            echo "artifact_name=cjdoc-showcase-site-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            echo "producer_attempt=${GITHUB_RUN_ATTEMPT}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Upload timing evidence
         if: always()
@@ -334,9 +344,10 @@ jobs:
           if-no-files-found: error
 
       - name: Upload the sealed site with its generating binary
+        id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.seal.outputs.artifact_name }}
           # The published tree contains hidden files such as .nojekyll. Artifact
           # upload drops them by default, which would change the tree digest that
           # showcase-site.sha256 seals, so they must be included.
@@ -359,6 +370,10 @@ jobs:
     if: ${{ !cancelled() && needs.assemble-site.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 25
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      producer_attempt: ${{ github.run_attempt }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -371,6 +386,7 @@ jobs:
           python-version: "3.12"
 
       - name: Restore cjv toolchain cache
+        id: cjv-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/setup-cangjie-cjv
@@ -396,13 +412,15 @@ jobs:
       - name: Download the sealed site
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.assemble-site.outputs.artifact_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/sealed
 
       - name: Reproduce the source bundle
         shell: bash
         env:
           CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+          SITE_SHA256: ${{ needs.assemble-site.outputs.site_sha256 }}
         run: |
           set -euo pipefail
           sealed="${RUNNER_TEMP}/sealed"
@@ -419,9 +437,10 @@ jobs:
               --site "${sealed}/showcase-site" \
               --binary "${sealed}/release/bin/main" \
               --evidence target/showcase-source-evidence.json \
-              --expect-site-sha256 "$(cat "${sealed}/showcase-site.sha256")"
+              --expect-site-sha256 "${SITE_SHA256}"
 
       - name: Upload source reproduction evidence
+        id: upload
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -432,195 +451,53 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # Two independent browser shards. Homepage groups stay whole, so each shard
-  # observes exactly the same per-group state a single-process run would.
-  browser-shard:
-    name: Browser shard ${{ matrix.shard }}
+  # Independent jobs preserve each shard's actual outputs on a selective rerun.
+  # The jobs API can give inherited executions the consumer's new attempt.
+  browser-0:
+    name: Browser shard 0
     needs: assemble-site
     if: ${{ !cancelled() && needs.assemble-site.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1]
+    outputs:
+      artifact_id: ${{ steps.shard.outputs.artifact_id }}
+      artifact_digest: ${{ steps.shard.outputs.artifact_digest }}
+      producer_attempt: ${{ steps.shard.outputs.producer_attempt }}
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - id: shard
+        uses: ./.github/actions/pages-browser-shard
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: scripts/requirements-showcase.txt
+          shard: '0'
+          site-artifact-id: ${{ needs.assemble-site.outputs.artifact_id }}
+          site-sha256: ${{ needs.assemble-site.outputs.site_sha256 }}
+          browser-history-run-id: ${{ inputs.browser_history_run_id }}
+          browser-history-run-attempt: ${{ inputs.browser_history_run_attempt || '1' }}
 
-      - name: Restore Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+  browser-1:
+    name: Browser shard 1
+    needs: assemble-site
+    if: ${{ !cancelled() && needs.assemble-site.result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    outputs:
+      artifact_id: ${{ steps.shard.outputs.artifact_id }}
+      artifact_digest: ${{ steps.shard.outputs.artifact_digest }}
+      producer_attempt: ${{ steps.shard.outputs.producer_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Playwright's default per-user cache; keyed by its exact pin.
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('scripts/requirements-showcase.txt') }}
-
-      - name: Restore CJK fonts
-        id: font-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+          persist-credentials: false
+      - id: shard
+        uses: ./.github/actions/pages-browser-shard
         with:
-          path: ${{ runner.temp }}/noto-cjk-fonts
-          key: noto-cjk-fonts-${{ runner.os }}-1.20220127-v1
-
-      - name: Install browser acceptance dependencies
-        env:
-          CACHE_HIT_FONTS: ${{ steps.font-cache.outputs.cache-hit }}
-        run: |
-          python -m pip install --disable-pip-version-check psutil -r scripts/requirements-showcase.txt
-          python -m playwright install --with-deps chromium
-          # DONE-03 classifies each sample as warm or cold, and this shard's restore
-          # cost is the font archive AND the Playwright browser build: either one
-          # missing changes how long the job takes. Recording only the fonts labelled
-          # a shard that had to download Chromium as warm, and the classifier reads the
-          # whole map, so a cache left out here silently mislabels the sample.
-          #
-          # pip's wheel cache is deliberately NOT recorded. It covers one small pinned
-          # dependency, and treating it as part of warmth would split a cell on an axis
-          # that does not move the measured duration.
-          {
-            echo "CJDOC_CACHE_STATE=fonts=${{ steps.font-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }},playwright=${{ steps.playwright-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
-          } >> "${GITHUB_ENV}"
-          # Chromium cannot rasterize CJK text without a fallback font, so the
-          # evidence screenshots depend on this package being present. The
-          # 61 MB archive is slow to fetch on a cold runner, so cache the four
-          # installed collections instead of the whole fontconfig database.
-          if [ "${CACHE_HIT_FONTS}" != "true" ]; then
-            sudo apt-get install -y fonts-noto-cjk
-            mkdir -p "${RUNNER_TEMP}/noto-cjk-fonts"
-            sudo cp /usr/share/fonts/opentype/noto/Noto*CJK-*.ttc "${RUNNER_TEMP}/noto-cjk-fonts/"
-            # The cache action archives as the runner user, so hand it the files.
-            sudo chown -R "$(id -u):$(id -g)" "${RUNNER_TEMP}/noto-cjk-fonts"
-          else
-            sudo mkdir -p /usr/share/fonts/opentype/noto
-            sudo cp "${RUNNER_TEMP}"/noto-cjk-fonts/Noto*CJK-*.ttc /usr/share/fonts/opentype/noto/
-            sudo fc-cache -f >/dev/null
-          fi
-          test -s /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
-
-      - name: Download the sealed site
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/sealed
-
-      - name: Select the explicitly requested browser history
-        id: browser-history
-        shell: bash
-        env:
-          HISTORY_RUN_ID: ${{ inputs.browser_history_run_id }}
-          HISTORY_RUN_ATTEMPT: ${{ inputs.browser_history_run_attempt || '1' }}
-        run: |
-          set -euo pipefail
-          mkdir -p target
-          history_source=""
-          artifact=""
-          if [[ -n "${HISTORY_RUN_ID}" ]]; then
-            if [[ ! "${HISTORY_RUN_ID}" =~ ^[1-9][0-9]*$ || ! "${HISTORY_RUN_ATTEMPT}" =~ ^[1-9][0-9]*$ ]]; then
-              echo "::error::Browser history requires a positive run id and attempt number"
-              exit 1
-            fi
-            history_dir="target/browser-history/${HISTORY_RUN_ID}-${HISTORY_RUN_ATTEMPT}"
-            history_source="${history_dir}/browser-timing-history.json"
-            artifact="cjdoc-showcase-browser-history-${HISTORY_RUN_ID}-${HISTORY_RUN_ATTEMPT}"
-            {
-              echo "selected=true"
-              echo "history_dir=${history_dir}"
-              echo "history_source=${history_source}"
-              echo "artifact_name=${artifact}"
-            } >> "${GITHUB_OUTPUT}"
-          fi
-          export HISTORY_SOURCE="${history_source}" HISTORY_ARTIFACT="${artifact}"
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          selected = bool(os.environ["HISTORY_RUN_ID"])
-          selection = {
-              "mode": "history-weighted" if selected else "equal-home-groups",
-              "runId": os.environ["HISTORY_RUN_ID"] if selected else None,
-              "runAttempt": int(os.environ["HISTORY_RUN_ATTEMPT"]) if selected else None,
-              "artifactName": os.environ["HISTORY_ARTIFACT"] or None,
-              "historySource": os.environ["HISTORY_SOURCE"] or None,
-          }
-          Path("target/browser-history-selection.json").write_text(
-              json.dumps(selection, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          print(json.dumps(selection, sort_keys=True))
-          PY
-
-      - name: Download only the selected run and attempt's browser history
-        if: steps.browser-history.outputs.selected == 'true'
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
-        with:
-          name: ${{ steps.browser-history.outputs.artifact_name }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.browser_history_run_id }}
-          path: ${{ steps.browser-history.outputs.history_dir }}
-
-      - name: Plan and run the browser shard
-        shell: bash
-        env:
-          PYTHONPATH: scripts
-          CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
-          BROWSER_HISTORY_SOURCE: ${{ steps.browser-history.outputs.history_source }}
-        run: |
-          set -euo pipefail
-          sealed="${RUNNER_TEMP}/sealed"
-          history_args=()
-          if [[ -n "${BROWSER_HISTORY_SOURCE}" ]]; then
-            # A selected but unavailable/invalid/incomplete history fails closed.
-            if [[ ! -f "${BROWSER_HISTORY_SOURCE}" ]]; then
-              echo "::error::Selected browser history is missing ${BROWSER_HISTORY_SOURCE}"
-              exit 1
-            fi
-            history_args=(--history "${BROWSER_HISTORY_SOURCE}")
-          fi
-          python -m showcase_contract.browser plan \
-            --site "${sealed}/showcase-site" --shards 2 \
-            --run-id "${GITHUB_RUN_ID}" --output target/browser-plan.json "${history_args[@]}"
-          python scripts/ci_stage.py run --id "browser-shard-${{ matrix.shard }}" --kind browser-shard \
-            --evidence "${CJDOC_CI_EVIDENCE}" -- \
-            python -m showcase_contract.browser run \
-              --site "${sealed}/showcase-site" --plan target/browser-plan.json \
-              --shard-index "${{ matrix.shard }}" --run-id "${GITHUB_RUN_ID}" \
-              --run-attempt "${GITHUB_RUN_ATTEMPT}" \
-              --evidence "target/browser-shard-${{ matrix.shard }}"
-
-      - name: Upload the shard evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: cjdoc-showcase-browser-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            target/browser-plan.json
-            target/browser-history-selection.json
-            target/browser-history
-            target/browser-shard-${{ matrix.shard }}
-          retention-days: 7
-          if-no-files-found: error
-
-      # The shard reported the Chromium version and font set it rendered with into the
-      # stage recorder. Uploading that record is what makes the claim checkable, so it
-      # travels as its own `ci-timing-*` artifact: mixing an absolute evidence path
-      # into the upload above would move the artifact root off the checked-out tree.
-      - name: Upload the shard's stage record
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ci-timing-pages-browser-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-evidence/
-          retention-days: 7
-          if-no-files-found: error
+          shard: '1'
+          site-artifact-id: ${{ needs.assemble-site.outputs.artifact_id }}
+          site-sha256: ${{ needs.assemble-site.outputs.site_sha256 }}
+          browser-history-run-id: ${{ inputs.browser_history_run_id }}
+          browser-history-run-attempt: ${{ inputs.browser_history_run_attempt || '1' }}
 
   reading-regressions:
     name: Check API reading regressions
@@ -628,6 +505,10 @@ jobs:
     if: ${{ !cancelled() && needs.assemble-site.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 25
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      producer_attempt: ${{ github.run_attempt }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -655,7 +536,8 @@ jobs:
       - name: Download the sealed site
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.assemble-site.outputs.artifact_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/sealed
 
       - name: Check reading regressions against the sealed site
@@ -663,6 +545,7 @@ jobs:
         env:
           PYTHONPATH: scripts
           CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+          SITE_SHA256: ${{ needs.assemble-site.outputs.site_sha256 }}
         run: |
           set -euo pipefail
           sealed="${RUNNER_TEMP}/sealed"
@@ -671,9 +554,10 @@ jobs:
             python -m showcase_contract.browser_reading_regressions \
               --site "${sealed}/showcase-site" \
               --evidence target/showcase-reading-evidence \
-              --expect-site-sha256 "$(cat "${sealed}/showcase-site.sha256")"
+              --expect-site-sha256 "${SITE_SHA256}"
 
       - name: Upload reading evidence
+        id: upload
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -687,21 +571,22 @@ jobs:
   # full-coverage gate before anything is published.
   verify-site:
     name: Verify the final site and every branch
-    needs: [resolve-candidate, assemble-site, source-reproduction, browser-shard, reading-regressions]
+    needs: [resolve-candidate, assemble-site, source-reproduction, browser-0, browser-1, reading-regressions]
     if: ${{ !cancelled()
            && needs.assemble-site.result == 'success'
            && needs.source-reproduction.result == 'success'
-           && needs.browser-shard.result == 'success'
+           && needs.browser-0.result == 'success'
+           && needs.browser-1.result == 'success'
            && needs.reading-regressions.result == 'success' }}
     runs-on: ubuntu-22.04
-    # This job waits for the consumed CI run to finish before it may publish, so its
-    # timeout must EXCEED the gate's own bound (`DEFAULT_GATE_SECONDS`) plus setup;
-    # otherwise the runner kills the job mid-wait and the gate never fails closed.
-    # At 20 minutes every `main` push was cancelled here and the site stopped
-    # publishing. The relation is pinned by
-    # `test_the_publication_gate_fits_inside_its_job_timeout` asserts the relation,
-    # so the two numbers cannot drift apart silently.
-    timeout-minutes: 70
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+      pages: read
+    outputs:
+      pages_artifact_name: ${{ steps.pages-name.outputs.name }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -713,71 +598,80 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify every producer's immutable artifact identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          SITE_PRODUCER: site:${{ needs.assemble-site.outputs.producer_attempt }}:${{ needs.assemble-site.outputs.artifact_id }}:${{ needs.assemble-site.outputs.artifact_digest }}
+          SOURCE_PRODUCER: source:${{ needs.source-reproduction.outputs.producer_attempt }}:${{ needs.source-reproduction.outputs.artifact_id }}:${{ needs.source-reproduction.outputs.artifact_digest }}
+          READING_PRODUCER: reading:${{ needs.reading-regressions.outputs.producer_attempt }}:${{ needs.reading-regressions.outputs.artifact_id }}:${{ needs.reading-regressions.outputs.artifact_digest }}
+          BROWSER_0_PRODUCER: browser-shard-0:${{ needs.browser-0.outputs.producer_attempt }}:${{ needs.browser-0.outputs.artifact_id }}:${{ needs.browser-0.outputs.artifact_digest }}
+          BROWSER_1_PRODUCER: browser-shard-1:${{ needs.browser-1.outputs.producer_attempt }}:${{ needs.browser-1.outputs.artifact_id }}:${{ needs.browser-1.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          python scripts/pages_workflow.py verify-producers --run-id "${GITHUB_RUN_ID}" \
+            --attempt "${GITHUB_RUN_ATTEMPT}" --repository-id "${REPOSITORY_ID}" --head "${HEAD_SHA}" \
+            --producer "${SITE_PRODUCER}" --producer "${SOURCE_PRODUCER}" --producer "${READING_PRODUCER}" \
+            --producer "${BROWSER_0_PRODUCER}" --producer "${BROWSER_1_PRODUCER}"
+
       - name: Download the sealed site
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.assemble-site.outputs.artifact_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/sealed
 
-      - name: Download both browser shards
+      - name: Download browser shard 0 from its producer
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          # Pinned to this run and attempt: a rerun keeps earlier attempts'
-          # artifacts, whose names differ only by that suffix, and merging them
-          # would mix stale shard evidence into the deployment gate.
-          pattern: cjdoc-showcase-browser-shard-*-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/branches
-          merge-multiple: true
+          artifact-ids: ${{ needs.browser-0.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/branches/browser-0
+
+      - name: Download browser shard 1 from its producer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.browser-1.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/branches/browser-1
 
       - name: Download source reproduction evidence
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cjdoc-showcase-source-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.source-reproduction.outputs.artifact_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/branches/source
 
       - name: Download reading evidence
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cjdoc-showcase-reading-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.reading-regressions.outputs.artifact_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/branches/reading
 
-      - name: Require the consumed Linux candidate to be ready and successful
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CANDIDATE_SOURCE: ${{ needs.resolve-candidate.outputs.candidate_source }}
-          CANDIDATE_RUN_ID: ${{ needs.resolve-candidate.outputs.run_id }}
-          CANDIDATE_RUN_ATTEMPT: ${{ needs.resolve-candidate.outputs.run_attempt }}
-        run: |
-          set -euo pipefail
-          # Starting early is not the same as passing. A run whose Linux candidate
-          # was ready but whose matrix (or anything else in CI) later failed must
-          # not publish, so the consumed run is re-checked here — the one place that
-          # stands between a verified site and deployment (CI-05.1).
-          if [ "${CANDIDATE_SOURCE}" != "ci-artifact" ]; then
-            echo "candidate source is ${CANDIDATE_SOURCE}; nothing to re-check"
-            exit 0
-          fi
-          python scripts/ci_candidate_source.py require-ready \
-            --repository "${GITHUB_REPOSITORY}" \
-            --commit "${GITHUB_SHA}" \
-            --explicit-run-id "${CANDIDATE_RUN_ID}" \
-            --explicit-run-attempt "${CANDIDATE_RUN_ATTEMPT}"
 
       - name: Require every branch artifact and bind it to the sealed site
         shell: bash
+        env:
+          SITE_SHA256: ${{ needs.assemble-site.outputs.site_sha256 }}
+          SHARD_0_ATTEMPT: ${{ needs.browser-0.outputs.producer_attempt }}
+          SHARD_1_ATTEMPT: ${{ needs.browser-1.outputs.producer_attempt }}
         run: |
           set -euo pipefail
           sealed="${RUNNER_TEMP}/sealed"
           branches="${RUNNER_TEMP}/branches"
-          test -f "${sealed}/showcase-site.sha256"
-          test -f "${branches}/browser-plan.json"
-          for file in "${branches}/browser-shard-0/shard.json" \
-                      "${branches}/browser-shard-1/shard.json" \
-                      "${branches}/source/showcase-source-evidence.json" \
-                      "${branches}/reading/results.json"; do
-            test -f "${file}"
+          test "$(cat "${sealed}/showcase-site.sha256")" = "${SITE_SHA256}"
+          cmp "${branches}/browser-0/browser-plan.json" "${branches}/browser-1/browser-plan.json"
+          for shard in 0 1; do
+            attempt_key="SHARD_${shard}_ATTEMPT"
+            python scripts/pages_workflow.py verify-shard --shard "${shard}" \
+              --file "${branches}/browser-${shard}/browser-shard-${shard}/shard.json" \
+              --run-id "${GITHUB_RUN_ID}" --attempt "${!attempt_key}" --site-digest "${SITE_SHA256}"
           done
+          test -f "${branches}/source/showcase-source-evidence.json"
+          test -f "${branches}/reading/results.json"
 
       - name: Merge shards and run the unmodified full evidence gate
         shell: bash
@@ -789,9 +683,9 @@ jobs:
           branches="${RUNNER_TEMP}/branches"
           python -m showcase_contract.browser merge \
             --site "${sealed}/showcase-site" \
-            --plan "${branches}/browser-plan.json" \
-            --shard-result "0=${branches}/browser-shard-0/shard.json" \
-            --shard-result "1=${branches}/browser-shard-1/shard.json" \
+            --plan "${branches}/browser-0/browser-plan.json" \
+            --shard-result "0=${branches}/browser-0/browser-shard-0/shard.json" \
+            --shard-result "1=${branches}/browser-1/browser-shard-1/shard.json" \
             --evidence target/showcase-evidence \
             --receipt "${branches}/browser-merge-receipt.json" \
             --timings target/browser-timing-history.json
@@ -802,6 +696,8 @@ jobs:
 
       - name: Bind every branch including the merged browser evidence
         shell: bash
+        env:
+          SITE_SHA256: ${{ needs.assemble-site.outputs.site_sha256 }}
         run: |
           set -euo pipefail
           sealed="${RUNNER_TEMP}/sealed"
@@ -812,7 +708,7 @@ jobs:
           # listing only the two branches that happened to pass.
           python scripts/showcase_branch_receipts.py \
             --site "${sealed}/showcase-site" \
-            --site-sha256 "$(cat "${sealed}/showcase-site.sha256")" \
+            --site-sha256 "${SITE_SHA256}" \
             --build-manifest "${sealed}/ci-build/build-manifest.json" \
             --source-evidence "${branches}/source/showcase-source-evidence.json" \
             --reading-evidence "${branches}/reading/results.json" \
@@ -841,15 +737,33 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+      - name: Determine whether publication is still needed
+        id: pages-name
+        if: github.ref == 'refs/heads/main' && needs.resolve-candidate.outputs.reuse == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ needs.resolve-candidate.outputs.run_id }}
+          CANDIDATE_ATTEMPT: ${{ needs.resolve-candidate.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+          python scripts/pages_workflow.py deployment --run-id "${CANDIDATE_RUN_ID}" \
+            --attempt "${CANDIDATE_ATTEMPT}" --out "${GITHUB_OUTPUT}"
+          if grep -qx 'deploy=true' "${GITHUB_OUTPUT}"; then
+            echo "name=github-pages-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Configure GitHub Pages
-        if: github.event_name != 'pull_request'
+        if: steps.pages-name.outputs.name != ''
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Upload Pages artifact
-        if: github.event_name != 'pull_request'
+        if: steps.pages-name.outputs.name != ''
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ${{ runner.temp }}/sealed/showcase-site
+          name: ${{ steps.pages-name.outputs.name }}
+          include-hidden-files: true
 
       - name: Upload PR preview
         if: github.event_name == 'pull_request'
@@ -873,7 +787,7 @@ jobs:
     # records 0 ms and drops the last link. Nothing needs this job, so waiting is
     # not gating. On `pull_request` runs `deploy` is skipped and `always()` keeps
     # the clock running anyway.
-    needs: [assemble-site, source-reproduction, browser-shard, reading-regressions, verify-site, deploy]
+    needs: [assemble-site, source-reproduction, browser-0, browser-1, reading-regressions, verify-site, deploy]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -915,18 +829,52 @@ jobs:
 
   deploy:
     name: Publish showcase
-    if: ${{ !cancelled() && github.event_name != 'pull_request'
-           && needs.verify-site.result == 'success' }}
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main'
+           && needs.verify-site.result == 'success'
+           && needs.verify-site.outputs.pages_artifact_name != '' }}
     permissions:
+      contents: read
+      actions: read
+      deployments: read
       pages: write
       id-token: write
-    needs: verify-site
+    needs: [resolve-candidate, verify-site]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
+    concurrency:
+      group: github-pages-publication
+      # An old event may arrive after the current job starts waiting; it must
+      # not cancel the newer job before either can recheck the live main ref.
+      queue: max
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Check out the exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Recheck CI and suppress duplicate deployment
+        id: decision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ needs.resolve-candidate.outputs.run_id }}
+          CANDIDATE_ATTEMPT: ${{ needs.resolve-candidate.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+          python scripts/pages_workflow.py deployment --run-id "${CANDIDATE_RUN_ID}" \
+            --attempt "${CANDIDATE_ATTEMPT}" --out "${GITHUB_OUTPUT}"
+
       - name: Deploy to GitHub Pages
+        if: steps.decision.outputs.deploy == 'true'
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        with:
+          artifact_name: ${{ needs.verify-site.outputs.pages_artifact_name }}

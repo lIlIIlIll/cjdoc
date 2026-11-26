@@ -69,7 +69,7 @@ cjdoc diff \
   --format text
 ```
 
-开头列出项目、受众、比较状态和各类差异数量，之后列出变更条目。先找 `breaking`，例如这两份源码里 `TextCatalog.legacyCount` 的移除。再读 `potentially-breaking` 及每条的原因：当类型或返回契约不能可靠判定为等价时，即便新增参数本身是可选的，也要复核该条目。
+开头列出项目、受众、比较状态和各类差异数量，之后列出变更条目。先找 `breaking`，例如 `TextCatalog.legacyCount` 被移除，或已经解析的既有参数类型发生变化。只有原调用签名保持不变、且新增参数都在末尾并有默认值，才会把这类追加判为 `additive`。证据不足时，检查 `potentially-breaking` 条目的原因。
 
 `demo-v2` 移除了 `TextCatalog.legacyCount`、新增了 `nonEmpty`、给 `add` 增加了可选参数，所以不会得到空差异。`--format` 默认 `text`；要保存完整报告供组合站点使用，改成 `--format json` 并重定向到文件：
 
@@ -105,11 +105,11 @@ cp -R "$WORK/support/html" "$WORK/site/0.2.0/dependencies/support-v1"
 
 几个容易出错的地方：
 
-- `--version ID=PATH` 指向生成输出里的 `html` 目录，不是整个输出根。省略 `--label` 和 `--base-path` 时两者都等于版本 ID，所以版本页面位于 `site/0.1.0/`、`site/0.2.0/`。
+- 单语站点的 `--version ID=PATH` 指向生成输出里的 `html/`。用 `--all-languages` 生成的站点改为传入含 `site-manifest.json` 的输出根。省略 `--label` 和 `--base-path` 时两者都等于版本 ID。
 - 省略 `--latest` 时取**第一个** `--version` 的 ID（`latestPolicy` 为 `first-listed`），不是按版本号排序。
 - `--channel` 与默认的 `status=published` 只是展示文字，不验证发布流程。
 - 依赖库的完整 HTML 树要在 `compose` **之后**复制，才会保持为独立依赖文档。先复制再组合，它们会被当成版本输入并注入版本选择器。
-- 使用 `--all-languages` 时，输入的 `html/<语言>/` 会组合成 `<版本根>/<语言>/`，依赖页面要复制到 `<版本根>/<语言>/dependencies/support-v1`。
+- 多语版本保留 `<版本根>/html/<语言>/` 的目录层次；复制依赖页面到 `<版本根>/html/<语言>/dependencies/support-v1`。各语言的入口见组合后 `versions.json` 的 `languages`。
 
 ## 第五步：打开并检查站点
 
@@ -155,7 +155,7 @@ cjdoc check --project "$V2" --api-surface-baseline "$WORK/v1/api-surface/api-sur
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | `error: API diff inputs must match project, audience, and cfgProfile`，退出码 `2` | 两份快照的 project、受众或 cfg 不同 | 用相同的 `--audience`、`--cfg` 从两份源码重新生成快照再比较 |
-| `unsupported API surface schema 'cjdoc.doc-ir/19'`，退出码 `2` | 把 Doc IR（`docs.json`）当成 API 快照传给了 `diff` | 改用 `api-surface/api-surface.json` |
+| `unsupported API surface schema 'cjdoc.doc-ir/20'`，退出码 `2` | 把 Doc IR（`docs.json`）当成 API 快照传给了 `diff` | 改用 `api-surface/api-surface.json` |
 | 外部参考显示“无外部参考” | 索引缺失、版本字段不符，或索引在生成前没有放进 demo | 重新生成 `support-v1`，覆盖两份 demo 的 `docs/support-symbol-index.json`，再生成两个版本 |
 | 依赖链接打不开 | 依赖 HTML 树没复制，或复制后又跑了 `compose` | 按配置的相对路径把完整 `support/html` 复制到版本根，复制后不要再 `compose` |
 | 切换版本后停在首页 | 目标版本缺少该页面、符号、语言或章节 | 正常回退；从该版本首页重新导航 |

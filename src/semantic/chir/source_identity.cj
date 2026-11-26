@@ -21,61 +21,15 @@ private func chirModuleDependencyIds(source: SourceSnapshot, moduleId: String): 
     []
 }
 
-private func chirModuleOrganization(source: SourceSnapshot, moduleId: String): ?String {
-    for (module in source.modules) {
-        if (module.id == moduleId) { return module.organization }
-    }
-    None
-}
-
 internal func chirPackageOrigins(source: SourceSnapshot, moduleId: String,
     packageName: String): Array<SourceFileOrigin> {
     let result = ArrayList<SourceFileOrigin>()
-    for (pkg in source.packages) {
-        if (pkg.moduleId != moduleId || pkg.name != packageName) { continue }
-        for (logicalPath in pkg.sourceFiles) {
-            for (origin in source.sourceFileOrigins) {
-                if (origin.moduleId == moduleId && origin.logicalPath == logicalPath) { result.add(origin) }
-            }
-        }
+    for (origin in source.sourceFileOrigins where
+        origin.moduleId == moduleId && origin.packageName == packageName) {
+        result.add(origin)
     }
     sort(result, lessThan: { left, right => left.logicalPath < right.logicalPath }, stable: true)
     result.toArray()
-}
-
-private func chirImportAliasSeparator(value: String): ?Int64 {
-    let bytes = value.toArray()
-    var index: Int64 = 0
-    while (index + 1 < bytes.size) {
-        if (bytes[index] == b'a' && bytes[index + 1] == b's') {
-            let before = index == 0 || bytes[index - 1] == b' ' || bytes[index - 1] == b'\t'
-            let after = index + 2 >= bytes.size || bytes[index + 2] == b' ' ||
-                bytes[index + 2] == b'\t'
-            if (before && after) { return Some(index) }
-        }
-        index++
-    }
-    None
-}
-
-private func chirImportReference(importText: String): (String, String) {
-    let trimmed = importText.trimAscii()
-    let value = if (trimmed.startsWith("public ")) {
-        trimmed.removePrefix("public ").trimAscii()
-    } else {
-        trimmed
-    }
-    if (!value.startsWith("import ")) { return ("", "") }
-    var importedName = value[7..].trimAscii()
-    if (let Some(alias) <- chirImportAliasSeparator(importedName)) {
-        importedName = importedName[..alias].trimAscii()
-    }
-    match (importedName.indexOf("::")) {
-        case Some(index) =>
-            if (index <= 0 || index + 2 >= importedName.size) { return ("", "") }
-            (importedName[..index].trimAscii(), importedName[index + 2..].trimAscii())
-        case None => ("", importedName)
-    }
 }
 
 private func chirImportMatchingPathLength(importedPath: String, packageName: String): Int64 {
@@ -84,27 +38,6 @@ private func chirImportMatchingPathLength(importedPath: String, packageName: Str
     let boundary = importedPath[length]
     if (boundary == b'.' || boundary == b'{' || boundary == b'*' || boundary == b' ' ||
         boundary == b'\n' || boundary == b'\r') { length } else { -1 }
-}
-
-// An import selects a package only when it names that package's longest matching
-// path, so a sibling whose name merely shares a prefix is not a dependency.
-private func chirImportReferencesPackage(importText: String, dependencyPackage: SourcePackage,
-    candidates: Array<SourcePackage>, source: SourceSnapshot): Bool {
-    let reference = chirImportReference(importText)
-    let organization = reference[0]
-    let importedPath = reference[1]
-    if (!chirImportMatchesOrganization(dependencyPackage, organization,
-        chirModuleOrganization(source, dependencyPackage.moduleId))) { return false }
-    let selectedLength = chirImportMatchingPathLength(importedPath, dependencyPackage.name)
-    if (selectedLength < 0) { return false }
-    var longest: Int64 = -1
-    for (candidate in candidates) {
-        if (!chirImportMatchesOrganization(candidate, organization,
-            chirModuleOrganization(source, candidate.moduleId))) { continue }
-        let length = chirImportMatchingPathLength(importedPath, candidate.name)
-        if (length > longest) { longest = length }
-    }
-    selectedLength == longest
 }
 
 private func chirImportMatchesOrganization(packageDoc: SourcePackage,
@@ -119,24 +52,6 @@ private func chirImportMatchesOrganization(packageDoc: SourcePackage,
     }
 }
 
-private func chirPackageDependsOn(source: SourceSnapshot, moduleId: String, packageName: String,
-    dependency: SourcePackage, candidates: Array<SourcePackage>): Bool {
-    for (pkg in source.packages) {
-        if (pkg.moduleId != moduleId || pkg.name != packageName) { continue }
-        for (logicalPath in pkg.sourceFiles) {
-            for (origin in source.sourceFileOrigins) {
-                if (origin.moduleId != moduleId || origin.logicalPath != logicalPath) { continue }
-                for (importText in origin.imports) {
-                    if (chirImportReferencesPackage(importText, dependency, candidates, source)) {
-                        return true
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
 internal func chirPackageDependencies(source: SourceSnapshot, moduleId: String,
     packageName: String): Array<SourcePackage> {
     let allowedModules = HashSet<String>()
@@ -144,18 +59,39 @@ internal func chirPackageDependencies(source: SourceSnapshot, moduleId: String,
     for (dependencyId in chirModuleDependencyIds(source, moduleId)) {
         let _ = allowedModules.add(dependencyId)
     }
+    let organizations = HashMap<String, ?String>()
+    for (module in source.modules where allowedModules.contains(module.id)) {
+        organizations[module.id] = module.organization
+    }
     let candidates = ArrayList<SourcePackage>()
     for (pkg in source.packages) {
         if (!allowedModules.contains(pkg.moduleId) ||
             (pkg.moduleId == moduleId && pkg.name == packageName)) { continue }
         candidates.add(pkg)
     }
-    let dependencies = ArrayList<SourcePackage>()
-    let candidateValues = candidates.toArray()
-    for (pkg in candidateValues) {
-        if (chirPackageDependsOn(source, moduleId, packageName, pkg, candidateValues)) {
-            dependencies.add(pkg)
+    let selectedPackages = HashSet<String>()
+    let longestMatches = ArrayList<SourcePackage>()
+    for (origin in source.sourceFileOrigins where
+        origin.moduleId == moduleId && origin.packageName == packageName) {
+        for (facts in origin.importFacts) {
+            for (reference in facts.referencePaths()) {
+                longestMatches.clear()
+                var longest: Int64 = -1
+                for (pkg in candidates) {
+                    if (!chirImportMatchesOrganization(pkg, facts.organization,
+                        organizations.get(pkg.moduleId).getOrDefault({ => None<String> }))) { continue }
+                    let length = chirImportMatchingPathLength(reference, pkg.name)
+                    if (length < 0 || length < longest) { continue }
+                    if (length > longest) { longestMatches.clear(); longest = length }
+                    longestMatches.add(pkg)
+                }
+                for (pkg in longestMatches) { let _ = selectedPackages.add(pkg.moduleId + ":" + pkg.name) }
+            }
         }
+    }
+    let dependencies = ArrayList<SourcePackage>()
+    for (pkg in candidates where selectedPackages.contains(pkg.moduleId + ":" + pkg.name)) {
+        dependencies.add(pkg)
     }
     sort(dependencies, lessThan: { left, right =>
         if (left.moduleId == right.moduleId) { left.name < right.name }

@@ -72,8 +72,8 @@ class Evidence:
                     "Doc IR " + label + " bytes were not captured in the evaluator run")
             document = strict_load(path, description="Doc IR " + label)
             require(digest_of(path) == before, "Doc IR changed while loading " + label)
-            require(isinstance(document, dict) and document.get("schemaVersion") == "cjdoc.doc-ir/19",
-                    "Doc IR " + label + " is not the current captured v19 format")
+            require(isinstance(document, dict) and document.get("schemaVersion") == "cjdoc.doc-ir/20",
+                    "Doc IR " + label + " is not the current captured v20 format")
             self._documents[label] = document
             self._doc_digests[label] = before
             self._declarations[label] = _declaration_index(document)
@@ -109,7 +109,7 @@ class Evidence:
             require(not path.is_symlink() and digest_of(path) == digest,
                     "source evidence changed after validation")
 
-    def check(self, item: Any, where: str) -> list[str]:
+    def check(self, item: Any, where: str, *, answer_text: str = "") -> list[str]:
         if not isinstance(item, dict):
             return [where + ": evidence item must be an object"]
         kind = item.get("kind")
@@ -120,7 +120,9 @@ class Evidence:
         if kind != "answer":
             return [where + ": unknown evidence kind"]
         quote = item.get("quote")
-        return [] if isinstance(quote, str) and quote.strip() else [where + ": answer evidence needs a quote"]
+        if not isinstance(quote, str) or not quote.strip() or quote not in answer_text:
+            return [where + ": answer evidence quote does not occur verbatim in the captured answer"]
+        return []
 
     def _check_source(self, item: dict, where: str) -> list[str]:
         relative = item.get("path")

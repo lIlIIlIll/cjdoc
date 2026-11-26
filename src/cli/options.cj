@@ -20,7 +20,6 @@ protected class NewCliOptions {
     protected var linkCompatible = false
     protected let chirImportPaths = ArrayList<String>()
     protected var project = "."
-    var projectExplicit = false
     protected var output: ?String = None
     protected var input: ?String = None
     protected var baselineInput: ?String = None
@@ -28,7 +27,6 @@ protected class NewCliOptions {
     protected var diffFormat = "text"
     protected var denyBreakingApi = false
     protected var denyPotentiallyBreakingApi = false
-    var formatsExplicit = false
     protected let formats = ArrayList<String>()
     protected var stdout = false
     protected var denyWarnings = false
@@ -51,7 +49,6 @@ protected class NewCliOptions {
     var cacheExplicit = false
     protected var noCache = false
     protected var cjpmCacheRoot: ?String = None
-    var cjpmCacheExplicit = false
     protected var repositoryUrl: ?String = None
     protected var repositoryRevision: ?String = None
     protected var repositoryRoot: ?String = None
@@ -84,15 +81,16 @@ protected class NewCliOptions {
     let versionAssignmentIds = ArrayList<String>()
     var latestVersion: ?String = None
     var servePort: Int64 = 8080
-    var servePortExplicit = false
     var serveOpen = false
-    var serveOpenExplicit = false
     protected let dependencySources = ArrayList<(String, String)>()
     protected let cfgValues = ArrayList<(String, String)>()
 }
 
 private func parseSchemaCommand(args: Array<String>): NewCliOptions {
     if (args.size != 2) { throw IllegalArgumentException("schema requires exactly one schema name") }
+    if (args[1].startsWith("-")) {
+        throw IllegalArgumentException("${args[1]} is not valid for schema")
+    }
     let options = NewCliOptions()
     options.command = "schema"
     options.schemaName = args[1]

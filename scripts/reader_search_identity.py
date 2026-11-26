@@ -51,7 +51,7 @@ def verify_reader_doc_ir_schema(document: dict) -> None:
     if document.get("schemaVersion") == "cjdoc.doc-ir/17":
         schema = baseline_schema("doc-ir-v17")
     else:
-        schema = strict_load(SCHEMA_DIR / "doc-ir-v19.schema.json")
+        schema = strict_load(SCHEMA_DIR / "doc-ir-v20.schema.json")
     check_schema(document, schema, "docs.json")
 
 

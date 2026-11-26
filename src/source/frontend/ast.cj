@@ -593,6 +593,7 @@ protected func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageNam
         result.packageName = Some(packageName)
         result.imports.add(all: collectImports(program, relative, sourceBuffer))
         result.packageImports.add(all: collectImportedPackagePaths(program))
+        result.importFacts.add(all: collectImportFacts(program, relative))
         result.declarations.add(all: collector.declarations)
         result.reExports.add(all: collectPublicReExports(program, relative, packageName,
             input.module.id, sourceBuffer))

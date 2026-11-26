@@ -44,24 +44,6 @@ CANDIDATE_WORKFLOW_NAME = "CI"
 CANDIDATE_ARTIFACT_PREFIX = "cjdoc-linux-candidate"
 DEFAULT_DEADLINE_SECONDS = 900
 DEFAULT_POLL_SECONDS = 30
-# The publication gate waits for the consumed attempt to become terminal; it is
-# bounded so a genuinely stuck CI run still fails the deployment.
-#
-# This bound must fit inside the job timeout of the step that runs it
-# (`verify-site`) with room for the step's own setup, otherwise the runner kills
-# the job at the timeout and the gate never gets to fail closed. That is not
-# hypothetical: with a 20 minute job timeout the job was cancelled mid-wait on six
-# consecutive `main` pushes (`56208661`, `748892bf`, `cfa07d13`, `8c7dec5d`,
-# `c2b3f46c`, `92054bc9`); the consumed CI run finished 17-981 seconds AFTER the
-# window closed in every one of them, so raising the job timeout alone would not
-# have been enough and the site silently stopped publishing. The bound is sized from the
-# observed wait (up to ~37 minutes under a loaded runner queue) plus headroom, and
-# `test_the_publication_gate_fits_inside_its_job_timeout` pins the relation against
-# the workflow so the two cannot drift apart again.
-DEFAULT_GATE_SECONDS = 3600
-# A job timeout must exceed the gate by at least this much, to cover the step's
-# checkout/setup/downloads and the final status write before a kill can land.
-GATE_SETUP_ALLOWANCE_SECONDS = 300
 
 # A single blip in a status read must not abort discovery or make the publication
 # gate reject an otherwise valid deployment; retry briefly before giving up.
@@ -147,6 +129,8 @@ def gh_api(path: str, *, paginate: bool = True, tries: int = 5) -> object:
                         return {}
                     if len(values) == 1:
                         return values[0]
+                    if all(isinstance(value, list) for value in values):
+                        return [item for page in values for item in page]
                     merged: dict[str, object] = {}
                     for value in values:
                         if not isinstance(value, dict):
@@ -548,60 +532,6 @@ def verify_marker(repository: str, run_id: int, run_attempt: int, marker_dir: Pa
     return document
 
 
-# -------------------------------------------------------------- require-ready
-
-def require_ready(repository: str, commit: str, explicit_run_id: str,
-                  explicit_run_attempt: str, event: str,
-                  deadline_seconds: int = DEFAULT_GATE_SECONDS,
-                  poll_seconds: int = DEFAULT_POLL_SECONDS, log=print) -> dict:
-    """Prove the consumed branch really passed before a site may be published.
-
-    The fast path may start Pages early, but publication must still see a CI run
-    that finished successfully for this commit and whose Linux candidate was the
-    one consumed.
-
-    The consumed attempt's status is a point-in-time reading, so this waits (bounded)
-    for it to become terminal instead of failing on the first look: Pages can
-    legitimately reach this gate while the consumed CI workflow is still finishing,
-    and failing here would throw away an otherwise successful deployment. It still
-    fails closed if the attempt ultimately does not succeed.
-    """
-    if explicit_run_id:
-        try:
-            attempt = int(explicit_run_attempt or 1)
-        except ValueError:
-            raise ResolutionError(
-                f"ci_candidate_source.py: candidate_run_attempt is not numeric: "
-                f"{explicit_run_attempt!r}")
-        deadline = time.time() + max(0, deadline_seconds)
-        while True:
-            status = attempt_status(repository, int(explicit_run_id), attempt)
-            problems = attempt_problems(status, commit, require_success=True)
-            if not problems:
-                resolved = _explicit_candidate(repository, commit, explicit_run_id, attempt,
-                                               require_success=True)
-                if resolved["reuse"]:
-                    return resolved
-                problems = [resolved["reason"]]
-            if not _still_running(status) or time.time() >= deadline:
-                raise ResolutionError("ci_candidate_source.py: explicitly requested candidate "
-                                      f"{explicit_run_id}/{attempt} is not usable: {problems[0]}")
-            log(f"waiting for run {explicit_run_id} attempt {attempt} to finish...")
-            time.sleep(max(1, poll_seconds))
-    deadline = time.time() + max(0, deadline_seconds)
-    while True:
-        state = inspect_candidates(repository, commit, require_success=True)
-        if len(state["ready"]) == 1:
-            return state["ready"][0]
-        if not state["pending"] or time.time() >= deadline:
-            raise ResolutionError(
-                f"ci_candidate_source.py: expected exactly one ready CI candidate for {commit}, "
-                f"found {len(state['ready'])} (pending={state['pending']}, "
-                f"failed={state['failed'][:3]})")
-        log("waiting for the consumed CI run to finish successfully...")
-        time.sleep(max(1, poll_seconds))
-
-
 # ---------------------------------------------------------------------- CLI
 
 def _default(name: str, fallback: str = "") -> str:
@@ -651,13 +581,6 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--commit", default=_default("GITHUB_SHA"))
     verify_parser.add_argument("--out", type=Path)
 
-    ready_parser = commands.add_parser("require-ready",
-                                       help="fail unless the consumed branch passed")
-    _common(ready_parser)
-    ready_parser.add_argument("--commit", default=_default("GITHUB_SHA"))
-    ready_parser.add_argument("--event", default=_default("GITHUB_EVENT_NAME"))
-    ready_parser.add_argument("--explicit-run-id", default="")
-    ready_parser.add_argument("--explicit-run-attempt", default="")
     return parser
 
 
@@ -686,10 +609,6 @@ def main(argv: list[str] | None = None) -> int:
                 json.dumps(document, ensure_ascii=False, sort_keys=True) + "\n",
                 encoding="utf-8", newline="\n")
         return 0
-    document = require_ready(args.repository, args.commit, args.explicit_run_id,
-                            args.explicit_run_attempt, args.event)
-    print("consumed Linux candidate is ready: " + json.dumps(document, sort_keys=True))
-    return 0
 
 
 if __name__ == "__main__":

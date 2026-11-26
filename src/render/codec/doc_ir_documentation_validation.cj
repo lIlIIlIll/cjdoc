@@ -256,6 +256,7 @@ private func validateDocumentationInventory(documentation: DocumentationSet,
 private func validateDocumentationPackageListings(documentation: DocumentationSet,
     moduleIds: HashSet<String>, packageKeys: HashSet<String>, fileKeys: HashSet<String>,
     byId: HashMap<String, SymbolDoc>): Unit {
+    let reachability = ReExportReachability(documentation)
     let listedFileKeys = HashSet<String>()
     let listedSymbolIds = HashSet<String>()
     let reExportIds = HashSet<String>()
@@ -308,12 +309,25 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
                 domainFail("${reExportPath}.bindings",
                     "resolved symbol re-export requires at least one binding")
             }
+            if (reExport.state == "resolved" &&
+                (reExport.kind == "single" || reExport.kind == "alias")) {
+                if (reExport.bindings.size != 1 || (reExport.kind == "alias" &&
+                    reExport.alias != Some(reExport.bindings[0].exposedName))) {
+                    domainFail(reExportPath, "invalid named re-export exposure")
+                }
+            }
             match (reExport.targetModuleId) {
                 case Some(targetModuleId) =>
                     if (!moduleIds.contains(targetModuleId) ||
                         !packageKeys.contains(compositeKey(targetModuleId,
                             reExport.targetPackageName))) {
                         domainFail(reExportPath, "unknown target module/package")
+                    }
+                    // The stored package is the one the exporting module imported
+                    // directly; it must be importable from that module.
+                    if (!reachability.moduleReaches(pkg.moduleId, targetModuleId)) {
+                        domainFail(reExportPath,
+                            "target package is not reachable from the exporting module")
                     }
                 case None => if (reExport.state == "resolved") {
                     domainFail("${reExportPath}.targetModuleId",
@@ -324,6 +338,10 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
             var bindingIndex: Int64 = 0
             for (binding in reExport.bindings) {
                 let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
+                if ((reExport.kind == "single" || reExport.kind == "all") &&
+                    binding.importedName != binding.exposedName) {
+                    domainFail("${bindingPath}.importedName", "only a renamed import may change the exposed name")
+                }
                 if (!exposedNames.add(binding.exposedName)) {
                     domainFail("${bindingPath}.exposedName",
                         "duplicate exposed name in re-export")
@@ -336,13 +354,16 @@ private func validateDocumentationPackageListings(documentation: DocumentationSe
                     }
                     match (byId.get(targetId)) {
                         case Some(target) =>
+                            let reachable = match (reExport.targetModuleId) {
+                                case Some(owner) => reachability.proves(owner, reExport.targetPackageName,
+                                    binding.importedName, target)
+                                case None => false
+                            }
                             if (target.ownerId.isSome() ||
                                 (target.visibility != "public" && target.visibility != "protected") ||
-                                reExport.targetModuleId.isNone() ||
-                                target.moduleId != reExport.targetModuleId.getOrThrow() ||
-                                target.packageName != reExport.targetPackageName) {
+                                !reachable) {
                                 domainFail(bindingPath,
-                                    "re-export target must be a visible top-level declaration in the target package")
+                                    "re-export target must be a visible top-level declaration reachable through the target package")
                             }
                         case None => domainFail(bindingPath, "unknown target SymbolId")
                     }

@@ -5,7 +5,8 @@ public import cjdoc.render.codec.{
 
 public import cjdoc.render.search.searchTextExcerpt
 public import cjdoc.render.html.{
-    HtmlFontOptions, escapeStandaloneHtml, isValidHtmlFontFamilyList, renderStandaloneMarkdownHtml, standaloneMarkdownFragment}
+    HtmlFontOptions, attachReportEvidence, escapeStandaloneHtml, isValidHtmlFontFamilyList,
+    renderStandaloneMarkdownHtml, standaloneMarkdownFragment}
 public import cjdoc.render.publication.{SourceReference, sourceReferenceJson, projectPublicationDocumentation,
     projectDocumentationLanguage}
 public import cjdoc.render.agent.{

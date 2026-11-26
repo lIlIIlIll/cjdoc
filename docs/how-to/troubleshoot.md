@@ -223,13 +223,13 @@ cjdoc check --project . --check-examples
 **先检查**：快照是不是当前格式、是不是用相同选项从对应版本源码生成的。
 
 ```text
-error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/19'
+error: invalid Doc IR at $.schemaVersion: expected 'cjdoc.doc-ir/20'
 error: API diff inputs must match project, audience, and cfgProfile
 ```
 
 **处理**
 
-- `render` 只接受当前 `cjdoc.doc-ir/19`。源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的旧快照迁移路径。
+- `render` 只接受当前 `cjdoc.doc-ir/20`。源码还在时用当前 cjdoc 重新 `generate --format json`；源码已不在时没有受支持的旧快照迁移路径。
 - `diff` 要求两份快照的项目、受众和 cfgProfile 一致。用相同的 `--audience`、`--cfg` 从对应版本源码重新生成两份快照再比较。
 
 **恢复后**：`render` 从保存的快照生成 HTML/Markdown；`diff` 输出只反映两份同源快照之间的真实差异。流程见[重渲染快照](render-snapshots.md)和[比较 API 并组合版本站点](compare-and-version.md)。
@@ -287,11 +287,11 @@ cjdoc generate --help
 | `error: --stdout and --output are mutually exclusive` | 同时要标准输出和目录输出 |
 | `error: --stdout requires exactly one JSON-producing format` | 选了 HTML、Markdown 或多个格式 |
 | `error: render requires --input` | `render` 缺输入快照 |
-| `error: render accepts only --input, render options, and --max-doc-ir-mib` | 给 `render` 加了项目或输入类选项 |
+| `error: --project is not valid for render` （或其他选项） | 给 `render` 加了只适用于其他命令的选项 |
 | `error: --doc-version requires --format html` | 加了版本标签但没有生成 HTML |
 | `error: --cjpm-cache requires --include-cached-dependencies` | 只给了缓存目录 |
-| `error: check does not accept render output options` | 给 `check` 加了 `--format`、`--output` 或 `--stdout` |
-| `error: check does not accept --force-owned` | `check` 不接受所有权选项 |
+| `error: --format is not valid for check` （或 `--output`、`--stdout`） | `check` 不写站点或 JSON 产物 |
+| `error: --force-owned is not valid for check` | `check` 不接受所有权选项 |
 | `error: --jobs must be in 1..64` | 并行度越界 |
 | `error: [highlight].mode must be static or off` | 高亮模式拼错 |
 | `unknown [coverage] setting '…'` | 覆盖率键名拼错 |

@@ -4,9 +4,9 @@ Doc IR 是 renderer 的唯一输入：源码声明、注释和位置先由 front
 
 ## 当前版本与硬约束
 
-- 当前输出版本是 **`cjdoc.doc-ir/19`**（`cjdoc schema doc-ir` 会打印当前版本的 schema）。
+- 当前输出版本是 **`cjdoc.doc-ir/20`**（`cjdoc schema doc-ir` 会打印当前版本的 schema）。
 - decoder **只接受当前版本**，不迁移旧输入。`render --input docs.json` 会严格验证当前 schema 与引用关系；未知属性、重复 JSON 键和不满足当前约束的输入都会被拒绝。
-- `/18` 和更早的 schema 与 golden 均不属于 current-only 库存；只分发当前 Doc IR schema，不保留旧版副本或迁移 receipt。
+- `/19` 和更早的 schema 与 golden 不属于 current-only 库存；只分发当前 Doc IR schema，不保留旧版副本或迁移 receipt。
 - 根字段 `apiCollectionState` 取 `resolved`、`partial` 或 `unavailable`，独立于展示用的 `status`。它在 source/provider 绑定后、highlight/lint/i18n/导航处理前采集；呈现错误不会把已采集的 API 改成不完整。
 - `generator.toolchain` 自动生成时为空字符串：运行时 `cjc --version`、`--cjc` 或包装器变量都不能认证真正链接的 parser SDK 构建。目标项目的 compiler/std/stdx 身份由构建记录（`--build-context`）单独绑定，见 [document-links.md](document-links.md)。
 
@@ -17,7 +17,7 @@ Doc IR 是 renderer 的唯一输入：源码声明、注释和位置先由 front
 ```bash
 cjdoc schema list
 cjdoc schema doc-ir
-cjdoc schema doc-ir-v19
+cjdoc schema doc-ir-v20
 cjdoc schema search-index
 cjdoc schema search-index-v12
 cjdoc schema query-request
@@ -27,9 +27,9 @@ cjdoc schema page
 cjdoc schema source-provenance
 ```
 
-`docs/schema/` 的生成清单见 [`SCHEMA_NAMES`](../../scripts/repository_input_contracts.py)。当前公开 wire 为 Doc IR/19、declaration/3、page/2、query-request/4、query-result/5、search-index/12 与 search-contract/3；独立来源回执为 `cjdoc.source-provenance/1`。
+`docs/schema/` 的生成清单见 [`SCHEMA_NAMES`](../../scripts/repository_inputs/contracts.py)。当前公开 wire 为 Doc IR/20、declaration/3、page/2、query-request/4、query-result/5、search-index/12 与 search-contract/3；独立来源回执为 `cjdoc.source-provenance/1`。
 
-`scripts/check.sh cli` 会调用 `cjdoc schema <name>` 逐个导出并与 `docs/schema/` 逐字节比较，所以 schema 文件与 binary 必须同步。release 包也包含当前发布 schema 与 `release-manifest.json`；发布校验要求当前 schema 与 golden 都被 Git 跟踪。
+`just schema` 和 `scripts/check.sh cli` 使用同一校验器：核对 `cjdoc schema list`，逐个导出 schema 并与 `docs/schema/` 逐字节比较。release 包也包含当前发布 schema 与 `release-manifest.json`；发布校验要求当前 schema 与 golden 都被 Git 跟踪。
 
 ## 修改 Doc IR 的同步清单
 
@@ -41,22 +41,22 @@ cjdoc schema source-provenance
 4. schema source：`src/schema_data/schema_doc_ir.cj` 按发布顺序组装根 schema、外部导航、声明与文档注释；对应定义在 `schema_doc_ir_*.cj`。独立发布契约按文件维护，例如 `agent_schemas.cj`、`query_schemas.cj`（请求）、`query_result_schema.cj`（结果）和 `language_artifact_schemas.cj`。
 5. 重新构建后运行 `bash scripts/update_schemas.sh`，把构建产物同步到 `docs/schema/`。
 6. 更新 public-contract tests 与相应单测；不要为了让测试变绿而放宽 strict codec 或手改期望产物。
-7. 运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v19/`，再检查 diff。golden 不手改；更新脚本自己生成并校验。
+7. 运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v20/`，再检查 diff。golden 不手改；更新脚本自己生成并校验。
 8. 若生成输出的 Doc IR 字节发生变化，还要刷新 `tests/perf/baseline.json` 的 Doc IR identity：CI 每个 push 都跑 `python3 scripts/perf_gate.py identities --binary target/release/bin/main --evidence target/ci-evidence/perf-identities.json`，未刷新的 baseline 会让 CI 失败。性能基线的刷新与冻结规则见 [release-process.md](release-process.md) 的“Performance baseline”。
 9. 跑 `bash scripts/check.sh`（至少 `native`、`cli`）确认 current-only codec round-trip、两次生成确定性、HTML 全站校验和 schema 同步。
 
-`self` 性能 profile 也会捕获 `cjdoc.toml` 配置的概念页，因此只修改文档正文或发布页面配置，也可能改变 Doc IR identity。此类变更应实跑生成并核对产物后同步 `referenceDocsSha256`；不要因此重设 elapsed/RSS 测量值、阈值或参考环境。只更新校验值不是性能重新标定，也不是性能回归证据。
+`self` 性能 profile 的 Doc IR 包含项目的源码依赖身份，以及 `cjdoc.toml` 配置的概念页。源码库存也包含测试 `.cj` 文件，因此只改原生测试、作者正文或发布页面配置也可能改变摘要。在固定源码树实跑生成并核对产物后同步 `referenceDocsSha256`；不要改 elapsed/RSS 测量值、阈值或参考环境。只更新摘要不是性能重新标定，也不是性能回归证据。
 
 ### `scripts/update_schemas.sh`
 
 - 从 `target/release/bin/main`（或 `main.exe`）导出一整套发布 schema，先写入 staging 再原子替换。
-- 严格解析全部 schema（拒绝重复键与非有限数字），校验 `$id`、draft、版本与根契约，然后更新当前 v19 与共享 schema。
+- 严格解析全部 schema（拒绝重复键与非有限数字），校验 `$id`、draft、版本与根契约，然后更新当前 v20 与共享 schema。
 - 不发布冻结的历史 Doc IR schema；它不实现完整的官方 Draft 2020-12 meta-schema，真正的严格验证在构建的 yjson-backed decoder 与 `check.sh` 的 round-trip 中。
 - 需要先构建 binary；不要手工 normalize 一个失败的期望产物。
 
 ### `scripts/update_goldens.sh`
 
-- 先把已提交的 fixture 树归档成不可变快照，只从该快照生成，生成后再核对摘要与 Git identity，最后发布完整的 current v19 golden 集合。
+- 先把已提交的 fixture 树归档成不可变快照，只从该快照生成，生成后再核对摘要与 Git identity，最后发布完整的 current v20 golden 集合。
 - 拒绝脏的或混合来源的 fixture 输入；不保留 legacy Doc IR golden。
 - `source_edges` 使用干净的外部 checkout 时，三个变量必须同时提供，且 expected commit/subtree 在生成前后都要匹配该 Git worktree：
 
@@ -69,17 +69,17 @@ bash scripts/update_goldens.sh
 
 当前 golden 覆盖 `basic`、`functions`、`types`、`extend_visibility`、`source_edges`、`unsupported`、`workspace`、`conditional-linux`、`path-dependencies` 等 fixture，由 `scripts/check.sh cli` 逐个两次生成、比较并与 golden 字节对齐。生成器和校验器都显式选择 `--semantic source`，固定源码/AST 契约，避免本机编译目标改变跨平台 golden；默认 CHIR 的自动定位、真实语义、失败回退与确定性由安装布局回归和普通 CLI 集成另行覆盖，性能 profile 仍测量默认 CHIR 路径。
 
-## Doc IR/18 的分类 metadata
+## 当前 Doc IR 的分类 metadata
 
-根对象必须包含 `metadata: {groups: [], tags: []}`。group wire 记录严格包含 moduleId、packageName、ownerId、id、title、titles 和 order；tag 记录严格包含 moduleId、id、title 和 titles。titles 记录 language/title，数组按稳定 UTF-8 顺序编码；缺字段与 null 不可互换，未知属性被拒绝。
+根对象必须包含 `metadata: {groups: [], tags: [], fields: []}`。group wire 记录严格包含 moduleId、packageName、ownerId、id、title、titles 和 order；tag 记录严格包含 moduleId、id、title 和 titles。titles 记录 language/title，数组按稳定 UTF-8 顺序编码；缺字段与 null 不可互换，未知属性被拒绝。
 
 生成时 metadata 配置先绑定完整源码声明 scope，再随公开声明投影捕获。公开 Doc IR 只保存当前发布声明实际使用的定义；audience/cfg 等发布范围收窄后，未再被使用的定义会移除。metadata 计入原有 Doc IR 字节和对象预算，不会扩大 64 MiB 总上限。metadata title/order 不进入 SymbolId 或 API fingerprint。
 
-`render --input` 只使用已捕获的 Doc IR/18，不读取源码目录、`cjdoc.toml` 或来源回执。Doc IR/17 及更早版本不接受迁移；若要重放旧项目内容，必须从保存的源码重新生成当前格式。
+`render --input` 只使用已捕获的 Doc IR/20，不读取源码目录、`cjdoc.toml` 或来源回执。Doc IR/19 及更早版本不接受迁移；若要重放旧项目内容，必须从保存的源码重新生成当前格式。
 
 `scripts/test_declaration_metadata.py --binary PATH --output-root DIR` 从真实源码捕获双语站点，移走任务副本的源码与配置后，以 compiler guard 验证重放、查询、manifest 完整性和非 breaking 的文档变更。同页 inherited/declared owner 冲突另用明确标注的公开 Doc IR 模型输入检查：syntax provider 的 `superType` 不是 `inheritedMember` 证据，测试不会把模型场景记作编译器产出的继承语义。
 
-## Doc IR/18 的逐文件源码来源
+## 当前 Doc IR 的逐文件源码来源
 
 每个 `FileDoc` 都必须带 `provenance`；构造默认是 `SourceProvenance.unavailable("no_registration")`。该对象及其 `state`、`reason`、`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity`、`evidenceKind` 字段在 wire 中均必需；无值写 `null`，`evidenceKind` 取 `caller_pinned_receipt` 或 `none`。公开投影和消费者按 `(moduleId, SourceRange.path)` 找对应文件，不再从 `ModuleDoc.repositoryPath` 推断来源；`ModuleDoc.repositoryPath` 已从 v18 移除。
 
@@ -90,6 +90,10 @@ bash scripts/update_goldens.sh
 来源回执是可选证据。模块发现完成后，回执超过单份 16 MiB、单份或累计 100,000 条文件记录，或耗尽共享辅助字节/工作预算时，受影响的 provenance 降级为 `unavailable/resource_limit`，但继续收集源码 API，包括无关文件；不提高预算，也不继续被预算拒绝的证据或 cache 工作。同一路径与 pin 的 receipt cache hit 不重复计入记录数。`CJDOC1028` 错误与有界的 `CJDOC1032` 来源警告仍保留，CLI 不把有错误的生成标为成功。模块/依赖发现或源码扫描本身超限时仍 fail closed，不能把任意截断的源码集合当作完整捕获。
 
 `ReExportDoc.source` 指向暴露声明的文件与位置，按 exposing module 投影为单独的 `source` 记录；它与重导出目标声明自己的 `SymbolDoc.source` 是两个事实。re-export 行的来源链接标为“暴露位置”，目标声明的来源仍表示该声明的定义位置。
+
+`ReExportDoc.targetModuleId` 与 `targetPackageName` 指向直接导入的包，不一定是声明的所有者。每个绑定分别记录 `importedName` 和 `exposedName`：别名可改变对外名，命名导入和星号不能改变。严格 replay 按每跳实际绑定验证该导入名与目标 SymbolId，最终必须到达公开或受保护的顶层声明；无支撑的循环或只有包邻接关系的路径不能当作证据。
+
+同一包的已解析绑定按暴露名和目标 SymbolId 一次建索引；索引和实际遍历仍计入固定工作预算。只缓存通向真实声明的已证明路径，不缓存未验证的旁支。
 
 查询结果 `relations.packageImportContext[]` 始终包含 `source`，并复用严格的 `sourceReference` 定义。即使 import 的绑定状态为 `unavailable` 或 `ambiguous`，来源仍是保留范围与明确状态的对象，不能缺失或写为 `null`；绑定状态不等于源码来源验证状态。
 
@@ -103,7 +107,7 @@ bash scripts/update_goldens.sh
 
 Windows source-free 回放必须保留子进程的原生运行时 PATH，同时从工具定位入口排除 compiler/cjpm。用无编译器调用断言隔离工具链，不要通过缩窄 PATH 造成运行时 DLL 加载失败。
 
-## Doc IR/19 的项目注释字段
+## Doc IR/20 的项目注释字段
 
 `metadata.fields` 必有。定义按 `(moduleId,id)` 排序，`uses` 按 canonical `symbolId` 排序，`values` 保留作者顺序与重复项。定义与用途必须同属模块；捕获、解码和渲染使用同一可见性规则，包括可见类型的公开扩展成员。收窄时删去失去全部用途的定义。发布、HTML 和搜索只读取冻结值，不重新解析源码或 `cjdoc.toml`。
 
@@ -152,4 +156,4 @@ JSON 解析、raw shape/资源检查、完整 schema 验证、严格模型解码
 bash scripts/check.sh cli --repo . --worker-binary target/release/bin/chir-worker-main
 ```
 
-`check.sh cli` 覆盖：逐 schema 与 `docs/schema/` 比较、current v19 golden 双次生成与 round-trip、多格式 HTML 全站校验、输出所有权/安全、i18n 门禁、外部快照门禁。完整门禁与各阶段见 [build.md](build.md)。
+`check.sh cli` 覆盖：逐 schema 与 `docs/schema/` 比较、current v20 golden 双次生成与 round-trip、多格式 HTML 全站校验、输出所有权/安全、i18n 门禁、外部快照门禁。完整门禁与各阶段见 [build.md](build.md)。

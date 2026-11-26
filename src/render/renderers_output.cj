@@ -2,7 +2,8 @@ package cjdoc.render
 
 import cjdoc.model.*
 import cjdoc.render.agent.{DocumentationReadSnapshot, DocumentationReportAttachment, appendAgentReadableArtifacts,
-    appendSymbolIndexArtifacts, buildDocumentationSearchProjection}
+    appendSymbolIndexArtifacts, buildDocumentationSearchProjection, reportAttachmentViews}
+import cjdoc.render.foundation.ReportAttachmentView
 import cjdoc.render.codec.{docIrFitsEncodedBudget, validateTypedDocumentationSet}
 import cjdoc.render.foundation.{RenderArtifact, RenderArtifactCollector, RenderArtifactStore, RenderResourceLimitException}
 import cjdoc.render.html.{HtmlFontOptions, RenderProjection, appendCapturedPageArtifacts, appendHtmlArtifacts,
@@ -152,8 +153,15 @@ internal func renderDocumentationLocaleInto(artifacts: RenderArtifactStore,
             htmlProjection)
     }
     if (formats.contains("html")) {
+        // The evidence page and the machine manifest read one attachment model,
+        // so a report the manifest lists is the report the page links.
+        let attachmentViews = match (htmlSnapshot) {
+            case Some(context) => reportAttachmentViews(context.snapshotId, reports)
+            case None => Array<ReportAttachmentView>()
+        }
         let _ = artifacts.addText("html/validation.html", "text/html; charset=utf-8",
-            renderValidationHtml(localized, htmlProjection.getOrThrow(), docVersion, locale))
+            renderValidationHtml(localized, htmlProjection.getOrThrow(), docVersion, locale,
+                reports: attachmentViews))
         // Machine companions are emitted at their original position, after the
         // validation page, through the same store instead of a second collector.
         match (htmlSnapshot) {

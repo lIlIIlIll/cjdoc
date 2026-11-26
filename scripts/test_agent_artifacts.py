@@ -58,7 +58,7 @@ SNAPSHOT_PREFIX = "cjdoc:snapshot:v1:"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 SCHEMA_EXPORTS = (
     ("doc-ir", "doc-ir.schema.json"),
-    ("doc-ir-v19", "doc-ir-v19.schema.json"),
+    ("doc-ir-v20", "doc-ir-v20.schema.json"),
     ("navigation-index", "navigation-index-v2.schema.json"),
     ("navigation-index-v1", "navigation-index.schema.json"),
     ("agent-full-index", "agent-full-index.schema.json"),
@@ -595,7 +595,7 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
         raise ContractError("packaged inventory is not a versioned symbol index")
 
     doc_ir = load_json(root / manifest["docIr"]["path"])
-    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/19":
+    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/20":
         raise ContractError("packaged Doc IR is not the current version")
     declarations = {item["id"]: item for item in doc_ir.get("declarations", [])}
     pages = selected_documentation_pages(doc_ir.get("pages", []), manifest["scope"]["readingLanguage"])

@@ -51,20 +51,26 @@ private func apiTestVisibilityDeclaration(id: String, visibility: String): ApiCo
         sourceFingerprint: contractFingerprint("source"),
         metadataFingerprint: contractFingerprint("metadata"))
 }
-private func apiTestOptionalParameterDeclaration(id: String, withOptionalParameter: Bool): ApiContractDeclaration {
+private func apiTestOptionalParameterDeclaration(id: String, withOptionalParameter: Bool,
+    signatureAvailable!: Bool = true): ApiContractDeclaration {
     let parameters: Array<ApiContractParameter> = if (withOptionalParameter) {
         [ApiContractParameter("value", typeState: "resolved", `type`: Some("Int64"),
             defaultState: "resolved", defaultValue: Some("0"))]
     } else {
         []
     }
-    let signature = if (withOptionalParameter) {
-        ["public", "func", "optional", "value", "=", "0"]
+    let signature: Array<String> = if (!signatureAvailable) {
+        []
+    } else if (withOptionalParameter) {
+        ["PUBLIC:6:public", "FUNC:4:func", "IDENTIFIER:8:optional", "LPAREN:1:(",
+            "IDENTIFIER:5:value", "NOT:1:!", "COLON:1::", "INT64:5:Int64",
+            "ASSIGN:1:=", "INTEGER_LITERAL:1:0", "RPAREN:1:)"]
     } else {
-        ["public", "func", "optional"]
+        ["PUBLIC:6:public", "FUNC:4:func", "IDENTIFIER:8:optional", "LPAREN:1:(", "RPAREN:1:)"]
     }
     ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", "function", "optional",
-        "test.optional", "public", "resolved", sourceApiSignature: signature,
+        "test.optional", "public", if (signatureAvailable) { "resolved" } else { "unavailable" },
+        sourceApiSignature: signature,
         parameters: parameters, returnState: "resolved", returnType: Some("Unit"),
         documentationFingerprint: contractFingerprint("doc"),
         sourceFingerprint: contractFingerprint("source"),
@@ -225,6 +231,18 @@ class ApiDiffSuite {
         @Expect(report.summary.potentiallyBreaking, 0)
         @Expect(report.summary.additive, 1)
         @Expect(apiDiffExitCode(report, true, true), 0)
+    }
+
+    @TestCase
+    func optionalAdditionWithoutSourceEvidenceIsPotentiallyBreaking(): Unit {
+        let baseline = apiTestSnapshot([apiTestOptionalParameterDeclaration("optional", false,
+            signatureAvailable: false)])
+        let current = apiTestSnapshot([apiTestOptionalParameterDeclaration("optional", true,
+            signatureAvailable: false)])
+        let report = compareApiContracts(baseline, current)
+        @Expect(report.summary.potentiallyBreaking, 1)
+        @Expect(apiDiffExitCode(report, true, false), 0)
+        @Expect(apiDiffExitCode(report, false, true), 1)
     }
 
     @TestCase

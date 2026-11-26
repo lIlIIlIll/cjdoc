@@ -580,6 +580,7 @@ private func consumeDocumentInventory(documentation: DocumentationSet, budget: D
                 let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
                 budget.consumeObject(bindingPath)
                 budget.consumeString(binding.exposedName, "${bindingPath}.exposedName")
+                budget.consumeString(binding.importedName, "${bindingPath}.importedName")
                 budget.consumeCollection(binding.targetSymbolIds.size,
                     "${bindingPath}.targetSymbolIds")
                 var targetIndex: Int64 = 0

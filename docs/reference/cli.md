@@ -15,7 +15,7 @@
 | `generate` | 项目 | 读取项目并生成选定格式 | `cjdoc generate --project . --format html` |
 | `check` | 项目 | 读取项目、检查诊断与门槛，不写出站点 | `cjdoc check --project .` |
 | `serve` | 项目 | 生成预览站点并监听输入变化 | `cjdoc serve --project . --port 8080` |
-| `render` | Doc IR 文件 | 只读 `cjdoc.doc-ir/19`，离线重新渲染 | `cjdoc render --input docs.json --format html --output replay` |
+| `render` | Doc IR 文件 | 只读 `cjdoc.doc-ir/20`，离线重新渲染 | `cjdoc render --input docs.json --format html --output replay` |
 | `diff` | 两个 API 快照 | 比较两个 `cjdoc.api-surface/3` 快照 | `cjdoc diff old.json new.json --format json` |
 | `versions compose` | 已生成的版本站点 | 组合版本站点并注入选择器 | `cjdoc versions compose --version v1=old/html --version v2=new/html --latest v2 --output versions` |
 | `query` | 冻结快照 | 执行一个 JSON 查询请求 | `cjdoc query --snapshot docs.json --request request.json` |
@@ -37,7 +37,7 @@
 | `--output DIR` | 目录 | generate/serve 为 `<project>/target/doc`，render 为 `target/doc` | generate、render、serve；compose 必填 |
 | `--stdout` | 标志 | 关闭 | generate、render |
 | `--input FILE` | Doc IR JSON | 无 | render（必填） |
-| `--force-owned` | 标志 | 关闭 | generate、render、compose |
+| `--force-owned` | 标志 | 关闭 | generate、render、serve、compose |
 | `--jobs N` | 整数 `1..64` | `1` | generate、check、serve |
 | `--audience LEVEL` | `external`、`package`、`all` | `external` | generate、check、serve |
 | `--lint-profile LEVEL` | `off`、`standard`、`strict` | `standard` | generate、check、serve |
@@ -51,8 +51,8 @@
 | `--cjc PATH` | 可执行文件 | `cjc` | generate、check、serve（要求 `--semantic chir`） |
 | `--chir-worker PATH` | 可执行文件 | 与 cjdoc 同目录的 `chir-worker-main` | generate、check、serve（要求 `--semantic chir`） |
 | `--chir-import-path DIR`… | 目录 | 无 | generate、check、serve（要求 `--semantic chir`） |
-| `--highlight-adapter PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-node` 成对） |
-| `--highlight-node PATH` | 绝对路径 | 无 | generate、check（与 `--highlight-adapter` 成对） |
+| `--highlight-adapter PATH` | 绝对路径 | 无 | generate、check、serve（与 `--highlight-node` 成对） |
+| `--highlight-node PATH` | 绝对路径 | 无 | generate、check、serve（与 `--highlight-adapter` 成对） |
 | `--cfg NAME=VALUE`… | 条件编译键值 | 无 | generate、check、serve |
 | `--include-path-dependencies`、`--no-include-path-dependencies` | 标志 | 关闭 | generate、check、serve |
 | `--include-cached-dependencies`、`--no-include-cached-dependencies` | 标志 | 关闭 | generate、check、serve |
@@ -84,7 +84,7 @@
 | `--deny-breaking-api` | 标志 | 关闭 | diff |
 | `--deny-potentially-breaking-api` | 标志 | 关闭 | diff |
 | `--baseline FILE` / `--current FILE` | API 快照 | 无 | diff |
-| `--port N` | 端口整数 | `8080` | serve |
+| `--port N` | `0..65535`；`0` 由系统分配空闲端口 | `8080` | serve |
 | `--open` | 标志 | 关闭 | serve |
 | `--snapshot PATH`… | `docs.json`、`agent/manifest.json`、`versions.json` | 无 | query、mcp（1–64 个） |
 | `--request FILE\|-` | 请求 JSON，`-` 为 stdin | 无 | query（恰好一个） |
@@ -94,9 +94,7 @@
 
 `--locale` 选择界面语言与已有作者译文，不翻译正文；它不改写 `zh-Hans`、`en-US` 之类的区域别名，非法值报 `--locale must be zh-CN or en`。省略时 generate 与 serve 使用 `[i18n]` 的 `default-language`（没有该表时为 `zh-CN`）；render 不读配置，始终从 `zh-CN` 开始，除非显式给出该选项。
 
-`--port` 与 `--open` 只影响 serve。`render` 接受这两个选项但不使用；`diff` 拒绝它们，报 `diff accepts only input paths, --format, and API deny flags`。
-
-`--semantic` 对 render、diff、query、mcp、schema、versions compose 报 `semantic options are only valid for generate, check, and serve`。
+`--port` 与 `--open` 仅适用于 serve；其他命令不会忽略它们。命令帮助 `cjdoc <command> --help` 列出该命令可接受的选项。
 
 ## 生成和离线渲染的输出选项
 
@@ -125,7 +123,7 @@
 
 ## 可选语义和高亮后端
 
-语义选项对 `generate`、`check`、`serve` 有效；高亮宿主选项只对 `generate`、`check` 有效，否则报 `highlight host options are only valid for generate and check`。
+语义选项与高亮宿主选项适用于 `generate`、`check`、`serve`。高亮宿主的两个路径必须成对传入；`render` 使用 Doc IR 中已捕获的高亮信息。
 
 | 选项 | 取值与约束 | 默认 |
 |---|---|---|
@@ -142,15 +140,15 @@
 
 ## serve
 
-`cjdoc serve --project . --port 8080` 先做一次完整生成，然后在本机 `127.0.0.1` 监听并监视输入。`--port` 默认 `8080`，按十进制整数解析，没有单独的取值范围校验；`--open` 在首次构建完成后请求浏览器打开 `http://127.0.0.1:<port>/`，命令本身不等待页面，平台顺序为 `xdg-open`、`open`、`cmd.exe /c start`，失败时只在终端提示。
+`cjdoc serve --project . --port 8080` 先生成完整站点，再在本机 `127.0.0.1` 监听并监视输入。`--port` 默认 `8080`，接受十进制 `0..65535`。`--open` 在绑定成功后请求 `xdg-open`、`open` 或 `cmd.exe /c start` 打开实际监听地址；打开失败时仍可访问终端显示的地址。
 
 | 项目 | 规则 |
 |---|---|
 | 服务根 | 输出目录下的 `html/`，即使还请求了其他格式；`--format html` 总会补上 |
 | 可用的生成类选项 | `--format`、`--output`、`--locale`、`--force-owned`、`--jobs`、`--audience`、`--lint-profile`、`--cfg`、依赖与缓存选项、`--repository-*`、`--require-language`、`--deny-warnings`、`--check-examples`、两个覆盖率门槛、`--api-surface-baseline`、`--max-doc-ir-mib`、`--agent-full`、字体选项 |
 | 语义选项 | `--semantic`、`--cjc`、`--chir-*` 与 generate/check 一致，便于预览与正式站点使用相同设置 |
-| 不适用 | `--highlight-*`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible`、`--doc-version`、`--all-languages`、两个报告附加选项 |
-| `--stdout` | 被接受但不改变行为；与 `--format html` 同用仍报错 |
+| 外部高亮 | 同时给出 `--highlight-adapter` 和 `--highlight-node`；启动与重建均使用这一组合 |
+| 不适用 | `--stdout`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language*`、`--link-compatible`、`--doc-version`、`--all-languages`、两个报告附加选项 |
 | 配置来源 | `[output].directory` 决定站点根，`[output].formats` 决定额外产物，`[output].agent-full` 与字体键生效 |
 
 监视范围是项目内的 `.cj`、`.md`、`cjpm.toml`、`cjpm.lock`、`cjdoc.toml`；跳过隐藏项、`target/`、`.git/`、输出目录与缓存目录。保存后重建，浏览器需手动刷新。
@@ -158,6 +156,8 @@
 每次重建都按启动时的命令行重新读取 `cjdoc.toml`：改动的 `[analysis]`、`[semantic]` 等设置会生效，删除的键回到真实默认值，CLI 覆盖仍然优先。输出目录、缓存目录与监听端口在启动时确定，整个会话不变；重建时若解析出不同的输出或缓存位置，服务提示 `output or cache location changed; restart serve`，保留上一份成功站点。
 
 重建失败时服务继续提供上一份成功站点；进程因输入错误退出后，修正输入再重启。`Ctrl+C` 停止。
+
+`--port 0` 让系统选择空闲端口。终端地址、`--open` 与状态接口均使用实际监听端口。指定的端口若已被占用，serve 退出 `2` 并指出无法监听的地址。
 
 状态接口 `http://127.0.0.1:<port>/__cjdoc/status.json` 返回 `cjdoc.serve-status/1`：
 
@@ -177,7 +177,7 @@ cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-
 cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]
 ```
 
-两个输入都必需，两种写法只能选一种；多余的位置参数报 `unknown option '...'`。`--format` 只接受 `text`（默认）与 `json`。`--deny-breaking-api` 使 `breaking` 条目失败，`--deny-potentially-breaking-api` 使 `potentially-breaking` 条目失败；两类都要拒绝时同时给出。输入必须是 `cjdoc.api-surface/3` 快照，传入 Doc IR 报 `unsupported API surface schema 'cjdoc.doc-ir/19'`。严格基线是另一个接口：`check --api-surface-baseline` 连新增也拒绝。流程见[比较与多版本](../how-to/compare-and-version.md)。
+两个输入都必需，两种写法只能选一种；多余的位置参数报 `unknown option '...'`。`--format` 只接受 `text`（默认）与 `json`。`--deny-breaking-api` 使 `breaking` 条目失败，`--deny-potentially-breaking-api` 使 `potentially-breaking` 条目失败；两类都要拒绝时同时给出。输入必须是 `cjdoc.api-surface/3` 快照，传入 Doc IR 报 `unsupported API surface schema 'cjdoc.doc-ir/20'`。严格基线是另一个接口：`check --api-surface-baseline` 连新增也拒绝。流程见[比较与多版本](../how-to/compare-and-version.md)。
 
 ## versions compose
 
@@ -234,7 +234,7 @@ cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-ap
 | generate、check、diff、versions compose、schema | 0 | 完成且所选策略未失败 |
 | 同上 | 1 | 文档 error、`--deny-warnings` 遇到的 warning、覆盖率或 API 门槛失败、示例检查失败 |
 | 同上 | 2 | 用法、配置或输入错误（含选项互斥、取值范围、配置文件语法） |
-| render | 同上三条 | 输入不是 `cjdoc.doc-ir/19`、无法读取或超出 `--max-doc-ir-mib` 时为 `2` |
+| render | 同上三条 | 输入不是 `cjdoc.doc-ir/20`、无法读取或超出 `--max-doc-ir-mib` 时为 `2` |
 | query | 0 | `ok`、`ambiguous`、`not_found`、`source_incomplete` |
 | query | 2 | `invalid_request`、`scope_mismatch`、`stale_cursor` |
 | query | 3 | `budget_exceeded`、`resource_limit`、`unavailable` |

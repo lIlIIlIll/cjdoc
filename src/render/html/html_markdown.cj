@@ -6,8 +6,7 @@ import cjdoc.render.reading.{
     isExampleFenceClosing, trimExampleBlankLines}
 import cjdoc.render.routes.{symbolAnchor, label, collectMarkdownHeadingTargets}
 import cjdoc.render.foundation.{
-    RenderTextBuffer, markdownNodeText, safeLinkDestination, safeRelativeLinkDestination,
-    appendHtmlEscapedValue}
+    RenderTextBuffer, markdownNodeText, appendHtmlEscapedValue}
 import cjdoc.model.*
 import std.collection.*
 
@@ -15,12 +14,11 @@ import std.collection.*
 // Markdown block/inline dispatch lives in html_markdown_nodes.cj so this file
 // stays within the repository size guidance.
 
+// Captured page destinations are generated site routes: a leading `../` run
+// plus a route that may already carry percent-encoded bytes. No other relative
+// spelling gains a link, so author text cannot smuggle a new scheme or path.
 internal func safeMappedRelativeLinkDestination(value: String): Bool {
-    let parts = value.split("#", 2)
-    var path = parts[0]
-    while (path.startsWith("../")) { path = path.removePrefix("../") }
-    if (path.contains("%") || !safeRelativeLinkDestination(path)) { return false }
-    parts.size == 1 || safeLinkDestination("#" + parts[1])
+    SafeUrl.site(value).isSome()
 }
 
 /**

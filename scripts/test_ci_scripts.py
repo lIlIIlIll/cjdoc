@@ -21,7 +21,6 @@ import ci_diagnostics
 import ci_stage
 import measure_paired_samples as paired
 import ci_required
-from test_ci_wallclock_wiring import function_block as _job_block
 
 
 class ChangesRoutingTest(unittest.TestCase):
@@ -135,8 +134,8 @@ class DiagnosticsTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.repo = self.root / "repo"
-        (self.repo / "tests/fixtures/golden-v19").mkdir(parents=True)
-        (self.repo / "tests/fixtures/golden-v19/basic.docs.json").write_text("{}\n", encoding="utf-8")
+        (self.repo / "tests/fixtures/golden-v20").mkdir(parents=True)
+        (self.repo / "tests/fixtures/golden-v20/basic.docs.json").write_text("{}\n", encoding="utf-8")
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
 
     def test_a_bundle_is_never_marked_as_an_accepted_baseline(self) -> None:
@@ -596,6 +595,13 @@ def timing_artifact_stems() -> dict[str, set[str]]:
                 names = [name.replace(f"${{{{ matrix.{key} }}}}", value)
                          for name in placeholders for value in matrix.get(key, set())]
             found.update(names)
+        if path.name == "pages.yml":
+            # Both named shard jobs call the same action with explicit indices.
+            shard_values = re.findall(r"uses: \./\.github/actions/pages-browser-shard\n"
+                                      r"\s+with:\n\s+shard: '([01])'", text)
+            action = (root.parent / "actions/pages-browser-shard/action.yml").read_text(encoding="utf-8")
+            for template in re.findall(r"ci-timing-(.+?)-\$\{\{ github\.run_id \}\}", action):
+                found.update(template.replace("${{ inputs.shard }}", value) for value in shard_values)
         if found:
             uploads[path.name] = found
     return uploads
@@ -636,9 +642,8 @@ class PairedSampleTests(unittest.TestCase):
         style `reading-regressions` already uses), fails instead of falling outside the
         comparison and leaving the shard labelled wholly warm.
         """
-        text = (Path(__file__).resolve().parent.parent
-                / ".github/workflows/pages.yml").read_text(encoding="utf-8")
-        block = _job_block(text, "browser-shard")
+        block = (Path(__file__).resolve().parent.parent
+                 / ".github/actions/pages-browser-shard/action.yml").read_text(encoding="utf-8")
         restored = {match.removesuffix("-cache")
                     for match in re.findall(r"^\s+id: (\w+-cache)$", block, re.MULTILINE)}
         self.assertIn("playwright", restored)

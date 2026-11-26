@@ -441,3 +441,149 @@ internal func validReExportId(value: String): Bool {
     true
 }
 
+// A claimed binding needs a chain of resolved exposures ending at an actual
+// declaration in the backing package. Package adjacency alone is not evidence:
+// a named import from origin does not expose origin's unrelated declarations.
+private let DOC_IR_MAX_REEXPORT_VALIDATION_WORK: Int64 = 1000000
+
+internal class ReExportReachability {
+    private let packagesByKey = HashMap<String, PackageDoc>()
+    private let moduleDependencies = HashMap<String, HashSet<String>>()
+    private let indexedPackages = HashSet<String>()
+    private let firstHopByExposure = HashMap<String, Int64>()
+    // Alternatives share one flat list rather than allocating an array for
+    // every exposed name/target pair. Each tuple points at the next alternative.
+    private let indexedHops = ArrayList<(String, String, String, Int64)>()
+    private let provedExposures = HashSet<String>()
+    private let reachableCache = HashMap<String, HashSet<String>>()
+    private var work: Int64 = 0
+
+    init(documentation: DocumentationSet) {
+        for (pkg in documentation.packages) {
+            packagesByKey[compositeKey(pkg.moduleId, pkg.name)] = pkg
+        }
+        for (module in documentation.modules) {
+            moduleDependencies[module.id] = HashSet<String>(module.dependencyIds)
+        }
+    }
+
+    private func consume(amount: Int64): Bool {
+        if (amount > DOC_IR_MAX_REEXPORT_VALIDATION_WORK - work) { return false }
+        work += amount
+        true
+    }
+
+    private func reachableModules(start: String): ?HashSet<String> {
+        match (reachableCache.get(start)) {
+            case Some(value) => return Some(value)
+            case None => ()
+        }
+        let result = HashSet<String>()
+        let _ = result.add(start)
+        let pending = ArrayList<String>([start])
+        var cursor: Int64 = 0
+        while (cursor < pending.size) {
+            let current = pending[cursor]
+            cursor++
+            let dependencies = match (moduleDependencies.get(current)) {
+                case Some(value) => value
+                case None => continue
+            }
+            if (!consume(dependencies.size)) { return None }
+            for (dependency in dependencies) {
+                if (result.add(dependency)) { pending.add(dependency) }
+            }
+        }
+        reachableCache[start] = result
+        Some(result)
+    }
+
+    // The direct package must be importable from the exporting module: it is that
+    // module itself, or a module reachable through its declared dependency edges.
+    func moduleReaches(exporterModuleId: String, targetModuleId: String): Bool {
+        if (exporterModuleId == targetModuleId) { return true }
+        let reachable = match (reachableModules(exporterModuleId)) {
+            case Some(value) => value
+            case None => return false
+        }
+        reachable.contains(targetModuleId)
+    }
+
+    private func indexPackage(module: String, name: String): Bool {
+        let packageKey = compositeKey(module, name)
+        if (indexedPackages.contains(packageKey)) { return true }
+        let pkg = match (packagesByKey.get(packageKey)) {
+            case Some(value) => value
+            case None => return true
+        }
+        if (!consume(pkg.reExports.size)) { return false }
+        for (reExport in pkg.reExports) {
+            if (reExport.state != "resolved" || reExport.bindings.isEmpty()) { continue }
+            let nextModule = match (reExport.targetModuleId) {
+                case Some(value) => value
+                case None => continue
+            }
+            if (!moduleReaches(module, nextModule)) { continue }
+            if (!consume(reExport.bindings.size)) { return false }
+            for (binding in reExport.bindings) {
+                if (!consume(binding.targetSymbolIds.size)) { return false }
+                let nameKey = compositeKey(packageKey, binding.exposedName)
+                for (id in binding.targetSymbolIds) {
+                    let key = compositeKey(nameKey, id)
+                    let alternative = firstHopByExposure.get(key).getOrDefault({ => -1 })
+                    firstHopByExposure[key] = indexedHops.size
+                    indexedHops.add((nextModule, reExport.targetPackageName, binding.importedName, alternative))
+                }
+            }
+        }
+        let _ = indexedPackages.add(packageKey)
+        true
+    }
+
+    func proves(moduleId: String, packageName: String, inputName: String, target: SymbolDoc): Bool {
+        if (moduleId == target.moduleId && packageName == target.packageName &&
+            inputName == target.name) { return true }
+        let initial = (moduleId, packageName, inputName)
+        let initialKey = exposureKey(initial, target.id)
+        if (provedExposures.contains(initialKey)) { return true }
+        let pending = ArrayList<(String, String, String, String, Int64)>(
+            [(moduleId, packageName, inputName, initialKey, -1)])
+        let visited = HashSet<String>([initialKey])
+        var cursor: Int64 = 0
+        while (cursor < pending.size) {
+            let current = cursor
+            cursor++
+            let (module, name, selected, key, _) = pending[current]
+            if ((module == target.moduleId && name == target.packageName && selected == target.name) ||
+                provedExposures.contains(key)) {
+                // Only predecessors of the witness are proven. Other queued
+                // exposures may still point at an unproductive cycle or dead end.
+                var proof = current
+                while (proof >= 0) {
+                    let (_, _, _, provenKey, predecessor) = pending[proof]
+                    let _ = provedExposures.add(provenKey)
+                    proof = predecessor
+                }
+                return true
+            }
+            if (!indexPackage(module, name)) { return false }
+            var hop = firstHopByExposure.get(key).getOrDefault({ => -1 })
+            while (hop >= 0) {
+                if (!consume(1)) { return false }
+                let (nextModule, destination, nextName, alternative) = indexedHops[hop]
+                let nextKey = exposureKey((nextModule, destination, nextName), target.id)
+                if (visited.add(nextKey)) {
+                    pending.add((nextModule, destination, nextName, nextKey, current))
+                }
+                hop = alternative
+            }
+        }
+        false
+    }
+
+    private func exposureKey(hop: (String, String, String), id: String): String {
+        compositeKey(compositeKey(compositeKey(hop[0], hop[1]), hop[2]), id)
+    }
+}
+
+
