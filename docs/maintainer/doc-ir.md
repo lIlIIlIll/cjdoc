@@ -93,6 +93,8 @@ bash scripts/update_goldens.sh
 
 `ReExportDoc.targetModuleId` 与 `targetPackageName` 指向直接导入的包，不一定是声明的所有者。每个绑定分别记录 `importedName` 和 `exposedName`：别名可改变对外名，命名导入和星号不能改变。严格 replay 按每跳实际绑定验证该导入名与目标 SymbolId，最终必须到达公开或受保护的顶层声明；无支撑的循环或只有包邻接关系的路径不能当作证据。
 
+同一包的已解析绑定按暴露名和目标 SymbolId 一次建索引；索引和实际遍历仍计入固定工作预算。只缓存通向真实声明的已证明路径，不缓存未验证的旁支。
+
 查询结果 `relations.packageImportContext[]` 始终包含 `source`，并复用严格的 `sourceReference` 定义。即使 import 的绑定状态为 `unavailable` 或 `ambiguous`，来源仍是保留范围与明确状态的对象，不能缺失或写为 `null`；绑定状态不等于源码来源验证状态。
 
 ## Doc IR/18 的提示 AST 与本地化 scope

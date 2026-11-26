@@ -215,6 +215,48 @@ class ReExportReachabilityTest(unittest.TestCase):
             capture.write_text(json.dumps(doc), encoding="utf-8")
             self.assertIn("re-export target must be", run(render, expect=2).stderr)
 
+    def test_wide_wildcard_surface_encodes_and_replays_every_binding(self):
+        with tempfile.TemporaryDirectory(prefix="cjdoc-reexport-wide-") as temp:
+            root = Path(temp).resolve()
+            project = root / "wide"
+            source = project / "src"
+            (source / "relay").mkdir(parents=True)
+            (source / "origin").mkdir()
+            (project / "cjpm.toml").write_text(MANIFEST, encoding="utf-8")
+            (source / "api.cj").write_text(
+                f"package {PACKAGE}\npublic import {PACKAGE}.relay.*\n", encoding="utf-8")
+            (source / "relay" / "api.cj").write_text(
+                f"package {PACKAGE}.relay\npublic import {PACKAGE}.origin.*\n", encoding="utf-8")
+            names = [f"value{index:04d}" for index in range(1100)]
+            (source / "origin" / "api.cj").write_text(
+                f"package {PACKAGE}.origin\n"
+                + "".join(f"public func {name}(): Int64 {{ 0 }}\n" for name in names)
+                + f"public func {names[-1]}(value: Int64): Int64 {{ value }}\n", encoding="utf-8")
+            doc = self.generate(project, "--no-cache", "--jobs", "1")
+            targets = {name: [] for name in names}
+            for declaration in doc["declarations"]:
+                targets[declaration["name"]].append(declaration["id"])
+            self.assertEqual(len(targets[names[-1]]), 2)
+            expected = {(name, name, tuple(sorted(ids))) for name, ids in targets.items()}
+            for package in (PACKAGE, f"{PACKAGE}.relay"):
+                exported, = exports(doc, package)
+                self.assertEqual(exported["state"], "resolved")
+                self.assertEqual(len(exported["bindings"]), len(names))
+                self.assertEqual({(row["exposedName"], row["importedName"],
+                                   tuple(sorted(row["targetSymbolIds"]))) for row in exported["bindings"]}, expected)
+
+            shutil.rmtree(project)
+            capture = root / "wide.json"
+            capture.write_text(json.dumps(doc), encoding="utf-8")
+            replay = [self.binary, "render", "--input", capture, "--format", "json", "--stdout"]
+            restored = json.loads(run(replay).stdout)
+            for package in (PACKAGE, f"{PACKAGE}.relay"):
+                self.assertEqual(exports(restored, package), exports(doc, package))
+            wrong_name, = (row for row in exports(doc)[0]["bindings"] if row["exposedName"] == names[0])
+            wrong_name["targetSymbolIds"] = targets[names[-1]][:1]
+            capture.write_text(json.dumps(doc), encoding="utf-8")
+            self.assertIn("re-export target must be", run(replay, expect=2).stderr)
+
     def test_backing_declaration_is_required_even_through_cycles(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-reexport-cycle-") as temp:
             root = Path(temp).resolve()

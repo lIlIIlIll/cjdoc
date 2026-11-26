@@ -446,16 +446,14 @@ internal func validReExportId(value: String): Bool {
 // a named import from origin does not expose origin's unrelated declarations.
 private let DOC_IR_MAX_REEXPORT_VALIDATION_WORK: Int64 = 1000000
 
-private func bindingIncludesTarget(binding: ReExportBinding, id: String): Bool {
-    for (candidate in binding.targetSymbolIds) {
-        if (candidate == id) { return true }
-    }
-    false
-}
-
 internal class ReExportReachability {
     private let packagesByKey = HashMap<String, PackageDoc>()
     private let moduleDependencies = HashMap<String, HashSet<String>>()
+    private let indexedPackages = HashSet<String>()
+    private let firstHopByExposure = HashMap<String, Int64>()
+    // Alternatives share one flat list rather than allocating an array for
+    // every exposed name/target pair. Each tuple points at the next alternative.
+    private let indexedHops = ArrayList<(String, String, String, Int64)>()
     private let provedExposures = HashSet<String>()
     private let reachableCache = HashMap<String, HashSet<String>>()
     private var work: Int64 = 0
@@ -470,7 +468,7 @@ internal class ReExportReachability {
     }
 
     private func consume(amount: Int64): Bool {
-        if (work + amount > DOC_IR_MAX_REEXPORT_VALIDATION_WORK) { return false }
+        if (amount > DOC_IR_MAX_REEXPORT_VALIDATION_WORK - work) { return false }
         work += amount
         true
     }
@@ -511,6 +509,37 @@ internal class ReExportReachability {
         reachable.contains(targetModuleId)
     }
 
+    private func indexPackage(module: String, name: String): Bool {
+        let packageKey = compositeKey(module, name)
+        if (indexedPackages.contains(packageKey)) { return true }
+        let pkg = match (packagesByKey.get(packageKey)) {
+            case Some(value) => value
+            case None => return true
+        }
+        if (!consume(pkg.reExports.size)) { return false }
+        for (reExport in pkg.reExports) {
+            if (reExport.state != "resolved" || reExport.bindings.isEmpty()) { continue }
+            let nextModule = match (reExport.targetModuleId) {
+                case Some(value) => value
+                case None => continue
+            }
+            if (!moduleReaches(module, nextModule)) { continue }
+            if (!consume(reExport.bindings.size)) { return false }
+            for (binding in reExport.bindings) {
+                if (!consume(binding.targetSymbolIds.size)) { return false }
+                let nameKey = compositeKey(packageKey, binding.exposedName)
+                for (id in binding.targetSymbolIds) {
+                    let key = compositeKey(nameKey, id)
+                    let alternative = firstHopByExposure.get(key).getOrDefault({ => -1 })
+                    firstHopByExposure[key] = indexedHops.size
+                    indexedHops.add((nextModule, reExport.targetPackageName, binding.importedName, alternative))
+                }
+            }
+        }
+        let _ = indexedPackages.add(packageKey)
+        true
+    }
+
     func proves(moduleId: String, packageName: String, inputName: String, target: SymbolDoc): Bool {
         if (moduleId == target.moduleId && packageName == target.packageName &&
             inputName == target.name) { return true }
@@ -537,29 +566,16 @@ internal class ReExportReachability {
                 }
                 return true
             }
-            let pkg = match (packagesByKey.get(compositeKey(module, name))) {
-                case Some(value) => value
-                case None => continue
-            }
-            if (!consume(pkg.reExports.size)) { return false }
-            for (reExport in pkg.reExports) {
-                if (reExport.state != "resolved" || reExport.bindings.isEmpty()) { continue }
-                let nextModule = match (reExport.targetModuleId) {
-                    case Some(value) => value
-                    case None => continue
+            if (!indexPackage(module, name)) { return false }
+            var hop = firstHopByExposure.get(key).getOrDefault({ => -1 })
+            while (hop >= 0) {
+                if (!consume(1)) { return false }
+                let (nextModule, destination, nextName, alternative) = indexedHops[hop]
+                let nextKey = exposureKey((nextModule, destination, nextName), target.id)
+                if (visited.add(nextKey)) {
+                    pending.add((nextModule, destination, nextName, nextKey, current))
                 }
-                if (!moduleReaches(module, nextModule)) { continue }
-                if (!consume(reExport.bindings.size)) { return false }
-                for (binding in reExport.bindings) {
-                    if (binding.exposedName != selected) { continue }
-                    if (!consume(binding.targetSymbolIds.size)) { return false }
-                    if (!bindingIncludesTarget(binding, target.id)) { continue }
-                    let destination = reExport.targetPackageName
-                    let nextKey = exposureKey((nextModule, destination, binding.importedName), target.id)
-                    if (visited.add(nextKey)) {
-                        pending.add((nextModule, destination, binding.importedName, nextKey, current))
-                    }
-                }
+                hop = alternative
             }
         }
         false
