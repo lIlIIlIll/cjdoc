@@ -919,7 +919,7 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                     check_native_ir(baseline, candidate, old, new, profile, budget["docIrTransition"])
             self.assertEqual(budget, frozen)
 
-    def test_ir_registration_accepts_only_the_exact_v17_v19_defaults(self):
+    def test_ir_registration_accepts_only_the_exact_v17_v20_defaults(self):
         before, after = ir_transition_pair()
         registration = register_ir_observation(before, "a" * 64, after["generator"]["version"])
         before_copy, after_copy = deepcopy(before), deepcopy(after)
@@ -1010,6 +1010,72 @@ class ReaderTransitionEvidenceTests(unittest.TestCase):
                 compare_ir_transition(before, altered, registration, "a" * 64)
         with self.assertRaises(ValueError):
             compare_ir_transition(before, after, registration, "b" * 64)
+
+    def test_ir_transition_aligns_only_literal_binding_import_names(self):
+        before, after = ir_transition_pair()
+
+        def add_bindings(document):
+            re_export = {
+                "id": "cjdoc:reexport:v1:" + "0" * 64, "kind": "all", "organization": None,
+                "targetPackageName": "fixture.exported", "targetModuleId": "module:fixture",
+                "alias": None, "state": "resolved",
+                "source": {"path": "src/reexport.cj",
+                           "start": {"line": 3, "column": 1, "byteOffset": 22},
+                           "end": {"line": 3, "column": 38, "byteOffset": 59}},
+                "bindings": [{"exposedName": "exportedValue",
+                              "targetSymbolIds": ["cjdoc:v2:fixture::exportedValue#g0()"]}],
+            }
+            document["packages"] = [{"name": "fixture", "moduleId": "module:fixture",
+                                     "sourceFiles": ["src/reexport.cj"],
+                                     "symbolIds": ["cjdoc:v2:fixture::exportedValue#g0()"],
+                                     "reExports": [deepcopy(re_export)]}]
+            return document
+
+        add_bindings(before)
+        add_bindings(after)
+        after["packages"][0]["reExports"][0]["bindings"][0]["importedName"] = "exportedValue"
+        registration = register_ir_observation(before, "a" * 64, after["generator"]["version"])
+        before_copy, after_copy = deepcopy(before), deepcopy(after)
+        compare_ir_transition(before, after, registration, "a" * 64)
+        self.assertEqual(before, before_copy)
+        self.assertEqual(after, after_copy)
+
+        def altered(**changes):
+            document = deepcopy(after)
+            binding = document["packages"][0]["reExports"][0]["bindings"][0]
+            for name, value in changes.get("binding", {}).items():
+                binding[name] = value
+            document["packages"][0]["reExports"][0].update(changes.get("export", {}))
+            if changes.get("drop_imported"):
+                del binding["importedName"]
+            return document
+
+        invalid = [
+            ("missing import name", altered(drop_imported=True)),
+            ("import name is not the exposed name", altered(binding={"importedName": "other"})),
+            ("resolution state drift", altered(export={"state": "partial"})),
+        ]
+        for label, document in invalid:
+            with self.subTest(after=label), self.assertRaises(ValueError):
+                compare_ir_transition(before, document, registration, "a" * 64)
+        for kind in ("single", "alias", "multi"):
+            baseline = deepcopy(before)
+            baseline["packages"][0]["reExports"][0]["kind"] = kind
+            candidate = altered(export={"kind": kind})
+            with self.subTest(kind=kind):
+                if kind == "single":
+                    compare_ir_transition(baseline, candidate, registration, "a" * 64)
+                else:
+                    with self.assertRaisesRegex(ValueError, "original fields changed"):
+                        compare_ir_transition(baseline, candidate, registration, "a" * 64)
+        preexisting = deepcopy(before)
+        preexisting["packages"][0]["reExports"][0]["bindings"][0]["importedName"] = "exportedValue"
+        with self.assertRaises(ValueError):
+            register_ir_observation(preexisting, "a" * 64, after["generator"]["version"])
+        fewer = deepcopy(after)
+        fewer["packages"][0]["reExports"][0]["bindings"] = []
+        with self.assertRaises(ValueError):
+            compare_ir_transition(before, fewer, registration, "a" * 64)
 
     def test_register_freezes_artifact_receipts_consumed_by_compare(self):
         before_ir, after_ir = ir_transition_pair()
