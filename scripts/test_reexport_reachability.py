@@ -12,6 +12,11 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGE = "reexport_probe"
+# The 1000-package chain is scanned, not rendered, so it needs a scale-only
+# bound: the source scan exceeds the shared 100-second limit on a Windows
+# runner. Parallelism itself is proven by the small project in
+# test_source_order_parallelism_cache_and_strict_render.
+SCALE_TIMEOUT = 300
 MANIFEST = ('[package]\nname = "reexport_probe"\ncjc-version = "1.2.0"\n'
             'version = "1.0.0"\noutput-type = "static"\n')
 
@@ -47,9 +52,9 @@ def write_project(root: Path, root_file: str, *, cycle=False):
         out.write_text("\n".join([f"package {package}", *lines, ""]), encoding="utf-8")
 
 
-def run(command, *, cwd=None, expect=0, input=None):
+def run(command, *, cwd=None, expect=0, input=None, timeout=100):
     process = subprocess.run([str(arg) for arg in command], cwd=cwd, capture_output=True,
-                             encoding="utf-8", timeout=100, input=input)
+                             encoding="utf-8", timeout=timeout, input=input)
     if process.returncode != expect:
         raise AssertionError(f"{Path(command[0]).name}: expected exit {expect}, got {process.returncode}\n"
                              f"{process.stderr[:3000]}")
@@ -74,14 +79,16 @@ class ReExportReachabilityTest(unittest.TestCase):
             cls.binary = cls.binary.with_suffix(".exe")
         cls.binary = cls.binary.resolve(strict=True)
 
-    def generate(self, project, *options):
+    def generate(self, project, *options, timeout=100):
         return json.loads(run([self.binary, "generate", "--project", project, "--semantic", "source",
                                "--lint-profile", "off", "--audience", "all", "--format", "json",
-                               "--stdout", *options]).stdout)
+                               "--stdout", *options], timeout=timeout).stdout)
 
     def test_source_order_parallelism_cache_and_strict_render(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-reexport-") as temp:
-            root = Path(temp)
+            # Output paths reject symbolic-link ancestors, and macOS /var is a
+            # symlink; publish under the resolved, still test-owned root.
+            root = Path(temp).resolve()
             pristine = None
             for name, filename in (("early", "api.cj"), ("late", "zz_api.cj")):
                 project = root / name
@@ -171,7 +178,7 @@ class ReExportReachabilityTest(unittest.TestCase):
 
     def test_long_chain_proves_each_suffix_without_blessing_sibling_edges(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-reexport-chain-") as temp:
-            root = Path(temp)
+            root = Path(temp).resolve()
             project = root / "chain"
             source = project / "src"
             source.mkdir(parents=True)
@@ -185,7 +192,7 @@ class ReExportReachabilityTest(unittest.TestCase):
                 (directory / "api.cj").write_text(f"package {package}\n{declaration}\n",
                                                    encoding="utf-8")
 
-            doc = self.generate(project, "--no-cache", "--jobs", "4")
+            doc = self.generate(project, "--no-cache", "--jobs", "4", timeout=SCALE_TIMEOUT)
             target = next(decl["id"] for decl in doc["declarations"] if decl["name"] == "value")
             bindings = [(entry["state"], binding["targetSymbolIds"])
                         for package in doc["packages"] for entry in package["reExports"]
@@ -210,7 +217,7 @@ class ReExportReachabilityTest(unittest.TestCase):
 
     def test_backing_declaration_is_required_even_through_cycles(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-reexport-cycle-") as temp:
-            root = Path(temp)
+            root = Path(temp).resolve()
             project = root / "cyclic"
             write_project(project, "api.cj", cycle=True)
             doc = self.generate(project, "--no-cache")

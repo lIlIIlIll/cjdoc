@@ -105,7 +105,9 @@ class ReportPublicationTest(unittest.TestCase):
 
     def test_generate_render_and_compose_publish_report_evidence_in_every_locale(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-report-publication-") as temp:
-            root = Path(temp)
+            # Output publication rejects symbolic-link ancestors, and the macOS
+            # temporary directory lives under the /var symlink.
+            root = Path(temp).resolve()
             before, after = root / "before", root / "after"
             write_project(before, "removedValue")
             write_project(after, "newValue")
@@ -154,7 +156,7 @@ class ReportPublicationTest(unittest.TestCase):
 
     def test_agent_directory_links_concept_kinds_to_the_navigation_index(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-agent-navigation-") as temp:
-            root = Path(temp)
+            root = Path(temp).resolve()
             project = root / "project"
             write_project(project, "value")
             site = self.site(self.generation(project), root / "site", ("--locale", "en"))
@@ -178,7 +180,7 @@ class ReportPublicationTest(unittest.TestCase):
 
     def test_cropped_agent_directory_preserves_other_groups_and_exact_navigation(self):
         with tempfile.TemporaryDirectory(prefix="cjdoc-cropped-navigation-") as temp:
-            root = Path(temp)
+            root = Path(temp).resolve()
             project = root / "project"
             write_project(project, "value")
             config = project / "cjdoc.toml"
