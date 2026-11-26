@@ -36,7 +36,7 @@ from safe_output_root import safe_output_file
 from worktree_identity import exact_worktree_identity
 from verify_build_invocations import read_since, verify as verify_build_invocations
 from sts_compile_override import KNOWN_PACKAGES
-from release_package_contracts import worker_executable
+from release_package_contracts import candidate_release_version, worker_executable
 
 RECEIPT_SCHEMA = "cjdoc.release-candidate/2"
 GATE_SCHEMA = "cjdoc.release-gate/4"
@@ -250,6 +250,15 @@ def main() -> int:
                 parser.error("build invocation policy/wrapper source does not match the candidate")
     sealed = verify_sealed_build(args.repo, args.build_manifest, commit, tree, binary, worker)
     version = run([str(binary), "--version"]).splitlines()[0]
+    release_version = args.tag.lstrip("v")
+    if args.tag.startswith("nightly-"):
+        if not version.startswith("cjdoc "):
+            parser.error("Nightly candidate binary does not report its cjdoc version")
+        try:
+            release_version = candidate_release_version(
+                args.tag, version.removeprefix("cjdoc "), args.sdk_version, commit)
+        except ValueError as error:
+            parser.error(str(error))
     worker_entry = worker_record(args.repo, worker)
     gates = gate_digests(list(args.gate))
     if args.release_gate_receipt is not None:
@@ -259,7 +268,7 @@ def main() -> int:
         gates["release-gate"] = sha256_file(args.release_gate_receipt)
     document = {
         "schemaVersion": RECEIPT_SCHEMA,
-        "source": {"tag": args.tag, "releaseVersion": args.tag.lstrip("v"),
+        "source": {"tag": args.tag, "releaseVersion": release_version,
                    "commit": commit, "tree": tree, "dirty": bool(identity["dirty"]),
                    "worktreeSha256": str(identity["worktreeSha256"])},
         "platform": collect_platform(),

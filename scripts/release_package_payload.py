@@ -20,13 +20,13 @@ try:
         COMMIT,
         RELEASE_SEMVER,
         REPOSITORY_PAYLOAD,
-        SEMVER,
         SHA256,
         WORKER_RECEIPT_KEYS,
         WORKER_PROTOCOL,
         WORKER_VERSION_PREFIX,
         main_executable,
         release_core,
+        validate_release_stdx_version,
         worker_executable,
     )
     from .safe_output_root import lexical_absolute, verify_directory_chain
@@ -44,13 +44,13 @@ except ImportError:  # Direct module execution.
         COMMIT,
         RELEASE_SEMVER,
         REPOSITORY_PAYLOAD,
-        SEMVER,
         SHA256,
         WORKER_RECEIPT_KEYS,
         WORKER_PROTOCOL,
         WORKER_VERSION_PREFIX,
         main_executable,
         release_core,
+        validate_release_stdx_version,
         worker_executable,
     )
     from safe_output_root import lexical_absolute, verify_directory_chain
@@ -109,8 +109,7 @@ def inspect_archive(path: Path, platform_name: str, version: str,
         raise ValueError("release package version must be a SemVer release version")
     if not SHA256.fullmatch(sdk_sha256):
         raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
-    if not isinstance(stdx_version, str) or not SEMVER.fullmatch(stdx_version):
-        raise ValueError("stdx version must be a stable three-part SemVer")
+    validate_release_stdx_version(version, sdk_version, source_commit, stdx_version)
     if not isinstance(stdx_sha256, str) or not SHA256.fullmatch(stdx_sha256):
         raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
     if not COMMIT.fullmatch(source_commit):

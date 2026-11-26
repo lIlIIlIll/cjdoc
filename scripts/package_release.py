@@ -30,8 +30,9 @@ try:
         WORKER_PROTOCOL,
         WORKER_RECEIPT_KEYS,
         WORKER_VERSION_PREFIX,
+        candidate_release_version,
         main_executable,
-        release_version_from_tag,
+        validate_release_stdx_version,
         worker_executable,
     )
     from .safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
@@ -45,8 +46,9 @@ except ImportError:  # Direct script execution.
         WORKER_PROTOCOL,
         WORKER_RECEIPT_KEYS,
         WORKER_VERSION_PREFIX,
+        candidate_release_version,
         main_executable,
-        release_version_from_tag,
+        validate_release_stdx_version,
         worker_executable,
     )
     from safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
@@ -226,8 +228,7 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
                     stdx_sha256: str,
                     candidate_receipt: dict,
                     *, worker: Path | None = None) -> dict[str, tuple[bytes, int]]:
-    if not isinstance(stdx_version, str) or not SEMVER.fullmatch(stdx_version):
-        raise ValueError("stdx version must be a stable three-part SemVer")
+    validate_release_stdx_version(version, sdk_version, source_commit, stdx_version)
     if not isinstance(stdx_sha256, str) or not SHA256.fullmatch(stdx_sha256):
         raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
     worker = resolve_worker_path(binary, worker, windows)
@@ -451,7 +452,8 @@ def main() -> int:
         version = committed_package_version(repo, args.source_commit)
         if not args.release_tag:
             raise ValueError("--release-version or CJDOC_RELEASE_TAG is required")
-        release_version = release_version_from_tag(args.release_tag)
+        release_version = candidate_release_version(
+            args.release_tag, version, args.sdk_version, args.source_commit)
         if release_version.split("-", 1)[0] != version:
             raise ValueError(
                 f"release tag {args.release_tag!r} does not match package version v{version}"
@@ -465,6 +467,11 @@ def main() -> int:
         validate_combined_sdk_root(args.sdk_root, args.sdk_sha256, args.stdx_sha256)
         verify_binary_version(binary, version)
         candidate_receipt = json.loads(Path(args.candidate_receipt).read_text(encoding="utf-8"))
+        if args.release_tag.startswith("nightly-"):
+            candidate_source = candidate_receipt.get("source") if isinstance(candidate_receipt, dict) else None
+            if not isinstance(candidate_source, dict) or candidate_source.get("tag") != args.release_tag \
+                    or candidate_source.get("releaseVersion") != release_version:
+                raise ValueError("Nightly candidate receipt does not match the release tag and version")
         asset = build_archive(
             repo, binary, args.platform, args.output,
             source_commit=args.source_commit,
