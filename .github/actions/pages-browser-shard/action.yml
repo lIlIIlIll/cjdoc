@@ -1,0 +1,213 @@
+name: Run a Pages browser shard
+description: Verify one browser shard against the sealed site and return its exact artifact identity.
+inputs:
+  shard:
+    description: Zero-based browser shard index
+    required: true
+  site-artifact-id:
+    description: Artifact ID of the sealed site
+    required: true
+  site-sha256:
+    description: SHA-256 fingerprint of the sealed site
+    required: true
+  browser-history-run-id:
+    description: Explicit prior run supplying browser timings (empty uses equal groups)
+    default: ''
+  browser-history-run-attempt:
+    description: Exact producing attempt of the selected timing history
+    default: '1'
+outputs:
+  artifact_id:
+    description: Immutable ID of the uploaded shard archive
+    value: ${{ steps.upload.outputs.artifact-id }}
+  artifact_digest:
+    description: SHA-256 digest of the uploaded shard archive
+    value: ${{ steps.upload.outputs.artifact-digest }}
+  producer_attempt:
+    description: Attempt that actually ran this shard
+    value: ${{ steps.produce.outputs.attempt }}
+runs:
+  using: composite
+  steps:
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements-showcase.txt
+
+      - name: Restore Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Playwright's default per-user cache; keyed by its exact pin.
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('scripts/requirements-showcase.txt') }}
+
+      - name: Restore CJK fonts
+        id: font-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/noto-cjk-fonts
+          key: noto-cjk-fonts-${{ runner.os }}-1.20220127-v1
+
+      - name: Install browser acceptance dependencies
+        shell: bash
+        env:
+          CACHE_HIT_FONTS: ${{ steps.font-cache.outputs.cache-hit }}
+        run: |
+          python -m pip install --disable-pip-version-check psutil -r scripts/requirements-showcase.txt
+          python -m playwright install --with-deps chromium
+          # DONE-03 classifies each sample as warm or cold, and this shard's restore
+          # cost is the font archive AND the Playwright browser build: either one
+          # missing changes how long the job takes. Recording only the fonts labelled
+          # a shard that had to download Chromium as warm, and the classifier reads the
+          # whole map, so a cache left out here silently mislabels the sample.
+          #
+          # pip's wheel cache is deliberately NOT recorded. It covers one small pinned
+          # dependency, and treating it as part of warmth would split a cell on an axis
+          # that does not move the measured duration.
+          {
+            echo "CJDOC_CACHE_STATE=fonts=${{ steps.font-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }},playwright=${{ steps.playwright-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
+          } >> "${GITHUB_ENV}"
+          # Chromium cannot rasterize CJK text without a fallback font, so the
+          # evidence screenshots depend on this package being present. The
+          # 61 MB archive is slow to fetch on a cold runner, so cache the four
+          # installed collections instead of the whole fontconfig database.
+          if [ "${CACHE_HIT_FONTS}" != "true" ]; then
+            sudo apt-get install -y fonts-noto-cjk
+            mkdir -p "${RUNNER_TEMP}/noto-cjk-fonts"
+            sudo cp /usr/share/fonts/opentype/noto/Noto*CJK-*.ttc "${RUNNER_TEMP}/noto-cjk-fonts/"
+            # The cache action archives as the runner user, so hand it the files.
+            sudo chown -R "$(id -u):$(id -g)" "${RUNNER_TEMP}/noto-cjk-fonts"
+          else
+            sudo mkdir -p /usr/share/fonts/opentype/noto
+            sudo cp "${RUNNER_TEMP}"/noto-cjk-fonts/Noto*CJK-*.ttc /usr/share/fonts/opentype/noto/
+            sudo fc-cache -f >/dev/null
+          fi
+          test -s /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+
+      - name: Download the sealed site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ inputs.site-artifact-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sealed
+
+      - name: Select the explicitly requested browser history
+        id: browser-history
+        shell: bash
+        env:
+          HISTORY_RUN_ID: ${{ inputs.browser-history-run-id }}
+          HISTORY_RUN_ATTEMPT: ${{ inputs.browser-history-run-attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          history_source=""
+          artifact=""
+          if [[ -n "${HISTORY_RUN_ID}" ]]; then
+            if [[ ! "${HISTORY_RUN_ID}" =~ ^[1-9][0-9]*$ || ! "${HISTORY_RUN_ATTEMPT}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Browser history requires a positive run id and attempt number"
+              exit 1
+            fi
+            history_dir="target/browser-history/${HISTORY_RUN_ID}-${HISTORY_RUN_ATTEMPT}"
+            history_source="${history_dir}/browser-timing-history.json"
+            artifact="cjdoc-showcase-browser-history-${HISTORY_RUN_ID}-${HISTORY_RUN_ATTEMPT}"
+            {
+              echo "selected=true"
+              echo "history_dir=${history_dir}"
+              echo "history_source=${history_source}"
+              echo "artifact_name=${artifact}"
+            } >> "${GITHUB_OUTPUT}"
+          fi
+          export HISTORY_SOURCE="${history_source}" HISTORY_ARTIFACT="${artifact}"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          selected = bool(os.environ["HISTORY_RUN_ID"])
+          selection = {
+              "mode": "history-weighted" if selected else "equal-home-groups",
+              "runId": os.environ["HISTORY_RUN_ID"] if selected else None,
+              "runAttempt": int(os.environ["HISTORY_RUN_ATTEMPT"]) if selected else None,
+              "artifactName": os.environ["HISTORY_ARTIFACT"] or None,
+              "historySource": os.environ["HISTORY_SOURCE"] or None,
+          }
+          Path("target/browser-history-selection.json").write_text(
+              json.dumps(selection, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(json.dumps(selection, sort_keys=True))
+          PY
+
+      - name: Download only the selected run and attempt's browser history
+        if: steps.browser-history.outputs.selected == 'true'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ steps.browser-history.outputs.artifact_name }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.browser-history-run-id }}
+          path: ${{ steps.browser-history.outputs.history_dir }}
+
+      - name: Plan and run the browser shard
+        id: produce
+        shell: bash
+        env:
+          PYTHONPATH: scripts
+          CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+          BROWSER_HISTORY_SOURCE: ${{ steps.browser-history.outputs.history_source }}
+          SITE_SHA256: ${{ inputs.site-sha256 }}
+          SHARD: ${{ inputs.shard }}
+        run: |
+          set -euo pipefail
+          [[ "${SHARD}" == 0 || "${SHARD}" == 1 ]]
+          sealed="${RUNNER_TEMP}/sealed"
+          test "$(cat "${sealed}/showcase-site.sha256")" = "${SITE_SHA256}"
+          history_args=()
+          if [[ -n "${BROWSER_HISTORY_SOURCE}" ]]; then
+            # A selected but unavailable/invalid/incomplete history fails closed.
+            if [[ ! -f "${BROWSER_HISTORY_SOURCE}" ]]; then
+              echo "::error::Selected browser history is missing ${BROWSER_HISTORY_SOURCE}"
+              exit 1
+            fi
+            history_args=(--history "${BROWSER_HISTORY_SOURCE}")
+          fi
+          python -m showcase_contract.browser plan \
+            --site "${sealed}/showcase-site" --shards 2 \
+            --run-id "${GITHUB_RUN_ID}" --output target/browser-plan.json "${history_args[@]}"
+          python -c 'import json,sys; assert json.load(open(sys.argv[1], encoding="utf-8"))["siteSha256"] == sys.argv[2]' \
+            target/browser-plan.json "${SITE_SHA256}"
+          python scripts/ci_stage.py run --id "browser-shard-${SHARD}" --kind browser-shard \
+            --evidence "${CJDOC_CI_EVIDENCE}" -- \
+            python -m showcase_contract.browser run \
+              --site "${sealed}/showcase-site" --plan target/browser-plan.json \
+              --shard-index "${SHARD}" --run-id "${GITHUB_RUN_ID}" \
+              --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+              --evidence "target/browser-shard-${SHARD}"
+          echo "attempt=${GITHUB_RUN_ATTEMPT}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload the shard evidence
+        id: upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cjdoc-showcase-browser-shard-${{ inputs.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/browser-plan.json
+            target/browser-history-selection.json
+            target/browser-history
+            target/browser-shard-${{ inputs.shard }}
+          retention-days: 7
+          if-no-files-found: error
+
+      # The shard reported the Chromium version and font set it rendered with into the
+      # stage recorder. Uploading that record is what makes the claim checkable, so it
+      # travels as its own `ci-timing-*` artifact: mixing an absolute evidence path
+      # into the upload above would move the artifact root off the checked-out tree.
+      - name: Upload the shard's stage record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-timing-pages-browser-shard-${{ inputs.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-evidence/
+          retention-days: 7
+          if-no-files-found: error

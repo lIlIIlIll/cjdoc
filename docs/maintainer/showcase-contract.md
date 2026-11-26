@@ -240,10 +240,10 @@ Pages 的 `verify-site` 将完整历史放入 validation evidence，并单独上
 计划的 `assignment.historySource` 是包含所选 run/attempt 的稳定相对路径，
 可与 selection 和 `assignment.groupCosts` 对照审计。
 
-重跑失败任务时，消费者使用 assemble、source、reading 作业保留的产物 ID 与生产
-attempt。两份浏览器证据独立查找各自最后一次实际成功的生产作业；完整重跑使用新产物，
-仅重跑一个分片不影响另一分片。下载校验归档摘要，合并前要求两份计划逐字节一致，并
-核对每份分片的 run、生产 attempt、revision 及同一已封存站点摘要。
+仅重跑消费者时，assemble、source、reading 和两个独立浏览器作业保留各自输出的
+产物 ID、摘要与生产 attempt。GitHub 的作业 API 可能用本次 attempt 标记继承的执行，
+所以不依赖该 API 推算归档名。仅重跑一个分片时只更新该分片的输出；完整重跑使用全新产物。
+合并前还要求两份计划逐字节一致，并核对每份分片的 run、生产 attempt、revision 与站点摘要。
 
 
 ## 证据分层

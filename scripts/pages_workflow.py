@@ -90,51 +90,28 @@ def verified_artifact(artifacts: list[dict], name: str, repository_id: int, run_
     return artifact
 
 
-def verify_job_archives(archives: list[dict], producers: list[str], repository_id: int,
-                        run_id: int, attempt: int, head: str) -> None:
+def verify_producers(api, repository: str, repository_id: int,
+                     run_id: int, attempt: int, head: str, producers: list[str]) -> None:
+    require(positive(run_id) and positive(attempt) and positive(repository_id) and is_object_id(head),
+            "invalid Pages run identity")
+    archives = artifacts_for_run(api, repository, run_id)
+    expected = {"site", "source", "reading", "browser-shard-0", "browser-shard-1"}
     seen = set()
     for output in producers:
-        category, number, artifact_id, digest = output.split(":", maxsplit=3)
+        fields = output.split(":", maxsplit=3)
+        require(len(fields) == 4, "missing producer attempt, ID or digest")
+        category, number, artifact_id, digest = fields
+        require(category in expected and category not in seen and number.isascii() and number.isdecimal()
+                and artifact_id.isascii() and artifact_id.isdecimal(), "invalid or duplicate producer")
         produced = int(number)
-        require(category in {"site", "source", "reading"} and category not in seen
-                and 1 <= produced <= attempt, "invalid producer category or attempt")
-        seen.add(category)
+        require(1 <= produced <= attempt, "producer attempt is outside this run's dependency history")
         name = f"cjdoc-showcase-{category}-{run_id}-{produced}"
         artifact = verified_artifact(archives, name, repository_id, run_id, head)
         require(artifact["id"] == int(artifact_id)
                 and artifact["digest"].removeprefix("sha256:") == digest.removeprefix("sha256:"),
                 f"producer output does not match the immutable archive for {category}")
-    require(seen == {"site", "source", "reading"}, "missing a sealed-site or branch producer")
-
-
-def shard_producers(api, repository: str, repository_id: int, run_id: int,
-                    attempt: int, head: str, producers: list[str] | None = None) -> dict[int, dict]:
-    require(positive(run_id) and positive(attempt) and positive(repository_id) and is_object_id(head),
-            "invalid Pages run identity")
-    response = api(f"repos/{repository}/actions/runs/{run_id}/jobs?filter=all&per_page=100")
-    jobs = response.get("jobs")
-    require(isinstance(jobs, list), "could not read producer jobs")
-    archives = artifacts_for_run(api, repository, run_id)
-    if producers is not None:
-        verify_job_archives(archives, producers, repository_id, run_id, attempt, head)
-    selected = {}
-    for shard in range(2):
-        jobs_for_shard = [job for job in jobs if job.get("name") == f"Browser shard {shard}"]
-        require(jobs_for_shard and all(job.get("run_id") == run_id and job.get("head_sha") == head
-                and positive(job.get("run_attempt")) for job in jobs_for_shard),
-                f"wrong or missing browser shard {shard} job identity")
-        # Newer attempts may start before this consumer's API request runs. They
-        # are outside this consumer's dependency history and cannot supply bytes.
-        eligible = [job for job in jobs_for_shard if job["run_attempt"] <= attempt]
-        require(bool(eligible), f"no eligible browser shard {shard} producer")
-        produced = max(job["run_attempt"] for job in eligible)
-        matching = [job for job in eligible if job["run_attempt"] == produced]
-        require(len(matching) == 1 and matching[0].get("status") == "completed"
-                and matching[0].get("conclusion") == "success", f"browser shard {shard} did not succeed")
-        name = f"cjdoc-showcase-browser-shard-{shard}-{run_id}-{produced}"
-        artifact = verified_artifact(archives, name, repository_id, run_id, head)
-        selected[shard] = {"id": artifact["id"], "digest": artifact["digest"], "attempt": produced}
-    return selected
+        seen.add(category)
+    require(seen == expected, "missing a sealed-site or branch producer")
 
 
 def verify_shard_binding(path: Path, *, shard: int, run_id: int, attempt: int,
@@ -154,19 +131,20 @@ def write_outputs(path: Path, **values) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("upstream", "deployment", "shards", "verify-shard"):
+    for name in ("upstream", "deployment", "verify-producers", "verify-shard"):
         command = commands.add_parser(name)
         if name != "verify-shard":
             command.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"))
+        if name in {"upstream", "deployment"}:
             command.add_argument("--out", type=Path, required=True)
-        if name != "shards":
+        if name != "verify-producers":
             command.add_argument("--commit", default=os.environ.get("GITHUB_SHA"))
         if name != "upstream":
             command.add_argument("--run-id", type=int, required=True)
             command.add_argument("--attempt", type=int, required=True)
         if name == "upstream":
             command.add_argument("--event", type=Path, required=True)
-        elif name == "shards":
+        elif name == "verify-producers":
             command.add_argument("--head", required=True)
             command.add_argument("--repository-id", type=int, required=True)
             command.add_argument("--producer", action="append", default=[])
@@ -184,11 +162,9 @@ def main(argv: list[str] | None = None) -> None:
         write_outputs(args.out, deploy=str(needed).lower())
         if not needed:
             print("Skipping deployment: main moved or this commit is already deployed")
-    elif args.command == "shards":
-        selected = shard_producers(gh_api, args.repository, args.repository_id,
-                                   args.run_id, args.attempt, args.head, args.producer or None)
-        for shard, producer in selected.items():
-            write_outputs(args.out, **{f"shard_{shard}_{key}": value for key, value in producer.items()})
+    elif args.command == "verify-producers":
+        verify_producers(gh_api, args.repository, args.repository_id,
+                         args.run_id, args.attempt, args.head, args.producer)
     else:
         verify_shard_binding(args.file, shard=args.shard, run_id=args.run_id, attempt=args.attempt,
                              revision=args.commit, site_digest=args.site_digest)

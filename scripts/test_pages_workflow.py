@@ -24,11 +24,6 @@ def ci(attempt=1, **changes):
             "head_repository": identity, "status": "completed", "conclusion": "success", **changes}
 
 
-def jobs(shard, attempt, **changes):
-    return {"name": f"Browser shard {shard}", "run_id": RUN, "run_attempt": attempt,
-            "head_sha": COMMIT, "status": "completed", "conclusion": "success", **changes}
-
-
 def archive(kind, attempt, artifact_id, **changes):
     return {"name": f"cjdoc-showcase-{kind}-{RUN}-{attempt}", "id": artifact_id, "expired": False,
             "digest": f"sha256:{ARCHIVE}", "workflow_run": {"id": RUN, "repository_id": REPO_ID,
@@ -104,53 +99,44 @@ class PublicationPolicyTest(unittest.TestCase):
 
 
 class ProducerPolicyTest(unittest.TestCase):
-    def setup_run(self, shard_jobs, shard_artifacts, producer_attempt=1):
+    def producers(self, attempts, *, archive_overrides=None):
         api = API()
-        api.responses[f"actions/runs/{RUN}/jobs?filter=all&per_page=100"] = {"jobs": shard_jobs}
-        branches = [archive(name, producer_attempt, 200 + i)
-                    for i, name in enumerate(("site", "source", "reading"))]
-        api.responses[f"actions/runs/{RUN}/artifacts?per_page=100"] = {"artifacts": [*branches, *shard_artifacts]}
-        outputs = [f"{name}:{producer_attempt}:{200+i}:{ARCHIVE}"
-                   for i, name in enumerate(("site", "source", "reading"))]
+        outputs, archives = [], []
+        roles = ("site", "source", "reading", "browser-shard-0", "browser-shard-1")
+        for index, (role, attempt) in enumerate(zip(roles, attempts, strict=True), start=1):
+            changes = (archive_overrides or {}).get(role, {})
+            archives.append(archive(role, attempt, index, **changes))
+            outputs.append(f"{role}:{attempt}:{index}:{ARCHIVE}")
+        api.responses[f"actions/runs/{RUN}/artifacts?per_page=100"] = {"artifacts": archives}
         return api, outputs
 
-    def test_verify_only_rerun_uses_original_site_and_every_branch(self):
-        api, outputs = self.setup_run([jobs(0, 1), jobs(1, 1)],
-                                      [archive("browser-shard-0", 1, 101), archive("browser-shard-1", 1, 102)])
-        chosen = pages.shard_producers(api, REPO, REPO_ID, RUN, 2, COMMIT, outputs)
-        self.assertEqual([(chosen[i]["id"], chosen[i]["attempt"]) for i in range(2)], [(101, 1), (102, 1)])
+    def test_selective_mixed_and_full_reruns_use_the_successful_job_outputs(self):
+        for attempts in ((1, 1, 1, 1, 1), (1, 1, 1, 2, 1), (2, 2, 2, 2, 2)):
+            with self.subTest(producer_attempts=attempts):
+                api, outputs = self.producers(attempts)
+                # Even if another attempt uploaded an archive, only the successful
+                # dependency's own output authorizes what this consumer downloads.
+                artifacts = api.responses[f"actions/runs/{RUN}/artifacts?per_page=100"]["artifacts"]
+                alternate = 1 if attempts[-1] == 2 else 2
+                artifacts.append(archive("browser-shard-1", alternate, 99))
+                pages.verify_producers(api, REPO, REPO_ID, RUN, 2, COMMIT, outputs)
 
-    def test_partial_browser_rerun_and_full_rerun_pick_actual_new_producers(self):
-        for right_attempt in (1, 2):
-            with self.subTest(right_attempt=right_attempt):
-                api, outputs = self.setup_run(
-                    [jobs(0, 1, conclusion="failure"), jobs(1, 1), jobs(0, 2),
-                     *([jobs(1, 2)] if right_attempt == 2 else []), jobs(0, 3, status="queued")],
-                    [archive("browser-shard-0", 1, 101), archive("browser-shard-1", 1, 102),
-                     archive("browser-shard-0", 2, 103), archive("browser-shard-1", 2, 104)],
-                    producer_attempt=right_attempt)
-                chosen = pages.shard_producers(api, REPO, REPO_ID, RUN, 2, COMMIT, outputs)
-                self.assertEqual(chosen[0]["id"], 103)
-                self.assertEqual(chosen[1]["id"], 102 if right_attempt == 1 else 104)
-                self.assertEqual(chosen[1]["attempt"], right_attempt)
-
-    def test_rejects_wrong_archive_and_does_not_fall_back_from_a_failed_producer(self):
-        for condition in ("new attempt failed", "wrong head", "wrong digest", "wrong id", "archive expired"):
-            with self.subTest(condition=condition):
-                left, right = jobs(0, 1), jobs(1, 1)
-                archive0 = archive("browser-shard-0", 1, 101)
-                if condition == "wrong head":
-                    archive0["workflow_run"]["head_sha"] = OTHER
-                if condition == "archive expired":
-                    archive0["expired"] = True
-                newer = [jobs(0, 2, conclusion="failure")] if condition == "new attempt failed" else []
-                api, outputs = self.setup_run([left, right, *newer], [archive0, archive("browser-shard-1", 1, 102)])
-                if condition == "wrong digest":
-                    outputs[0] = f"site:1:200:{'f' * 64}"
-                if condition == "wrong id":
-                    outputs[0] = f"site:1:201:{ARCHIVE}"
+    def test_wrong_browser_origin_or_expired_archive_is_rejected(self):
+        for changes in ({"expired": True},
+                        {"workflow_run": {"id": RUN, "repository_id": REPO_ID, "head_sha": OTHER}}):
+            with self.subTest(changes=changes):
+                api, outputs = self.producers((1, 1, 1, 2, 1), archive_overrides={"browser-shard-0": changes})
                 with self.assertRaises(SystemExit):
-                    pages.shard_producers(api, REPO, REPO_ID, RUN, 2, COMMIT, outputs)
+                    pages.verify_producers(api, REPO, REPO_ID, RUN, 2, COMMIT, outputs)
+
+    def test_wrong_digest_id_attempt_or_incomplete_branch_set_is_rejected(self):
+        api, outputs = self.producers((1, 1, 1, 2, 1))
+        for bad in (outputs[:-1], outputs + outputs[-1:],
+                    [*outputs[:-1], f"browser-shard-1:1:5:{SITE}"],
+                    [*outputs[:-1], f"browser-shard-1:1:123:{ARCHIVE}"],
+                    [*outputs[:-1], f"browser-shard-1:3:5:{ARCHIVE}"]):
+            with self.subTest(bad=bad[-1]), self.assertRaises(SystemExit):
+                pages.verify_producers(api, REPO, REPO_ID, RUN, 2, COMMIT, bad)
 
     def test_downloaded_shards_must_identify_the_producer_and_same_site(self):
         with tempfile.TemporaryDirectory() as tmp:
