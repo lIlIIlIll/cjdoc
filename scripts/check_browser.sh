@@ -72,8 +72,8 @@ done
 "${python_cmd}" scripts/i18n_gate.py --binary "${binary}" --repo . --workdir "${out}/i18n"
 "${python_cmd}" scripts/test_package_overviews.py --binary "${binary}" --output "${out}/overviews"
 
-# The existing highlight acceptance producers keep the CRLF code bound to its
-# actual native snapshot. The source-only fixture has no exact type-link claim.
+# Replay the original CRLF code from the native snapshot. The fixture declares
+# one local Token and uses it as both parameter and result, even without CHIR.
 PYTHONPATH="${PWD}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
     "${python_cmd}" - "${binary}" "${out}/highlight" "${adapter}/adapter.mjs" "${node_path}" <<'PY'
 from pathlib import Path
@@ -104,7 +104,7 @@ export CJDOC_I18N_COMPOSED_SITE="${out}/i18n/composed"
 export CJDOC_ADMONITION_FIXTURE="${out}/admonitions"
 export CJDOC_PACKAGE_OVERVIEW_SITE="${out}/overviews"
 export CJDOC_HIGHLIGHT_FIXTURE="${out}/highlight/crlf/html"
-export CJDOC_HIGHLIGHT_EXPECT_TYPE_LINKS=0
+export CJDOC_HIGHLIGHT_EXPECT_TYPE_LINKS=2
 
 # Preserve independent traces/reports for each configuration. The reference and
 # highlight specs use a real clipboard, so do not overlap their browser runs.

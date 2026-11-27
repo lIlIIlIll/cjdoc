@@ -150,16 +150,17 @@ harness's `crlf/html` output as `CJDOC_HIGHLIGHT_FIXTURE` and run:
 
 ~~~sh
 cd tests/browser
-CJDOC_HIGHLIGHT_EXPECT_TYPE_LINKS=0 \
+CJDOC_HIGHLIGHT_EXPECT_TYPE_LINKS=2 \
 CJDOC_HIGHLIGHT_FIXTURE="$TMPDIR/highlight-public-acceptance/crlf/html" \
   npx playwright test --config highlight.config.mjs
 ~~~
 
 The native 200% capture uses a controlled Chromium extension's tabs.setZoom(2),
 then checks actual CSS viewport/DPR and the exact type destination. Supply the
-input identity oracle explicitly: 0 links for this source-only fixture, or 2 for
-a public-IR fixture with resolved parameter/return evidence; never derive the
-expected count from generated search metadata.
+input identity oracle explicitly: this fixture has two references to its local
+`Token` declaration, in the parameter and return positions. Use `0` only for a
+fixture with no exact type identity; never derive the expected count from search
+metadata.
 
 Verify process lifecycle and protocol framing from the repository root:
 

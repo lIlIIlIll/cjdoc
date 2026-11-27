@@ -144,6 +144,8 @@ bash scripts/check.sh
 
 在同样准备好的 Linux 环境运行 `python3 scripts/check_native_environment.py --repo .`，先确认未指定 CHIR worker 时可见降级，再从仓库外的目录执行同一批测试二进制。wrapper 注入 `CJDOC_TEST_ROOT`，fixture 和已构建主程序不会随测试进程的工作目录变化。
 
+`browser` 阶段使用 Node.js 26.11.1，并安装锁定的 Playwright 和 Chromium。Linux 上 `TMPDIR` 应使用路径较短的私有目录，以免 Chromium 原生缩放测试的 Unix socket 路径超长；生成站点和测试报告仍写入 `--output-root`。
+
 CI 中的阶段调用方式可直接照搬（二进制换成你刚构建的）：
 
 ```bash
@@ -156,6 +158,9 @@ bash scripts/check.sh cli --repo . --identity target/ci-build/build-manifest.jso
   --worker-binary target/release/bin/chir-worker-main \
   --output-root "$RUNNER_TEMP/cjdoc-stage-cli"
 bash scripts/check.sh provider --repo . --identity target/ci-build/build-manifest.json
+bash scripts/check.sh browser --repo . --identity target/ci-build/build-manifest.json \
+  --main-binary target/release/bin/main \
+  --output-root "$RUNNER_TEMP/cjdoc-stage-browser"
 bash scripts/check.sh smoke --repo . --identity target/ci-build/build-manifest.json \
   --main-binary target/release/bin/main \
   --output-root "$RUNNER_TEMP/cjdoc-stage-smoke"

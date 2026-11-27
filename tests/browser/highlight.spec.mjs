@@ -53,9 +53,10 @@ function contrast(left, right) {
 test('file and HTTP subpath show static colors with JavaScript disabled', async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
+  const requests = [];
+  page.on('request', request => requests.push(request.url()));
   for (const url of [pathToFileURL(path.join(root, sample)).href, origin + '/reference/' + sample]) {
-    const requests = [];
-    page.on('request', request => requests.push(request.url()));
+    requests.length = 0;
     await page.goto(url);
     await expect(page.locator('pre code[data-language="python"] .cj-tok-keyword').first()).toBeVisible();
     const staticColors = await page.locator('pre code[data-language="python"] .cj-tok-keyword').first().evaluate(element => ({
@@ -70,7 +71,10 @@ test('file and HTTP subpath show static colors with JavaScript disabled', async 
     }
     const raw = await page.locator('pre code[data-language="python"]').first().getAttribute('data-cjdoc-source');
     expect(JSON.parse(raw)).toContain('中😀');
-    expect(requests.some(url => /highlight|hljs|prism|shiki/i.test(new URL(url).pathname) && !url.endsWith('.html'))).toBe(false);
+    expect(requests.some(url => {
+      const filename = path.posix.basename(new URL(url).pathname);
+      return !filename.endsWith('.html') && /highlight|hljs|prism|shiki/i.test(filename);
+    })).toBe(false);
     expect(await page.locator('script[src*="highlight"]').count()).toBe(0);
   }
   await context.close();

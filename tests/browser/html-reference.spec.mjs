@@ -908,7 +908,7 @@ test.describe('generated HTML reference', () => {
       .toHaveAttribute('href', 'https://example.test/reference');
     await expect(tokenPage.getByRole('heading', { name: 'Details', exact: true })).toBeVisible();
     await expect(tokenPage.getByText('A documented item.', { exact: true })).toBeVisible();
-    await expect(tokenPage.locator('pre code')).toContainText('let answer = 42');
+    await expect(tokenPage.locator('pre code[data-language="cangjie"]')).toContainText('let answer = 42');
     await page.goBack();
     await expect(page).toHaveURL(beforeTypeNavigation);
     await expect(useDetail).not.toHaveAttribute('open', '');
