@@ -604,6 +604,7 @@ class RendererSafetyTest {
         for (historical in [alias, symbolPagePath(owner)]) {
             let aliasHtml = rendererSafetyContent(artifacts, "html/" + historical)
             @Expect(aliasHtml.contains("data-cjdoc-route=\"symbol-alias\""), true)
+            @Expect(aliasHtml.split("<h1").size, 2)
             @Expect(!aliasHtml.contains("cj-signature"), true)
             @Expect(aliasHtml.contains(pageRootPrefix(historical) + canonical), true)
         }

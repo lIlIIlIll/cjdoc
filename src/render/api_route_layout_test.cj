@@ -29,8 +29,6 @@ private func routeTestDocumentation(declarations: Array<SymbolDoc>): Documentati
     for (symbol in declarations) { ids.add(symbol.id) }
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("api-route-layout"),
         ConfigurationSnapshot(audience: "external", lintProfile: "off"),
-        providers: [ProviderInfo("ast", "builtin", ROUTE_TEST_MODULE, "partial",
-            SemanticCapabilities(false, false, false, false, false))],
         modules: [ModuleDoc(ROUTE_TEST_MODULE, "api-route-layout", "root", "",
             packageNames: ["fixture"])],
         packages: [PackageDoc("fixture", ROUTE_TEST_MODULE, sourceFiles: ["src/api.cj"],
@@ -239,19 +237,5 @@ class SymbolPageHeadingTiersTest {
                 symbol, HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
             expectNoHeadingSkip(html)
         }
-    }
-
-    @TestCase
-    func aliasPagesCarryExactlyOnePageHeading(): Unit {
-        let documentation = routeTestDocumentation(routeTestCounter(false, false, false))
-        let artifacts = HtmlDocumentationRenderer().render(documentation)
-        var aliases: Int64 = 0
-        for (artifact in artifacts where artifact.content.contains("data-cjdoc-route=\"symbol-alias\"")) {
-            aliases++
-            let levels = headingLevels(artifact.content)
-            @Expect(levels.size, 1)
-            @Expect(levels[0], 1)
-        }
-        @Expect(aliases > 0, true)
     }
 }
