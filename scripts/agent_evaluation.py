@@ -39,14 +39,14 @@ if __package__:
     from .agent_evaluation_protocol import (
         ARMS, DEFAULT_PROTOCOL, DEFAULT_RUBRIC, PROTOCOL_LOADER_PATH, REPO,
         ProtocolError, RunOptions, arm_site_arguments, digest_of, load_protocol,
-        load_rubric, prepare_baseline_view,
+        load_rubric, prepare_baseline_view, verify_source_slices,
     )
     from .strict_json import strict_dumps
 else:
     from agent_evaluation_protocol import (
         ARMS, DEFAULT_PROTOCOL, DEFAULT_RUBRIC, PROTOCOL_LOADER_PATH, REPO,
         ProtocolError, RunOptions, arm_site_arguments, digest_of, load_protocol,
-        load_rubric, prepare_baseline_view,
+        load_rubric, prepare_baseline_view, verify_source_slices,
     )
     from strict_json import strict_dumps
 
@@ -633,6 +633,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True, type=Path,
                         help="private run directory receiving raw traces and the report")
     parser.add_argument("--protocol", default=DEFAULT_PROTOCOL, type=Path)
+    parser.add_argument("--project-root", type=Path, default=REPO,
+                        help="captured source checkout for the frozen citations")
     parser.add_argument("--rubric", default=DEFAULT_RUBRIC, type=Path)
     parser.add_argument("--codex", default=os.environ.get("CJDOC_EVALUATION_CODEX", "codex"))
     parser.add_argument("--arm", action="append", choices=ARMS, help="restrict arms (repeatable)")
@@ -670,6 +672,8 @@ def run_manifest(options: RunOptions, args: argparse.Namespace, runs: list[dict]
         "protocol": {"path": repo_relative(args.protocol), "sha256": digest_of(args.protocol)},
         "rubric": {"path": repo_relative(args.rubric), "sha256": digest_of(args.rubric)},
         "baselineRevision": protocol.get("baselineRevision"),
+        **({"sourceCitationBaseline": protocol["sourceCitationBaseline"]}
+           if "sourceCitationBaseline" in protocol else {}),
         "binary": {"label": "<binary>", "sha256": digest_of(options.binary)},
         # The loader lives outside the entry point; pin its bytes independently.
         "harness": {"runnerSha256": digest_of(Path(__file__).resolve()),
@@ -723,6 +727,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         protocol = load_protocol(args.protocol)
         rubric = load_rubric(args.rubric, protocol)
+        if "sourceCitationBaseline" in protocol:
+            verify_source_slices(protocol, args.project_root)
     except ProtocolError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2

@@ -18,28 +18,49 @@ else:
 
 PROTOCOL_LOADER_PATH = Path(__file__).resolve()
 REPO = PROTOCOL_LOADER_PATH.parent.parent
-# The corrected frozen facts: AG-01 resolves to the `add(Int64, radix!)`
-# declaration and body. `evaluation-protocol.json` stays byte-for-byte as
-# historical evidence; its AG-01 range no longer reaches that overload.
+# The corrected protocol pins current source citations without changing the
+# historical factual protocol, task prompts, or grading rules.
 FACT_PROTOCOL = REPO / "tests/agent/evaluation-protocol-v2.json"
 HISTORICAL_PROTOCOL = REPO / "tests/agent/evaluation-protocol.json"
-DEFAULT_PROTOCOL = REPO / "tests/agent/evaluation-client-transport-v2.json"
+DEFAULT_PROTOCOL = REPO / "tests/agent/evaluation-client-transport-v3.json"
 DEFAULT_RUBRIC = REPO / "tests/agent/evaluation-rubric.json"
 ARMS = ("baseline-html-index", "shared-query-mcp")
 
-# AG-01's frozen facts are prose, but each one names an exact construct that the
-# integer overload's declaration and body must still contain. Pinning those
-# literal fragments is what turns "the range drifted" into a failing check.
-AG01_REQUIRED_FACTS = (
-    "value: Int64",
-    "radix!: Int64 = 10",
-    "if (radix != 10)",
-    'IllegalArgumentException("only decimal radix is supported")',
-    "values.add(value.toString())",
+# The rubric also contains answer/evidence requirements (e.g. keep the same
+# snapshot during continuation) that are not literals in a Cangjie source file.
+# Use exact source excerpts to bind each citation to the API it actually names.
+INTEGER_ADD = "public func add(value: Int64, radix!: Int64 = 10): Unit {"
+RADIX_GUARD = 'if (radix != 10) { throw IllegalArgumentException("only decimal radix is supported") }'
+INTEGER_APPEND = "values.add(value.toString())"
+WINDOW_WITNESSES = (
+    "public func window(start!: Int64 = 0, limit!: Int64 = 20): Array<?String> {",
+    "start < 0 || start > values.size || limit < 0",
+    "start == size` returns an empty window",
+    "let page = catalog.window(start: 1, limit: 2)\n     * for (entry in page) {",
+    "output.toArray()\n    }",
 )
-# "failure occurs before append" is an ordering fact, not a substring.
-SOURCE_ORDERED_FACTS = {
-    "AG-01": (("if (radix != 10)", "values.add(value.toString())"),),
+SOURCE_WITNESSES = {
+    "AG-01": ("value: Int64", "radix!: Int64 = 10", INTEGER_ADD, RADIX_GUARD, INTEGER_APPEND),
+    "AG-02": ('version = "0.1.0"', "public func add(value: Int64): Unit { values.add(value.toString()) }"),
+    "AG-03": WINDOW_WITNESSES,
+    "AG-04": ("At EOF, `read()` returns `None` and the session stays open.",
+              "没有文件描述符、网络连接或后台线程需要销毁", "不提供内部同步",
+              'public func read(): ?String {\n        if (isClosed) { throw IllegalStateException("reader is closed") }',
+              'public func rewind(): Unit {\n        if (isClosed) { throw IllegalStateException("reader is closed") }',
+              "public func close(): Unit { isClosed = true }"),
+    "AG-05": ("public class Entry<T>", "extend Entry<String>", "UTF-8 字节数，而不是 Unicode 标量数",
+              "public func byteLength(): Int64 { value.size }"),
+    "AG-06": ("@since 0.2.0", "public func nonEmpty(): Array<String>", 'version = "0.1.0"'),
+    "AG-07": ("Instances do not synchronize access internally.", "首条文本；空目录返回 None",
+              "public func first(): ?String { tryAt(0) }"),
+    "AG-08": ("public import reexport_dep.make as create",
+              "public import acme::reexport_dep.make as orgCreate", "public import reexport_dep.conflict.*"),
+    "AG-09": ('default-language = "zh-CN"', "原样追加一组条目", "public func addAll(entries: Array<String>): Unit"),
+    "AG-10": ("macro package unsupported_fixture", "public macro Echo(input: Tokens)"),
+    "AG-11": ("public func add(value: String): Unit", INTEGER_ADD, *WINDOW_WITNESSES),
+    "AG-12": ("@see pocket_support.SourceLabel.text", "本地标签 / Local stamp",
+              "package pocket_support", "public struct SourceLabel {\n    /** 原样保存的标签文本。 */\n    public let text",
+              "外部 Stamp。与 pocketkit.Stamp 同名，但身份和文档集不同。"),
 }
 
 
@@ -73,15 +94,20 @@ def _expand_client_transport(protocol: dict) -> dict:
     _require(protocol.get("clientTransport") == "codex-0.163-mcp-host",
              "unsupported documentation-only client transport")
     reference = protocol.get("factProtocol")
+    fact_paths = {path.name: path for path in (HISTORICAL_PROTOCOL, FACT_PROTOCOL)}
     _require(isinstance(reference, dict) and set(reference) == {"path", "sha256"} and
-             reference["path"] == FACT_PROTOCOL.name,
-             "transport protocol must reference the original frozen factual protocol")
-    _require(digest_of(FACT_PROTOCOL) == reference["sha256"],
-             "original factual protocol digest differs")
-    facts = strict_load(FACT_PROTOCOL, description="original frozen factual protocol")
+             isinstance(reference["path"], str) and reference["path"] in fact_paths,
+             "transport protocol must reference a frozen factual protocol")
+    fact_path = fact_paths[reference["path"]]
+    _require(digest_of(fact_path) == reference["sha256"],
+             "frozen factual protocol digest differs")
+    facts = strict_load(fact_path, description="frozen factual protocol")
     _require(isinstance(facts, dict) and
              facts.get("schemaVersion") == "cjdoc.agent-evaluation-protocol/1",
-             "transport protocol requires the original factual protocol version")
+             "transport protocol requires the factual protocol schema")
+    if fact_path == FACT_PROTOCOL:
+        _require(bool(facts.get("sourceCitationBaseline")),
+                 "corrected factual protocol lacks its frozen source baseline")
     expanded = dict(facts)
     expanded.update(protocol)
     return expanded
@@ -171,18 +197,16 @@ def source_slices(reference: str, project_root: Path) -> list[dict]:
     return parts
 
 
-def source_text(item: dict) -> str:
-    """The exact file text covered by one parsed `source` entry, or ''.
-
-    A directory reference has no text; a file reference without a range covers
-    the whole file.
-    """
-    if not item["path"].is_file():
-        return ""
+def _read_source(path: Path) -> str:
     try:
-        lines = item["path"].read_text(encoding="utf-8").splitlines()
+        return path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return ""
+
+
+def source_text(item: dict, text: str | None = None) -> str:
+    """The selected lines of a file, or the whole file if no range is given."""
+    lines = (_read_source(item["path"]) if text is None else text).splitlines()
     if item["range"] is None:
         return "\n".join(lines)
     selected: list[str] = []
@@ -194,30 +218,53 @@ def source_text(item: dict) -> str:
 
 
 def verify_source_slices(protocol: dict, project_root: Path,
-                         facts: dict[str, list[str]] | None = None) -> None:
-    """Fail when a frozen fact is no longer inside that task's `source` slice.
-
-    `facts` defaults to the AG-01 truth this repository pins; other tasks keep
-    their prose facts, which describe behaviour rather than literal source text.
-    """
-    expected = facts if facts is not None else {"AG-01": list(AG01_REQUIRED_FACTS)}
+                         task_ids: tuple[str, ...] = tuple(SOURCE_WITNESSES)) -> None:
+    """Resolve each active citation and fail when it misses its source evidence."""
     tasks = {task.get("id"): task for task in protocol.get("tasks") or []}
-    for identifier, fragments in expected.items():
+    baseline = protocol.get("sourceCitationBaseline")
+    pinned = None
+    if baseline is not None:
+        _require(isinstance(baseline, dict) and
+                 isinstance(baseline.get("revision"), str) and
+                 bool(re.fullmatch(r"[0-9a-f]{40}", baseline["revision"])) and
+                 isinstance(baseline.get("utf8TextSha256"), dict),
+                 "malformed frozen source citation baseline")
+        pinned = baseline["utf8TextSha256"]
+    observed: dict[str, str] = {}
+    for identifier in task_ids:
         task = tasks.get(identifier)
         _require(task is not None, f"protocol does not freeze task {identifier}")
-        text = "\n".join(source_text(item)
-                         for item in source_slices(str(task.get("source") or ""),
-                                                   project_root))
+        parts = source_slices(str(task.get("source") or ""), project_root)
+        _require(bool(parts), f"{identifier}: no frozen source citation")
+        snippets = []
+        for item in parts:
+            name = item["reference"]
+            if name not in observed:
+                text = _read_source(item["path"])
+                if pinned is not None:
+                    # read_text normalizes checked-out CRLF to the archived LF.
+                    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                    _require(pinned.get(name) == digest,
+                             f"{identifier}: {name!r} differs from the frozen source citation baseline")
+                observed[name] = text
+            snippet = source_text(item, observed[name])
+            _require(bool(snippet), f"{identifier}: cannot read cited source slice {name!r}")
+            snippets.append(snippet)
+        text = "\n".join(snippets)
+        fragments = SOURCE_WITNESSES[identifier]
+        if identifier == "AG-01":
+            fragments += tuple(task["requiredFacts"])
         for fragment in fragments:
             _require(fragment in text,
                      f"{identifier}: source slice no longer contains {fragment!r}")
-        for earlier, later in SOURCE_ORDERED_FACTS.get(identifier, ()):
-            _require(earlier in text and later in text and
-                     text.index(earlier) < text.index(later),
-                     f"{identifier}: {earlier!r} no longer precedes {later!r}")
+        if identifier == "AG-01":
+            _require(text.index(RADIX_GUARD) < text.index(INTEGER_APPEND),
+                     f"{identifier}: invalid radix check no longer precedes append")
+            _require(f"{INTEGER_APPEND}\n    }}" in text,
+                     f"{identifier}: source slice no longer contains the complete integer overload body")
 
 
-def verify_sources(protocol_path: Path = FACT_PROTOCOL,
+def verify_sources(protocol_path: Path = DEFAULT_PROTOCOL,
                    project_root: Path = REPO) -> dict:
     """Load a frozen protocol and prove its pinned source slices still hold."""
     protocol = load_protocol(protocol_path)
@@ -228,7 +275,7 @@ def verify_sources(protocol_path: Path = FACT_PROTOCOL,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Validate the frozen Agent evaluation protocol and its source slices.")
-    parser.add_argument("--protocol", type=Path, default=FACT_PROTOCOL)
+    parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument("--project-root", type=Path, default=REPO)
     arguments = parser.parse_args(argv)
     try:
@@ -236,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     except ProtocolError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"verified {len(protocol['tasks'])} frozen tasks and the AG-01 source slice")
+    print(f"verified source citations for {len(protocol['tasks'])} frozen tasks")
     return 0
 
 

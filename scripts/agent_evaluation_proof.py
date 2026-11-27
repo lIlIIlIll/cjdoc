@@ -127,6 +127,8 @@ def _capture(args: argparse.Namespace) -> tuple[dict, dict, Capture]:
     protocol_path = Path(os.path.abspath(args.protocol))
     rubric_path = Path(os.path.abspath(args.rubric))
     protocol, rubric = load_frozen(protocol_path, rubric_path)
+    if "sourceCitationBaseline" in protocol:
+        evaluation.verify_source_slices(protocol, args.project_root)
     capture = Capture(Path(args.output), protocol, rubric, protocol_path, rubric_path)
     return protocol, rubric, capture
 
@@ -175,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         evaluation.write_json(destination, report)
         print(destination)
         return 0
-    except ProofError as error:
+    except (ProofError, evaluation.ProtocolError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
 

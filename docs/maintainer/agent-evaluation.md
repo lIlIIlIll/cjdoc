@@ -4,9 +4,10 @@
 
 ## 事前固定输入
 
-- [evaluation-protocol-v2.json](../../tests/agent/evaluation-protocol-v2.json)：当前使用的事实协议，复制自下面保留的 v1，只把 AG-01 的 `source` 改到 `add(Int64, radix!)` 的声明与函数体；12 题、事实、路径、顺序、客户端/模型与预算不变。
-- [evaluation-protocol.json](../../tests/agent/evaluation-protocol.json)：保持只读的历史 v1 字节。它的 AG-01 `source`（`catalog.cj:64-74`）在重载移位后指向 String 重载的示例块，因此不再作为当前事实来源；`scripts/agent_evaluation_protocol.py` 用固定片段校验当前协议的源码切片，行号漂移时失败。
-- [evaluation-client-transport-v2.json](../../tests/agent/evaluation-client-transport-v2.json)：当前客户端接入配置，按 SHA 引用 `evaluation-protocol-v2.json`，不能覆盖题目、预算或模型；仅启用 Codex 0.163 必需的 MCP dispatch host，要求文档服务器完成启动，并显式传递 allowlist 中的 native 运行库环境及已有 heap 设置。
+- [evaluation-protocol-v2.json](../../tests/agent/evaluation-protocol-v2.json)：当前事实协议，修正了 v1 的源码引用，包括 AG-01 `add(Int64, radix!)` 的声明与完整函数体。12 个任务、判分事实、对照路径、顺序、客户端/模型和预算不变。
+  v2 单独固定 `sourceCitationBaseline`：它记录本轮源码快照的提交和每个被引用文件的 UTF-8 文本 SHA-256（统一 LF）。`baselineRevision` 标识旧路径所使用的产品基线，不是本轮引用的源码快照。
+- [evaluation-protocol.json](../../tests/agent/evaluation-protocol.json)：只读的历史 v1 字节。它的 AG-01 `source`（`catalog.cj:64-74`）指向 String 重载的示例块。`scripts/agent_evaluation_protocol.py` 核对每个 v2 引用实际包含所指的代码或注释证据，并检查 AG-01 的五条事实及完整函数体。快照、重试等答题要求仍由评分表判定。
+- [evaluation-client-transport-v3.json](../../tests/agent/evaluation-client-transport-v3.json)：当前客户端配置，按 SHA 引用事实协议 v2。它沿用 [历史 transport v2](../../tests/agent/evaluation-client-transport-v2.json) 的接入配置，不覆盖任务、预算或模型；旧 transport v2 及其事实协议的 SHA 原样保留。
 - [evaluation-rubric.json](../../tests/agent/evaluation-rubric.json)：逐事实、身份/版本、签名/命名默认参数、引用、不确定性和成本口径。
 - 基线源码 revision、源码归档 tree/hash、原生二进制及 build manifest、工具链版本/hash、每个输入 Doc IR 与静态站的 hash。
 
@@ -15,6 +16,8 @@
 ## 捕获旧消费路径
 
 保留旧原生二进制，用固定源码归档的已有 PocketKit reproducer 生成两个真实 API 版本、两种语言、独立依赖及原始检查/diff。不要用新 renderer 回填“旧路径”。示例环境变量指向已经固定并记录 hash 的输入；输出目录必须新建：
+
+源码归档从事实协议的 `sourceCitationBaseline.revision` 捕获。两条路径都使用这份源码生成的同次捕获文档，不把新引用套到历史观测上。
 
 ```bash
 python3 "$CAPTURED_SOURCE/examples/pocketkit/reproduce.py" \
@@ -48,7 +51,7 @@ python3 scripts/test_query_mcp.py --binary "$CURRENT_BINARY" \
 
 原生 MCP 集成驱动真实 stdio 进程，覆盖初始化/通知、非法 ID/消息、限额、EOF 及 CLI 等价；它**不调用模型**。正常 `scripts/check.sh cli` 也运行真实机器产物及 MCP 检查。完整 source-bound build/unit/CLI、最终发布目录、离线 ZIP、浏览器和远端 CI 仍各有独立证据，不用这些小门禁替代。
 
-`scripts/agent_evaluation_protocol.py` 校验冻结输入、限制预算并排定会话；`python3 scripts/agent_evaluation_protocol.py` 另外用固定源码片段校验 AG-01 的 `source` 切片，行号漂移即失败。`scripts/agent_evaluation.py` 执行会话并保存证据。运行 manifest 单独记录 `harness.protocolLoaderSha256`，`runnerSha256` 仍标识入口脚本。
+执行新对照前，用 `python3 scripts/agent_evaluation_protocol.py --project-root "$CAPTURED_SOURCE"` 校验归档文件的摘要和每条引用。运行器和编译/判分入口也校验同一归档；运行 manifest 单独记录 `sourceCitationBaseline` 和 `harness.protocolLoaderSha256`，`runnerSha256` 仍标识入口脚本。旧对照保留原有源码与协议，不能用本轮引用重判旧记录。
 
 ## 执行一次完整配对
 
@@ -56,7 +59,8 @@ python3 scripts/test_query_mcp.py --binary "$CURRENT_BINARY" \
 
 ```bash
 python3 scripts/agent_evaluation.py \
-  --protocol tests/agent/evaluation-client-transport-v2.json \
+  --protocol tests/agent/evaluation-client-transport-v3.json \
+  --project-root "$CAPTURED_SOURCE" \
   --binary "$CURRENT_BINARY" --baseline "$BASELINE" \
   --site pocketkit-v1-en=composed/demo-v1/html/en \
   --site pocketkit-v1-zh=composed/demo-v1/html/zh-CN \
@@ -85,7 +89,7 @@ python3 scripts/agent_evaluation.py \
 
 ```bash
 python3 scripts/agent_evaluation_proof.py verify \
-  --protocol tests/agent/evaluation-client-transport-v2.json \
+  --protocol tests/agent/evaluation-client-transport-v3.json \
   --output "$RUN" --project-root "$CAPTURED_SOURCE" --sdk-root "$CANGJIE_HOME"
 ```
 
@@ -114,7 +118,7 @@ Doc IR 证据必须来自捕获 manifest 中的文件 hash，并绑定真实源�
 
 ```bash
 python3 scripts/agent_evaluation_proof.py report \
-  --protocol tests/agent/evaluation-client-transport-v2.json \
+  --protocol tests/agent/evaluation-client-transport-v3.json \
   --output "$RUN" --project-root "$CAPTURED_SOURCE" \
   --doc-ir pocketkit-0.2.0="$BASELINE/composed/demo-v2/html/en/machine/docs.json" \
   --doc-ir pocketkit-0.1.0="$BASELINE/composed/demo-v1/html/en/machine/docs.json" \

@@ -76,6 +76,7 @@ def build_capture(root: Path, *, codes=None, no_code=None, budgets=None) -> Path
         'purpose': 'synthetic integrity fixture; no Agent was invoked',
         'protocol': {'sha256': provenance.digest_of(PROTOCOL)},
         'rubric': {'sha256': provenance.digest_of(RUBRIC)},
+        'sourceCitationBaseline': protocol['sourceCitationBaseline'],
         'budgets': budgets or protocol['budgets']})
     for task in protocol['tasks']:
         for arm in evaluation.ARMS:
@@ -105,6 +106,14 @@ class CaptureIntegrityTests(unittest.TestCase):
     def test_missing_session_cannot_be_dropped_from_comparison(self):
         (self.output / 'sessions/AG-03' / evaluation.ARMS[1] / evaluation.RECORD_NAME).unlink()
         with self.assertRaises(provenance.ProofError):
+            self.capture()
+
+    def test_capture_cannot_claim_a_different_citation_baseline(self):
+        path = self.output / evaluation.MANIFEST_NAME
+        manifest = json.loads(path.read_text('utf-8'))
+        manifest['sourceCitationBaseline']['revision'] = '0' * 40
+        write_json(path, manifest)
+        with self.assertRaisesRegex(provenance.ProofError, 'different frozen source citation baseline'):
             self.capture()
 
     def test_changed_frozen_fact_is_not_a_valid_trial(self):

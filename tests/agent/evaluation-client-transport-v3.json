@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "cjdoc.agent-evaluation-protocol/2",
+  "status": "transport-frozen-before-source-citation-corrected-model-comparison",
+  "factProtocol": {
+    "path": "evaluation-protocol-v2.json",
+    "sha256": "7e0fd4e36409a63f25ccfc766bcd6ba04ece4d31207732f7263b0c7b7059ab7e"
+  },
+  "clientTransport": "codex-0.163-mcp-host"
+}

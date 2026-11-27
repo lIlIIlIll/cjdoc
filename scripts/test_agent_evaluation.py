@@ -638,8 +638,8 @@ class SourceSliceTests(unittest.TestCase):
         text = self.ag01_slice(protocol)
         self.assertIn("public func add(value: Int64, radix!: Int64 = 10): Unit {", text)
         self.assertIn("values.add(value.toString())", text)
-        for fact in ("value: Int64", "radix!: Int64 = 10", "if (radix != 10)",
-                     'IllegalArgumentException("only decimal radix is supported")'):
+        task = next(task for task in protocol["tasks"] if task["id"] == "AG-01")
+        for fact in task["requiredFacts"]:
             with self.subTest(fact=fact):
                 self.assertIn(fact, text)
         protocol_module.verify_source_slices(protocol, REPO)
@@ -648,14 +648,36 @@ class SourceSliceTests(unittest.TestCase):
         self.assertEqual(evaluation.digest_of(protocol_module.HISTORICAL_PROTOCOL),
                          "ce8122221fe03bc3d26e5a73efb1f43d64a5361aebcd22c759079dcabd09c059")
         original = self.load(protocol_module.HISTORICAL_PROTOCOL)
+        transport = PROTOCOL.with_name("evaluation-client-transport-v2.json")
+        self.assertEqual(evaluation.digest_of(transport),
+                         "0ac2e4a05ba023d84645c17d50d4db4310efe9ffbf9bffc25f31e021dba7266a")
+        self.assertEqual(self.load(transport)["tasks"], original["tasks"])
         corrected = self.load(protocol_module.FACT_PROTOCOL)
         self.assertEqual(
-            [{**task, **({"source": fixed["source"]} if fixed["id"] == "AG-01" else {})}
-             for task, fixed in zip(original["tasks"], corrected["tasks"])],
+            [{**task, "source": fixed["source"]}
+             for task, fixed in zip(original["tasks"], corrected["tasks"], strict=True)],
             corrected["tasks"])
         with self.assertRaises(evaluation.ProtocolError) as raised:
             protocol_module.verify_source_slices(original, REPO)
         self.assertIn("AG-01", str(raised.exception))
+
+    def test_comparison_rejects_a_source_snapshot_with_unchanged_citation_but_different_bytes(self):
+        protocol = self.load(evaluation.DEFAULT_PROTOCOL)
+        filename = "examples/pocketkit/demo-v2/src/catalog.cj"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = write(root / filename, (REPO / filename).read_text(encoding="utf-8"))
+            protocol_module.verify_source_slices(protocol, root, ("AG-01",))
+            write(source, source.read_text(encoding="utf-8") + "\n// not in the frozen snapshot\n")
+            output = root / "run"
+            run = subprocess.run(
+                [sys.executable, str(SCRIPTS / "agent_evaluation.py"), "--binary", "unused",
+                 "--project-root", str(root), "--output", str(output), "--dry-run"],
+                text=True, capture_output=True, timeout=30)
+            self.assertEqual(run.returncode, 2, run.stderr)
+            self.assertIn(f"AG-01: {filename!r} differs from the frozen source citation baseline",
+                          run.stderr)
+            self.assertFalse(output.exists())
 
     def test_line_drift_in_the_pinned_range_fails(self):
         protocol = self.load(protocol_module.FACT_PROTOCOL)
@@ -666,6 +688,19 @@ class SourceSliceTests(unittest.TestCase):
         with self.assertRaises(evaluation.ProtocolError) as raised:
             protocol_module.verify_source_slices(drifted, REPO)
         self.assertIn("no longer contains 'value: Int64'", str(raised.exception))
+
+    def test_drifted_citation_cannot_omit_the_body_or_point_at_the_wrong_api(self):
+        for identifier, citation, message in (
+                ("AG-01", ":89-103", "complete integer overload body"),
+                ("AG-03", ":195-239", "source slice no longer contains 'public func window")):
+            with self.subTest(identifier=identifier):
+                protocol = self.load(protocol_module.FACT_PROTOCOL)
+                next(task for task in protocol["tasks"] if task["id"] == identifier)["source"] = (
+                    "examples/pocketkit/demo-v2/src/catalog.cj" + citation)
+                with self.assertRaises(evaluation.ProtocolError) as raised:
+                    protocol_module.verify_source_slices(protocol, REPO)
+                self.assertIn(f"{identifier}:", str(raised.exception))
+                self.assertIn(message, str(raised.exception))
 
     def test_rejection_precedes_the_append_in_the_pinned_slice(self):
         protocol = self.load(protocol_module.FACT_PROTOCOL)
@@ -678,14 +713,17 @@ class SourceSliceTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
         source = "examples/pocketkit/demo-v2/src/catalog.cj"
-        write(root / source, "public func add(value: Int64, radix!: Int64 = 10): Unit {\n"
-                             "    values.add(value.toString())\n"
-                             "    if (radix != 10) { "
-                             'throw IllegalArgumentException("only decimal radix is supported") }\n'
-                             "}\n")
-        protocol = {"tasks": [{"id": "AG-01", "source": f"{source}:1-4"}]}
+        protocol = self.load(protocol_module.FACT_PROTOCOL)
+        task = next(task for task in protocol["tasks"] if task["id"] == "AG-01")
+        text = self.ag01_slice(protocol)
+        guard = '        if (radix != 10) { throw IllegalArgumentException("only decimal radix is supported") }'
+        append = "        values.add(value.toString())"
+        self.assertIn(f"{guard}\n{append}", text)
+        changed = write(root / source, text.replace(f"{guard}\n{append}", f"{append}\n{guard}") + "\n")
+        protocol["sourceCitationBaseline"]["utf8TextSha256"][source] = evaluation.digest_of(changed)
+        task["source"] = f"{source}:1-{len(text.splitlines())}"
         with self.assertRaises(evaluation.ProtocolError) as raised:
-            protocol_module.verify_source_slices(protocol, root)
+            protocol_module.verify_source_slices(protocol, root, ("AG-01",))
         self.assertIn("no longer precedes", str(raised.exception))
 
     def test_protocol_cli_fails_with_the_missing_fact_name(self):

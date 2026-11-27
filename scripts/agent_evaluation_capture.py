@@ -282,6 +282,9 @@ class Capture:
                 "captured run used a different frozen protocol file")
         require(recorded_rubric == self.rubric_sha256,
                 "captured run used a different frozen rubric file")
+        if "sourceCitationBaseline" in protocol:
+            require(self.manifest.get("sourceCitationBaseline") == protocol["sourceCitationBaseline"],
+                    "captured run used a different frozen source citation baseline")
         self.budgets = checked_budgets(self.manifest.get("budgets"), protocol["budgets"],
                                        "captured run manifest")
         self.records: dict[tuple[str, str], dict] = {}

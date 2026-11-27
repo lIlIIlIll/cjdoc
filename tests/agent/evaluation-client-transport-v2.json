@@ -1,9 +1,9 @@
 {
   "schemaVersion": "cjdoc.agent-evaluation-protocol/2",
-  "status": "transport-frozen-before-corrected-model-comparison; factual-protocol-remains-frozen-before-product-edits; references evaluation-protocol-v2.json, whose AG-01 source range reaches the integer overload",
+  "status": "transport-frozen-before-corrected-model-comparison; factual-protocol-remains-frozen-before-product-edits",
   "factProtocol": {
-    "path": "evaluation-protocol-v2.json",
-    "sha256": "8fda2da4b3bca1044d7b35c18903654e77c8c04c48bb30d35e6ec0a5fbc60c88"
+    "path": "evaluation-protocol.json",
+    "sha256": "ce8122221fe03bc3d26e5a73efb1f43d64a5361aebcd22c759079dcabd09c059"
   },
   "clientTransport": "codex-0.163-mcp-host",
   "supersedesObservation": {
