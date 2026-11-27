@@ -162,14 +162,13 @@ class BuildParameterTests(unittest.TestCase):
             'if [[ "${1:-}" == "-v" ]]; then exit 0; fi\n'
             'printf \'version = 1\\n\' > "${GITHUB_WORKSPACE}/cjpm.lock"\n'
             "exit 0\n", encoding="utf-8")
-        (probe / "git").write_text(
-            "#!/usr/bin/env bash\n"
-            'case "$*" in\n'
-            '  *ls-files*) echo "fatal: simulated ls-files failure" >&2; exit 128 ;;\n'
-            "esac\n"
-            'exec ' + shutil.which("git") + ' "$@"\n', encoding="utf-8")
         for path in probe.iterdir():
             path.chmod(0o755)
+        # Break Git's index rather than shadow the `git` binary: a PATH shim is
+        # not resolved on Windows, where `git.exe` wins over a bare `git` file.
+        # `rev-parse --is-inside-work-tree` still succeeds here, so the failure is
+        # exactly the enumeration step the wrapper must refuse to skip.
+        (self.repo / ".git/index").write_bytes(b"not an index")
         before = lock.read_bytes()
         environment = dict(os.environ, GITHUB_WORKSPACE=str(self.repo),
                            RUNNER_TEMP=self.temporary.name, CJDOC_PYTHON=sys.executable,
