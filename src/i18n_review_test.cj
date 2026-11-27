@@ -152,7 +152,8 @@ class I18nReviewTest {
             (schemas.SEARCH_INDEX_SCHEMA, "search-index-v12.schema.json")]) {
             let currentId = JsonNode.parse(current).asObject()["$id"].asString()
             @Expect(currentId.endsWith("/" + fileName))
-            @Expect(readTextBounded(Path("docs/schema").join(fileName), 1024 * 1024).trimAscii(), current.trimAscii())
+            let published = Path(nativeFixturePath("docs/schema")).join(fileName)
+            @Expect(readTextBounded(published, 1024 * 1024).trimAscii(), current.trimAscii())
             @Expect(schemaTextForCli(fileName.removeSuffix(".schema.json")), current)
         }
     }

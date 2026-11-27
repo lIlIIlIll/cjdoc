@@ -43,7 +43,7 @@ npm ci --ignore-scripts --prefix "${adapter}"
 playwright="${harness}/node_modules/@playwright/test/cli.js"
 # The Python Pages/accessibility driver uses a separate Playwright pin.
 # The Node installer must not prune that driver's Chromium cache.
-export PLAYWRIGHT_BROWSERS_PATH="${out}/chromium"
+export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-${out}/chromium}"
 "${node_path}" "${playwright}" install chromium
 
 fixtures="${inputs}/tests/fixtures/projects"

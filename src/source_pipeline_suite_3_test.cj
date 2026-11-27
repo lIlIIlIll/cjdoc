@@ -73,7 +73,7 @@ class SourcePipelineSuite3 {
     func discoversCommentedManifestHeadersThroughPublicApi(): Unit {
         let documentation = generateFixture("manifest_headers",
             includePathDependencies: true, includeCachedDependencies: true,
-            cjpmCacheRoot: Some("tests/fixtures/cjpm_cache"))
+            cjpmCacheRoot: Some(nativeFixturePath("tests/fixtures/cjpm_cache")))
         @Expect(documentation.status, "complete")
         @Expect(documentation.project.name, "manifest_headers")
         @Expect(documentation.modules.size, 5)

@@ -35,7 +35,7 @@ def run_tests(binary: Path, cwd: Path, env: dict[str, str], *flags: str):
 
 
 def qualify_tests(repo: Path, target: Path) -> None:
-    test_dir = target / "release" / "unittest_bin"
+    test_dir = target / "mock" / "release" / "unittest_bin"
     main = executable(test_dir, "cjdoc")
     worker = executable(repo / "target/release/bin", "chir-worker-main")
     env = dict(os.environ, CJDOC_TEST_ROOT=str(repo), CJDOC_CHIR_WORKER=str(worker))
