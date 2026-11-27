@@ -76,7 +76,10 @@ class CompilePhaseTests(unittest.TestCase):
         (probe / 'cjpm').chmod(0o755)
         self.observed = self.runner / 'observed.jsonl'
         self.log = self.runner / 'invocations.jsonl'
-        self.environment = dict(os.environ, GITHUB_WORKSPACE=str(self.repo), RUNNER_TEMP=str(self.runner), CJDOC_PYTHON=sys.executable,
+        # The phase probe does not run the native suite or produce its coverage markers.
+        host_environment = {key: value for key, value in os.environ.items()
+                            if not key.startswith('CJDOC_TEST_')}
+        self.environment = dict(host_environment, GITHUB_WORKSPACE=str(self.repo), RUNNER_TEMP=str(self.runner), CJDOC_PYTHON=sys.executable,
                                 PROBE_OBSERVATIONS=str(self.observed), CJDOC_STS_INVOCATION_LOG=str(self.log),
                                 PROBE_SHELL=self.shell, PROBE_UNIT_OPTION=UNIT_OPTION)
         self.environment['PATH'] = str(probe) + os.pathsep + os.environ.get('PATH', '')

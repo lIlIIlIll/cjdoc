@@ -372,10 +372,17 @@ jobs:
         run: |
           set -euo pipefail
           highlight="${RUNNER_TEMP}/cjdoc-native-highlight"
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            highlight="$(cygpath -u "${highlight}")"
+          fi
           mkdir "${highlight}"
           git archive HEAD tools/highlight | tar -x -C "${highlight}"
-          npm ci --ignore-scripts --prefix "${highlight}/tools/highlight"
-          echo "CJDOC_TEST_HIGHLIGHT_ADAPTER=${highlight}/tools/highlight/adapter.mjs" >> "${GITHUB_ENV}"
+          adapter_dir="${highlight}/tools/highlight"
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            adapter_dir="$(cygpath -m "${adapter_dir}")"
+          fi
+          npm ci --ignore-scripts --prefix "${adapter_dir}"
+          printf 'CJDOC_TEST_HIGHLIGHT_ADAPTER=%s/adapter.mjs\n' "${adapter_dir}" >> "${GITHUB_ENV}"
 
       - name: Run the acceptance gate
         shell: bash
