@@ -84,8 +84,17 @@ unit_target=""
 # build. Snapshot the tracked locks now and put them back when this invocation
 # ends, the same way the override's manifests are restored.
 snapshot_locks() {
-  local index=0 lock
+  local index=0 lock listing="${lock_backup_dir}/listed-locks" status=0
   if git -C "${workspace}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # Enumerate before the build, not through a process substitution: there a
+    # failing `git ls-files` looks exactly like a repository with no lock, and the
+    # wrapped `cjpm` would rewrite tracked locks no snapshot can restore. A failed
+    # enumeration must fail this invocation instead.
+    git -C "${workspace}" ls-files -z -- '*cjpm.lock' > "${listing}" || status=$?
+    if (( status != 0 )); then
+      echo "cjpm: cannot enumerate tracked cjpm.lock files (git ls-files exited ${status}); refusing to run a build that could rewrite them" >&2
+      return "${status}"
+    fi
     while IFS= read -r -d '' lock; do
       if [[ ! -f "${workspace}/${lock}" ]]; then
         continue
@@ -93,7 +102,7 @@ snapshot_locks() {
       cp -p "${workspace}/${lock}" "${lock_backup_dir}/${index}.lock"
       printf '%s\0' "${workspace}/${lock}" >> "${lock_backup_dir}/lock-paths"
       index=$((index + 1))
-    done < <(git -C "${workspace}" ls-files -z -- '*cjpm.lock' 2>/dev/null)
+    done < "${listing}"
     return 0
   fi
   lock="${current_directory}/cjpm.lock"

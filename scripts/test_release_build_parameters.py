@@ -137,6 +137,51 @@ class BuildParameterTests(unittest.TestCase):
         self.assertEqual(len(observed.read_text().splitlines()), 1)
         self.assertEqual(json.loads(log.read_text().strip())['option'], OPTION)
 
+    @requires_shell
+    def test_unenumerable_tracked_locks_stop_the_build(self) -> None:
+        """A failed `git ls-files` must not pass for a repository without locks.
+
+        The wrapper snapshots tracked locks before `cjpm` runs. If enumeration
+        fails silently, the build rewrites locks that no snapshot can restore and
+        the post-build provenance gate fails on successful output instead.
+        """
+        import os
+        import shlex
+
+        probe = self.repo / "probe-bin"
+        probe.mkdir()
+        log = self.repo / "invocations.jsonl"
+        lock = self.repo / "cjpm.lock"
+        lock.write_text('version = 0\n\n[requires]\n', encoding="utf-8")
+        for args in (("init", "-q"), ("add", "--", "cjpm.lock")):
+            subprocess.run(["git", *args], cwd=self.repo, check=True,
+                           capture_output=True, text=True, timeout=60)
+        (probe / "cjc").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (probe / "cjpm").write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "${1:-}" == "-v" ]]; then exit 0; fi\n'
+            'printf \'version = 1\\n\' > "${GITHUB_WORKSPACE}/cjpm.lock"\n'
+            "exit 0\n", encoding="utf-8")
+        (probe / "git").write_text(
+            "#!/usr/bin/env bash\n"
+            'case "$*" in\n'
+            '  *ls-files*) echo "fatal: simulated ls-files failure" >&2; exit 128 ;;\n'
+            "esac\n"
+            'exec ' + shutil.which("git") + ' "$@"\n', encoding="utf-8")
+        for path in probe.iterdir():
+            path.chmod(0o755)
+        before = lock.read_bytes()
+        environment = dict(os.environ, GITHUB_WORKSPACE=str(self.repo),
+                           RUNNER_TEMP=self.temporary.name, CJDOC_PYTHON=sys.executable,
+                           CJDOC_STS_INVOCATION_LOG=str(log))
+        environment['PATH'] = str(probe) + os.pathsep + environment.get('PATH', '')
+        command = ". " + shlex.quote(str(self.repo / WRAPPER)) + "; cjpm build --jobs 1"
+        result = subprocess.run([params.usable_shell(), '-c', command], cwd=self.repo,
+                                env=environment, text=True, capture_output=True, timeout=60)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("cannot enumerate tracked cjpm.lock", result.stderr)
+        self.assertEqual(lock.read_bytes(), before, "the build ran despite the failure")
+
     def test_a_missing_wrapper_is_refused(self) -> None:
         (self.repo / WRAPPER).unlink()
         result = self.run_check()
