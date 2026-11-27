@@ -25,8 +25,9 @@ private func projectWithImport(importLine: String): Path {
 
 private func chirDependencyNames(project: Path): Array<String> {
     let root = Path(getVariable("CJDOC_TEST_ROOT").getOrDefault({ => "." }))
-    let main = root.join("target/release/bin/main").toString()
-    let binary = if (exists(main + ".exe")) { main + ".exe" } else { main }
+    let mainPath = root.join("target/release/bin/main").toString()
+    let windowsPath = mainPath + ".exe"
+    let binary = if (exists(windowsPath)) { windowsPath } else { mainPath }
     let source = SyntaxSourceProvider(astPreflightExecutable: Some(binary))
         .collect(project.toString())
     let names = ArrayList<String>()

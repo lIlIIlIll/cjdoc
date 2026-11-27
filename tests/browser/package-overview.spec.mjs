@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { declarationUrl } from './generated-route.mjs';
 
 const root = path.resolve(process.env.CJDOC_PACKAGE_OVERVIEW_SITE || '');
 if (!process.env.CJDOC_PACKAGE_OVERVIEW_SITE) throw new Error('CJDOC_PACKAGE_OVERVIEW_SITE is required');
@@ -11,12 +12,19 @@ const shots = process.env.CJDOC_PACKAGE_OVERVIEW_SCREENSHOTS;
 let server;
 let base;
 
+function expectPageUrl(page, expected) {
+  // Chromium and pathToFileURL can spell the same unreserved character as
+  // either a literal or a percent escape (notably '~' in collision routes).
+  return expect.poll(() => decodeURI(page.url())).toBe(decodeURI(expected));
+}
+
 test.beforeAll(async () => {
   if (shots) await mkdir(shots, { recursive: true });
   server = createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
     if (!url.pathname.startsWith('/reference/subpath/')) return response.writeHead(404).end();
-    const file = path.resolve(root, decodeURIComponent(url.pathname.slice('/reference/subpath/'.length)));
+    const relative = decodeURIComponent(url.pathname.slice('/reference/subpath/'.length));
+    const file = path.resolve(root, relative.endsWith('/') ? relative + 'index.html' : relative);
     if (!file.startsWith(root + path.sep)) return response.writeHead(404).end();
     try {
       const body = await readFile(file);
@@ -35,7 +43,10 @@ for (const mode of ['file', 'http']) {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       const destination = mode === 'file' ? pathToFileURL(path.join(root, fixture.package)).href : base + fixture.package;
+      const packageUrl = test.info().project.use.javaScriptEnabled === false
+        ? destination : declarationUrl(destination);
       await page.goto(destination);
+      await expectPageUrl(page, packageUrl);
       await expect(page.locator('main h1')).toContainText('pocketkit');
       await expect(page.locator('main')).toContainText(fixture.apiMarker);
       await expect(page.locator('main')).not.toContainText(fixture.forbiddenApiMarker);
@@ -49,32 +60,32 @@ for (const mode of ['file', 'http']) {
         if (shots && fixture.name === 'authored-en') await page.screenshot({ path: path.join(shots, test.info().project.name + '-' + mode + '-authored.png') });
         await overview.locator('.cj-package-overview__link').click();
         const expectedGuide = mode === 'file' ? pathToFileURL(path.join(root, fixture.guide)).href : base + fixture.guide;
-        await expect(page).toHaveURL(expectedGuide);
+        await expectPageUrl(page, expectedGuide);
         await expect(page.locator('html')).toHaveAttribute('lang', fixture.locale);
         await expect(page.locator('main')).toContainText(fixture.bodyMarker);
         for (const marker of fixture.forbiddenBodyMarkers) await expect(page.locator('main')).not.toContainText(marker);
         await expect(page.locator('main h1')).toHaveCount(1);
         await expect(page.locator('main pre')).toBeVisible();
         await page.locator('.cj-package-return a').click();
-        await expect(page).toHaveURL(destination + '#declarations');
+        await expectPageUrl(page, packageUrl + '#declarations');
         await expect(page.locator('#declarations')).toBeInViewport();
         await expect(page.locator('main h1')).toContainText('pocketkit');
         await expect(page.locator('main')).toContainText(fixture.apiMarker);
         await expect(page.locator('main')).not.toContainText(fixture.forbiddenApiMarker);
         await page.reload();
-        await expect(page).toHaveURL(destination + '#declarations');
+        await expectPageUrl(page, packageUrl + '#declarations');
         await expect(page.locator('#declarations')).toBeInViewport();
       } else {
         await expect(overview).toHaveCount(0);
         await expect(page.locator('.cj-package-overview__link')).toHaveCount(0);
         await expect(page.locator('main')).not.toContainText('This page describes');
         await expect(page.locator('#declarations')).toBeInViewport();
-        // Follow the first real API entry, not only its href, then browser-back.
-        const entry = page.locator('main .cj-package-index a, main .cj-decl-table a, main a').filter({ hasText: 'Entry' }).first();
+        // Use the declaration table, not the identically named outline item.
+        const entry = page.locator('main .cj-decl-table').getByRole('link', { name: 'Entry', exact: true });
         await entry.click();
         await expect(page.locator('main h1')).toContainText('Entry');
         await page.goBack();
-        await expect(page).toHaveURL(destination);
+        await expectPageUrl(page, packageUrl);
         await expect(page.locator('#declarations')).toBeInViewport();
         await expect(page.locator('main')).toContainText(fixture.apiMarker);
         await expect(page.locator('main')).not.toContainText(fixture.forbiddenApiMarker);

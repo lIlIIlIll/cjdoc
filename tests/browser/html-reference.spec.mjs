@@ -1968,6 +1968,8 @@ test.describe('declaration tag navigation and filtering', () => {
     for (const transport of ['file', 'subpath']) {
       test(`${locale} ${transport}: scoped tag links, facets and member actions`,
         async ({page, browser}, testInfo) => {
+          // This scenario visits multiple generated pages and closes a separate touch context.
+          testInfo.setTimeout(60_000);
           await page.setViewportSize({width: 1440, height: 900});
           const indexUrl = declarationIndexUrl('tags', locale, transport);
           await openDeclarationPage(page, indexUrl, transport);

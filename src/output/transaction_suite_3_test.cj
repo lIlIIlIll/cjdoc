@@ -81,23 +81,6 @@ class OutputTransactionSuite3 {
         } finally { let _ = removeIfExists(parent, recursive: true) }
     }
 
-    @When[os != "Windows"]
-    @TestCase
-    func symbolicLinkAncestorIsRejectedEvenWhenForceOwnedIsEnabled(): Unit {
-        let parent = createOutputTestTempDirectory()
-        try {
-            let real = parent.join("real")
-            Directory.create(real)
-            let link = parent.join("linked")
-            @Assert(symlink(real.toString(), link.toString()), 0)
-            @ExpectThrows(writeOwnedArtifacts(link.join("cjdoc-output").toString(),
-                [outputArtifact("docs.json", "blocked")], forceOwned: true))
-            @ExpectThrows(writeOwnedArtifacts(parent.join("missing/../linked/cjdoc-output").toString(),
-                [outputArtifact("docs.json", "blocked")], forceOwned: true))
-            @Expect(Directory.isEmpty(real))
-        } finally { let _ = removeIfExists(parent, recursive: true) }
-    }
-
     @TestCase
     func stagedStreamingDigestCrossesChunkBoundaryAndArtifactBudgetsFailEarly(): Unit {
         let parent = createOutputTestTempDirectory()
@@ -419,6 +402,26 @@ class OutputStaleLockAbsenceProofTest {
             @Expect(String.fromUtf8(File.readFrom(output.join("docs.json"))), "first")
             @Expect(String.fromUtf8(File.readFrom(output.join("CNAME"))), "docs.example.test\n")
             @Expect(!exists(parent.join(OUTPUT_RETIRED_LOCK_NAME)))
+        } finally { let _ = removeIfExists(parent, recursive: true) }
+    }
+}
+
+@When[os != "Windows"]
+@Test
+class OutputSymlinkAncestorTest {
+    @TestCase
+    func symbolicLinkAncestorIsRejectedEvenWhenForceOwnedIsEnabled(): Unit {
+        let parent = createOutputTestTempDirectory()
+        try {
+            let real = parent.join("real")
+            Directory.create(real)
+            let link = parent.join("linked")
+            @Assert(symlink(real.toString(), link.toString()), 0)
+            @ExpectThrows(writeOwnedArtifacts(link.join("cjdoc-output").toString(),
+                [outputArtifact("docs.json", "blocked")], forceOwned: true))
+            @ExpectThrows(writeOwnedArtifacts(parent.join("missing/../linked/cjdoc-output").toString(),
+                [outputArtifact("docs.json", "blocked")], forceOwned: true))
+            @Expect(Directory.isEmpty(real))
         } finally { let _ = removeIfExists(parent, recursive: true) }
     }
 }
