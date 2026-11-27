@@ -75,7 +75,46 @@ case "$current_directory" in
 esac
 manifest="${workspace}/cjpm.toml"
 backup_dir="$(mktemp -d "${runner_temp}/cjpm-manifests.XXXXXX")"
+lock_backup_dir="$(mktemp -d "${runner_temp}/cjpm-locks.XXXXXX")"
 unit_target=""
+# cjpm 1.3 rewrites each lock it reads into its own schema and drops transitive
+# entries; 1.2 cannot parse that schema. The tracked lock is also the audited
+# provenance that `verify_repository_inputs.py --require-tracked` compares
+# byte-for-byte against HEAD, so a rewrite breaks that gate after a successful
+# build. Snapshot the tracked locks now and put them back when this invocation
+# ends, the same way the override's manifests are restored.
+snapshot_locks() {
+  local index=0 lock
+  if git -C "${workspace}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    while IFS= read -r -d '' lock; do
+      if [[ ! -f "${workspace}/${lock}" ]]; then
+        continue
+      fi
+      cp -p "${workspace}/${lock}" "${lock_backup_dir}/${index}.lock"
+      printf '%s\0' "${workspace}/${lock}" >> "${lock_backup_dir}/lock-paths"
+      index=$((index + 1))
+    done < <(git -C "${workspace}" ls-files -z -- '*cjpm.lock' 2>/dev/null)
+    return 0
+  fi
+  lock="${current_directory}/cjpm.lock"
+  if [[ -f "${lock}" ]]; then
+    cp -p "${lock}" "${lock_backup_dir}/0.lock"
+    printf '%s\0' "${lock}" > "${lock_backup_dir}/lock-paths"
+  fi
+  return 0
+}
+restore_locks() {
+  local index=0 lock
+  if [[ -f "${lock_backup_dir}/lock-paths" ]]; then
+    while IFS= read -r -d '' lock; do
+      if ! cmp -s "${lock_backup_dir}/${index}.lock" "${lock}"; then
+        cp -p "${lock_backup_dir}/${index}.lock" "${lock}"
+      fi
+      index=$((index + 1))
+    done < "${lock_backup_dir}/lock-paths"
+  fi
+  rm -rf "${lock_backup_dir}"
+}
 restore_manifests() {
   local index=0 manifest
   if [[ -f "${backup_dir}/manifest-paths" ]]; then
@@ -85,10 +124,12 @@ restore_manifests() {
     done < "${backup_dir}/manifest-paths"
   fi
   rm -rf "${backup_dir}"
+  restore_locks
   if [[ -n "${unit_target}" ]]; then
     rm -rf "${unit_target}"
   fi
 }
+snapshot_locks
 trap restore_manifests EXIT
 if [[ "$1" == "test" ]]; then
   for argument in "$@"; do

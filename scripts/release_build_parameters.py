@@ -58,6 +58,12 @@ package = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("pack
 option = package.get("override-compile-option") if isinstance(package, dict) else None
 print("__PREFIX__" + json.dumps(option))
 PY
+# cjpm 1.3 rewrites every lock it reads. Do the same to every tracked lock, so the
+# probe also proves the wrapper puts the tracked provenance back instead of leaving
+# it rewritten.
+while IFS= read -r -d '' lock; do
+  printf 'version = 1\n\n[requires."probe"]\n' > "${GITHUB_WORKSPACE}/${lock}"
+done < <(git -C "${GITHUB_WORKSPACE}" ls-files -z -- '*cjpm.lock')
 '''
 PROBE_CJC = "#!/usr/bin/env bash\nexit 0\n"
 
@@ -112,6 +118,15 @@ def observed_option(repo: Path) -> str:
         # (`/private/var/...`) while `tempfile` hands out the aliased one (`/var/...`).
         staging = Path(temporary).resolve()
         (staging / "cjpm.toml").write_bytes(manifest)
+        # `cjpm build` rewrites the lock it reads, and the tracked lock is the
+        # audited provenance a wrapped build is checked against afterwards. Stage
+        # the locks in a real repository so the probe exercises the tracked-lock
+        # snapshot the CI failure went through, not just the fallback.
+        lock = b'version = 0\n\n[requires]\n  dep = {git = "https://example.test/dep.git", commitId = "0000000000000000000000000000000000000000"}\n'
+        nested_lock = b'version = 0\n\n[requires]\n'
+        (staging / "cjpm.lock").write_bytes(lock)
+        (staging / "nested").mkdir()
+        (staging / "nested/cjpm.lock").write_bytes(nested_lock)
         runner_temp = staging / "runner-temp"
         probe_bin = runner_temp / "probe-bin"
         probe_bin.mkdir(parents=True)
@@ -121,6 +136,15 @@ def observed_option(repo: Path) -> str:
             binary = probe_bin / name
             binary.write_text(body, encoding="utf-8")
             binary.chmod(0o755)
+        # The wrapper snapshots the locks Git tracks under the workspace, which is
+        # the index, so `git add` is enough and the probe's own files stay untracked.
+        for args in (("init", "-q"), ("add", "--", "cjpm.lock", "nested/cjpm.lock")):
+            completed = subprocess.run(["git", *args], cwd=staging,
+                                       capture_output=True, text=True, timeout=120)
+            if completed.returncode != 0:
+                raise SystemExit(
+                    "release build parameters: could not stage a tracked-lock probe "
+                    f"repository ({' '.join(args)}): {completed.stderr.strip()[-1000:]}")
         environment = dict(os.environ)
         environment.update({
             "GITHUB_WORKSPACE": str(staging),
@@ -161,6 +185,17 @@ def observed_option(repo: Path) -> str:
             raise SystemExit(
                 "release build parameters: the wrapper did not restore the manifest it "
                 "patched, so the build parameters cannot be trusted")
+        # `cjpm build` also rewrites the lock it reads, and the tracked lock is the
+        # audited provenance a build is checked against afterwards. Leaving it
+        # rewritten fails the repository-input gate on a successful build.
+        for relative, expected in (("cjpm.lock", lock),
+                                   ("nested/cjpm.lock", nested_lock)):
+            actual = (staging / relative).read_bytes()
+            if actual != expected:
+                raise SystemExit(
+                    "release build parameters: the wrapper did not restore "
+                    f"{relative} (found {actual[:32]!r}), so the build would leave "
+                    "rewritten dependency provenance behind")
         return option if isinstance(option, str) else "<none>"
 
 
