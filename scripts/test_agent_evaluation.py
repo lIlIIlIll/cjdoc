@@ -677,13 +677,13 @@ class SourceSliceTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
-        source = root / "examples/pocketkit/demo-v2/src/catalog.cj"
-        write(source, "public func add(value: Int64, radix!: Int64 = 10): Unit {\n"
-                      "    values.add(value.toString())\n"
-                      "    if (radix != 10) { "
-                      'throw IllegalArgumentException("only decimal radix is supported") }\n'
-                      "}\n")
-        protocol = {"tasks": [{"id": "AG-01", "source": str(source)}]}
+        source = "examples/pocketkit/demo-v2/src/catalog.cj"
+        write(root / source, "public func add(value: Int64, radix!: Int64 = 10): Unit {\n"
+                             "    values.add(value.toString())\n"
+                             "    if (radix != 10) { "
+                             'throw IllegalArgumentException("only decimal radix is supported") }\n'
+                             "}\n")
+        protocol = {"tasks": [{"id": "AG-01", "source": f"{source}:1-4"}]}
         with self.assertRaises(evaluation.ProtocolError) as raised:
             protocol_module.verify_source_slices(protocol, root)
         self.assertIn("no longer precedes", str(raised.exception))
