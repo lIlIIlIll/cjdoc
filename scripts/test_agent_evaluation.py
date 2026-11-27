@@ -719,8 +719,12 @@ class SourceSliceTests(unittest.TestCase):
         guard = '        if (radix != 10) { throw IllegalArgumentException("only decimal radix is supported") }'
         append = "        values.add(value.toString())"
         self.assertIn(f"{guard}\n{append}", text)
-        changed = write(root / source, text.replace(f"{guard}\n{append}", f"{append}\n{guard}") + "\n")
-        protocol["sourceCitationBaseline"]["utf8TextSha256"][source] = evaluation.digest_of(changed)
+        changed = text.replace(f"{guard}\n{append}", f"{append}\n{guard}") + "\n"
+        # Exercise CRLF explicitly on every host; the pin is of normalized UTF-8 text.
+        fixture = root / source
+        fixture.parent.mkdir(parents=True)
+        fixture.write_bytes(changed.replace("\n", "\r\n").encode("utf-8"))
+        protocol["sourceCitationBaseline"]["utf8TextSha256"][source] = hashlib.sha256(changed.encode("utf-8")).hexdigest()
         task["source"] = f"{source}:1-{len(text.splitlines())}"
         with self.assertRaises(evaluation.ProtocolError) as raised:
             protocol_module.verify_source_slices(protocol, root, ("AG-01",))
