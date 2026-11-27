@@ -29,6 +29,8 @@ private func routeTestDocumentation(declarations: Array<SymbolDoc>): Documentati
     for (symbol in declarations) { ids.add(symbol.id) }
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("api-route-layout"),
         ConfigurationSnapshot(audience: "external", lintProfile: "off"),
+        providers: [ProviderInfo("ast", "builtin", ROUTE_TEST_MODULE, "partial",
+            SemanticCapabilities(false, false, false, false, false))],
         modules: [ModuleDoc(ROUTE_TEST_MODULE, "api-route-layout", "root", "",
             packageNames: ["fixture"])],
         packages: [PackageDoc("fixture", ROUTE_TEST_MODULE, sourceFiles: ["src/api.cj"],
