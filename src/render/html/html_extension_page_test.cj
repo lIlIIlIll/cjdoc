@@ -125,13 +125,11 @@ class HtmlExtensionPageTest {
         let links = HtmlTypeLinkIndex(documentation, projection)
         let extension = documentation.declarations[1]
         let member = documentation.declarations[4]
-        // The member body lives one level below the extension body.
-        let extensionPath = projection.symbolFileHref(extension.id)
-        let memberPath = projection.symbolFileHref(member.id)
-        let memberToExtension = pageRootPrefix(memberPath) + extensionPath
-        let extensionToTarget = pageRootPrefix(extensionPath) + extensionPath
-        @Expect(memberToExtension != extensionToTarget, true)
-        @Expect(memberToExtension.size, extensionToTarget.size + "../".size)
+        // The member URL is under the type, but its semantic owner stays the extension.
+        @Expect(projection.symbolFileHref(extension.id), "fixture/Entry/extensions/index.html")
+        @Expect(projection.symbolFileHref(member.id), "fixture/Entry/byteLength/index.html")
+        let ownerCrumb = "<li class=\"cj-breadcrumbs__item\"><a " +
+            "href=\"../../../fixture/Entry/extensions/index.html\"><code>"
         for (locale in ["en", "zh-CN"]) {
             let title = if (locale == "zh-CN") {
                 "扩展 Entry&lt;String&gt;"
@@ -144,11 +142,7 @@ class HtmlExtensionPageTest {
             @Expect(extHtml.contains("<code>" + title + "</code></h1>"), true)
             @Expect(extHtml.contains("<li class=\"cj-breadcrumbs__item\" aria-current=\"page\">" +
                 "<code>" + title + "</code>"), true)
-            // The member page reaches its extension from one level deeper.
-            @Expect(memberHtml.contains("href=\"" + memberToExtension +
-                "\"><code>" + title + "</code></a>"), true)
-            @Expect(memberHtml.contains("href=\"" + memberToExtension + "\""), true)
-            @Expect(memberHtml.contains("href=\"" + extensionToTarget + "\""), false)
+            @Expect(memberHtml.contains(ownerCrumb + title + "</code></a></li>"), true)
         }
     }
 
