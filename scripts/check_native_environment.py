@@ -23,7 +23,7 @@ def executable(directory: Path, name: str) -> Path:
 
 
 def run_tests(binary: Path, cwd: Path, env: dict[str, str], *flags: str):
-    result = subprocess.run([str(binary), "--parallel=1", "--no-color", "--no-capture-output", *flags],
+    result = subprocess.run([str(binary), "--parallel=1", "--no-progress", "--no-color", "--no-capture-output", *flags],
                             cwd=cwd, env=env, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True)
     matches = SUMMARY.findall(result.stdout)
@@ -45,7 +45,7 @@ def qualify_tests(repo: Path, target: Path) -> None:
                 if path.is_file() and os.access(path, os.X_OK)]
     with tempfile.TemporaryDirectory(prefix="cjdoc-test-cwd-", dir=os.environ["RUNNER_TEMP"]) as temporary:
         elsewhere = Path(temporary).resolve()
-        count, markers = run_tests(main, elsewhere, without_worker, f"--filter=*{WORKER_CASE}*")
+        count, markers = run_tests(main, elsewhere, without_worker, f"--filter=*.{WORKER_CASE}")
         expected = f"{DEGRADED}{WORKER_CASE}: missing CJDOC_CHIR_WORKER"
         if count != 1 or markers != [expected]:
             raise ValueError(f"missing-worker control: expected one passing fallback and its degradation, got {count}, {markers}")

@@ -63,7 +63,7 @@ _MUTATIONS = (
 def run(repo: Path, target: Path, work: Path, cases: list[str]) -> subprocess.CompletedProcess[str]:
     command = [os.environ.get("CJDOC_REAL_CJPM", "cjpm"), "test", "--incremental", "--jobs", "1",
                "--parallel", "1", "--no-progress", "--no-color", "--target-dir", str(target),
-               "--filter", ",".join(f"*{case}" for case in cases), "src/render"]
+               "--filter", ",".join(f"*.{case}" for case in cases), "src/render"]
     environment = dict(os.environ, CJDOC_TEST_ROOT=str(repo), TMPDIR=str(work), TMP=str(work), TEMP=str(work))
     return subprocess.run([sys.executable, str(repo / "scripts/run_with_timeout.py"), "1800", "--", *command],
                           cwd=repo, env=environment, text=True, stdout=subprocess.PIPE,

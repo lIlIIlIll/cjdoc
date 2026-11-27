@@ -98,7 +98,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${stage_id}" in
-    ""|preflight|build|native|python-tools|cli|provider|smoke|html-a11y|browser) ;;
+    ""|preflight|build|native|python-tools|cli|provider|smoke|html-a11y|browser|render-mutations) ;;
     *) echo "check.sh: unknown stage: ${stage_id}" >&2; usage >&2; exit 2 ;;
 esac
 
