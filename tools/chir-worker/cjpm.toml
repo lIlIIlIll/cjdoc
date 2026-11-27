@@ -1,3 +1,7 @@
+# `stdx.chir` builds on the FlatBuffers runtime, which 1.3 Nightly sidecars
+# reference but do not link into `libstdx.chir.a`. The SDK carries those objects
+# in `libcangjie-std-ast.a`, so link it explicitly; STS 1.2 needs nothing from it
+# and the extra archive is inert there.
 [package]
 cjc-version = "1.2.0"
 name = "cjdoc_chir_worker"
@@ -5,22 +9,22 @@ version = "0.7.9"
 output-type = "executable"
 
 [target.x86_64-unknown-linux-gnu]
-link-option = "${CJDOC_STDX_LINK_OPTIONS}"
+link-option = "${CJDOC_STDX_LINK_OPTIONS} -lcangjie-std-ast"
     [target.x86_64-unknown-linux-gnu.bin-dependencies]
     path-option = ["${CANGJIE_STDX_PATH}"]
 
 [target.aarch64-unknown-linux-gnu]
-link-option = "${CJDOC_STDX_LINK_OPTIONS}"
+link-option = "${CJDOC_STDX_LINK_OPTIONS} -lcangjie-std-ast"
     [target.aarch64-unknown-linux-gnu.bin-dependencies]
     path-option = ["${CANGJIE_STDX_PATH}"]
 
 [target.x86_64-w64-mingw32]
-link-option = "${CJDOC_STDX_LINK_OPTIONS}"
+link-option = "${CJDOC_STDX_LINK_OPTIONS} -lcangjie-std-ast"
     [target.x86_64-w64-mingw32.bin-dependencies]
     path-option = ["${CANGJIE_STDX_PATH}"]
 
 [target.aarch64-apple-darwin]
-link-option = "${CJDOC_STDX_LINK_OPTIONS}"
+link-option = "${CJDOC_STDX_LINK_OPTIONS} -lcangjie-std-ast"
     [target.aarch64-apple-darwin.bin-dependencies]
     path-option = ["${CANGJIE_STDX_PATH}"]
 
