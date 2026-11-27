@@ -237,7 +237,7 @@ cjdoc generate --project "$TASK_ROOT/stdlib" \
 |---|---|---|
 | warning `CJDOC2312: documentation source: inventory SHA-256 does not match the independently supplied host pin` | 索引字节与 pin 不一致（库已重生成，或 pin 抄错） | 重新生成库文档、重算摘要、更新 pin 后重新生成消费方 |
 | warning `CJDOC2312: documentation source: documentation source catalog is invalid, unavailable or over budget` | catalog 文件不存在、`schemaVersion` 不是 `cjdoc.doc-sources/1`，或 `index` 指向的文件缺失、不安全 | 核对 catalog 路径、字段与索引路径；`index` 相对 catalog 目录解释 |
-| warning `CJDOC2313: … invalid href for record …` | 外部符号索引记录的链接含换行、空格或不安全的路径 | 按消息找出索引及记录，修正 `href` 或重新生成索引；不安全的地址不会生成链接 |
+| warning `CJDOC2313: … invalid href for record …` | 外部符号索引记录的 `href` 不是字符串，或含换行、空格等不安全内容 | 按消息中的索引文件名及记录名修正 `href`，或重新生成索引；被拒绝的地址不会生成链接 |
 | warning `CJDOC2310` / `CJDOC2311: ... no documentation symbol in the selected module dependency context` | 没有可用的库文档匹配，或库版本与消费方使用的不一致 | 用消费方所用版本重新生成库文档，同步索引、摘要与已发布的 HTML |
 | 链接已生成但打开是 404 | 库 HTML 树没复制，或位置与 `baseUrl` 不一致 | 把整个 `library-site/html` 复制到 `consumer-site/html/dependencies/linklib`，并确认发布平台保留文件名大小写 |
 | 目标仍不确定 | 存在多个候选文档集、版本或语言 | 读 `docs.json` 里的导航状态收窄条件，不要按同名类型任选一份 |

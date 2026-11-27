@@ -147,6 +147,13 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
           CJDOC_TEST_REQUIRE_VERIFIED: "1"
+          # Linux provides the address-space limiter, so a platform refusal here means
+          # required example execution did not happen; the run is refused instead of
+          # counted as the macOS fail-closed contract.
+          CJDOC_TEST_PLATFORM_REFUSALS: forbidden
+          # Prove the degradation tally can fire: the wrapper reruns one selected
+          # fallback case with the CHIR worker unset and requires strict mode to fail.
+          CJDOC_TEST_PROVE_MISSING_WORKER: "1"
           # DONE-03 needs to know whether a sample ran warm or cold, and the cache
           # outcome was previously not recorded anywhere: the stage records showed an
           # empty cache map for every run. `actions/cache` reports its own result.
@@ -357,11 +364,30 @@ jobs:
           node-version: '26.11.1'
           package-manager-cache: false
 
+      # The same pinned adapter the Linux job installs, from the repository's own
+      # package.json rather than any local dependency. Without it the external
+      # highlight case can only report itself unverified, which strict mode refuses.
+      - name: Provision the pinned highlight adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          highlight="${RUNNER_TEMP}/cjdoc-native-highlight"
+          mkdir "${highlight}"
+          git archive HEAD tools/highlight | tar -x -C "${highlight}"
+          npm ci --ignore-scripts --prefix "${highlight}/tools/highlight"
+          echo "CJDOC_TEST_HIGHLIGHT_ADAPTER=${highlight}/tools/highlight/adapter.mjs" >> "${GITHUB_ENV}"
+
       - name: Run the acceptance gate
         shell: bash
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
+          CJDOC_TEST_REQUIRE_VERIFIED: "1"
+          # macOS documents the fail-closed refusal, so its absence now fails the job
+          # that is supposed to prove it. Windows establishes a Job memory limit, so a
+          # refusal there is unexpected and is refused as well.
+          CJDOC_TEST_PLATFORM_REFUSALS: ${{ matrix.platform == 'macos-arm64' && 'required' || 'forbidden' }}
+          CJDOC_TEST_PROVE_MISSING_WORKER: "1"
           # Same mapping as the linux acceptance job: without it the Windows and
           # macOS stage artifacts record an empty cache map and cannot be classified
           # as cold or warm for DONE-03.

@@ -43,6 +43,51 @@ private func enumPayloadProject(): Path {
     root
 }
 
+// Localized payload prose addresses the ordinal (`#0`), while the signature
+// keeps the collector's `_<index>` placeholder. The projection must join the
+// two without letting the ordinal rule reach a named parameter.
+private let ENUM_PAYLOAD_LOCALIZED_SOURCE = """
+package enum_payload_localized_fixture
+
+/** 本地化形状。 */
+public enum Shape {
+    /** 无载荷。 */
+    | Origin
+    /**
+     * 矩形。
+     * @param #0 宽
+     * @param #1 高
+     * @param[lang=en] #0 width in English
+     * @param[lang=en] _1 height in English
+     */
+    | Rect(Float64, Float64)
+}
+
+/**
+ * 作者命名参数。
+ * @param _0 作者写下的名字
+ * @param[lang=en] _0 the author name
+ */
+public func named(_0: Int64): Int64 { _0 }
+
+/**
+ * 有害选择器。
+ * @param[lang=en] #0 this selector names no parameter
+ */
+public func misplaced(value: Int64): Int64 { value }
+"""
+
+private func enumPayloadLocalizedProject(): Path {
+    let root = Directory.createTemp(getTempDirectory())
+    Directory.create(root.join("src"))
+    File.writeTo(root.join("cjpm.toml"),
+        "[package]\nname = \"enum_payload_localized_fixture\"\nversion = \"0.1.0\"\noutput-type = \"static\"\n".toArray())
+    File.writeTo(root.join("cjdoc.toml"),
+        "[i18n]\ndefault-language = \"zh-CN\"\nlanguages = [\"zh-CN\", \"en\"]\n".toArray())
+    File.writeTo(root.join("src/api.cj"), ENUM_PAYLOAD_LOCALIZED_SOURCE.toArray())
+    root
+}
+
 private func enumPayloadGenerate(root: Path, lintProfile: String): api_model.DocumentationSet {
     DocumentationEngine().generate(GenerationRequest(root.toString(), lintProfile: lintProfile,
         astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
@@ -56,10 +101,11 @@ private func enumCaseDeclaration(documentation: api_model.DocumentationSet,
     throw IllegalArgumentException("missing enum case " + name)
 }
 
-private func enumPayloadHtml(documentation: api_model.DocumentationSet): HashMap<String, String> {
+private func enumPayloadHtml(documentation: api_model.DocumentationSet,
+    locale!: String = "en"): HashMap<String, String> {
     let pages = HashMap<String, String>()
     for (artifact in api_render.renderDocumentationFormatsWithOptions(documentation, ["html"],
-        locale: "en")) {
+        locale: locale)) {
         for (name in ["Origin", "Circle", "Rect"]) {
             if (artifact.path.endsWith("/${name}/index.html")) { pages[name] = artifact.content }
         }
@@ -154,6 +200,60 @@ class EnumPayloadParameterTest {
             let rect = enumCaseDeclaration(documentation, "Rect")
             @Expect(rect.parameters[0].documentation, Some("width of the rectangle"))
             @Expect(rect.parameters[1].documentation, Some("height of the rectangle"))
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func localizedPayloadDescriptionSelectsAnOrdinalTag(): Unit {
+        let root = enumPayloadLocalizedProject()
+        try {
+            let documentation = enumPayloadGenerate(root, "off")
+            let rect = enumCaseDeclaration(documentation, "Rect")
+            // The wire is unchanged: the payload still stores its placeholder.
+            @Expect(rect.parameters[0].name, "_0")
+            @Expect(rect.parameters[1].name, "_1")
+
+            let english = api_render.projectDocumentationLanguage(documentation, "en")
+            let englishRect = enumCaseDeclaration(english, "Rect")
+            // Requested `_1` must win over the author's `#1` in the fallback language.
+            @Expect(englishRect.parameters[0].documentation, Some("width in English"))
+            @Expect(englishRect.parameters[1].documentation, Some("height in English"))
+
+            let chinese = api_render.projectDocumentationLanguage(documentation, "zh-CN")
+            let chineseRect = enumCaseDeclaration(chinese, "Rect")
+            @Expect(chineseRect.parameters[0].documentation, Some("宽"))
+            @Expect(chineseRect.parameters[1].documentation, Some("高"))
+
+            // The reading surfaces built from the projection carry the prose.
+            let romanPages = enumPayloadHtml(documentation)
+            @Expect(romanPages["Rect"].contains("width in English"))
+            @Expect(romanPages["Rect"].contains("height in English"))
+            let localizedPages = enumPayloadHtml(documentation, locale: "zh-CN")
+            @Expect(localizedPages["Rect"].contains("宽"))
+            @Expect(localizedPages["Rect"].contains("高"))
+            @Expect(!localizedPages["Rect"].contains("width in English"))
+
+            // A named parameter keeps its own identity in both languages: the
+            // ordinal rule is scoped to enum payloads, so `_0` on a function is
+            // still an author name and never matches `#0`.
+            for (language in ["en", "zh-CN"]) {
+                let projected = api_render.projectDocumentationLanguage(documentation, language)
+                let expected = if (language == "en") { "the author name" } else { "作者写下的名字" }
+                var namedSeen = false
+                for (declaration in projected.declarations where declaration.name == "named") {
+                    namedSeen = true
+                    @Expect(declaration.parameters[0].name, "_0")
+                    @Expect(declaration.parameters[0].documentation, Some(expected))
+                }
+                @Expect(namedSeen, true)
+                // `#0` names no parameter of `misplaced`, so its prose is never
+                // adopted as that function's parameter documentation.
+                for (declaration in projected.declarations where declaration.name == "misplaced") {
+                    @Expect(declaration.parameters[0].name, "value")
+                    @Expect(declaration.parameters[0].documentation
+                        .getOrDefault({ => "" }).contains("this selector"), false)
+                }
+            }
         } finally { let _ = removeIfExists(root, recursive: true) }
     }
 

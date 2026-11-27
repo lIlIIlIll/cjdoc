@@ -151,7 +151,7 @@ internal func addDependencyExternalEntry(resolver: ExternalDocResolver, object: 
     }
     // Structured inventory admission stays atomic: logging the invalid href
     // must not make an otherwise rejected index eligible for exact evidence.
-    let url = checkedExternalEntryHref(resolver, object, externalString(object, "href")).getOrThrow()
+    let url = checkedExternalEntryHref(resolver, object, object.get("href")).getOrThrow()
     let name = externalString(object, "qualifiedName")
     let fullName = if (name.startsWith(packageName + ".")) { name }
         else { packageName + "." + name }

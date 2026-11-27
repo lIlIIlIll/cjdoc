@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Accept canonical API route stability and page heading tiers from real CLI output.
 
-Two projects with identical sources except for `extend Counter` blocks are
-generated with the real cjdoc binary. The check proves:
+Generate real sites before extensions, with existing extensions, and after
+adding an earlier block and another member. The check proves:
 
 * every base page path still exists in the extended site with the same
   canonical address (listings legitimately gain the new extension entries);
 * the type page and its members keep `<package>/Counter/...` directories;
-* extension blocks own `<package>/Counter/extensions/` (and `extensions/2/`);
-* overload signatures use readable `signature-<n>/` directories;
+* ordinary extension blocks own `<type>/extensions/` (and `extensions/2/`);
+* types near the path limit retain their addresses and still publish extensions;
+* readable `signature-<n>/` URLs still resolve to the same declarations when
+  inserting an extension moves only one source offset across a decimal digit boundary;
 * an opaque `~<hex>` segment appears only for a genuine portable collision;
 * every generated page has exactly one h1 and never skips a heading level.
 
@@ -26,6 +28,8 @@ import sys
 from pathlib import Path
 
 ROUTES = "route_check"
+NESTED_EXTENSION_TYPE = "Medium" + "T" * 54
+COMPACT_EXTENSION_TYPE = "Large" + "T" * 86
 BASE_SOURCE = """package route_check
 
 /** A counter. */
@@ -86,16 +90,10 @@ public func greet(value: Int64, loud!: Bool): Int64 {
 }
 """
 
-EXTENSION_SUFFIX = """
-/** First extension block. */
-extend Counter {
-    /** Add one. */
-    public func increment(): Unit {
-        value += 1
-    }
-}
+EXTENSION_PREFIX = "extend Counter { public func increment(): Unit { value += 1 } }\n"
+EXISTING_EXTENSIONS = """
 
-/** Second extension block. */
+/** Existing extension block. */
 extend Counter {
     /** Subtract one. */
     public func decrement(): Unit {
@@ -103,6 +101,23 @@ extend Counter {
     }
 }
 """
+
+BASE_SOURCE += "\npublic class Occupied { public func extensions(): Int64 { 0 } }\n"
+COLLIDING_EXTENSION = "\nextend Occupied {{ public func keep(): Int64 {{ 1 }}{extra} }}\n"
+LIMIT_EXTENSIONS = ""
+for name in (NESTED_EXTENSION_TYPE, COMPACT_EXTENSION_TYPE):
+    BASE_SOURCE += f"\npublic class {name} {{ public func v(): Int64 {{ 0 }} }}\n"
+    LIMIT_EXTENSIONS += f"\nextend {name} {{ public func w(): Int64 {{ 1 }} }}\n"
+
+# Place the second overload just below byte 1000. Only the second overload
+# crosses 1000 when the first extension is inserted before the type.
+PACKAGE_LINE, BODY = BASE_SOURCE.split("\n", 1)
+PADDING = "//" + " " * (980 - BASE_SOURCE.index("public func set(text: String)") - 3) + "\n"
+BASE_SOURCE = PACKAGE_LINE + "\n" + PADDING + BODY
+EXISTING_SOURCE = BASE_SOURCE + EXISTING_EXTENSIONS + COLLIDING_EXTENSION.format(extra="")
+EXTEND_SOURCE = (PACKAGE_LINE + "\n" + EXTENSION_PREFIX + PADDING + BODY + EXISTING_EXTENSIONS
+                 + COLLIDING_EXTENSION.format(extra="\n    public func added(): Int64 { 2 }\n")
+                 + LIMIT_EXTENSIONS)
 
 PACKAGE_MANIFEST = """[package]
   cjc-version = "1.2.0"
@@ -147,6 +162,8 @@ def page_paths(html: Path) -> dict[str, str]:
 HEADING = re.compile(r"<h([1-6])(?=[ >])")
 H1 = re.compile(r"<h1(?=[ >])")
 CANONICAL = re.compile(r'<link rel="canonical" href="([^"]+)"')
+MAIN_CONTENT = re.compile(r'<main\b[^>]*\bid="cjdoc-main"[^>]*>(.*?)</main>', re.DOTALL)
+SYMBOL_PAGE = re.compile(r'<body\b[^>]*\bdata-cjdoc-symbol-id="([^"]+)"')
 
 
 def check_headings(page: str, text: str, failures: list[str]) -> None:
@@ -177,6 +194,11 @@ def route_directories(html: Path) -> list[str]:
                   for path in html.rglob("index.html"))
 
 
+def main_content(page: str) -> str:
+    body = MAIN_CONTENT.search(page)
+    return body[1] if body else ""
+
+
 def require(condition: bool, message: str, failures: list[str]) -> None:
     if not condition:
         failures.append(message)
@@ -189,9 +211,10 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
     work.mkdir()
 
     base_project = write_project(work / "projects" / "base", BASE_SOURCE)
-    extend_project = write_project(work / "projects" / "extended",
-                                   BASE_SOURCE + EXTENSION_SUFFIX)
+    existing_project = write_project(work / "projects" / "existing", EXISTING_SOURCE)
+    extend_project = write_project(work / "projects" / "extended", EXTEND_SOURCE)
     base_html = generate(binary, repo, base_project, work / "base-site", work)
+    existing_html = generate(binary, repo, existing_project, work / "existing-site", work)
     extend_html = generate(binary, repo, extend_project, work / "extended-site", work)
 
     failures: list[str] = []
@@ -237,24 +260,51 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
     require("data-member-name=\"increment\"" in extend_pages.get(
         f"{ROUTES}/Counter/index.html", ""),
             "type page no longer lists its extension members", failures)
+    nested = f"{ROUTES}/{NESTED_EXTENSION_TYPE}"
+    compact = f"{ROUTES}/{COMPACT_EXTENSION_TYPE}"
+    for name in (nested, compact):
+        require(f"{name}/v" in canonical and f"{name}/v" in extended,
+                f"adding an extension moved an existing member near the path limit: {name}",
+                failures)
+        require(f"{name}/w" in extended and 'data-member-name="w"' in extended.get(name, ""),
+                f"type page or independent route lost the added extension member: {name}", failures)
+    require(f"{nested}/extensions" in extended, "missing readable long-type extension", failures)
+    require("~api/extensions/extension-1" in extended,
+            "missing compact extension when its nested address exceeds the path limit", failures)
     for member in ("get", "increment", "decrement"):
-        require(f"{ROUTES}/Counter/{member}" in extended
-                or any(route.startswith(f"{ROUTES}/Counter/extensions/{member}")
-                       or route.startswith(f"{ROUTES}/Counter/extensions/2/{member}")
-                       for route in extend_routes),
-                f"missing member route for {member}", failures)
+        require(f"{ROUTES}/Counter/{member}" in extended, f"missing readable member route for {member}", failures)
+    existing = directories(page_paths(existing_html))
+    survivor = f"{ROUTES}/Counter/decrement"
+    require(all("Subtract one." in main_content(site.get(survivor, ""))
+                for site in (existing, extended)),
+            "inserting an earlier extension moved an existing member", failures)
+    collision_stem = f"{ROUTES}/Occupied/extensions~"
+    collision_before = [route for route in existing if route.startswith(collision_stem)]
+    collision_after = [route for route in extended if route.startswith(collision_stem)]
+    require(len(collision_before) == 1 and collision_before == collision_after,
+            "adding a member changed its block's real collision fallback", failures)
+    require(f"{ROUTES}/Occupied/extensions" in extended and f"{ROUTES}/Occupied/added" in extended,
+            "the colliding block must keep the ordinary member and publish the added extension member",
+            failures)
 
     signatures = sorted(route for route in extend_routes if "/set/signature-" in route)
     require(signatures == [f"{ROUTES}/Counter/set/signature-1", f"{ROUTES}/Counter/set/signature-2"],
             f"overload signature directories are {signatures}", failures)
     require(f"{ROUTES}/Counter/set" in extend_routes,
             "missing overload selection page", failures)
+    for ordinal, summary in enumerate(("Set a numeric value.", "Set a textual value."), 1):
+        route = f"{ROUTES}/Counter/set/signature-{ordinal}"
+        before, after = (site.get(route, "") for site in (canonical, extended))
+        identifiers = SYMBOL_PAGE.findall(before), SYMBOL_PAGE.findall(after)
+        require(len(identifiers[0]) == 1 and identifiers[0] == identifiers[1] and
+                all(summary in main_content(page) for page in (before, after)),
+                f"{route} no longer resolves to its original declaration: {summary}", failures)
 
     # A portable fallback is a `~<hex>` segment, whether it replaces a whole
     # name or is appended after a readable stem (`Sketch~<hex>`).
     opaque = sorted(route for route in extend_routes
                     if re.search(r"(^|/)~[0-9a-f]{12,}(/|$)|~[0-9a-f]{12,}$", route))
-    require(all(route.startswith((f"{ROUTES}/Sketch~", f"{ROUTES}/sketch~"))
+    require(all(route.startswith((f"{ROUTES}/Sketch~", f"{ROUTES}/sketch~", collision_stem))
                 for route in opaque),
             f"opaque route segment outside a real portable collision: {opaque}", failures)
     require(any(route.startswith(f"{ROUTES}/Sketch~") for route in opaque) and

@@ -14,8 +14,8 @@ import cjdoc.render.codec.{decodeDocIr, encodeDocIr, validateDocumentationSet}
 import cjdoc.render.foundation.{
     RenderArtifactCollector, validateRenderArtifactBudgetForTest, escapeHtmlWithRenderLimitForTest}
 import cjdoc.model.*
+import cjdoc.filesystem.testRepositoryRoot
 import std.collection.*
-import std.env.getVariable
 import std.fs.*
 import markdown.{MarkdownEngine, MarkdownProfile}
 import std.unittest.*
@@ -1035,7 +1035,7 @@ class RendererSafetyTest {
         // The published v20 fixture is a real source-only declaration: its
         // source annotation carries the message and the comment has no
         // @deprecated prose.
-        let root = Path(getVariable("CJDOC_TEST_ROOT").getOrDefault({ => "." }))
+        let root = testRepositoryRoot()
         let document = decodeDocIr(String.fromUtf8(
             File.readFrom(root.join("tests/fixtures/golden-v20/basic.docs.json"))))
         var checked = false

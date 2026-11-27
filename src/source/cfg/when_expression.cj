@@ -83,6 +83,13 @@ private class CfgExpressionParser {
         if (!missing.contains(name)) { missing.add(name) }
     }
 
+    // A short-circuited subexpression cannot contribute an unresolved cause
+    // to its parent. Preserve causes from siblings outside this parse span.
+    func discardResolvedCauses(from: Int64, value: ?Bool): Unit {
+        if (value.isNone()) { return }
+        while (missing.size > from) { missing.remove(at: missing.size - 1) }
+    }
+
     func skipSpaces(): Unit {
         while (offset < bytes.size && (bytes[offset] == b' ' || bytes[offset] == b'\t' ||
             bytes[offset] == b'\r' || bytes[offset] == b'\n')) { offset++ }
@@ -206,14 +213,18 @@ private class CfgExpressionParser {
     }
 
     func parseAnd(): ?Bool {
+        let start = missing.size
         var value = unary()
         while (consume(b'&', b'&')) { value = cfgAnd(value, unary()) }
+        discardResolvedCauses(start, value)
         value
     }
 
     func parseOr(): ?Bool {
+        let start = missing.size
         var value = parseAnd()
         while (consume(b'|', b'|')) { value = cfgOr(value, parseAnd()) }
+        discardResolvedCauses(start, value)
         value
     }
 
@@ -224,7 +235,8 @@ private class CfgExpressionParser {
         }
         let value = parseOr()
         skipSpaces()
-        if (!valid || offset != bytes.size) { return None }
+        if (offset != bytes.size) { valid = false }
+        if (!valid) { return None }
         value
     }
 }

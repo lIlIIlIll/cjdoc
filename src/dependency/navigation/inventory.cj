@@ -137,7 +137,11 @@ internal func safeExternalHref(baseUrl: String, href: String): ?String {
 }
 
 private func externalIndexLabel(value: String): String {
-    if (value.startsWith("/") || value.contains(":")) { return "configured index" }
+    if (value.startsWith("/") || value.startsWith("\\") || value.contains(":")) {
+        let name = Path(value).fileName
+        if (name.size <= 512 && safeLocalExternalPath(name)) { return name }
+        return "configured index"
+    }
     value
 }
 
@@ -175,8 +179,15 @@ private func hasExternalDiagnosticControl(value: String): Bool {
 }
 
 internal func checkedExternalEntryHref(resolver: ExternalDocResolver, object: JsonObject,
-    href: String): ?String {
-    let url = safeExternalHref(resolver.baseUrl, href)
+    field: ?JsonNode): ?String {
+    let href: ?String = match (field) {
+        case Some(node) => try { Some(node.asString()) } catch (_: Exception) { None }
+        case None => None
+    }
+    let url: ?String = match (href) {
+        case Some(value) => safeExternalHref(resolver.baseUrl, value)
+        case None => None
+    }
     if (url.isNone()) {
         resolver.invalidHrefCount++
         if (resolver.invalidHrefRecords.size < EXTERNAL_DOC_INVALID_HREF_EXAMPLES) {
@@ -194,11 +205,9 @@ internal func externalDiagnosticIndexLabel(resolver: ExternalDocResolver): Strin
 
 
 private func addExternalEntry(resolver: ExternalDocResolver, object: JsonObject): Unit {
-    let href = match (jsonStringField(object, "href")) {
-        case Some(value) => value
-        case None => return
-    }
-    let url = match (checkedExternalEntryHref(resolver, object, href)) {
+    let field = jsonObjectField(object, "href")
+    if (field.isNone()) { return }
+    let url = match (checkedExternalEntryHref(resolver, object, field)) {
         case Some(value) => value
         case None => return
     }

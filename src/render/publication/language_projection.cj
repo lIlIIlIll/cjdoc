@@ -141,6 +141,34 @@ private func missingDocumentationTag(kind: String, subject: String, id: String,
     DocTag(kind, subject, "", fieldId: id, translationState: if (state.isEmpty()) { "missing" } else { state })
 }
 
+// An enum payload has no source identifier: the collector stores `_<index>`
+// while authors address the same payload as `#<index>`, so the field identity
+// may be written either way. Both spellings resolve to one payload; every other
+// declaration keeps its exact author-written name, where `_0` is a real name.
+private func localizedParameterText(comment: DocComment, ordinal: String, stored: String,
+    language: ?String): ?DocumentationText {
+    let primary = localizedTextFor(comment, ordinal, language)
+    if (primary.isSome() || ordinal == stored) { return primary }
+    localizedTextFor(comment, stored, language)
+}
+
+private func selectedParameterTag(comment: DocComment, kind: String, prefix: String,
+    name: String, locale: String): DocTag {
+    let stored = prefix + name
+    let display = parameterDisplayName(kind, name)
+    let ordinal = if (display == name) { stored } else { prefix + display }
+    // Either spelling in the requested language outranks a fallback language.
+    let chosen: ?DocumentationText = match (localizedParameterText(comment, ordinal, stored, Some(locale))) {
+        case Some(text) => Some(text)
+        case None => localizedParameterText(comment, ordinal, stored, comment.defaultLanguage)
+    }
+    match (chosen) {
+        case Some(text) => selectedDocumentationTag(text, locale,
+            requestedState: requestedDocumentationState(comment, text.fieldId, locale))
+        case None => missingDocumentationTag("param", name, stored, comment, locale)
+    }
+}
+
 private func selectedAdmonitionTags(value: DocComment, locale: String): Array<DocTag> {
     let tags = ArrayList<DocTag>()
     let seen = HashSet<String>()
@@ -205,15 +233,13 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
         // languages, because membership is not a translated field.
         if (["since", "version", "author", "group", "tag", "replacement"].contains(tag.name)) { tags.add(tag) }
     }
-    let seen = HashSet<String>()
-    for (parameter in symbol.parameters) {
-        let id = symbol.id + ":doc:param:" + parameter.name
-        let _ = seen.add(id)
-        match (selectedDocumentationText(value, id, locale)) {
-            case Some(text) => tags.add(selectedDocumentationTag(text, locale, requestedState: requestedDocumentationState(value, id, locale)))
-            case None => tags.add(missingDocumentationTag("param", parameter.name, id, value, locale))
+    if (!symbol.parameters.isEmpty()) {
+        let prefix = symbol.id + ":doc:param:"
+        for (parameter in symbol.parameters) {
+            tags.add(selectedParameterTag(value, symbol.kind, prefix, parameter.name, locale))
         }
     }
+    let seen = HashSet<String>()
     for (text in value.localizedTexts) {
         if (["summary", "description", "param"].contains(text.kind)) { continue }
         if (isAdmonitionLevel(text.kind) && text.fieldId.isEmpty()) {
@@ -260,11 +286,14 @@ private func selectedSymbol(value: SymbolDoc, locale: String): SymbolDoc {
         for (parameter in value.parameters) {
             var text = parameter.documentation
             if (let Some(documentation) <- comment) {
-                for (tag in documentation.tags) {
-                    if (tag.name == "param" && tag.subject == parameter.name) {
+                // A positional enum payload is authored as `#<index>` while the
+                // signature stores `_<index>`; the shared selector rule decides
+                // which tag belongs to this payload. Named parameters keep an
+                // exact-name match, so `_0` on a function is never an ordinal.
+                match (findParameterTag(value.kind, documentation.tags, parameter.name)) {
+                    case Some(tag) =>
                         text = if (tag.description.isEmpty()) { None } else { Some(tag.description) }
-                        break
-                    }
+                    case None => ()
                 }
             }
             parameters.add(ParameterDoc(parameter.name, parameter.typeRef, documentation: text,

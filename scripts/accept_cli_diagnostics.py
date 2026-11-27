@@ -161,13 +161,8 @@ def lint_matrix(runner: Runner) -> None:
                         profile, rule, denied.stderr)
 
     (project / "cjdoc.toml").write_text('[lint]\nseverity = "off"\n', encoding="utf-8")
-    global_off = runner.check(project, "--lint-profile", "standard")
+    global_off = runner.check(project, "--lint-profile", "standard", "--deny-warnings", expected=0)
     assert not [code for _, code, _ in diagnostics(global_off) if code in TRIVIAL_RULES.values()]
-    denied = runner.run("check", "--project", str(project), "--semantic", "source",
-                        "--no-cache", "--lint-profile", "standard", "--deny-warnings",
-                        expected=None)
-    assert not [code for _, code, _ in diagnostics(denied) if code in TRIVIAL_RULES.values()], (
-        denied.stderr)
 
     (project / "cjdoc.toml").write_text(
         '[lint]\nseverity = "off"\ntrivial-summary = "error"\n', encoding="utf-8")
@@ -232,6 +227,10 @@ def cfg_selection(runner: Runner) -> None:
 
     arch = runner.generate(project, "--cfg", f"arch={host_arch()}")
     assert "archHost" in declarations(arch) and "linuxOnly" not in declarations(arch)
+    other_arch = "aarch64" if host_arch() == "x86_64" else "x86_64"
+    incompatible = runner.generate(project, "--cfg", f"arch={other_arch}")
+    assert "archHost" not in declarations(incompatible)
+    assert not any("arch condition value" in message for message in cfg_diagnostics(incompatible))
 
     enabled = runner.generate(project, "--cfg", "debug=true")
     assert "debugOnly" in declarations(enabled)
@@ -240,6 +239,23 @@ def cfg_selection(runner: Runner) -> None:
 
     windows = runner.generate(project, "--cfg", "os=Windows")
     assert "linuxOnly" not in declarations(windows)
+
+    # In both forms the branch containing `os` is already known, so only the
+    # remaining undefined condition can affect selection.
+    for debug, inner, outer in (("false", "&&", "||"), ("true", "||", "&&")):
+        short_circuit = runner.project(f"cfg-short-circuit-{debug}", f"""package cli_diagnostics
+
+@When[(os == "Linux" {inner} debug) {outer} feature == "extra"]
+public func available(): Int64 {{ 1 }}
+""")
+        unresolved = runner.generate(short_circuit, "--cfg", f"debug={debug}")
+        messages = cfg_diagnostics(unresolved)
+        assert len(messages) == 1 and "undefined condition 'feature'" in messages[0], messages
+        assert "available" not in declarations(unresolved)
+        selected = runner.generate(short_circuit, "--cfg", f"debug={debug}",
+                                   "--cfg", "feature=extra")
+        assert "available" in declarations(selected)
+        assert not cfg_diagnostics(selected)
 
     feature = runner.generate(project, "--cfg", "feature=extra")
     assert "featureOnly" in declarations(feature)
@@ -261,6 +277,29 @@ def cfg_selection(runner: Runner) -> None:
     assert ("error", "CJDOC3031") in [(s, c) for s, c, _ in diagnostics(mismatch)], mismatch.stderr
 
 
+def external_index_diagnostics(runner: Runner) -> None:
+    project = runner.project("external-index", QUALITY_SOURCE)
+    index = project / "partner-symbols.json"
+    index.write_text(json.dumps({
+        "schemaVersion": "cjdoc.symbol-index/1",
+        "symbols": [
+            {"qualifiedName": "cli_diagnostics.echo", "href": "echo.html"},
+            {"qualifiedName": "cli_diagnostics.BadType", "href": 42},
+            {"qualifiedName": "cli_diagnostics.BadPath", "href": "entry.html\n#bad"},
+        ],
+    }), encoding="utf-8")
+    (project / "cjdoc.toml").write_text(
+        '[external-docs.partner]\n'
+        f'index = "{index.as_posix()}"\n'
+        'base-url = "https://docs.example.test/api"\n', encoding="utf-8")
+    payload = runner.generate(project)
+    warnings = {entry["message"] for entry in payload["diagnostics"] if entry["code"] == "CJDOC2313"}
+    assert warnings == {
+        f"external documentation index 'partner-symbols.json': invalid href for record 'cli_diagnostics.{name}'"
+        for name in ("BadType", "BadPath")
+    }, warnings
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -274,6 +313,7 @@ def main() -> None:
     lint_matrix(runner)
     numeric_messages(runner)
     cfg_selection(runner)
+    external_index_diagnostics(runner)
     print(f"CLI diagnostics: {runner.calls} checks passed")
 
 

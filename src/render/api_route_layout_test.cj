@@ -153,9 +153,10 @@ class ApiRouteLayoutTest {
         for ((_, path) in paths) {
             @Expect(path.contains("~"), false)
         }
-        // Members of an extension live below that extension block.
+        // Members of an extension belong to the target type, so renumbering an
+        // extension block never moves a member page.
         let increment = documentation.declarations[4]
-        @Expect(paths[increment.id].startsWith("fixture/Counter/extensions/increment/"), true)
+        @Expect(paths[increment.id], "fixture/Counter/increment/index.html")
     }
 
     @TestCase
@@ -237,5 +238,94 @@ class SymbolPageHeadingTiersTest {
                 symbol, HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
             expectNoHeadingSkip(html)
         }
+    }
+
+    private func headingRankOf(html: String, marker: String): Int64 {
+        // The nearest enclosing heading start, so a rank is read from the
+        // markup that owns the text instead of from the page-wide sequence.
+        let at = html.indexOf(marker).getOrThrow()
+        var index = at
+        while (index > 0) {
+            if (html[index] == b'<' && index + 3 < html.size && html[index + 1] == b'h' &&
+                html[index + 2] >= b'1' && html[index + 2] <= b'6' &&
+                (html[index + 3] == b'>' || html[index + 3] == b' ')) {
+                return Int64(html[index + 2] - b'0')
+            }
+            index--
+        }
+        throw IllegalArgumentException("no heading owns '" + marker + "'")
+    }
+
+    private func occurrencesOf(html: String, marker: String): Int64 {
+        html.split(marker).size - 1
+    }
+
+    private func headingClassComment(): DocComment {
+        DocComment("raw", "A box.", "", MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "A box.")])]),
+            tags: [DocTag("example", "Class usage",
+                "Create an empty box.\n\n```cangjie\nlet box = Box()\n```")])
+    }
+
+    // A class with and without members, so the class's own sections can be read
+    // against the member browser that precedes them.
+    private func classExamplesPage(withMember: Bool): String {
+        let owner = SymbolDoc("heading:class:Box", "class", "Box", "fixture.Box", "fixture",
+            ROUTE_TEST_MODULE, "public", routeTestSource(0), "public class Box",
+            SemanticInfo("partial", "ast"), documentation: Some(headingClassComment()))
+        let declarations = ArrayList<SymbolDoc>([owner])
+        if (withMember) {
+            declarations.add(SymbolDoc("heading:class:Box:run", "function", "run",
+                "fixture.Box.run", "fixture", ROUTE_TEST_MODULE, "public", routeTestSource(1),
+                "public func run(repeat: Int64): Unit", SemanticInfo("partial", "ast"),
+                ownerId: Some(owner.id),
+                parameters: [ParameterDoc("repeat", TypeRef("primitive", "Int64",
+                    SemanticType("unavailable")))],
+                documentation: Some(DocComment("raw", "Runs.", "", MarkdownNode("document"),
+                    tags: [DocTag("param", "repeat", "how many times"),
+                        DocTag("example", "Member usage",
+                            "Run the box twice.\n\n```cangjie\nBox().run(2)\n```")]))))
+        }
+        let documentation = routeTestDocumentation(declarations.toArray())
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        renderSymbolPage(documentation, projection, indexSymbols(documentation), owner,
+            HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+    }
+
+    @TestCase
+    func classExamplesStayASiblingOfTheMemberSections(): Unit {
+        // Without members the class's own sections follow its title directly:
+        // Examples is h2 and each example title is h3.
+        let bare = classExamplesPage(false)
+        expectNoHeadingSkip(bare)
+        @Expect(occurrencesOf(bare, "<h2>Examples</h2>"), 1)
+        @Expect(occurrencesOf(bare, "<h3>Examples</h3>"), 0)
+        @Expect(headingRankOf(bare, ">Class usage<"), 3)
+
+        // With a member present the class's Examples section keeps the rank of
+        // the member kind heading ("Functions" -> h2). Emitting the class-level
+        // section one rank lower made the writer clamp it under the member
+        // section even though it belongs to the class: the reported failure.
+        let populated = classExamplesPage(true)
+        expectNoHeadingSkip(populated)
+        @Expect(populated.contains("data-cjdoc-member-browser"), true)
+        let memberKindRank = headingRankOf(populated, "id=\"functions\"")
+        @Expect(memberKindRank, 2)
+        @Expect(occurrencesOf(populated, "<h2>Examples</h2>"), 1)
+        @Expect(occurrencesOf(populated, "<h3>Examples</h3>"), 1)
+        @Expect(headingRankOf(populated, ">Class usage<"), memberKindRank + 1)
+        // The populated member body stays one rank below its semantic parent:
+        // its Parameters and Examples are h3 under the h2 kind heading, and its
+        // example title is h4 under that Examples heading.
+        @Expect(headingRankOf(populated, ">Parameters<"), memberKindRank + 1)
+        @Expect(headingRankOf(populated, ">Member usage<"), memberKindRank + 2)
+        // The member's nested sections precede the class's own section, so the
+        // two Examples headings are distinguishable by owner, not just rank.
+        @Expect(populated.indexOf("<h3>Examples</h3>").getOrThrow() <
+            populated.indexOf("<h2>Examples</h2>").getOrThrow(), true)
+        // Both owners keep their own example content: the rank change moves a
+        // heading and never merges or drops a nested example.
+        @Expect(occurrencesOf(populated, "Run the box twice."), 1)
+        @Expect(occurrencesOf(populated, "Create an empty box."), 1)
     }
 }

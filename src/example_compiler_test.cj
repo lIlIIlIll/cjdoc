@@ -152,11 +152,69 @@ private func exampleDiagnosticSummary(documentation: public_model.DocumentationS
     summary.toArray()
 }
 
-private func exampleRunAvailable(documentation: public_model.DocumentationSet,
-    requirement: String): Bool {
-    if (!hasExampleDiagnostic(documentation, "CJDOC3074")) { return true }
-    reportNativeDegraded(requirement, "CJDOC3074: example link or runtime limit unavailable")
-    false
+// A `{run}` example either executes on this host or it does not. The documented
+// macOS fail-closed contract is one exact refusal from the address-space limiter:
+// cjdoc refuses to launch user code when no limit can be established. A build or
+// link failure also reports CJDOC3074 but proves nothing about that contract, so
+// the two are never collapsed into a single "example unavailable" outcome.
+private let EXAMPLE_LIMIT_REFUSAL = "address-space memory limit is unavailable on this platform"
+private let EXAMPLE_REFUSAL_PREFIX = "could not be executed (artifact extension"
+
+private enum ExampleRunAvailability {
+    /** The example ran; the caller asserts its output, exit code or timeout. */
+    | Executed
+    /** The documented platform refusal: no example code ran on this host. */
+    | RefusedByPlatform
+    /** Any other obstacle; the caller must not treat the behavior as verified. */
+    | Unavailable
+}
+
+private func exampleRunAvailability(documentation: public_model.DocumentationSet,
+    requirement: String): ExampleRunAvailability {
+    let failures = ArrayList<String>()
+    var exactRefusal = true
+    for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC3074") {
+        failures.add(diagnostic.message)
+        if (!diagnostic.message.contains(EXAMPLE_REFUSAL_PREFIX) ||
+            !diagnostic.message.contains(EXAMPLE_LIMIT_REFUSAL)) {
+            exactRefusal = false
+        }
+    }
+    if (failures.isEmpty()) { return ExampleRunAvailability.Executed }
+    if (!exactRefusal) {
+        reportNativeDegraded(requirement,
+            "CJDOC3074 outside the address-space refusal: ${failures[0]}")
+        return ExampleRunAvailability.Unavailable
+    }
+    let host = nativeTestHost()
+    if (host != "macOS") {
+        // Only macOS documents this refusal (docs/maintainer/release-process.md). The
+        // limiter is provided on Linux (prlimit) and Windows (Job memory limit), so its
+        // absence there is an environment gap to fix, not a contract this suite accepts.
+        reportNativeDegraded(requirement,
+            "address-space refusal has no documented contract for ${host}")
+        return ExampleRunAvailability.Unavailable
+    }
+    // This host's documented fail-closed result. It is asserted at every call site
+    // and recorded separately from degradations, so a green macOS job proves the
+    // refusal happened instead of counting an unverified output comparison.
+    reportNativePlatformRefusal(requirement, EXAMPLE_LIMIT_REFUSAL)
+    ExampleRunAvailability.RefusedByPlatform
+}
+
+// The call-site assertion for the documented macOS contract: cjdoc refused before
+// launching user code, and it said so with the limiter's own reason.
+private func refusedExactlyAtTheAddressSpaceLimit(
+    documentation: public_model.DocumentationSet): Bool {
+    var seen = false
+    for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC3074") {
+        if (!diagnostic.message.contains(EXAMPLE_REFUSAL_PREFIX) ||
+            !diagnostic.message.contains(EXAMPLE_LIMIT_REFUSAL)) {
+            return false
+        }
+        seen = true
+    }
+    seen
 }
 
 private func noRunOutcome(documentation: public_model.DocumentationSet): Bool {
@@ -410,11 +468,18 @@ class ExampleCompilerTest {
         try {
             let pinned = DocumentationEngine().generate(exampleRequest(root, true))
             let unpinned = DocumentationEngine().generate(exampleRequest(withoutFlag, true))
-            if (exampleRunAvailable(pinned, "acceptedCompilerOptionReachesCjc/wrapping")) {
-                @Expect(noRunOutcome(pinned), true)
+            match (exampleRunAvailability(pinned, "acceptedCompilerOptionReachesCjc/wrapping")) {
+                case ExampleRunAvailability.Executed => @Expect(noRunOutcome(pinned), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(pinned), true)
+                case ExampleRunAvailability.Unavailable => ()
             }
-            if (exampleRunAvailable(unpinned, "acceptedCompilerOptionReachesCjc/default")) {
-                @Expect(hasExampleDiagnostic(unpinned, "CJDOC3071"), true)
+            match (exampleRunAvailability(unpinned, "acceptedCompilerOptionReachesCjc/default")) {
+                case ExampleRunAvailability.Executed =>
+                    @Expect(hasExampleDiagnostic(unpinned, "CJDOC3071"), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(unpinned), true)
+                case ExampleRunAvailability.Unavailable => ()
             }
         } finally {
             let _ = removeIfExists(root, recursive: true)
@@ -446,12 +511,19 @@ class ExampleCompilerTest {
             """))
         try {
             let pinned = DocumentationEngine().generate(exampleRequest(matching, true))
-            if (exampleRunAvailable(pinned, "runExamplePinsItsStandardOutput/matching")) {
-                @Expect(noRunOutcome(pinned), true)
+            match (exampleRunAvailability(pinned, "runExamplePinsItsStandardOutput/matching")) {
+                case ExampleRunAvailability.Executed => @Expect(noRunOutcome(pinned), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(pinned), true)
+                case ExampleRunAvailability.Unavailable => ()
             }
             let mismatched = DocumentationEngine().generate(exampleRequest(differing, true))
-            if (exampleRunAvailable(mismatched, "runExamplePinsItsStandardOutput/mismatch")) {
-                @Expect(hasExampleDiagnostic(mismatched, "CJDOC3072"), true)
+            match (exampleRunAvailability(mismatched, "runExamplePinsItsStandardOutput/mismatch")) {
+                case ExampleRunAvailability.Executed =>
+                    @Expect(hasExampleDiagnostic(mismatched, "CJDOC3072"), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(mismatched), true)
+                case ExampleRunAvailability.Unavailable => ()
             }
         } finally {
             let _ = removeIfExists(matching, recursive: true)
@@ -482,8 +554,11 @@ class ExampleCompilerTest {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3030"))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3031"))
-            if (exampleRunAvailable(documentation, "existingMainKeywordIsReusedForRunExamples")) {
-                @Expect(noRunOutcome(documentation), true)
+            match (exampleRunAvailability(documentation, "existingMainKeywordIsReusedForRunExamples")) {
+                case ExampleRunAvailability.Executed => @Expect(noRunOutcome(documentation), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(documentation), true)
+                case ExampleRunAvailability.Unavailable => ()
             }
         } finally {
             let _ = removeIfExists(root, recursive: true)
@@ -501,8 +576,12 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            if (exampleRunAvailable(documentation, "runtimeFailureReportsCapturedEvidence")) {
-                @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3071", "exit code 3"), true)
+            match (exampleRunAvailability(documentation, "runtimeFailureReportsCapturedEvidence")) {
+                case ExampleRunAvailability.Executed =>
+                    @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3071", "exit code 3"), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(documentation), true)
+                case ExampleRunAvailability.Unavailable => ()
             }
         } finally {
             let _ = removeIfExists(root, recursive: true)
@@ -547,20 +626,17 @@ class ExampleCompilerTest {
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             let elapsed = (MonoTime.now() - start).toMilliseconds()
-            let timedOut = hasExampleDiagnostic(documentation, "CJDOC3073")
-            if (!timedOut && compilerBuiltinCfgValue("os") != Some("macOS")) {
-                for (diagnostic in documentation.diagnostics) {
-                    println("${diagnostic.severity}[${diagnostic.code}] ${diagnostic.message}")
-                }
-            }
-            if (compilerBuiltinCfgValue("os") == Some("macOS")) {
-                @Expect(hasExampleDiagnostic(documentation, "CJDOC3074"), true)
-                @Expect(exists(marker), false)
-                reportNativeDegraded("timedOutExampleTerminatesDescendantProcesses",
-                    "macOS refuses to execute examples without an address-space limit")
-            } else {
-                @Expect(timedOut, true)
-                @Expect(exists(marker), true)
+            match (exampleRunAvailability(documentation,
+                "timedOutExampleTerminatesDescendantProcesses")) {
+                case ExampleRunAvailability.Executed =>
+                    @Expect(hasExampleDiagnostic(documentation, "CJDOC3073"), true)
+                    @Expect(exists(marker), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    // Refused before launch: the example never wrote its marker, so the
+                    // documented fail-closed behavior is what this host establishes.
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(documentation), true)
+                    @Expect(exists(marker), false)
+                case ExampleRunAvailability.Unavailable => ()
             }
             // Includes compilation while remaining below the descendant's 60s lifetime.
             @Expect(elapsed < 45000, true)
@@ -583,8 +659,13 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            if (exampleRunAvailable(documentation, "uncaughtPanicIsReportedAsARuntimeFailure")) {
-                @Expect(hasExampleDiagnostic(documentation, "CJDOC3071"), true)
+            match (exampleRunAvailability(documentation,
+                "uncaughtPanicIsReportedAsARuntimeFailure")) {
+                case ExampleRunAvailability.Executed =>
+                    @Expect(hasExampleDiagnostic(documentation, "CJDOC3071"), true)
+                case ExampleRunAvailability.RefusedByPlatform =>
+                    @Expect(refusedExactlyAtTheAddressSpaceLimit(documentation), true)
+                case ExampleRunAvailability.Unavailable => ()
             }
         } finally {
             let _ = removeIfExists(root, recursive: true)

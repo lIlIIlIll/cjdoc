@@ -197,6 +197,23 @@ check_cli_versions() {
     "${binary}" versions compose --version 1.2.0="${check_dir}/all/first/html" --version 1.3.0="${check_dir}/agent/html" --diff 1.3.0="${check_dir}/agent/api-diff.json" --latest 1.3.0 --output "${check_dir}/versions-second" >/dev/null
     diff -qr "${check_dir}/versions" "${check_dir}/versions-second"
     "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; value=json.load(open(root+"/versions.json", encoding="utf-8")); assert value["schemaVersion"]=="cjdoc.versions/2" and value["latest"]=="1.3.0" and value["versions"][1]["apiDiff"]=="1.3.0/api-diff.json"; assert json.load(open(root+"/1.3.0/navigation-index.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.navigation-index/2"; assert json.load(open(root+"/1.3.0/api-diff.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.api-diff/2"' "${check_dir}/versions"
+    # The composed `latest/` alias is a published reader address, so it needs the
+    # same single-heading outline every generated page has, plus the redirect and
+    # fallback that address the latest version entry.
+    "${python_cmd}" - "${check_dir}/versions/latest/index.html" <<'PY'
+import pathlib
+import re
+import sys
+
+page = pathlib.Path(sys.argv[1])
+text = page.read_text(encoding="utf-8")
+assert re.search(r'<meta http-equiv="refresh" content="0; url=\.\./1\.3\.0/index\.html">', text)
+assert '<h1>Latest documentation</h1>' in text
+assert '<a href="../1.3.0/index.html">Latest documentation</a>' in text
+assert (page.parent.parent / "1.3.0/index.html").is_file()
+assert len(re.findall(r"<h1[\s>]", text)) == 1
+assert not re.search(r"<h[2-6][\s>]", text)
+PY
     "${python_cmd}" - "${check_dir}/api-diff-v1.json" <<'PY'
 import json
 import pathlib

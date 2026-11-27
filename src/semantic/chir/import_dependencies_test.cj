@@ -1,8 +1,9 @@
 protected package cjdoc.semantic.chir
 
+import cjdoc.filesystem.testRepositoryRoot
 import cjdoc.source.discovery.SyntaxSourceProvider
 import std.collection.*
-import std.env.*
+import std.env.getTempDirectory
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -24,7 +25,7 @@ private func projectWithImport(importLine: String): Path {
 }
 
 private func chirDependencyNames(project: Path): Array<String> {
-    let root = Path(getVariable("CJDOC_TEST_ROOT").getOrDefault({ => "." }))
+    let root = testRepositoryRoot()
     let mainPath = root.join("target/release/bin/main").toString()
     let windowsPath = mainPath + ".exe"
     let binary = if (exists(windowsPath)) { windowsPath } else { mainPath }

@@ -140,9 +140,11 @@ bash scripts/check.sh
 
 `scripts/check.sh` 负责阶段分发和证据记录；`scripts/check_cli.sh` 负责 `cli` 阶段内的检查。
 
-`cjpm test` 通过 STS wrapper 输出 `degraded: N`，并逐条说明哪些行为没验证及其原因。Linux CI 准备 CHIR worker、Node 与锁定的 Highlight.js adapter，并用 `CJDOC_TEST_REQUIRE_VERIFIED=1` 拒绝任何降级。macOS 仍验证无法建立地址空间限制时拒绝执行示例，不把这项拒绝当成已核对输出。
+`cjpm test` 通过 STS wrapper 输出 `degraded: N`，并逐条说明哪些行为没验证及其原因。计数按标记本身统计，不依赖日志行首或行前缀，因此被测试框架重新打印的用例输出同样计入。Linux、Windows 与 macOS 的 CI 都准备 CHIR worker、Node 与锁定的 Highlight.js adapter，并用 `CJDOC_TEST_REQUIRE_VERIFIED=1` 拒绝任何降级；`CJDOC_TEST_PROVE_MISSING_WORKER=1` 再要求一次反向对照：在未设 `CJDOC_CHIR_WORKER` 的情况下用同一个 wrapper 重跑一个已选回退用例，它的降级总数必须非 0 且严格模式必须失败，否则“不会触发的计数”同样被判失败。
 
-在同样准备好的 Linux 环境运行 `python3 scripts/check_native_environment.py --repo .`，先确认未指定 CHIR worker 时可见降级，再从仓库外的目录执行同一批测试二进制。wrapper 注入 `CJDOC_TEST_ROOT`，fixture 和已构建主程序不会随测试进程的工作目录变化。
+示例运行只有两种可接受结果：本机真正执行，或 macOS 文档化的 fail-closed 拒绝。macOS 拒绝必须同时带有限制器给出的原因（`address-space memory limit is unavailable on this platform`），这类记录单独计为 `CJDOC_TEST_PLATFORM_REFUSAL`，不计入降级；其他主机出现该拒绝、或出现编译/链接失败形式的 `CJDOC3074`，都不算已验证。CI 用 `CJDOC_TEST_PLATFORM_REFUSALS=required`（macOS）与 `forbidden`（Linux、Windows）区分这两种要求。
+
+测试不再从环境变量拿仓库根：fixture 路径由编译进二进制的源码位置（异常栈中的绝对路径）或测试二进制自身路径向上找到声明本模块的清单得到，进程工作目录不参与，因此从任意目录、以及不带任何项目环境的裸 `unittest_bin` 执行都不改变结果。在准备好的环境运行 `python3 scripts/check_native_environment.py --repo .`：它先经同一个 wrapper 在未设 CHIR worker 时确认降级计数与严格失败（正负对照），再在仓库外的目录、且移除 `CJDOC_TEST_ROOT` 的环境里逐个执行测试二进制。
 
 `browser` 阶段使用 Node.js 26.11.1，并安装锁定的 Playwright 和 Chromium。Linux 上 `TMPDIR` 应使用路径较短的私有目录，以免 Chromium 原生缩放测试的 Unix socket 路径超长；生成站点和测试报告仍写入 `--output-root`。
 

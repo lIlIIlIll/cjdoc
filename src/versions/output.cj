@@ -136,11 +136,23 @@ private func versionRootIndex(sites: ArrayList<VersionSite>, latest: String): St
     out.toString()
 }
 
+// The alias stays a redirect for browsers that follow the refresh header, and
+// the link remains the fallback. Both address the same version entry, and the
+// page carries exactly one real heading so its outline has a root instead of
+// starting at the first section of the target document.
 private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): String {
     for (site in sites) {
         if (site.spec.id == latest) {
             let href = "../${versionOutputPath(site, "index.html")}".replace("//", "/")
-            return "<!doctype html><meta http-equiv=\"refresh\" content=\"0; url=${public_render.escapeStandaloneHtml(href)}\"><title>Latest documentation</title><p><a href=\"${public_render.escapeStandaloneHtml(href)}\">Latest documentation</a></p>\n"
+            let target = public_render.escapeStandaloneHtml(href)
+            let out = StringBuilder()
+            out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
+            out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
+            out.append("<meta http-equiv=\"refresh\" content=\"0; url=${target}\">")
+            out.append("<title>Latest documentation</title></head>")
+            out.append("<body><h1>Latest documentation</h1>")
+            out.append("<p><a href=\"${target}\">Latest documentation</a></p></body></html>\n")
+            return out.toString()
         }
     }
     throw IllegalArgumentException("latest version disappeared during composition")

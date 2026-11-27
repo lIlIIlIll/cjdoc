@@ -115,4 +115,40 @@ class ComposedReportEvidenceTest {
         @Expect(!html.contains("api-diff.json"))
         @Expect(composedArtifact(artifacts, "versions.json").contains("\"apiDiff\":null"))
     }
+
+    // `latest/index.html` is the address the version index and the header link
+    // publish, so it is a real reader entry point: it keeps its refresh header
+    // and fallback link, and it must carry one heading of its own. It shipped
+    // with no `h1` at all, which left the composed output outside the heading
+    // rule every generated page follows.
+    @TestCase
+    func latestAliasRedirectsAndPublishesExactlyOneHeading(): Unit {
+        let files = [VersionSourceFile("index.html", "text/html; charset=utf-8",
+            "<!doctype html><html lang=\"en\"><body data-cjdoc-route=\"home\">home</body></html>".toArray())]
+        let site = composedSite("1.3.0", files)
+        let artifacts = composeVersionArtifacts(ArrayList<VersionSite>([site]), "1.3.0",
+            "latest", VersionComposeBudget())
+        let html = composedArtifact(artifacts, "latest/index.html")
+        @Expect(html.split("<h1").size - 1, 1)
+        @Expect(html.contains("<h1>Latest documentation</h1>"))
+        @Expect(!html.contains("<h2"))
+        @Expect(html.contains("<meta http-equiv=\"refresh\" content=\"0; url=../1.3.0/index.html\">"))
+        @Expect(html.contains("<a href=\"../1.3.0/index.html\">Latest documentation</a>"))
+        // The redirect and the fallback address the same published entry.
+        @Expect(composedArtifact(artifacts, "1.3.0/index.html").contains("data-cjdoc-route=\"home\""))
+        // A version label that needs escaping is escaped in both places.
+        let odd = composedSite("1.3.0", [VersionSourceFile("index.html", "text/html",
+            "<!doctype html><html lang=\"en\"><body>x</body></html>".toArray())])
+        odd.spec.basePath = "release-1.3.0"
+        let oddHtml = composedArtifact(composeVersionArtifacts(
+            ArrayList<VersionSite>([odd]), "1.3.0", "latest", VersionComposeBudget()),
+            "latest/index.html")
+        @Expect(oddHtml.split("<h1").size - 1, 1)
+        @Expect(oddHtml.contains("content=\"0; url=../release-1.3.0/index.html\""))
+        @Expect(oddHtml.contains("href=\"../release-1.3.0/index.html\""))
+        // The redirect stays ahead of the fallback link, so the refresh header
+        // acts before a reader can follow the copied address.
+        @Expect(oddHtml.indexOf("<meta http-equiv=\"refresh\"").getOrThrow() <
+            oddHtml.indexOf("<a href=").getOrThrow(), true)
+    }
 }
