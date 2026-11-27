@@ -23,8 +23,14 @@ private func externalTestResponse(source: String, spans: String): String {
 private func externalTestNode(): ?String {
     if (let Some(path) <- getVariable("CJDOC_HIGHLIGHT_NODE")) { return Some(path) }
     if (let Some(paths) <- getVariable("PATH")) {
-        for (path in paths.split(":")) {
-            let candidate = Path(path).join("node")
+        let windows = nativeTestHost() == "Windows"
+        let separator = if (windows) { ";" } else { ":" }
+        let executable = if (windows) { "node.exe" } else { "node" }
+        for (path in paths.split(separator)) {
+            if (path.isEmpty()) { continue }
+            let directory = Path(path)
+            if (!directory.isAbsolute()) { continue }
+            let candidate = directory.join(executable)
             if (exists(candidate)) { return Some(canonicalize(candidate).toString()) }
         }
     }
