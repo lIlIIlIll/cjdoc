@@ -88,7 +88,7 @@ public class TextCatalog {
 
     /**
      * 将整数转换为十进制文本后追加，radix 仅支持 10。
-     * @summary[lang=en] Append an integer as decimal text; radix only accepts 10.
+     * @summary[lang=en] Append an integer as decimal text (only radix 10 supported).
      * @param value 要格式化的整数。
      * @param radix 仅支持十进制，默认值是 10。
      * @throws IllegalArgumentException radix 不是 10。
@@ -96,7 +96,7 @@ public class TextCatalog {
      * @compatibility 旧的单参数调用仍有效，使用默认的十进制。
      * @compatibility[lang=en] Existing calls with one argument still use decimal.
      * @error `radix` 不是 10 时，不追加任何条目。
-     * @error[lang=en] A `radix` other than 10 leaves the catalogue unchanged.
+     * @error[lang=en] IllegalArgumentException for other radix values; failure occurs before append, so the catalogue stays unchanged.
      */
     public func add(value: Int64, radix!: Int64 = 10): Unit {
         if (radix != 10) { throw IllegalArgumentException("only decimal radix is supported") }
