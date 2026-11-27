@@ -144,11 +144,13 @@ class EnumPayloadParameterTest {
             let documentation = enumPayloadGenerate(root, "strict")
             // No positional selector may be reported as an unknown parameter or
             // a missing documentation field.
+            let findings = ArrayList<String>()
             for (diagnostic in documentation.diagnostics) {
                 let positionalDiagnostic = ["CJDOC1001", "CJDOC1004", "CJDOC3001", "CJDOC3004",
                     "CJDOC3109"].contains(diagnostic.code)
-                @Expect(!positionalDiagnostic, "${diagnostic.code}: ${diagnostic.message}")
+                if (positionalDiagnostic) { findings.add("${diagnostic.code}: ${diagnostic.message}") }
             }
+            @Expect(findings.size, 0)
             let rect = enumCaseDeclaration(documentation, "Rect")
             @Expect(rect.parameters[0].documentation, Some("width of the rectangle"))
             @Expect(rect.parameters[1].documentation, Some("height of the rectangle"))

@@ -181,7 +181,6 @@ class DocIrMetadataCodecTest {
             .get("groups").getOrThrow().asArray()
         highOrderGroups.get(0).getOrThrow().asObject().put("order", JsonNode.int64(1000000))
         @ExpectThrows[IllegalArgumentException](decodeDocIr(highOrder.toJson()))
-
     }
 
     @TestCase
@@ -208,7 +207,8 @@ class DocIrMetadataCodecTest {
         } catch (error: IllegalArgumentException) {
             error.message
         }
-        @Expect(rejected, "invalid Doc IR at $.metadata.groups: metadata definition limit exceeded")
+        @Expect(rejected.startsWith("invalid Doc IR schema at /metadata/groups "))
+        @Expect(rejected.endsWith("array length must be <= 2048"))
     }
 
     @TestCase

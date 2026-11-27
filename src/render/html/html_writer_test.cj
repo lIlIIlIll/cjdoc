@@ -149,4 +149,41 @@ class HtmlWriterSafetyTest {
         writer.text("<<")
         @ExpectThrows[RenderResourceLimitException](writer.text("<"))
     }
+
+    @TestCase
+    func writerClampsSkippedHeadingsInPagesAndSplicedFragments(): Unit {
+        let w = HtmlWriter()
+        w.doctype()
+        w.open("html")
+        w.open("body")
+        w.textElement("h1", "T")
+        w.textElement("h3", "Skipped")
+        w.textElement("h4", "Nested")
+        w.textElement("h2", "Back")
+        w.close("body")
+        w.close("html")
+        let page = w.toString()
+        @Expect(page.contains("<h1>T</h1>"), true)
+        @Expect(page.contains("<h2>Skipped</h2>"), true)
+        @Expect(page.contains("<h3>Nested</h3>"), true)
+        @Expect(page.contains("<h2>Back</h2>"), true)
+
+        let fragment = TrustedHtml.capture({ captured =>
+            captured.textElement("h3", "Captured")
+            captured.textElement("h2", "Parent")
+        })
+        let spliced = HtmlWriter()
+        spliced.doctype()
+        spliced.open("html")
+        spliced.open("body")
+        spliced.textElement("h1", "T")
+        spliced.trusted(fragment)
+        spliced.close("body")
+        spliced.close("html")
+        let html = spliced.toString()
+        @Expect(html.contains("<h2>Captured</h2>"), true)
+        @Expect(html.contains("<h2>Parent</h2>"), true)
+        // A fragment writer is not a page and never rewrites by itself.
+        @Expect(fragment.value.contains("<h3>Captured</h3>"), true)
+    }
 }

@@ -22,6 +22,7 @@ class Mutation:
     path: str
     before: str
     after: str
+    also: tuple[tuple[str, str, str], ...] = ()
 
 
 _RENDER_LOCALE = '        let locale = documentation.readingLanguage.getOrDefault({ => "en" })'
@@ -44,10 +45,18 @@ _MUTATIONS = (
     Mutation("admitted legacy API surface", "rejectsLegacyApiSurfaceVersions",
              "src/render/api_contract_codec.cj", 'if (version != API_SURFACE_SCHEMA_VERSION) {',
              'if (version != API_SURFACE_SCHEMA_VERSION && version != "cjdoc.api-surface/1") {'),
-    Mutation("removed group decoder limit", "rejectsOneGroupBeyondTheWireLimit",
-             "src/render/codec/doc_ir_metadata_codec.cj",
-             '    if (groupNodes.size() > 2048) { fail("${path}.groups", "metadata definition limit exceeded") }\n',
-             ''),
+    Mutation("removed group limit", "rejectsOneGroupBeyondTheWireLimit",
+             "src/schema_data/schema_doc_ir.cj",
+             '"groups": {"type": "array", "maxItems": 2048, "items":',
+             '"groups": {"type": "array", "items":',
+             also=(
+                 ("src/render/codec/doc_ir_metadata_codec.cj",
+                  '    if (groupNodes.size() > 2048) { fail("${path}.groups", "metadata definition limit exceeded") }\n',
+                  ""),
+                 ("src/model/doc_ir_metadata.cj",
+                  "if (groups.size > DOCUMENTATION_METADATA_MAX_DEFINITIONS ||\n            tags.size",
+                  "if (tags.size"),
+             )),
 )
 
 
@@ -72,13 +81,17 @@ def require(condition: bool, message: str, result: subprocess.CompletedProcess[s
     raise ValueError(f"{message} (exit {result.returncode})")
 
 
-def apply_mutation(source: Path, mutation: Mutation) -> bytes:
-    original = source.read_bytes()
-    before = mutation.before.encode("utf-8")
-    if original.count(before) != 1:
-        raise ValueError(f"{mutation.name}: expected one exact mutation anchor in {mutation.path}")
-    source.write_bytes(original.replace(before, mutation.after.encode("utf-8"), 1))
-    return original
+def apply_mutation(source: Path, mutation: Mutation) -> dict[Path, bytes]:
+    originals = {}
+    for relative, anchor, replacement in [(mutation.path, mutation.before, mutation.after), *mutation.also]:
+        path = source / relative
+        original = path.read_bytes()
+        before = anchor.encode("utf-8")
+        if original.count(before) != 1:
+            raise ValueError(f"{mutation.name}: expected one exact mutation anchor in {relative}")
+        originals[path] = original
+        path.write_bytes(original.replace(before, replacement.encode("utf-8"), 1))
+    return originals
 
 
 def prove(repo: Path, work: Path) -> None:
@@ -100,15 +113,15 @@ def prove(repo: Path, work: Path) -> None:
             "baseline did not pass every selected test", baseline, work)
     print(f"Baseline: {len(cases)} selected assertions passed", flush=True)
     for mutation in _MUTATIONS:
-        path = source / mutation.path
-        original = apply_mutation(path, mutation)
+        originals = apply_mutation(source, mutation)
         try:
             result = run(source, target, work, [mutation.case])
             require(result.returncode not in (0, 124, 137) and case_result(result, mutation.case, "FAILED"),
                     f"{mutation.name}: no assertion failure in {mutation.case}", result, work)
             print(f"Killed: {mutation.name} — {mutation.case}", flush=True)
         finally:
-            path.write_bytes(original)
+            for path, original in originals.items():
+                path.write_bytes(original)
     print(f"Render mutations: {len(_MUTATIONS)} assertion failures observed")
 
 
