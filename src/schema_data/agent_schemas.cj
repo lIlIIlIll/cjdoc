@@ -8,10 +8,10 @@ import yjson.*
 // regular-expression lookaround so the native linear-regex validator can
 // evaluate it.
 //
-// Doc IR v18 stays the single definition of a declaration, a documentation page,
+// The current Doc IR stays the single definition of a declaration, a documentation page,
 // a package and a document-set identity. The declaration, page and manifest
 // templates below reference those definition names, and
-// `completeDocumentationSchema` merges the frozen v18 `$defs` in rather than
+// `completeDocumentationSchema` merges that schema's `$defs` rather than
 // cloning a second model.
 
 /**

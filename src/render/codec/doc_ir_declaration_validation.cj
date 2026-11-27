@@ -171,7 +171,12 @@ private func validateReplayComment(declaration: SymbolDoc, comment: DocComment, 
         if (text.state == "valid" && text.kind == "param") {
             var knownParameter = false
             for (parameter in declaration.parameters) {
-                if (parameter.name == text.subject) { knownParameter = true; break }
+                // A positional payload may be addressed by its ordinal selector
+                // or by the placeholder Doc IR stores for it.
+                if (parameterMatchesSubject(declaration.kind, parameter.name, text.subject)) {
+                    knownParameter = true
+                    break
+                }
             }
             if (!knownParameter) { domainFail("$.documentation.localizedTexts.subject", "unknown parameter") }
         }

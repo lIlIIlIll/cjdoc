@@ -3,7 +3,7 @@ protected package cjdoc.source.frontend
 import cjdoc.source.model.{UnsupportedDeclaration, SourceSnapshot}
 import cjdoc.source.Diagnostic
 import std.collection.*
-import cjdoc.source.cfg.{CfgProfile, cfgSelection}
+import cjdoc.source.cfg.{CfgProfile, diagnoseCfgSelection}
 
 protected func filterSourceForCfg(source: SourceSnapshot, profile: CfgProfile): Unit {
     let includedByKey = HashMap<String, Bool>()
@@ -18,16 +18,15 @@ protected func filterSourceForCfg(source: SourceSnapshot, profile: CfgProfile): 
         let keep = if (ownerExcluded) {
             false
         } else {
-            match (cfgSelection(declaration.annotations, profile)) {
+            let diagnosis = diagnoseCfgSelection(declaration.annotations, profile)
+            match (diagnosis.selected) {
                 case Some(selected) => selected
                 case None =>
                     source.diagnostics.add(Diagnostic("warning", "CJDOC1019",
-                        "conditional declaration omitted because its @When expression is unsupported or unresolved",
+                        "conditional declaration omitted because ${diagnosis.reason}",
                         source: declaration.source))
                     source.unsupportedDeclarations.add(UnsupportedDeclaration(declaration.kind,
-                        declaration.name,
-                        "conditional compilation expression is unsupported or unresolved",
-                        declaration.source))
+                        declaration.name, diagnosis.reason, declaration.source))
                     false
             }
         }

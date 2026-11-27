@@ -51,10 +51,19 @@ class ApiContractCodecTest {
     }
     @TestCase
     func rejectsLegacyApiSurfaceVersions(): Unit {
-        let v1 = "{\"schemaVersion\":\"cjdoc.api-surface/1\"}"
-        let v2 = "{\"schemaVersion\":\"cjdoc.api-surface/2\"}"
-        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(v1))
-        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(v2))
+        let current = encodeApiContractSnapshot(codecTestSnapshot(
+            declarations: [codecTestDeclaration()]))
+        @Expect(decodeApiContractSnapshot(current).declarations.size, 1)
+        for (version in ["cjdoc.api-surface/1", "cjdoc.api-surface/2"]) {
+            let legacy = current.replace("cjdoc.api-surface/3", version)
+            let rejected = try {
+                let _ = decodeApiContractSnapshot(legacy)
+                ""
+            } catch (error: IllegalArgumentException) {
+                error.message
+            }
+            @Expect(rejected, "unsupported API surface schema '${version}'")
+        }
     }
 
     @TestCase

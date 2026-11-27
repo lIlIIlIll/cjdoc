@@ -136,7 +136,7 @@ class PinnedInputsTest(unittest.TestCase):
             asset(f"cangjie-sdk-windows-x64-{SDK}.zip.sha256", sha("c")),
             asset("cangjie-sdk-linux-x64-1.3.0-alpha.20261124001016.tar.gz", sha("c")),
             asset(f"cangjie-stdx-linux-x64-{SDK}.0.zip", sha("c")),
-            asset(f"cangjie-stdx-linux-x64-1.3.0-alpha.20261124001016.1.zip", sha("c")),
+            asset("cangjie-stdx-linux-x64-1.3.0-alpha.20261124001016.1.zip", sha("c")),
         ]
         document = resolve(full_assets() + decoys)
         for entry in document["matrix"]["include"]:

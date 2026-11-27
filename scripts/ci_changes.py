@@ -8,6 +8,8 @@ Fail-safe rules:
   push makes the whole run "full".
 * `tools/`, `docs/schema/`, `tests/fixtures/` and `site/` are never treated as
   documentation-only, because they feed native output or the generated site.
+* Documentation a gate reads (`tool_inputs()`) is native work too: `docs/` is
+  documentation-only only for the files nothing compares against source truth.
 
 Classification only ever skips heavy jobs that are provably unrelated; it never
 skips the aggregate `CI required` gate.
@@ -41,10 +43,37 @@ RULES: tuple[tuple[str, frozenset[str]], ...] = (
 )
 PREFIX_ONLY_NATIVE = ("src/", "tests/", "tools/", "scripts/", "vendor/", ".github/")
 FILES_ONLY_NATIVE = ("cjpm.toml", "cjpm.lock", "AGENTS.md")
+# Documentation a gate reads rather than only a reader, whose own synchronizer does
+# not live in `scripts/sync_api_comment_skill.py` yet. `docs/release-notes.md` is
+# asserted against `DOC_IR_SCHEMA_VERSION` and `docs/reference/artifacts.md` against
+# the decoder's accepted versions, so a stale edit there fails the stage that reads
+# it -- which only runs when the change is classified as native work.
+MAINTAINED_DOC_INPUTS = ("docs/release-notes.md", "docs/reference/artifacts.md")
+
+
+def tool_inputs() -> frozenset[str]:
+    """Documentation that is also a tool/gate input, derived from its own sources.
+
+    `docs/` mixes two kinds of file: prose a reader reads, and inputs a gate
+    compares against source truth. Classifying the directory as documentation-only
+    skipped the only job that runs `python-tools`, so a stale skill reference or a
+    stale release note stayed green. The inventory is therefore not a second list to
+    maintain: it is read from the synchronizers that consume those files
+    (`sync_api_comment_skill.SOURCES`, `showcase_inputs.source_inputs()`), so a new
+    entry there is routed to native work without anyone editing this table.
+    """
+    try:
+        from scripts.showcase_inputs import source_inputs
+        from scripts.sync_api_comment_skill import SOURCES as api_comment_sources
+    except ImportError:  # Direct script execution: `scripts/` is already on sys.path.
+        from showcase_inputs import source_inputs
+        from sync_api_comment_skill import SOURCES as api_comment_sources
+    return frozenset((*api_comment_sources, *source_inputs(), *MAINTAINED_DOC_INPUTS))
 
 
 def classify_paths(paths: list[str]) -> dict[str, bool]:
     native = site = docs = False
+    inputs = tool_inputs()
     for path in paths:
         rule = next((flags for prefix, flags in RULES if path == prefix or path.startswith(prefix)), None)
         if rule is None:
@@ -52,6 +81,8 @@ def classify_paths(paths: list[str]) -> dict[str, bool]:
                 rule = frozenset({"native"})
             else:
                 raise LookupError(path)
+        if path in inputs:
+            rule = rule | {"native"}
         native = native or "native" in rule
         site = site or "site" in rule
         docs = docs or "docs" in rule

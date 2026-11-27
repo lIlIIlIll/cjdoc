@@ -36,6 +36,7 @@ IDREF_ATTRIBUTES = {
 }
 CLASSIFICATION_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 CLASSIFICATION_ASCII_WHITESPACE = re.compile(r"[ \t\n\r\f\v]*")
+WINDOWS_USER_PATH = re.compile(r"(?<![\w./:-])[A-Za-z]:[\\/](?i:Users)[\\/]")
 
 
 def valid_classification_title(value: object) -> bool:
@@ -76,11 +77,21 @@ class PageParser(HTMLParser):
         self.idrefs: list[tuple[str, str]] = []
         self.root_prefixes: list[str] = []
         self.triggers: list[tuple[str, dict[str, str]]] = []
+        self.heading_level = 0
+        self.h1_count = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered_tag = tag.lower()
         if lowered_tag in {"iframe", "object", "embed"}:
             self.errors.append(f"forbidden element <{tag}>")
+        if len(lowered_tag) == 2 and lowered_tag[0] == "h" and lowered_tag[1] in "123456":
+            level = int(lowered_tag[1])
+            if level > self.heading_level + 1:
+                prior = f"h{self.heading_level}" if self.heading_level else "page start"
+                self.errors.append(f"heading level skips from {prior} to h{level}")
+            self.heading_level = level
+            if level == 1:
+                self.h1_count += 1
         attribute_names = [name.lower() for name, _ in attrs]
         seen_attributes: set[str] = set()
         for name in attribute_names:
@@ -208,6 +219,8 @@ class PageParser(HTMLParser):
 
     def close(self) -> None:
         super().close()
+        if self.h1_count != 1:
+            self.errors.append(f"expected exactly one h1, found {self.h1_count}")
         if self.stack:
             self.errors.append(f"unclosed element <{self.stack[-1]}>")
 
@@ -553,7 +566,9 @@ def main() -> int:
     prefixes: dict[Path, str] = {}
     for page in sorted(publication_root.rglob("*.html")):
         page_text = page.read_text(encoding="utf-8")
-        if any(marker in page_text for marker in ("/home/", "/tmp/", "/Users/")):
+        if WINDOWS_USER_PATH.search(page_text) or any(
+            marker in page_text for marker in ("/home/", "/tmp/", "/Users/")
+        ):
             raise ValueError(f"absolute filesystem path leaked into {page.relative_to(publication_root)}")
         parser = PageParser()
         parser.feed(page_text)

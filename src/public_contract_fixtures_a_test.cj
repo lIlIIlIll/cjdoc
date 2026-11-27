@@ -4,8 +4,8 @@ import cjdoc.model as api_model
 import cjdoc.provider as api_provider
 import std.collection.*
 
-internal let PUBLIC_FIXTURE_PROJECTS = "tests/fixtures/projects/"
-internal let PUBLIC_TEST_AST_PREFLIGHT = Some("target/release/bin/main")
+internal let PUBLIC_FIXTURE_PROJECTS = nativeFixturePath("tests/fixtures/projects") + "/"
+internal let PUBLIC_TEST_AST_PREFLIGHT = Some(nativeTestBinary())
 
 @When[os != "Windows"]
 internal func publicLocalAssetEmbeddingEnabled(): Bool {

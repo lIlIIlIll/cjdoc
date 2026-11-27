@@ -21,6 +21,7 @@ sys.dont_write_bytecode = True
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 import agent_evaluation as evaluation
+import agent_evaluation_protocol as protocol_module
 import agent_evaluation_assessment as assessment_rules
 import agent_evaluation_capture as provenance
 from agent_evaluation_evidence import Evidence
@@ -29,7 +30,7 @@ import agent_evaluation_runtime as runtime
 import agent_evaluation_states as states
 
 REPO = SCRIPTS.parent
-PROTOCOL = REPO / 'tests/agent/evaluation-protocol.json'
+PROTOCOL = protocol_module.FACT_PROTOCOL
 RUBRIC = REPO / 'tests/agent/evaluation-rubric.json'
 SAMPLE_CONSUMER = 'main(): Int64 { println("synthetic state-machine input"); return 0 }\n'
 

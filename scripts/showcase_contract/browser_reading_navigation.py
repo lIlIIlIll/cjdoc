@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from .browser_support import declaration_url, member_action, member_toc_link, wait_for_declaration
 

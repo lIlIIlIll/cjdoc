@@ -13,6 +13,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ci_stage
+from ci_wallclock import non_overlapping_chain
 from sts_compile_override import PRODUCT_OPTIONS, UNIT_OPTIONS
 
 
@@ -350,6 +351,7 @@ class IdentityGateTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             ci_stage.verify_identity(path, self.binary, None, None)
 
+
     def test_run_subcommand_returns_the_child_exit_code_and_logs(self) -> None:
         evidence = self.root / "evidence"
         code = ci_stage.run_stage(
@@ -362,6 +364,107 @@ class IdentityGateTest(unittest.TestCase):
         log = (evidence / "probe.log").read_text(encoding="utf-8")
         self.assertIn("out", log)
         self.assertIn("err", log)
+
+
+class WorktreeIdentityTest(unittest.TestCase):
+    """`--repo` binds the manifest to the checkout; an unreadable one is not a match.
+
+    The gate used to treat `git rev-parse` returning non-zero as "no information"
+    and skip the comparison, so pointing `--repo` at a non-repository still printed
+    `ci build identity verified`. Unverifiable is not verified.
+    """
+
+    def setUp(self) -> None:
+        # The fixture below is a real repository, so `git` may still be finishing work
+        # inside `.git` when teardown walks the tree. That race is a cleanup artifact,
+        # not a test result: failing the case for it would report a defect that does
+        # not exist, so teardown tolerates it while every assertion stays strict.
+        self.temporary = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.binary = Path(sys.executable)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+        # A developer's global hooks (commit-message policy, privacy checks) must not
+        # decide whether this fixture can create a commit, so they are disabled here.
+        for args in (("init", "-q"),
+                     ("config", "core.hooksPath", "/dev/null"),
+                     ("config", "commit.gpgSign", "false"),
+                     ("config", "user.email", "t@example.test"),
+                     ("config", "user.name", "t"),
+                     ("commit", "-q", "--allow-empty", "-m", "test: fixture")):
+            subprocess.run(["git", "-C", str(self.repo), *args], check=True,
+                           capture_output=True, text=True)
+        self.commit = self.git("rev-parse", "HEAD")
+        self.tree = self.git("rev-parse", "HEAD^{tree}")
+
+    def git(self, *args: str) -> str:
+        return subprocess.run(["git", "-C", str(self.repo), *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def manifest(self, *, commit: str | None = None, tree: str | None = None) -> Path:
+        document = {
+            "schemaVersion": ci_stage.BUILD_MANIFEST_SCHEMA,
+            "checkoutCommit": commit or self.commit,
+            "checkoutTree": tree or self.tree,
+            "mainBinary": {"path": "main", "sha256": ci_stage.sha256_file(self.binary),
+                           "size": self.binary.stat().st_size,
+                           "versionOutput": subprocess.run(
+                               [str(self.binary), "--version"], capture_output=True,
+                               text=True).stdout.strip()},
+        }
+        path = self.root / "build-manifest.json"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        return path
+
+    def run_gate(self, manifest: Path, repo: Path | None, *,
+                 require_worktree: bool = True) -> tuple[int, str]:
+        """Run the gate and return (exit code, everything it printed)."""
+        import contextlib
+        import io
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            code = ci_stage.verify_identity(manifest, self.binary, None, repo,
+                                            require_worktree=require_worktree)
+        return code, output.getvalue()
+
+    def test_a_matching_worktree_still_verifies(self) -> None:
+        code, output = self.run_gate(self.manifest(), self.repo)
+        self.assertEqual(code, 0)
+        self.assertIn("ci build identity verified", output)
+
+    def test_a_mismatched_commit_is_still_reported(self) -> None:
+        code, output = self.run_gate(self.manifest(commit="a" * 40), self.repo)
+        self.assertEqual(code, 1)
+        self.assertIn(f"checkoutCommit: manifest {'a' * 40} != worktree {self.commit}", output)
+
+    def test_an_unreadable_repository_fails_instead_of_reporting_verified(self) -> None:
+        not_a_repo = self.root / "not-a-repository"
+        not_a_repo.mkdir()
+        code, output = self.run_gate(self.manifest(), not_a_repo)
+        self.assertEqual(code, 1, "an unreadable worktree must not pass")
+        self.assertIn("cannot read worktree identity", output)
+
+    def test_a_missing_repository_path_fails_the_same_way(self) -> None:
+        code, output = self.run_gate(self.manifest(), self.root / "absent")
+        self.assertEqual(code, 1)
+        self.assertIn("cannot read worktree identity", output)
+
+    def test_skipping_the_worktree_comparison_is_explicit(self) -> None:
+        """The escape hatch is a named flag, not an unreadable `--repo` passing."""
+        code, output = self.run_gate(self.manifest(), self.root / "absent",
+                                     require_worktree=False)
+        self.assertEqual(code, 0)
+        self.assertIn("worktree identity is not compared", output)
+        self.assertNotIn("cannot read worktree identity", output)
+
+    def test_git_value_separates_unreadable_from_empty(self) -> None:
+        self.assertIsNone(ci_stage.git_value(self.root / "absent", "rev-parse", "HEAD"))
+        self.assertEqual(ci_stage.git_value(self.repo, "rev-parse", "HEAD"), self.commit)
+        # A value git can read but prints empty is also "no answer", never a match
+        # against a manifest field that happens to be empty.
+        self.assertIsNone(ci_stage.git_value(self.repo, "rev-parse", "--verify", "no-such-ref"))
 
 
 class GitHubReadTest(unittest.TestCase):
@@ -417,11 +520,6 @@ class GitHubReadTest(unittest.TestCase):
         self.assertEqual(self.run_gh(), {"jobs": [1]})
 
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TransientReadTests(unittest.TestCase):
     """An empty successful `gh api` body is retried, not read as "no data"."""
 
@@ -463,7 +561,7 @@ class NonOverlappingChainTest(unittest.TestCase):
         return list(spec)
 
     def test_a_sequential_chain_is_longer_than_its_longest_job(self) -> None:
-        result = ci_stage.non_overlapping_chain(self.intervals(
+        result = non_overlapping_chain(self.intervals(
             ("native", 0, 30_000), ("cli", 30_000, 60_000), ("smoke", 60_000, 90_000)))
         self.assertEqual(result["chain"], ["native", "cli", "smoke"])
         self.assertEqual(result["wallMs"], 90_000)
@@ -471,7 +569,7 @@ class NonOverlappingChainTest(unittest.TestCase):
 
     def test_overlapping_jobs_are_not_chained(self) -> None:
         """Two jobs that ran at the same time did not run one after the other."""
-        result = ci_stage.non_overlapping_chain(self.intervals(
+        result = non_overlapping_chain(self.intervals(
             ("candidate-linux", 0, 60_000), ("candidate-other", 5_000, 40_000)))
         self.assertEqual(result["chain"], ["candidate-linux"])
         self.assertTrue(result["equalsLongestJob"])
@@ -479,12 +577,12 @@ class NonOverlappingChainTest(unittest.TestCase):
 
     def test_the_chain_prefers_the_longest_preceding_total(self) -> None:
         """A short late job must extend the longest chain, not the nearest one."""
-        result = ci_stage.non_overlapping_chain(self.intervals(
+        result = non_overlapping_chain(self.intervals(
             ("long", 0, 50_000), ("short", 10_000, 15_000), ("tail", 50_000, 60_000)))
         self.assertEqual(result["chain"], ["long", "tail"])
 
     def test_an_empty_run_claims_nothing(self) -> None:
-        result = ci_stage.non_overlapping_chain([])
+        result = non_overlapping_chain([])
         self.assertEqual((result["chain"], result["wallMs"]), ([], 0))
         self.assertTrue(result["equalsLongestJob"])
         # A consumer reading the attribution must not need a special case for a run
@@ -498,20 +596,20 @@ class NonOverlappingChainTest(unittest.TestCase):
         can land on the short detour -- would print a wall that contradicts the
         chain printed beside it.
         """
-        result = ci_stage.non_overlapping_chain([("A", 0, 90), ("B", 90, 1000), ("Z", 95, 96)])
+        result = non_overlapping_chain([("A", 0, 90), ("B", 90, 1000), ("Z", 95, 96)])
         self.assertEqual(result["chain"], ["A", "B"])
         self.assertEqual(result["wallMs"], 1_000)
 
     def test_a_zero_length_job_does_not_shadow_the_real_chain(self) -> None:
         """A job with no duration is a point in time, not a link with cost."""
-        result = ci_stage.non_overlapping_chain(self.intervals(
+        result = non_overlapping_chain(self.intervals(
             ("gate", 0, 30_000), ("stamp", 30_000, 30_000), ("tail", 30_000, 40_000)))
         self.assertEqual(result["chain"], ["gate", "tail"])
         self.assertEqual(result["wallMs"], 40_000)
 
     def test_a_job_that_ends_when_the_next_starts_is_chained(self) -> None:
         """Handoff is inclusive: `started_at == completed_at` is still sequential."""
-        result = ci_stage.non_overlapping_chain(self.intervals(
+        result = non_overlapping_chain(self.intervals(
             ("first", 0, 10_000), ("second", 10_000, 20_000)))
         self.assertEqual(result["chain"], ["first", "second"])
 
@@ -822,3 +920,7 @@ class WallclockClocksTest(unittest.TestCase):
         document = ci_stage.classify_wallclock(payload, {"jobs": []}, 1)
         self.assertEqual((document["wallMs"], document["jobSpanMs"], document["jobMinutes"]),
                          (0, 0, 0))
+
+
+if __name__ == "__main__":
+    unittest.main()

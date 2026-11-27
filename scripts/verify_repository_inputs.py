@@ -13,46 +13,18 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 try:
-    from .repository_inputs.contracts import (
-        CURRENT_GOLDEN_VERSION,
-        GOLDEN_NAMES,
-        SCHEMA_CONTRACTS,
-        SCHEMA_NAMES,
-    )
-    from .repository_inputs.files import (
-        read_toml,
-        required_repository_paths,
-        safe_relative,
-        sha256,
-        verify_golden_set,
-        verify_schema_set,
-    )
-    from .repository_inputs.schema import validate_schema_document
+    from .repository_inputs.contracts import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES
+    from .repository_inputs.files import required_repository_paths, verify_golden_set, verify_schema_set
     from .repository_inputs.codec import verify_current_goldens
     from .repository_inputs.vendor import verify_third_party, verify_vendor
     from .safe_output_root import lexical_absolute, verify_directory_chain
-    from .strict_json import strict_load, strict_loads
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
-    from repository_inputs.contracts import (
-        CURRENT_GOLDEN_VERSION,
-        GOLDEN_NAMES,
-        SCHEMA_CONTRACTS,
-        SCHEMA_NAMES,
-    )
-    from repository_inputs.files import (
-        read_toml,
-        required_repository_paths,
-        safe_relative,
-        sha256,
-        verify_golden_set,
-        verify_schema_set,
-    )
-    from repository_inputs.schema import validate_schema_document
+    from repository_inputs.contracts import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES
+    from repository_inputs.files import required_repository_paths, verify_golden_set, verify_schema_set
     from repository_inputs.codec import verify_current_goldens
     from repository_inputs.vendor import verify_third_party, verify_vendor
     from safe_output_root import lexical_absolute, verify_directory_chain
-    from strict_json import strict_load, strict_loads
     from worktree_identity import exact_worktree_identity
 
 def verify_tracked(repo: Path, paths: tuple[str, ...]) -> None:

@@ -14,6 +14,7 @@ import cjdoc.source.model.{SourceFileOrigin, TypeRef}
 import cjdoc.source.Diagnostic
 import cjdoc.dependency.navigation.{ExternalDocResolver, loadDependencyDocSources}
 import cjdoc.documentation.i18n.loadDocumentationLanguages
+import cjdoc.documentation.{DocumentationQualityConfig, loadDocumentationQualityConfig}
 import cjdoc.highlight.{HighlightExternalOptions, MAX_HIGHLIGHT_TOTAL_BYTES, highlightExternalOptions}
 import cjdoc.model as public_model
 import cjdoc.model.comparePublicDiagnostic
@@ -379,7 +380,8 @@ internal class PublicDiagnosticProjection {
         assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext,
         hiddenContext: MarkdownGenerationContext,
         declarations: Array<public_model.SymbolDoc>, renderableIds: HashSet<String>,
-        semanticLinkDiagnostics: Array<public_model.Diagnostic>, lintProfile: String) {
+        semanticLinkDiagnostics: Array<public_model.Diagnostic>, lintProfile: String,
+        qualityConfig!: ?DocumentationQualityConfig = None<DocumentationQualityConfig>) {
         let diagnostics = ArrayList<public_model.Diagnostic>()
         var hasError = false
         var incompleteSource = !documentation.orphanDocComments.isEmpty() ||
@@ -421,7 +423,8 @@ internal class PublicDiagnosticProjection {
         if (lintProfile != "off") {
             for (symbol in declarations) {
                 if (!renderableIds.contains(symbol.id)) { continue }
-                diagnostics.add(all: documentationQualityDiagnostics(symbol, documentation.projectName))
+                diagnostics.add(all: configuredQualityDiagnostics(symbol, documentation.projectName,
+                    qualityConfig))
             }
         }
         sort(diagnostics, lessThan: {
@@ -497,7 +500,9 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     let diagnosticProjection = PublicDiagnosticProjection(documentation, sourceMapper,
         declarationProjection.assetCollector, declarationProjection.markdownContext, declarationProjection.hiddenContext,
         declarationProjection.declarations, declarationProjection.renderableIds,
-        semanticLinkDiagnostics, request.lintProfile)
+        semanticLinkDiagnostics, request.lintProfile,
+        qualityConfig: if (request.lintProfile == "off") { None<DocumentationQualityConfig> }
+            else { Some(loadDocumentationQualityConfig(request.projectRoot)) })
     let status = if (diagnosticProjection.hasError || diagnosticProjection.incompleteSource ||
         providerProjection.incomplete) {
         "partial"

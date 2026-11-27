@@ -9,10 +9,11 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from report_views import pages as report_pages, reports
 from showcase_contract.contract import check_regressions, resolve_plan
 from showcase_contract.offline import create_archive
 from showcase_contract.site import ContractError, Site, canonical_json, load_json
-from . import homepage, legacy, manifest, navigation, report_pages, reports
+from . import homepage, legacy, manifest, navigation
 from . import stage_timing
 from .packaging import copy_sources, source_archive, tool_version
 from .parallel import BranchRunner

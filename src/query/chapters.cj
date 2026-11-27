@@ -44,7 +44,9 @@ private func queryCapturedChapter(name: String, symbol: query_model.SymbolDoc,
         case "parameters" =>
             let node = queryCopyCapturedFields(raw, ["parameters"])
             let tags = queryCapturedTags(raw, "parameters")
-            node.put("documentationTags", tags)
+            let parameters = node.get("parameters").getOrThrow().asArray()
+            node.put("parameters", queryDisplayPayloads(parameters, symbol.kind, "name"))
+            node.put("documentationTags", queryDisplayPayloads(tags, symbol.kind, "subject"))
             (if (!symbol.parameters.isEmpty() || tags.size() > 0) { "available" } else { "missing" }, node)
         case "returns" =>
             let node = queryCopyCapturedFields(raw, ["returnType"])
@@ -75,6 +77,29 @@ private func queryCapturedChapter(name: String, symbol: query_model.SymbolDoc,
             (state, report)
         case _ => ("missing", JsonNode.nullValue)
     }
+}
+
+// Only the reading field changes; nested data and the captured fieldId remain
+// bound to the frozen snapshot. Copy changed records, not their JSON encoding.
+private func queryDisplayPayloads(captured: JsonArray, kind: String, field: String): JsonArray {
+    if (!query_model.positionalPayloadKind(kind) || captured.size() == 0) { return captured }
+    let values = JsonArray()
+    for (index in 0..captured.size()) {
+        let item = captured[index].asObject()
+        let name = queryString(item, field)
+        let display = query_model.parameterDisplayName(kind, name)
+        if (display == name) {
+            values.add(item)
+            continue
+        }
+        let projected = JsonObject()
+        for (position in 0..item.size()) {
+            let key = item.nameAt(position)
+            projected.put(key, if (key == field) { JsonNode.string(display) } else { item.valueAt(position) })
+        }
+        values.add(projected)
+    }
+    values
 }
 
 private func queryCopyCapturedFields(raw: JsonObject, fields: Array<String>): JsonObject {

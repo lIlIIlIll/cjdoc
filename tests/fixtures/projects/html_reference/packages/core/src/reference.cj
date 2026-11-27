@@ -1,6 +1,8 @@
 package html_reference_core
 
 /**
+ * A type used to verify signature link placement.
+ *
  * A rich reference summary with **bold** text, `inline code`, and a
  * [safe link](https://example.test/reference).
  *
@@ -15,7 +17,6 @@ package html_reference_core
  * let answer = 42
  * ```
  */
-/** A type used to verify signature link placement. */
 public class Token {}
 
 public class ReferenceBox<T> {

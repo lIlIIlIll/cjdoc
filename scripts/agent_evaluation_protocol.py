@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import stat
+import sys
 from pathlib import Path
 
 if __package__:
@@ -16,10 +18,29 @@ else:
 
 PROTOCOL_LOADER_PATH = Path(__file__).resolve()
 REPO = PROTOCOL_LOADER_PATH.parent.parent
-FACT_PROTOCOL = REPO / "tests/agent/evaluation-protocol.json"
+# The corrected frozen facts: AG-01 resolves to the `add(Int64, radix!)`
+# declaration and body. `evaluation-protocol.json` stays byte-for-byte as
+# historical evidence; its AG-01 range no longer reaches that overload.
+FACT_PROTOCOL = REPO / "tests/agent/evaluation-protocol-v2.json"
+HISTORICAL_PROTOCOL = REPO / "tests/agent/evaluation-protocol.json"
 DEFAULT_PROTOCOL = REPO / "tests/agent/evaluation-client-transport-v2.json"
 DEFAULT_RUBRIC = REPO / "tests/agent/evaluation-rubric.json"
 ARMS = ("baseline-html-index", "shared-query-mcp")
+
+# AG-01's frozen facts are prose, but each one names an exact construct that the
+# integer overload's declaration and body must still contain. Pinning those
+# literal fragments is what turns "the range drifted" into a failing check.
+AG01_REQUIRED_FACTS = (
+    "value: Int64",
+    "radix!: Int64 = 10",
+    "if (radix != 10)",
+    'IllegalArgumentException("only decimal radix is supported")',
+    "values.add(value.toString())",
+)
+# "failure occurs before append" is an ordering fact, not a substring.
+SOURCE_ORDERED_FACTS = {
+    "AG-01": (("if (radix != 10)", "values.add(value.toString())"),),
+}
 
 
 def digest_of(path: Path) -> str:
@@ -114,6 +135,109 @@ def load_rubric(path: Path, protocol: dict) -> dict:
     _require(rubric.get("aggregation", {}).get("noBestOfSelection") is True,
              "rubric must forbid best-of selection")
     return rubric
+
+
+def source_slices(reference: str, project_root: Path) -> list[dict]:
+    """Split a frozen `source` reference into file/directory and line-range parts.
+
+    A `source` value is `path[:LINE[-LINE][,LINE[-LINE]]]` entries joined by `;`.
+    Only the range is interpreted; a missing file or range is reported, not repaired.
+    """
+    parts: list[dict] = []
+    for piece in str(reference or "").split(";"):
+        piece = piece.strip()
+        if not piece:
+            continue
+        match = re.fullmatch(r"(?P<path>[^:]+)(?::(?P<range>[\d,\-]+))?", piece)
+        if match is None:
+            raise ProtocolError(f"unparsable frozen source reference: {piece!r}")
+        path = project_root / match.group("path")
+        item = {"reference": match.group("path"), "path": path, "range": None}
+        if match.group("range"):
+            ranges = []
+            for span in match.group("range").split(","):
+                bounds = span.split("-")
+                if len(bounds) == 1:
+                    start = end = int(bounds[0])
+                elif len(bounds) == 2:
+                    start, end = int(bounds[0]), int(bounds[1])
+                else:
+                    raise ProtocolError(f"unparsable frozen source range: {piece!r}")
+                if start < 1 or end < start:
+                    raise ProtocolError(f"invalid frozen source range: {piece!r}")
+                ranges.append((start, end))
+            item["range"] = ranges
+        parts.append(item)
+    return parts
+
+
+def source_text(item: dict) -> str:
+    """The exact file text covered by one parsed `source` entry, or ''.
+
+    A directory reference has no text; a file reference without a range covers
+    the whole file.
+    """
+    if not item["path"].is_file():
+        return ""
+    try:
+        lines = item["path"].read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    if item["range"] is None:
+        return "\n".join(lines)
+    selected: list[str] = []
+    for start, end in item["range"]:
+        if end > len(lines):
+            return ""
+        selected.extend(lines[start - 1:end])
+    return "\n".join(selected)
+
+
+def verify_source_slices(protocol: dict, project_root: Path,
+                         facts: dict[str, list[str]] | None = None) -> None:
+    """Fail when a frozen fact is no longer inside that task's `source` slice.
+
+    `facts` defaults to the AG-01 truth this repository pins; other tasks keep
+    their prose facts, which describe behaviour rather than literal source text.
+    """
+    expected = facts if facts is not None else {"AG-01": list(AG01_REQUIRED_FACTS)}
+    tasks = {task.get("id"): task for task in protocol.get("tasks") or []}
+    for identifier, fragments in expected.items():
+        task = tasks.get(identifier)
+        _require(task is not None, f"protocol does not freeze task {identifier}")
+        text = "\n".join(source_text(item)
+                         for item in source_slices(str(task.get("source") or ""),
+                                                   project_root))
+        for fragment in fragments:
+            _require(fragment in text,
+                     f"{identifier}: source slice no longer contains {fragment!r}")
+        for earlier, later in SOURCE_ORDERED_FACTS.get(identifier, ()):
+            _require(earlier in text and later in text and
+                     text.index(earlier) < text.index(later),
+                     f"{identifier}: {earlier!r} no longer precedes {later!r}")
+
+
+def verify_sources(protocol_path: Path = FACT_PROTOCOL,
+                   project_root: Path = REPO) -> dict:
+    """Load a frozen protocol and prove its pinned source slices still hold."""
+    protocol = load_protocol(protocol_path)
+    verify_source_slices(protocol, project_root)
+    return protocol
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate the frozen Agent evaluation protocol and its source slices.")
+    parser.add_argument("--protocol", type=Path, default=FACT_PROTOCOL)
+    parser.add_argument("--project-root", type=Path, default=REPO)
+    arguments = parser.parse_args(argv)
+    try:
+        protocol = verify_sources(arguments.protocol, arguments.project_root)
+    except ProtocolError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    print(f"verified {len(protocol['tasks'])} frozen tasks and the AG-01 source slice")
+    return 0
 
 
 def plan_runs(protocol: dict) -> list[dict]:
@@ -294,3 +418,7 @@ def _bounded(requested: int | None, frozen: int, option: str) -> int:
     if requested < 1 or requested > frozen:
         raise SystemExit(f"error: {option} may only tighten the frozen budget {frozen}")
     return requested
+
+
+if __name__ == "__main__":
+    sys.exit(main())

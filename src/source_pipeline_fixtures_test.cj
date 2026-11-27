@@ -4,8 +4,8 @@ import cjdoc.model as api_model
 import std.process.*
 
 
-internal let FIXTURES = "tests/fixtures/projects/"
-internal let TEST_AST_PREFLIGHT = Some("target/release/bin/main")
+internal let FIXTURES = nativeFixturePath("tests/fixtures/projects") + "/"
+internal let TEST_AST_PREFLIGHT = Some(nativeTestBinary())
 
 internal func generateFixture(name: String, lintProfile!: String = "off",
     includePathDependencies!: Bool = false, includeCachedDependencies!: Bool = false,

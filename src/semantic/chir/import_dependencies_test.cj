@@ -24,7 +24,10 @@ private func projectWithImport(importLine: String): Path {
 }
 
 private func chirDependencyNames(project: Path): Array<String> {
-    let source = SyntaxSourceProvider(astPreflightExecutable: Some("target/release/bin/main"))
+    let root = Path(getVariable("CJDOC_TEST_ROOT").getOrDefault({ => "." }))
+    let main = root.join("target/release/bin/main").toString()
+    let binary = if (exists(main + ".exe")) { main + ".exe" } else { main }
+    let source = SyntaxSourceProvider(astPreflightExecutable: Some(binary))
         .collect(project.toString())
     let names = ArrayList<String>()
     for (packageDoc in chirPackageDependencies(source, source.modules[0].id,

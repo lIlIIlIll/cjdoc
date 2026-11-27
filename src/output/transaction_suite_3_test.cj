@@ -6,6 +6,8 @@ import std.collection.ArrayList
 @When[os == "Linux"]
 import std.env.{getProcessId}
 import std.fs.*
+@When[os != "Windows"]
+import std.posix.symlink
 @When[os == "Linux"]
 import std.process.*
 import std.unittest.*
@@ -79,15 +81,21 @@ class OutputTransactionSuite3 {
         } finally { let _ = removeIfExists(parent, recursive: true) }
     }
 
+    @When[os != "Windows"]
     @TestCase
     func symbolicLinkAncestorIsRejectedEvenWhenForceOwnedIsEnabled(): Unit {
-        let procSelf = Path("/proc/self")
-        if (exists(procSelf) && FileInfo(procSelf).isSymbolicLink()) {
-            @ExpectThrows(writeOwnedArtifacts(procSelf.join("cjdoc-output").toString(),
+        let parent = createOutputTestTempDirectory()
+        try {
+            let real = parent.join("real")
+            Directory.create(real)
+            let link = parent.join("linked")
+            @Assert(symlink(real.toString(), link.toString()), 0)
+            @ExpectThrows(writeOwnedArtifacts(link.join("cjdoc-output").toString(),
                 [outputArtifact("docs.json", "blocked")], forceOwned: true))
-            @ExpectThrows(writeOwnedArtifacts(Path("/proc/cjdoc-missing/../self/cjdoc-output").toString(),
+            @ExpectThrows(writeOwnedArtifacts(parent.join("missing/../linked/cjdoc-output").toString(),
                 [outputArtifact("docs.json", "blocked")], forceOwned: true))
-        }
+            @Expect(Directory.isEmpty(real))
+        } finally { let _ = removeIfExists(parent, recursive: true) }
     }
 
     @TestCase

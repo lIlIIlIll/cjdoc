@@ -6,7 +6,6 @@ emitted HTML), never by recomputing a SymbolId or an alias filename.
 """
 from __future__ import annotations
 
-import re
 from pathlib import PurePosixPath
 from urllib.parse import quote, unquote, urljoin, urlsplit
 

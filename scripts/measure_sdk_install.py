@@ -15,14 +15,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import statistics
 import sys
 import tempfile
 import time
-import zipfile
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -33,7 +31,6 @@ from install_cangjie_sdk import (
     extract,
     sdk_root,
     stdx_root,
-    tree_sha256,
     validate_combined_cache,
     verify_sha256,
 )

@@ -8,11 +8,14 @@ import cjdoc.documentation.comments.isAdmonitionKind
 import cjdoc.source.Diagnostic
 import cjdoc.documentation.comments.{DocComment, LocalizedCommentItem}
 import cjdoc.model as public_model
+import cjdoc.model.{parameterMatchesSubject}
 import std.collection.*
 import std.fs.*
 
 private func localizedParameterExists(symbol: SymbolDoc, name: String): Bool {
-    for (parameter in symbol.parameters) { if (parameter.name == name) { return true } }
+    for (parameter in symbol.parameters) {
+        if (parameterMatchesSubject(symbol.kind, parameter.name, name)) { return true }
+    }
     false
 }
 

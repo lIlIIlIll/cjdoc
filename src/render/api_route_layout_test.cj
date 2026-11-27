@@ -1,0 +1,292 @@
+package cjdoc.render
+
+import cjdoc.render.html.{HtmlTypeLinkIndex, HtmlWriter, RenderProjection, TrustedHtml, renderSymbolPage}
+import cjdoc.render.publication.indexSymbols
+import cjdoc.render.routes.pageRootPrefix
+import cjdoc.model.*
+import std.collection.*
+import std.unittest.*
+import std.unittest.testmacro.*
+
+private let ROUTE_TEST_MODULE = "cjdoc:module:v1:api-route-layout"
+
+private func routeTestSource(offset: Int64): SourceRange {
+    SourceRange("src/api.cj", SourcePosition(offset + 1, 1, offset * 16),
+        SourcePosition(offset + 1, 2, offset * 16 + 1))
+}
+
+private func routeTestSymbol(kind: String, name: String, owner!: ?String = None,
+    parameters!: Array<ParameterDoc> = [], relationships!: Array<SymbolRelationship> = [],
+    offset!: Int64 = 0): SymbolDoc {
+    SymbolDoc("route:${kind}:${name}:${offset}", kind, name, "fixture." + name, "fixture",
+        ROUTE_TEST_MODULE, "public", routeTestSource(offset),
+        "public ${kind} ${name}", SemanticInfo("partial", "ast"), ownerId: owner,
+        parameters: parameters, symbolRelationships: relationships)
+}
+
+private func routeTestDocumentation(declarations: Array<SymbolDoc>): DocumentationSet {
+    let ids = ArrayList<String>()
+    for (symbol in declarations) { ids.add(symbol.id) }
+    DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("api-route-layout"),
+        ConfigurationSnapshot(audience: "external", lintProfile: "off"),
+        modules: [ModuleDoc(ROUTE_TEST_MODULE, "api-route-layout", "root", "",
+            packageNames: ["fixture"])],
+        packages: [PackageDoc("fixture", ROUTE_TEST_MODULE, sourceFiles: ["src/api.cj"],
+            symbolIds: ids.toArray())],
+        files: [FileDoc("src/api.cj", ROUTE_TEST_MODULE, "fixture")],
+        declarations: declarations)
+}
+
+private func routePaths(documentation: DocumentationSet): HashMap<String, String> {
+    let projection = RenderProjection(documentation, buildApiRoutes: true)
+    let result = HashMap<String, String>()
+    for (symbol in documentation.declarations) {
+        if (let Some(path) <- projection.apiRoutes.getOrThrow().filePath(symbol.id)) {
+            result[symbol.id] = path
+        }
+    }
+    result
+}
+
+// A type, one of its members, and a same-named extension family. The extension
+// target is a real resolved relationship, as the producer publishes it.
+private func routeTestCounter(withExtension: Bool, withExtraExtension: Bool,
+    withOverload: Bool): Array<SymbolDoc> {
+    let intType = TypeRef("primitive", "Int64", SemanticType("unavailable"))
+    let extensions = ArrayList<SymbolDoc>()
+    let backward = ArrayList<SymbolRelationship>()
+    if (withExtension) {
+        let first = routeTestSymbol("extend", "Counter", offset: 4)
+        extensions.add(first)
+        backward.add(SymbolRelationship("extendedBy", "Counter", "resolved",
+            targetSymbolId: Some(first.id)))
+        if (withExtraExtension) {
+            let second = routeTestSymbol("extend", "Counter", offset: 6)
+            extensions.add(second)
+            backward.add(SymbolRelationship("extendedBy", "Counter", "resolved",
+                targetSymbolId: Some(second.id)))
+        }
+    }
+    // The produced IR carries both directions; the type page finds its
+    // extension members through `extendedBy` on the type itself.
+    let counter = SymbolDoc("route:class:Counter:0", "class", "Counter", "fixture.Counter",
+        "fixture", ROUTE_TEST_MODULE, "public", routeTestSource(0), "public class Counter",
+        SemanticInfo("partial", "ast"), symbolRelationships: backward.toArray())
+    let result = ArrayList<SymbolDoc>([counter,
+        routeTestSymbol("function", "get", owner: Some(counter.id), offset: 1)])
+    result.add(routeTestSymbol("function", "set",
+        parameters: [ParameterDoc("value", intType)], offset: 2))
+    if (withOverload) {
+        result.add(routeTestSymbol("function", "set", parameters: [
+            ParameterDoc("value", intType), ParameterDoc("radix", intType)], offset: 3))
+    }
+    for (extension in extensions) {
+        let forward = SymbolRelationship("extensionTarget", "Counter", "resolved",
+            targetSymbolId: Some(counter.id))
+        let rebuilt = SymbolDoc(extension.id, extension.kind, extension.name,
+            extension.qualifiedName, extension.packageName, extension.moduleId,
+            extension.visibility, extension.source, extension.headerSpelling,
+            extension.semantic, symbolRelationships: [forward])
+        result.add(rebuilt)
+        result.add(routeTestSymbol("function",
+            if (rebuilt.id.endsWith(":4")) { "increment" } else { "decrement" },
+            owner: Some(rebuilt.id), offset: if (rebuilt.id.endsWith(":4")) { 5 } else { 7 }))
+    }
+    result.toArray()
+}
+
+private func headingLevels(html: String): Array<Int64> {
+    let levels = ArrayList<Int64>()
+    var index = 0
+    while (index + 2 < html.size) {
+        if (html[index] == b'<' && html[index + 1] == b'h' && html[index + 2] >= b'1' &&
+            html[index + 2] <= b'6') {
+            let next = if (index + 3 < html.size) { html[index + 3] } else { b'>' }
+            if (next == b'>' || next == b' ') {
+                levels.add(Int64(html[index + 2] - b'0'))
+            }
+        }
+        index++
+    }
+    levels.toArray()
+}
+
+// Exactly one h1 per page and never a level more than one below its predecessor.
+private func expectNoHeadingSkip(html: String): Unit {
+    let levels = headingLevels(html)
+    @Expect(levels[0], 1)
+    var previous: Int64 = 0
+    var h1Count: Int64 = 0
+    for (level in levels) {
+        @Expect(level <= previous + 1, true)
+        if (level == 1) { h1Count++ }
+        previous = level
+    }
+    @Expect(h1Count, 1)
+}
+
+@Test
+class ApiRouteLayoutTest {
+    // The frozen acceptance case: adding only an extension must not move any
+    // previously published page, including the type page and its members.
+    @TestCase
+    func addingAnExtensionPreservesEveryExistingRoute(): Unit {
+        let before = routePaths(routeTestDocumentation(routeTestCounter(false, false, false)))
+        let after = routePaths(routeTestDocumentation(routeTestCounter(true, true, false)))
+        @Expect(before.size > 0, true)
+        for ((id, path) in before) {
+            @Expect(after.get(id), Some(path))
+        }
+        @Expect(after.size, before.size + 4)
+    }
+
+    @TestCase
+    func typePageStaysCanonicalAndExtensionsOwnPredictableDirectories(): Unit {
+        let documentation = routeTestDocumentation(routeTestCounter(true, true, false))
+        let paths = routePaths(documentation)
+        let counter = documentation.declarations[0]
+        @Expect(paths[counter.id], "fixture/Counter/index.html")
+        let extension = documentation.declarations[3]
+        let second = documentation.declarations[5]
+        @Expect(paths[extension.id], "fixture/Counter/extensions/index.html")
+        @Expect(paths[second.id], "fixture/Counter/extensions/2/index.html")
+        for ((_, path) in paths) {
+            @Expect(path.contains("~"), false)
+        }
+        // Members of an extension live below that extension block.
+        let increment = documentation.declarations[4]
+        @Expect(paths[increment.id].startsWith("fixture/Counter/extensions/increment/"), true)
+    }
+
+    @TestCase
+    func typePageStillListsExtensionMembersAndLinksTheirPages(): Unit {
+        let documentation = routeTestDocumentation(routeTestCounter(true, false, false))
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        let counter = documentation.declarations[0]
+        let extensionMember = documentation.declarations[4]
+        let html = renderSymbolPage(documentation, projection, indexSymbols(documentation),
+            counter, HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+        @Expect(html.contains("data-member-name=\"increment\""), true)
+        @Expect(html.contains("data-member-origin=\"extension\""), true)
+        let expected = pageRootPrefix(projection.symbolFileHref(counter.id)) +
+            projection.symbolFileHref(extensionMember.id)
+        @Expect(html.contains("href=\"" + expected + "\""), true)
+    }
+
+    // Overloads use readable ordinal directories rather than opaque digests.
+    @TestCase
+    func overloadSignaturesUseReadableStableDirectories(): Unit {
+        let single = routeTestDocumentation(routeTestCounter(false, false, false))
+        let overloaded = routeTestDocumentation(routeTestCounter(false, false, true))
+        // A lone declaration keeps its bare member route.
+        @Expect(routePaths(single)[single.declarations[2].id], "fixture/set/index.html")
+        let overloadedPaths = routePaths(overloaded)
+        let setInt = overloaded.declarations[2]
+        let setOverload = overloaded.declarations[3]
+        @Expect(overloadedPaths[setInt.id], "fixture/set/signature-1/index.html")
+        @Expect(overloadedPaths[setOverload.id], "fixture/set/signature-2/index.html")
+        // Reversed input order and an added extension both leave them in place.
+        let symbols = routeTestCounter(false, false, true)
+        let reversed = routePaths(routeTestDocumentation(
+            [symbols[3], symbols[2], symbols[0], symbols[1]]))
+        let extended = routePaths(routeTestDocumentation(routeTestCounter(true, false, true)))
+        for ((id, path) in overloadedPaths) {
+            @Expect(reversed.get(id), Some(path))
+            @Expect(extended.get(id), Some(path))
+        }
+    }
+}
+
+@Test
+class SymbolPageHeadingTiersTest {
+    private func standaloneFunctionPage(comment: DocComment): String {
+        let symbol = SymbolDoc("heading:function:greet", "function", "greet", "fixture.greet",
+            "fixture", ROUTE_TEST_MODULE, "public", routeTestSource(0),
+            "public func greet(): Unit", SemanticInfo("partial", "ast"),
+            documentation: Some(comment))
+        let documentation = routeTestDocumentation([symbol])
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        renderSymbolPage(documentation, projection, indexSymbols(documentation), symbol,
+            HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+    }
+
+    @TestCase
+    func standalonePagesNeverSkipTheFirstSectionLevel(): Unit {
+        // `## Details` is authored Markdown; `@return` and `@see` add structured
+        // sections that previously started at h3 directly below the page h1.
+        let tree = MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Greets.")]),
+            MarkdownNode("heading", MarkdownNodeMetadata.forHeading(2),
+                children: [MarkdownNode("text", literal: "Details")])
+        ])
+        let comment = DocComment("raw", "Greets.", "", tree, tags: [
+            DocTag("return", "", "Nothing"),
+            DocTag("see", "fixture.other", "")
+        ])
+        let html = standaloneFunctionPage(comment)
+        expectNoHeadingSkip(html)
+        @Expect(headingLevels(html).size > 2, true)
+    }
+
+    @TestCase
+    func classAndMemberPagesShareTheSameSectionSemantics(): Unit {
+        let documentation = routeTestDocumentation(routeTestCounter(true, false, false))
+        let projection = RenderProjection(documentation, buildApiRoutes: true)
+        for (symbol in documentation.declarations) {
+            let html = renderSymbolPage(documentation, projection, indexSymbols(documentation),
+                symbol, HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+            expectNoHeadingSkip(html)
+        }
+    }
+
+    @TestCase
+    func aliasPagesCarryExactlyOnePageHeading(): Unit {
+        let documentation = routeTestDocumentation(routeTestCounter(false, false, false))
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        var aliases: Int64 = 0
+        for (artifact in artifacts where artifact.content.contains("data-cjdoc-route=\"symbol-alias\"")) {
+            aliases++
+            let levels = headingLevels(artifact.content)
+            @Expect(levels.size, 1)
+            @Expect(levels[0], 1)
+        }
+        @Expect(aliases > 0, true)
+    }
+
+    @TestCase
+    func writerClampsSkippedHeadingsInPagesAndSplicedFragments(): Unit {
+        let w = HtmlWriter()
+        w.doctype()
+        w.open("html")
+        w.open("body")
+        w.textElement("h1", "T")
+        w.textElement("h3", "Skipped")
+        w.textElement("h4", "Nested")
+        w.textElement("h2", "Back")
+        w.close("body")
+        w.close("html")
+        let page = w.toString()
+        @Expect(page.contains("<h1>T</h1>"), true)
+        @Expect(page.contains("<h2>Skipped</h2>"), true)
+        @Expect(page.contains("<h3>Nested</h3>"), true)
+        @Expect(page.contains("<h2>Back</h2>"), true)
+
+        let fragment = TrustedHtml.capture({ captured =>
+            captured.textElement("h3", "Captured")
+            captured.textElement("h2", "Parent")
+        })
+        let spliced = HtmlWriter()
+        spliced.doctype()
+        spliced.open("html")
+        spliced.open("body")
+        spliced.textElement("h1", "T")
+        spliced.trusted(fragment)
+        spliced.close("body")
+        spliced.close("html")
+        let html = spliced.toString()
+        @Expect(html.contains("<h2>Captured</h2>"), true)
+        @Expect(html.contains("<h2>Parent</h2>"), true)
+        // A fragment writer is not a page and never rewrites by itself.
+        @Expect(fragment.value.contains("<h3>Captured</h3>"), true)
+    }
+}

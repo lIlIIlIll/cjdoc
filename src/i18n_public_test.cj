@@ -29,7 +29,7 @@ internal func i18nTestGenerate(project: Path): api_model.DocumentationSet {
 }
 
 private func i18nTestPreflight(): ?String {
-    Some(getVariable("CJDOC_I18N_BINARY").getOrDefault({ => "target/release/bin/main" }))
+    Some(getVariable("CJDOC_I18N_BINARY").getOrDefault({ => nativeTestBinary() }))
 }
 
 private func i18nMarkdownText(node: api_model.MarkdownNode): String {

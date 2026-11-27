@@ -284,8 +284,9 @@ class HtmlOverloadContractLayoutTest {
         let intPath = paths[intAdd.id]
         let stringPath = paths[stringAdd.id]
         @Expect(intPath != stringPath, true)
-        @Expect(intPath.startsWith("fixture/add/~"), true)
-        @Expect(stringPath.startsWith("fixture/add/~"), true)
+        // Overload signatures are readable directories, not opaque digests.
+        @Expect(intPath, "fixture/add/signature-1/index.html")
+        @Expect(stringPath, "fixture/add/signature-2/index.html")
         var choiceFile = ""
         var choiceSymbols = 0
         for (choice in projection.apiRoutes.getOrThrow().selectionPages where

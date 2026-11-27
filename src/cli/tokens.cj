@@ -201,23 +201,42 @@ private func parseCollectionOption(options: NewCliOptions, args: Array<String>, 
 }
 
 
+// Conversion accepts non-decimal prefixes; command-line quantities do not.
+private func isCliDecimal(raw: String): Bool {
+    if (raw.isEmpty()) { return false }
+    let start = if (raw[0] == b'+' || raw[0] == b'-') { 1 } else { 0 }
+    if (start == raw.size) { return false }
+    for (index in start..raw.size) {
+        if (raw[index] < b'0' || raw[index] > b'9') { return false }
+    }
+    true
+}
+
+private func parseCliInt(option: String, raw: String): Int64 {
+    if (isCliDecimal(raw)) {
+        if (let Some(value) <- Int64.tryParse(raw)) { return value }
+    }
+    throw IllegalArgumentException("${option} must be an integer")
+}
+
 private func parseNumericOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
         case "--max-doc-ir-mib" =>
-            let value = Int64.parse(requireCliValue(args, index, "--max-doc-ir-mib"))
+            let value = parseCliInt("--max-doc-ir-mib", requireCliValue(args, index, "--max-doc-ir-mib"))
             let _ = docIrLimitBytes(value)
             options.maxDocIrMiB = Some(value)
             Some(index + 2)
         case "--min-symbol-coverage" =>
             options.minSymbolCoverage = Some(
-                Int64.parse(requireCliValue(args, index, "--min-symbol-coverage")))
+                parseCliInt("--min-symbol-coverage", requireCliValue(args, index, "--min-symbol-coverage")))
             Some(index + 2)
         case "--min-parameter-coverage" =>
             options.minParameterCoverage = Some(
-                Int64.parse(requireCliValue(args, index, "--min-parameter-coverage")))
+                parseCliInt("--min-parameter-coverage",
+                    requireCliValue(args, index, "--min-parameter-coverage")))
             Some(index + 2)
         case "--jobs" =>
-            options.jobs = Int64.parse(requireCliValue(args, index, "--jobs"))
+            options.jobs = parseCliInt("--jobs", requireCliValue(args, index, "--jobs"))
             options.jobsExplicit = true
             Some(index + 2)
         case "--port" =>

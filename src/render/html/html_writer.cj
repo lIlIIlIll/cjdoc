@@ -124,16 +124,26 @@ protected func htmlSrc(url: SafeUrl): HtmlAttr { HtmlAttr.UrlValue("src", url) }
  */
 protected struct TrustedHtml {
     protected let value: String
+    // Recorded at capture, so a heading-free fragment is never scanned again.
+    protected let hasHeadings: Bool
 
-    private init(value: String) { this.value = value }
+    private init(value: String, hasHeadings: Bool) {
+        this.value = value
+        this.hasHeadings = hasHeadings
+    }
 
     protected static func capture(body: (HtmlWriter) -> Unit, apiRoutes!: ?ApiHtmlRoutes = None,
         unprefixedApiLocale!: String = ""): TrustedHtml {
         let writer = HtmlWriter(apiRoutes: apiRoutes, unprefixedApiLocale: unprefixedApiLocale)
         body(writer)
-        TrustedHtml(writer.toString())
+        TrustedHtml(writer.toString(), writer.hasHeadings)
     }
 }
+
+// Heading tag names for the six valid levels, indexed by level - 1.
+private let HEADING_TAGS: Array<String> = ["h1", "h2", "h3", "h4", "h5", "h6"]
+private let CLOSING_HEADING_TAGS: Array<String> = ["</h1>", "</h2>", "</h3>", "</h4>",
+    "</h5>", "</h6>"]
 
 private let HTML_VOID_ELEMENTS: Array<String> = ["area", "base", "br", "col", "hr", "img",
     "input", "link", "meta", "source", "track", "wbr"]
@@ -178,7 +188,18 @@ private func validHtmlAttributeName(name: String): Bool {
  */
 protected class HtmlWriter {
     private let out: RenderTextBuffer
-    private let openElements = ArrayList<String>()
+    // Each open element as (expected tag, emitted tag). They differ only for a
+    // heading whose level was normalized, so the close tag follows what was
+    // written while the caller still closes the tag it opened.
+    private let openElements = ArrayList<(String, String)>()
+    // Page documents (created after `doctype`) normalize their heading stream;
+    // captured fragments do not, and are normalized when they are spliced into
+    // a page that does.
+    private var trackHeadings = false
+    private var previousHeadingLevel: Int64 = 0
+    // Set when this writer emits a heading tag, so a captured fragment knows
+    // whether splicing it needs the heading pass at all.
+    private var emittedHeadings = false
     let apiRoutes: ?ApiHtmlRoutes
     let unprefixedApiLocale: String
 
@@ -192,6 +213,7 @@ protected class HtmlWriter {
     func doctype(): Unit {
         if (out.size != 0) { throw IllegalStateException("doctype must start the document") }
         out.append("<!doctype html>\n")
+        trackHeadings = true
     }
 
     protected func open(tag: String, attrs!: Array<HtmlAttr> = []): Unit {
@@ -199,17 +221,21 @@ protected class HtmlWriter {
         if (HTML_VOID_ELEMENTS.contains(tag)) {
             throw IllegalArgumentException("void element <${tag}> has no closing tag")
         }
-        appendStartTag(tag, attrs)
-        openElements.add(tag)
+        let level = headingLevel(tag)
+        if (level > 0) { emittedHeadings = true }
+        let emitted = if (trackHeadings && level > 0) { normalizeHeading(level) } else { tag }
+        appendStartTag(emitted, attrs)
+        openElements.add((tag, emitted))
     }
 
     protected func close(tag: String): Unit {
-        if (openElements.isEmpty() || openElements[openElements.size - 1] != tag) {
+        if (openElements.isEmpty() || topElementExpected() != tag) {
             throw IllegalStateException("mismatched closing tag </${tag}>")
         }
+        let emitted = topElementEmitted()
         openElements.remove(at: openElements.size - 1)
         out.append("</")
-        out.append(tag)
+        out.append(emitted)
         out.append(">")
     }
 
@@ -235,17 +261,25 @@ protected class HtmlWriter {
     }
 
     protected func text(value: String): Unit {
-        if (!openElements.isEmpty() && openElements[openElements.size - 1] == "script") {
+        if (topElementIsScript()) {
             throw IllegalStateException("script elements only load same-origin files")
         }
         appendHtmlEscapedValue(out, value)
     }
 
     func trusted(fragment: TrustedHtml): Unit {
-        if (!openElements.isEmpty() && openElements[openElements.size - 1] == "script") {
+        if (topElementIsScript()) {
             throw IllegalStateException("script elements only load same-origin files")
         }
-        out.append(fragment.value)
+        // Most captured fragments carry no heading at all (badges, rows,
+        // actions). They are spliced as-is; only a fragment that really emits a
+        // heading is rebuilt.
+        if (fragment.hasHeadings) { emittedHeadings = true }
+        if (trackHeadings && fragment.hasHeadings) {
+            appendFragmentHeadings(fragment.value)
+        } else {
+            out.append(fragment.value)
+        }
     }
 
     func newline(): Unit { out.append("\n") }
@@ -261,18 +295,115 @@ protected class HtmlWriter {
 
     prop size: Int64 { get() { out.size } }
 
+    protected prop hasHeadings: Bool { get() { emittedHeadings } }
+
     protected func toString(): String {
         if (!openElements.isEmpty()) {
-            throw IllegalStateException("unclosed element <${openElements[openElements.size - 1]}>")
+            throw IllegalStateException("unclosed element <${topElementExpected()}>")
         }
         out.toString()
+    }
+
+    private func topElementExpected(): String {
+        let (expected, _) = openElements[openElements.size - 1]
+        expected
+    }
+
+    private func topElementEmitted(): String {
+        let (_, emitted) = openElements[openElements.size - 1]
+        emitted
+    }
+
+    private func topElementIsScript(): Bool {
+        !openElements.isEmpty() && topElementExpected() == "script"
+    }
+
+    private func headingLevel(tag: String): Int64 {
+        if (tag.size != 2 || tag[0] != b'h') { return 0 }
+        let digit = tag[1]
+        if (digit < b'1' || digit > b'6') { return 0 }
+        Int64(digit - b'0')
+    }
+
+    // A page owns exactly one h1 and may descend one heading level at a time.
+    // Headings are clamped, never renamed, so their text and anchors survive.
+    private func clampedHeadingLevel(level: Int64): Int64 {
+        if (level == 0) { return 0 }
+        if (previousHeadingLevel == 0) {
+            return if (level == 1) { 1 } else { 2 }
+        }
+        if (level == 1 || level > previousHeadingLevel + 1) {
+            return min(6, previousHeadingLevel + 1)
+        }
+        level
+    }
+
+    private func normalizeHeading(level: Int64): String {
+        let normalized = clampedHeadingLevel(level)
+        previousHeadingLevel = normalized
+        HEADING_TAGS[normalized - 1]
+    }
+
+    // A captured fragment is escaped and balanced by this writer already.
+    // Copy only runs around real changes, slicing at ASCII tag boundaries so
+    // a multibyte character is never split. The page and fragment share a rank.
+    private func appendFragmentHeadings(value: String): Unit {
+        let levels = ArrayList<Int64>()
+        var pendingStart: Int64 = 0
+        var index: Int64 = 0
+        while (index < value.size) {
+            if (value[index] != b'<') {
+                index++
+                continue
+            }
+            if (isFragmentHeadingStart(value, index)) {
+                let original = Int64(value[index + 2] - b'0')
+                previousHeadingLevel = clampedHeadingLevel(original)
+                levels.add(previousHeadingLevel)
+                if (original != previousHeadingLevel) {
+                    out.append(value[pendingStart..index])
+                    out.append("<")
+                    out.append(HEADING_TAGS[previousHeadingLevel - 1])
+                    pendingStart = index + 3
+                }
+                index += 3
+                continue
+            }
+            if (isFragmentHeadingEnd(value, index) && !levels.isEmpty()) {
+                let level = levels[levels.size - 1]
+                levels.remove(at: levels.size - 1)
+                if (level != Int64(value[index + 3] - b'0')) {
+                    out.append(value[pendingStart..index])
+                    out.append(CLOSING_HEADING_TAGS[level - 1])
+                    pendingStart = index + 5
+                }
+                index += 5
+                continue
+            }
+            index++
+        }
+        out.append(if (pendingStart == 0) { value } else { value[pendingStart..] })
+    }
+
+    private func isFragmentHeadingStart(value: String, index: Int64): Bool {
+        if (index + 3 >= value.size) { return false }
+        if (value[index + 1] != b'h' || value[index + 2] < b'1' || value[index + 2] > b'6') {
+            return false
+        }
+        value[index + 3] == b'>' || value[index + 3] == b' '
+    }
+
+    private func isFragmentHeadingEnd(value: String, index: Int64): Bool {
+        if (index + 4 >= value.size) { return false }
+        value[index + 1] == b'/' && value[index + 2] == b'h' &&
+            value[index + 3] >= b'1' && value[index + 3] <= b'6' && value[index + 4] == b'>'
     }
 
     private func validateElement(tag: String): Unit {
         if (!validHtmlTagName(tag) || HTML_FORBIDDEN_ELEMENTS.contains(tag)) {
             throw IllegalArgumentException("element <${tag}> is not allowed")
         }
-        if (!openElements.isEmpty() && openElements[openElements.size - 1] == "script") {
+        if (topElementIsScript()) {
             throw IllegalStateException("script elements only load same-origin files")
         }
     }

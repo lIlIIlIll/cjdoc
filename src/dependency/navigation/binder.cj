@@ -36,6 +36,22 @@ private func dependencyQualifiedName(symbol: link_model.SymbolDoc): String {
     symbol.packageName + "." + symbol.qualifiedName
 }
 
+private func appendInvalidInventoryHrefDiagnostics(resolver: ExternalDocResolver,
+    diagnostics: ArrayList<link_model.Diagnostic>): Unit {
+    if (resolver.invalidHrefCount == 0) { return }
+    let index = externalDiagnosticIndexLabel(resolver)
+    for (name in resolver.invalidHrefRecords) {
+        if (diagnostics.size >= 4096) { return }
+        diagnostics.add(link_model.Diagnostic("warning", "CJDOC2313",
+            "external documentation index '${index}': invalid href for record '${name}'"))
+    }
+    let remaining = resolver.invalidHrefCount - resolver.invalidHrefRecords.size
+    if (remaining > 0 && diagnostics.size < 4096) {
+        diagnostics.add(link_model.Diagnostic("warning", "CJDOC2313",
+            "external documentation index '${index}': ${remaining} additional invalid href records"))
+    }
+}
+
 internal class DependencyNavigationBinder {
     let documentation: link_model.DocumentationSet
     let inputs: DependencyNavigationInputs
@@ -102,11 +118,12 @@ internal class DependencyNavigationBinder {
             }
         }
         let seenDocumentSets = HashSet<String>()
-        for (resolver in resolvers where resolver.state != "available") {
-            if (diagnostics.size < 4096) {
+        for (resolver in resolvers) {
+            if (resolver.state != "available" && diagnostics.size < 4096) {
                 diagnostics.add(link_model.Diagnostic("warning", "CJDOC2312",
                     "documentation source: " + resolver.reason))
             }
+            appendInvalidInventoryHrefDiagnostics(resolver, diagnostics)
         }
         var count: Int64 = 0
         for (resolver in resolvers where resolver.state == "available") {

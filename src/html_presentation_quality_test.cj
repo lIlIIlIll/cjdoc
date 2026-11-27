@@ -9,7 +9,7 @@ class HtmlPresentationQualityTest {
     @TestCase
     func qualityWarningsRemainSeparateFromPresenceCoverage(): Unit {
         let documentation = DocumentationEngine().generate(
-            GenerationRequest("tests/fixtures/projects/documentation_quality",
+            GenerationRequest(nativeFixturePath("tests/fixtures/projects/documentation_quality"),
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
         @Expect(publicHasDiagnostic(documentation, "CJDOC3047"))
         @Expect(publicHasDiagnostic(documentation, "CJDOC3048"))
@@ -23,7 +23,7 @@ class HtmlPresentationQualityTest {
         @Expect(quality.contains("\"meaningful\": 1"))
         @Expect(!quality.contains("hidden"))
         let off = DocumentationEngine().generate(
-            GenerationRequest("tests/fixtures/projects/documentation_quality", lintProfile: "off",
+            GenerationRequest(nativeFixturePath("tests/fixtures/projects/documentation_quality"), lintProfile: "off",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
         @Expect(!publicHasDiagnostic(off, "CJDOC3047"))
         @Expect(!publicHasDiagnostic(off, "CJDOC3048"))
@@ -33,7 +33,7 @@ class HtmlPresentationQualityTest {
     @TestCase
     func htmlOffersGroupsWithoutExposingDeclarationDiagnostics(): Unit {
         let documentation = DocumentationEngine().generate(
-            GenerationRequest("tests/fixtures/projects/documentation_quality",
+            GenerationRequest(nativeFixturePath("tests/fixtures/projects/documentation_quality"),
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
         let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
         let index = artifactContent(artifacts, "html/index.html")
@@ -56,7 +56,7 @@ class HtmlPresentationQualityTest {
     @TestCase
     func reexportsRemainAvailableWithoutDominatingThePackage(): Unit {
         let documentation = DocumentationEngine().generate(GenerationRequest(
-            "tests/fixtures/projects/reexports", includePathDependencies: true,
+            nativeFixturePath("tests/fixtures/projects/reexports"), includePathDependencies: true,
             astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
         var rootParseFailure = ""
         for (diagnostic in documentation.diagnostics) {

@@ -333,17 +333,15 @@ class DependencyNavigationRenderTest {
     func unsafeNavigationNeverProducesClickableDestinations(): Unit {
         for (url in ["javascript:alert(1)", "//example.test/Token.html", "../Token.html", "file:///Token.html",
             "https://docs.example.test/Token.html\" onclick=\"alert(1)", "dependencies/%2e%2e/Token.html"]) {
-            try {
-                let document = navigationRenderDocument(navigationRenderType(url))
-                let html = navigationRenderPage(HtmlDocumentationRenderer().render(document)).content
-                let signature = html.split("class=\"cj-signature\"", 2)[1].split("</pre>", 2)[0]
-                @Expect(!signature.contains("cj-type-link"))
-                @Expect(!signature.contains("onclick="))
-                let markdown = navigationRenderMarkdown(MarkdownDocumentationRenderer().render(document))
-                @Expect(!markdown.contains("[`Token`]("))
-            } catch (_: IllegalArgumentException) {
-                // Strict imported-IR validation may reject the unsafe fact before rendering.
+            let document = navigationRenderDocument(navigationRenderType(url))
+            let rejected = try {
+                let _ = HtmlDocumentationRenderer().render(document)
+                ""
+            } catch (error: IllegalArgumentException) {
+                error.message
             }
+            @Expect(rejected.startsWith("invalid Doc IR domain at $.declarations["))
+            @Expect(rejected.endsWith(".url: unsafe navigation URL"))
         }
     }
 }

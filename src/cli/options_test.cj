@@ -75,3 +75,34 @@ class CliOptionsTest {
         @ExpectThrows[IllegalArgumentException](parseNewCli(["render", "--semantic", "chir"]))
     }
 }
+
+private func numericError(args: Array<String>): String {
+    var message = ""
+    try {
+        let _ = parseNewCli(args)
+    } catch (error: IllegalArgumentException) {
+        message = error.message
+    }
+    message
+}
+
+@Test
+class CliNumericOptionTest {
+    @TestCase
+    func numericOptionsRejectNonIntegersByName(): Unit {
+        for (option in ["--jobs", "--max-doc-ir-mib", "--min-symbol-coverage",
+            "--min-parameter-coverage"]) {
+            for (value in ["abc", "1.5", "", "0x10"]) {
+                let message = numericError(["check", option, value])
+                @Expect(message, "${option} must be an integer")
+                @Expect(message.contains("convert failed"), false)
+            }
+        }
+        // Range failures keep their existing messages.
+        @Expect(numericError(["check", "--jobs", "0"]), "--jobs must be in 1..64")
+        @Expect(numericError(["check", "--max-doc-ir-mib", "65"]), "max-doc-ir-mib must be in 1..64")
+        @Expect(numericError(["check", "--min-symbol-coverage", "101"]),
+            "coverage thresholds must be in 0..100")
+        @Expect(numericError(["serve", "--port", "abc"]), "--port must be an integer in 0..65535")
+    }
+}

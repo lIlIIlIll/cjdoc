@@ -5,8 +5,10 @@ import hashlib
 
 from urllib.parse import unquote, urljoin, urlsplit
 
-from .browser_support import Journey, click_and_return, copy_code, require_text, assert_native_symbol, assert_native_id, directory_navigation, member_action
-from .browser_support import same_declaration_url
+from .browser_support import (
+    Journey, assert_native_id, assert_native_symbol, copy_code, directory_navigation, member_action,
+    require_text, same_declaration_url,
+)
 from .site import load_json, load_navigation_index
 
 
@@ -282,7 +284,6 @@ def external(journey: Journey):
             raise AssertionError("independent dependency reference is missing: " + name)
         journey.click(exact)
         assert_native_symbol(journey, name)
-        from playwright.sync_api import expect
         expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", "support-v1")
         journey.back(original)
     journey.assertions.append("local Stamp and independent support-v1 SourceLabel/type-member links retain their scopes and versions")

@@ -3,41 +3,16 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import py_compile
-import shutil
 import subprocess
-import sys
-import tarfile
 import tempfile
 import unittest
 from unittest import mock
-import zipfile
 
-from scripts import package_release
-from scripts import perf_gate
 from scripts.repository_inputs import codec as repository_input_codec
-from scripts import real_repository_smoke
-from scripts import safe_output_root
-from scripts import source_identity
-from scripts import strict_json
 from scripts import verify_release
-from scripts import verify_release_package
-from scripts import verify_remote_tag
 from scripts import verify_repository_inputs
-from scripts import worktree_identity
-from scripts.release_tools_test_support import (
-    MARKDOWN_COMMIT,
-    PROJECT_ROOT,
-    ReleaseToolsTestSupport,
-    SDK_SHA256,
-    YJSON_COMMIT,
-)
-from scripts.verify_repository_inputs import (
-    CURRENT_GOLDEN_VERSION,
-    GOLDEN_NAMES,
-    SCHEMA_CONTRACTS,
-    SCHEMA_NAMES,
-)
+from scripts.release_tools_test_support import PROJECT_ROOT, ReleaseToolsTestSupport
+from scripts.repository_inputs.contracts import CURRENT_GOLDEN_VERSION, SCHEMA_CONTRACTS, SCHEMA_NAMES
 
 class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
     def test_temporary_release_repository_disables_background_maintenance(self) -> None:

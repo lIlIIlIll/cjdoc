@@ -105,7 +105,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             "<!doctype html><html><head>"
             f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'
             "</head><body data-cjdoc-route=\"overview\" data-cjdoc-page=\"home\">"
-            '<main id="top"><a href="#top">top</a></main>'
+            '<main id="top"><h1>Fixture</h1><a href="#top">top</a></main>'
             '<header class="cj-header">'
             '<button type="button" data-cjdoc-search-trigger data-cjdoc-root-prefix=""'
             ' aria-haspopup="dialog" aria-expanded="false" hidden></button>'
@@ -294,7 +294,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             + '<script defer src="../../search.js"></script></head>'
             + '<body data-cjdoc-route="api" data-cjdoc-page="package"'
             f' data-cjdoc-page-id="{identity}">' + shell
-            + '<main id="cjdoc-main">' + table + '</main></body></html>',
+            + '<main id="cjdoc-main"><h1>Package example</h1>' + table + '</main></body></html>',
             encoding="utf-8", newline="\n",
         )
         alias = root / "packages" / "package-fixture.html"
@@ -310,7 +310,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             + '<script defer src="../search.js"></script></head>'
             + '<body data-cjdoc-route="package-alias" data-cjdoc-page="package"'
             f' data-cjdoc-package-alias-for="{identity}">' + alias_shell
-            + '<main id="cjdoc-main">'
+            + '<main id="cjdoc-main"><h1>Package example</h1>'
             + '<p><a data-cjdoc-alias-target href="fixture/index.html">Canonical</a></p>'
             + table.replace('href="../../', 'href="../').replace('src="../../', 'src="../')
             + '</main></body></html>',
@@ -472,6 +472,47 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             result = self.validate(root)
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_rejects_local_paths_and_identifies_the_page(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = root / "Fixture/example/index.html"
+            original = page.read_text(encoding="utf-8")
+            for path in ("/home/example/cjdoc", "/tmp/cjdoc", "/Users/example/cjdoc",
+                         r"C:\Users\runneradmin\cjdoc", "d:/users/EXAMPL~1/cjdoc"):
+                with self.subTest(path=path):
+                    page.write_text(original.replace("</main>", f"<p>{path}</p></main>"), encoding="utf-8")
+                    result = self.validate(root)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("absolute filesystem path leaked", result.stderr)
+                    self.assertIn(str(page.relative_to(root)), result.stderr)
+            unrelated = r"C:\assets\image.png, \\example.test\share, or https://example.test/d:/users/"
+            page.write_text(original.replace("</main>", f"<p>{unrelated}</p></main>"), encoding="utf-8")
+            result = self.validate(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_enforces_page_heading_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            page = root / "index.html"
+            original = page.read_text(encoding="utf-8")
+            valid = "<h1>Fixture</h1><h2>Section</h2><h3>Detail</h3><h2>Next section</h2>"
+            page.write_text(original.replace("<h1>Fixture</h1>", valid), encoding="utf-8")
+            result = self.validate(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for headings, diagnostic in (
+                ("", "expected exactly one h1, found 0"),
+                ("<h1>Fixture</h1><h1>Second title</h1>", "expected exactly one h1, found 2"),
+                ("<h1>Fixture</h1><h3>Detail</h3>", "heading level skips from h1 to h3"),
+                ("<h2>Section</h2><h1>Fixture</h1>", "heading level skips from page start to h2"),
+            ):
+                with self.subTest(headings=headings):
+                    page.write_text(original.replace("<h1>Fixture</h1>", headings), encoding="utf-8")
+                    result = self.validate(root)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(f"index.html: {diagnostic}", result.stderr)
+
 
     def test_accepts_classification_with_nullable_group_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -524,6 +565,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             alias.write_text(
                 f'<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="{CSP}">'
                 '</head><body data-cjdoc-route="symbol-alias">'
+                '<h1>API</h1>'
                 '<a data-cjdoc-alias-target href="Fixture/example/index.html">API</a>'
                 '<script src="symbol-alias.js" defer></script></body></html>', encoding="utf-8")
             self.assertEqual(self.validate(root).returncode, 0)

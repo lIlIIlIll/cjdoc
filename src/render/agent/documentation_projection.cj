@@ -2,7 +2,7 @@ protected package cjdoc.render.agent
 
 import cjdoc.render.publication.appendSourceReferenceEvidenceMarkdown
 import cjdoc.render.reading.{
-    findTag, genericTypeDisplaySpelling, isUnitType, readerRelationshipLabel, trimExampleBlankLines}
+    genericTypeDisplaySpelling, isUnitType, readerRelationshipLabel, trimExampleBlankLines}
 import cjdoc.render.markdown.{
     appendDocumentationListTagMarkdown, appendDocumentationMarkdown, appendDocumentationTagMarkdown,
     appendTagSubjectMarkdown, appendTypeRefMarkdown, markdownCanonicalSymbolDestination,
@@ -102,7 +102,7 @@ protected class DeclarationMarkdownProjection {
                 appendDocumentationMarkdown(out, comment, assetLookup(pagePath), locale: locale,
                     pagePath: pagePath, symbolIndex: Some(symbolIndex), canonicalHtml: projection.apiRoutes,
                     sections: Some(sections), headingPrefix: "##", headingBase: 3,
-                    headingAnchorPrefix: symbolAnchor(symbol))
+                    headingAnchorPrefix: symbolAnchor(symbol), payloadKind: symbol.kind)
             case None => if (sections.contains("description")) {
                 // The Doc IR has no comment at all. Keep that fact visible
                 // instead of presenting an undocumented declaration as complete.
@@ -172,7 +172,7 @@ protected class DeclarationMarkdownProjection {
             if (hasParameterTag) {
                 out.append("## ${label(locale, "Parameters", "参数")}\n\n")
                 appendTagParameters(out, comment.getOrThrow(), pagePath, documentedSubjects,
-                    "${symbolAnchor(symbol)}--parameter-tags")
+                    "${symbolAnchor(symbol)}--parameter-tags", symbol.kind)
                 out.append("\n")
             }
             return
@@ -182,7 +182,7 @@ protected class DeclarationMarkdownProjection {
         for (parameterIndex in 0..symbol.parameters.size) {
             let parameter = symbol.parameters[parameterIndex]
             out.append("- ")
-            appendMarkdownCodeSpan(out, parameter.name)
+            appendMarkdownCodeSpan(out, parameterDisplayName(symbol.kind, parameter.name))
             out.append(": ")
             appendTypeRefMarkdown(out, parameter.typeRef, pagePath, symbolIndex,
                 canonicalHtml: projection.apiRoutes)
@@ -191,12 +191,12 @@ protected class DeclarationMarkdownProjection {
                 appendMarkdownCodeSpan(out, defaultExpression)
             }
             let tag: ?DocTag = match (comment) {
-                case Some(value) => findTag(value, "param", subject: Some(parameter.name))
+                case Some(value) => findParameterTag(symbol.kind, value.tags, parameter.name)
                 case None => None
             }
             match (tag) {
                 case Some(value) =>
-                    let _ = documentedSubjects.add(parameter.name)
+                    let _ = documentedSubjects.add(parameterSubjectDisplay(symbol.kind, value.subject))
                     out.append(" — ")
                     appendDocumentationListTagMarkdown(out, value, assetLookup(pagePath), locale,
                         pagePath, Some(symbolIndex), canonicalHtml: projection.apiRoutes,
@@ -209,7 +209,7 @@ protected class DeclarationMarkdownProjection {
         }
         if (let Some(value) <- comment) {
             appendTagParameters(out, value, pagePath, documentedSubjects,
-                "${symbolAnchor(symbol)}--parameter-tags")
+                "${symbolAnchor(symbol)}--parameter-tags", symbol.kind)
         }
         out.append("\n")
     }
@@ -217,13 +217,15 @@ protected class DeclarationMarkdownProjection {
     // Authored @param text for names the structured model did not contain is
     // still an author fact and must not disappear from the reference.
     private func appendTagParameters(out: RenderTextBuffer, comment: DocComment,
-        pagePath: String, documentedSubjects: HashSet<String>, headingAnchorPrefix: String): Unit {
+        pagePath: String, documentedSubjects: HashSet<String>, headingAnchorPrefix: String,
+        kind: String): Unit {
         for (tagIndex in 0..comment.tags.size) {
             let tag = comment.tags[tagIndex]
-            if (tag.name != "param" || documentedSubjects.contains(tag.subject)) { continue }
-            let _ = documentedSubjects.add(tag.subject)
+            if (tag.name != "param") { continue }
+            let subject = parameterSubjectDisplay(kind, tag.subject)
+            if (!documentedSubjects.add(subject)) { continue }
             out.append("- ")
-            appendMarkdownCodeSpan(out, tag.subject)
+            appendMarkdownCodeSpan(out, subject)
             out.append(" — ")
             appendDocumentationListTagMarkdown(out, tag, assetLookup(pagePath), locale, pagePath,
                 Some(symbolIndex), canonicalHtml: projection.apiRoutes,

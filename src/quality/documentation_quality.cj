@@ -1,6 +1,7 @@
 package cjdoc.quality
 
 import cjdoc.model.*
+import cjdoc.documentation.DocumentationQualityConfig
 import std.collection.*
 
 // Deliberately conservative: punctuation and inline code do not add API meaning.
@@ -43,22 +44,29 @@ private func repeats(value: String, name: String, prefixes: Array<String>): Bool
 
 /** Conservative placeholder findings for one declaration; these rules do not assess correctness. */
 public func documentationQualityDiagnostics(symbol: SymbolDoc, projectName: String): Array<Diagnostic> {
+    configuredQualityDiagnostics(symbol, projectName, None<DocumentationQualityConfig>)
+}
+
+// Generation-time callers pass the project `[lint]` policy so these rules honour
+// `severity`, per-rule overrides and `off` exactly like the other quality rules.
+protected func configuredQualityDiagnostics(symbol: SymbolDoc, projectName: String,
+    config: ?DocumentationQualityConfig): Array<Diagnostic> {
     let findings = ArrayList<Diagnostic>()
     match (symbol.documentation) {
         case Some(comment) =>
             if (repeats(summaryText(comment), symbol.name,
                 ["API", "公开 API", "${projectName} 公开 API", "${projectName} API"])) {
-                findings.add(Diagnostic("warning", "CJDOC3047",
+                addFinding(findings, "trivial-summary", "CJDOC3047",
                     "trivial-summary: description repeats declaration '${symbol.name}'",
-                    source: Some(symbol.source), symbolId: Some(symbol.id)))
+                    symbol, config)
             }
             for (tag in comment.tags) {
                 if (tag.name != "return") { continue }
                 if (let Some(returnType) <- symbol.returnType) {
                     if (repeats(tag.description, returnType.spelling, ["返回", "return", "returns"])) {
-                            findings.add(Diagnostic("warning", "CJDOC3049",
+                        addFinding(findings, "trivial-return-description", "CJDOC3049",
                             "trivial-return-description: description repeats the return type",
-                            source: Some(symbol.source), symbolId: Some(symbol.id)))
+                            symbol, config)
                     }
                 }
             }
@@ -66,12 +74,25 @@ public func documentationQualityDiagnostics(symbol: SymbolDoc, projectName: Stri
     }
     for (parameter in symbol.parameters where !parameter.name.startsWith("_")) {
         if (trivialParameterDocumentation(parameter)) {
-            findings.add(Diagnostic("warning", "CJDOC3048",
+            addFinding(findings, "trivial-param-description", "CJDOC3048",
                 "trivial-param-description: description repeats parameter '${parameter.name}'",
-                source: Some(symbol.source), symbolId: Some(symbol.id)))
+                symbol, config)
         }
     }
     findings.toArray()
+}
+
+// Same fallback as the other quality rules: without configuration a rule is a
+// warning, and `off` suppresses it entirely. Per-rule values override `severity`.
+private func addFinding(findings: ArrayList<Diagnostic>, rule: String, code: String,
+    message: String, symbol: SymbolDoc, config: ?DocumentationQualityConfig): Unit {
+    let severity = match (config) {
+        case Some(value) => value.severity(rule)
+        case None => "warning"
+    }
+    if (severity == "off") { return }
+    findings.add(Diagnostic(severity, code, message,
+        source: Some(symbol.source), symbolId: Some(symbol.id)))
 }
 
 /** True only for a recognized description that restates the parameter name. */

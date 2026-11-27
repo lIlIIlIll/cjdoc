@@ -38,7 +38,7 @@ private func externalSnapshotProject(ambiguous: Bool): Path {
 }
 
 private func externalSnapshotGenerate(root: Path): api_model.DocumentationSet {
-    let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => "target/release/bin/main" })
+    let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => nativeTestBinary() })
     DocumentationEngine().generate(GenerationRequest(root.toString(), lintProfile: "off",
         astPreflightExecutable: Some(binary)))
 }

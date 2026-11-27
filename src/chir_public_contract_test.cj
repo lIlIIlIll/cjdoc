@@ -94,10 +94,11 @@ class ChirPublicContracts {
             let documentation = DocumentationEngine().generate(
                 GenerationRequest(temporary.toString(), lintProfile: "off",
                     includePathDependencies: true, chir: Some(chirTestOptions()),
-                    astPreflightExecutable: Some("target/release/bin/main")))
+                    astPreflightExecutable: Some(nativeTestBinary())))
             if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
                 @Expect(chirTestReportsMissingWorker(documentation), true)
                 @Expect(documentation.declarations.size > 0, true)
+                reportNativeDegraded("extensionTargetsKeepPackageIdentityWhenNamesCollide", "missing CJDOC_CHIR_WORKER")
                 return
             }
             var matchedFunctions: Int64 = 0
@@ -180,12 +181,13 @@ class ChirPublicContracts {
             let documentation = DocumentationEngine().generate(
                 GenerationRequest(temporary.toString(), lintProfile: "off",
                     includePathDependencies: true, chir: Some(chirTestOptions()),
-                    astPreflightExecutable: Some("target/release/bin/main")))
+                    astPreflightExecutable: Some(nativeTestBinary())))
             @Expect(documentation.schemaVersion, "cjdoc.doc-ir/20")
             @Expect(documentation.providers[0].name, "chir")
             @Expect(documentation.declarations.size > 0, true)
             if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
                 @Expect(chirTestReportsMissingWorker(documentation), true)
+                reportNativeDegraded("explicitChirCompilesStructuredSourceAndKeepsCurrentDocIr", "missing CJDOC_CHIR_WORKER")
                 return
             }
             var compilerFailure = ""
@@ -213,13 +215,14 @@ class ChirPublicContracts {
     @TestCase
     func chirSemanticFixtureUsesStructuredPackageRecords(): Unit {
         let documentation = DocumentationEngine().generate(
-            GenerationRequest("tests/fixtures/projects/chir_semantics", lintProfile: "off",
+            GenerationRequest(nativeFixturePath("tests/fixtures/projects/chir_semantics"), lintProfile: "off",
                 chir: Some(chirTestOptions()),
-                astPreflightExecutable: Some("target/release/bin/main")))
+                astPreflightExecutable: Some(nativeTestBinary())))
         @Expect(documentation.providers[0].name, "chir")
         @Expect(documentation.declarations.size > 0, true)
         if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
             @Expect(chirTestReportsMissingWorker(documentation), true)
+            reportNativeDegraded("chirSemanticFixtureUsesStructuredPackageRecords", "missing CJDOC_CHIR_WORKER")
             return
         }
         var compilerUnavailable = ""
@@ -297,10 +300,11 @@ class ChirPublicContracts {
             let documentation = DocumentationEngine().generate(
                 GenerationRequest(temporary.toString(), lintProfile: "off",
                     includePathDependencies: true, chir: Some(chirTestOptions()),
-                    astPreflightExecutable: Some("target/release/bin/main")))
+                    astPreflightExecutable: Some(nativeTestBinary())))
             if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
                 @Expect(chirTestReportsMissingWorker(documentation), true)
                 @Expect(documentation.declarations.size > 0, true)
+                reportNativeDegraded("chirDoesNotMixSameLogicalPathsAcrossModules", "missing CJDOC_CHIR_WORKER")
                 return
             }
             var rootApiState = "missing"
@@ -329,7 +333,7 @@ class ChirPublicContracts {
                          key + " = [\n \"-O2\", # allowed first element\n \"" + option + "\",\n]\n").toArray())
                     let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
                         lintProfile: "off", chir: Some(chirTestOptions()),
-                        astPreflightExecutable: Some("target/release/bin/main")))
+                        astPreflightExecutable: Some(nativeTestBinary())))
                     @Expect(publicHasDiagnostic(documentation, "CJDOC2102"), true)
                     @Expect(publicHasDiagnostic(documentation, "CJDOC2101"), false)
                     @Expect(documentation.declarations[0].name, "stableApi")
@@ -357,7 +361,7 @@ class ChirPublicContracts {
                     CfgValue("arch", compilerBuiltinCfgValue("arch").getOrThrow()),
                     CfgValue("debug", "false"), userCfg],
                 lintProfile: "off", chir: Some(chirTestOptions()),
-                astPreflightExecutable: Some("target/release/bin/main")))
+                astPreflightExecutable: Some(nativeTestBinary())))
             @Expect(publicHasDiagnostic(native, "CJDOC2102"), false)
             @Expect(publicHasDiagnostic(native, "CJDOC2104"), false)
             if (getVariable("CJDOC_CHIR_WORKER").isSome()) {
@@ -365,11 +369,12 @@ class ChirPublicContracts {
                 @Expect(native.declarations[0].semantic.provider, "chir")
             } else {
                 @Expect(chirTestReportsMissingWorker(native), true)
+                reportNativeDegraded("builtinCfgValidationKeepsUserConditionalChirAndRejectsMismatches", "missing CJDOC_CHIR_WORKER")
             }
             let mismatch = DocumentationEngine().generate(GenerationRequest(root.toString(),
                 cfgValues: [CfgValue("debug", "true"), userCfg],
                 lintProfile: "off", chir: Some(chirTestOptions()),
-                astPreflightExecutable: Some("target/release/bin/main")))
+                astPreflightExecutable: Some(nativeTestBinary())))
             @Expect(publicHasDiagnostic(mismatch, "CJDOC2102"), true)
             @Expect(mismatch.declarations[0].name, "selectedApi")
             @Expect(mismatch.declarations[0].semantic.state, "unavailable")
@@ -382,9 +387,9 @@ class ChirPublicContracts {
     @TestCase
     func failedChirCompilationPreservesSourceDeclarations(): Unit {
         let documentation = DocumentationEngine().generate(
-            GenerationRequest("tests/fixtures/projects/basic", lintProfile: "off",
+            GenerationRequest(nativeFixturePath("tests/fixtures/projects/basic"), lintProfile: "off",
                 chir: Some(chirTestOptions(compilerExecutable: "missing-cjc-for-cjdoc-test")),
-                astPreflightExecutable: Some("target/release/bin/main")))
+                astPreflightExecutable: Some(nativeTestBinary())))
         @Expect(documentation.declarations.size, 25)
         var compilerFailureCode = ""
         var compilerFailureMessage = ""
@@ -418,7 +423,7 @@ class ChirPublicContracts {
                          " = [\n \"-O2\", # supported first element\n \"" + option + "\",\n]\n").toArray())
                     let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
                         lintProfile: "off", chir: Some(chirTestOptions()),
-                        astPreflightExecutable: Some("target/release/bin/main")))
+                        astPreflightExecutable: Some(nativeTestBinary())))
                     @Expect(publicHasDiagnostic(documentation, "CJDOC2102"), true)
                     @Expect(publicHasDiagnostic(documentation, "CJDOC2101"), false)
                     @Expect(documentation.declarations[0].name, "stableApi")
@@ -429,7 +434,7 @@ class ChirPublicContracts {
                     ("[package]\nname = \"quoted_options\"\n" + key + " = \"-O2\" # allowed\n").toArray())
                 let supported = DocumentationEngine().generate(GenerationRequest(root.toString(),
                     lintProfile: "off", chir: Some(chirTestOptions()),
-                    astPreflightExecutable: Some("target/release/bin/main")))
+                    astPreflightExecutable: Some(nativeTestBinary())))
                 @Expect(publicHasDiagnostic(supported, "CJDOC2102"), false)
                 @Expect(publicHasDiagnostic(supported, "CJDOC2104"), false)
                 if (getVariable("CJDOC_CHIR_WORKER").isSome()) {

@@ -124,7 +124,7 @@ status: partial
 modules: [('workspace', 'app'), ('workspace', 'peer')]
 on pages: ['peerApi']
 in docs.json: ['hiddenApi', 'peerApi']
-unsupported: [('featureApi', 'conditional compilation expression is unsupported or unresolved')]
+unsupported: [('featureApi', "it references undefined condition 'feature'; pass --cfg feature=<value>")]
 ```
 
 这四个默认行为都能看到：
@@ -176,6 +176,24 @@ cjdoc generate --project "$TASK_ROOT/workspace" \
 ```
 
 **预期结果**：`$TASK_ROOT/site-basic/docs.json` 里没有 `featureApi`，`status` 回到 `complete`。比较不同选择时始终换一个新的 `--output`，不要复用上一次的目录。
+
+### 内建条件 `os`、`arch`、`debug` 不会自动补值
+
+文档生成只使用你显式给出的条件值：不传 `--cfg os=...` 时，`@When[os == "Linux"]` 这类声明属于“未提供条件值”，会被排除并报告 `CJDOC1019`，消息会列出可选值：
+
+```text
+warning[CJDOC1019]: conditional declaration omitted because no os condition value was provided; available values: Linux, Windows, macOS, iOS; pass --cfg os=<value>
+```
+
+| 条件名 | 可用值 |
+|---|---|
+| `os` | `Linux`、`Windows`、`macOS`、`iOS` |
+| `arch` | `x86_64`、`aarch64`、`arm` |
+| `debug` | `true`、`false` |
+
+未在注解里出现的条件名属于“未定义条件”，同一诊断码给出另一种消息，例如 `it references undefined condition 'feature'; pass --cfg feature=<value>`；注解本身写坏时消息写 `unsupported or malformed`。三种原因都算源输入不完整，`status` 为 `partial`。
+
+生成文档时可以用 `--cfg os=Windows` 为其它平台出文档，但**同一次 `--check-examples` 会失败**：示例按真实编译目标编译，`--cfg` 与目标不一致时报 `CJDOC3031`（`cfg 'os=Windows' does not match compiler target 'os=Linux'`）。要检查示例时不要改写内建条件值，或者先在对应的真实平台上运行。
 
 ## 第三步：选择受众
 
@@ -361,7 +379,7 @@ PY
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | 生成成功，但页面比预期少声明 | 依赖类型没有对应的开关 | 路径依赖加 `--include-path-dependencies`，缓存依赖加 `--include-cached-dependencies`，指定目录用 `--dependency-source` |
-| 带 `@When` 的声明消失，出现 `CJDOC1019` | 没有给出该条件名，或值与注解不一致 | 用 `--cfg NAME=VALUE` 给出完全一致的名字和值；`--cfg` 缺 `=` 会以 `2` 退出并提示 `--cfg requires NAME=VALUE` |
+| 带 `@When` 的声明消失，出现 `CJDOC1019` | 没有给出该条件名，或值与注解不一致 | 按消息区分原因：内建条件缺值会列出 `os`、`arch`、`debug` 的可用值，未定义条件名会点名该条件。用 `--cfg NAME=VALUE` 给出完全一致的名字和值；`--cfg` 缺 `=` 会以 `2` 退出并提示 `--cfg requires NAME=VALUE` |
 | `docs.json` 里出现私有声明 | 完整快照的既有行为 | 受众只筛选展示产物；发布前确认放进输出的文件 |
 | warning `CJDOC1018: configured dependency source '...' is not accessible; skipped` | `--dependency-source` 的路径不存在或不可读 | 改为绝对路径后重试；相对路径以当前工作目录为基准 |
 | warning `CJDOC1018: configured dependency source '...' must contain cjpm.toml; skipped` | 指定目录不是 Cangjie 包 | 指向含 `cjpm.toml` 的包根 |

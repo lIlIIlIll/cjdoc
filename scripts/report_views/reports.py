@@ -241,15 +241,6 @@ def _diff_parameter_entries_consuming(value: str) -> list[str] | None:
     return parts
 
 
-def _diff_parameter_entries(value: str) -> list[str] | None:
-    """One or more `name:state:type:state:default` entries, or None if not."""
-    pieces = value.split(":")
-    if len(pieces) != 5 or pieces[0] == "" or pieces[1] not in _PARAMETER_STATES \
-            or pieces[3] not in _PARAMETER_STATES:
-        return None
-    return [pieces[0] + ": " + pieces[2]]
-
-
 def _diff_token_segments(text: str) -> list[str]:
     """Decode a `TAG:byteLength:text` token list. The length counts UTF-8 bytes,
     so the value is walked as bytes; a token whose own text is `|` (such as the

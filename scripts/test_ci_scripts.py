@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import ast
 import re
 from pathlib import Path
 import signal
@@ -12,6 +13,7 @@ import os
 import sys
 import time
 import tempfile
+import textwrap
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -19,13 +21,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_changes
 import ci_diagnostics
 import ci_stage
+import check_test_suite as suite
 import measure_paired_samples as paired
+from paired_sample_report import unrecorded_axes
 import ci_required
 
 
 class ChangesRoutingTest(unittest.TestCase):
     def test_docs_only_changes_skip_native_work(self) -> None:
-        planned = ci_changes.classify_paths(["docs/how-to/generate-and-publish.md", "README.md"])
+        planned = ci_changes.classify_paths(["docs/how-to/generate-and-publish.md",
+                                             "docs/tutorials/first-site.md"])
         self.assertTrue(planned["docs"])
         self.assertFalse(planned["native"])
         self.assertEqual({name for name, needed in planned["jobSet"].items() if needed}, set())
@@ -37,6 +42,50 @@ class ChangesRoutingTest(unittest.TestCase):
             with self.subTest(path=path):
                 planned = ci_changes.classify_paths([path])
                 self.assertTrue(planned["native"], f"{path} must require native work")
+
+    def test_a_document_a_gate_reads_is_not_documentation_only(self) -> None:
+        """The skill reference is compared against its sources by `python-tools`.
+
+        `docs/reference/doc-comments.md` and `README.md` feed
+        `sync_api_comment_skill.py --check`, which only runs in the job a
+        documentation-only change skips. Treating them as prose therefore made a
+        stale skill reference unobservable.
+        """
+        for path in ("docs/reference/doc-comments.md", "README.md"):
+            with self.subTest(path=path):
+                planned = ci_changes.classify_paths([path])
+                self.assertTrue(planned["jobSet"]["linux-acceptance"],
+                                f"{path} is a gate input; the stage that reads it must run")
+
+    def test_every_declared_tool_input_is_routed_to_native_work(self) -> None:
+        """A new entry in a synchronizer's sources is covered without editing the table."""
+        self.assertIn("docs/reference/doc-comments.md", ci_changes.tool_inputs())
+        self.assertIn("README.md", ci_changes.tool_inputs())
+        # The union with the showcase inventory is what keeps an example source from
+        # being classified as documentation once it also becomes a gate input.
+        self.assertTrue(ci_changes.tool_inputs())
+        for path in sorted(ci_changes.tool_inputs()):
+            with self.subTest(path=path):
+                planned = ci_changes.classify_paths([path])
+                self.assertTrue(planned["native"],
+                                f"{path} is a tool input but classified as documentation only")
+
+    def test_the_tool_input_inventory_is_not_a_second_list(self) -> None:
+        """Growth happens in the synchronizers, so the classifier must follow them."""
+        # Imported the way `ci_changes` itself imports them: by package when the repo
+        # root is on sys.path, by sibling module when the file is run directly.
+        try:
+            from scripts.showcase_inputs import source_inputs
+            from scripts.sync_api_comment_skill import SOURCES
+        except ImportError:
+            from showcase_inputs import source_inputs
+            from sync_api_comment_skill import SOURCES
+
+        self.assertLessEqual(set(SOURCES), ci_changes.tool_inputs())
+        self.assertLessEqual(set(source_inputs()), ci_changes.tool_inputs())
+        for path in ("docs/release-notes.md", "docs/reference/artifacts.md"):
+            self.assertIn(path, ci_changes.tool_inputs(),
+                          f"{path} is asserted against source truth but not routed to it")
 
     def test_an_unclassified_path_is_an_error_not_a_silent_skip(self) -> None:
         with self.assertRaises(LookupError):
@@ -127,10 +176,61 @@ class RequiredGateTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             ci_required.planned_set(json.dumps({"mode": "classified", "jobSet": {}}))
 
+    def test_the_constant_matches_the_workflow_required_needs(self) -> None:
+        """The gate's job list and `ci.yml`'s `required.needs` are one contract.
+
+        Nothing referenced the two before, so the constant could drift from the file
+        that actually decides which jobs must report before the gate runs.
+        """
+        import yaml
+
+        path = Path(__file__).resolve().parent.parent / ".github/workflows/ci.yml"
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        self.assertEqual(ci_required.workflow_problems(document), [],
+                         "PLANNED_JOBS and ci.yml `required.needs` disagree")
+
+    def test_a_job_added_to_the_required_gate_fails_until_it_is_listed(self) -> None:
+        """Issue #236's first criterion: a new participating job must be named here."""
+        import copy
+        import yaml
+
+        path = Path(__file__).resolve().parent.parent / ".github/workflows/ci.yml"
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        grown = copy.deepcopy(document)
+        grown["jobs"]["docs-lint"] = {"runs-on": "ubuntu-22.04", "steps": []}
+        grown["jobs"]["required"]["needs"].append("docs-lint")
+        problems = ci_required.workflow_problems(grown)
+        self.assertTrue(any("docs-lint" in problem for problem in problems), problems)
+
+    def test_a_job_removed_from_the_workflow_fails_the_same_check(self) -> None:
+        """Removing a job the gate still waits for leaves nothing to gate on."""
+        import copy
+        import yaml
+
+        path = Path(__file__).resolve().parent.parent / ".github/workflows/ci.yml"
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        shrunk = copy.deepcopy(document)
+        del shrunk["jobs"]["candidate-other"]
+        problems = ci_required.workflow_problems(shrunk)
+        self.assertTrue(any("candidate-other" in problem for problem in problems), problems)
+        # The constant naming a job the workflow dropped is the other half of the same
+        # drift, and must fail too rather than pass silently.
+        self.assertTrue(any("does not define" in problem for problem in problems), problems)
+
+    def test_an_unknown_job_in_the_needs_graph_fails_closed(self) -> None:
+        """A dependency this module was never taught about cannot be judged."""
+        outcomes = {"changes": {"result": "success"}, "candidate-linux": {"result": "success"},
+                    "linux-acceptance": {"result": "success"},
+                    "candidate-other": {"result": "success"},
+                    "surprise-job": {"result": "success"}}
+        self.assertEqual(self.evaluate(outcomes, ""), 1)
+
 
 class DiagnosticsTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
+        # `git init` writes objects asynchronously enough that teardown can race it;
+        # a leftover temp directory is not a test result.
+        self.temporary = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.repo = self.root / "repo"
@@ -264,7 +364,6 @@ class RunWithTimeoutTests(unittest.TestCase):
     def test_the_grace_covers_a_worker_after_its_leader_exits(self) -> None:
         """A worker's own TERM handler must get the grace, not be killed at once."""
         finished = Path(self.temporary.name) / "worker-finished"
-        marker = f"cjdoc-timeout-grace-{os.getpid()}"
         worker = (
             "import signal, sys, time\n"
             "def handler(signum, frame):\n"
@@ -1151,14 +1250,14 @@ class PairedSampleTests(unittest.TestCase):
         conditions = paired.job_conditions(root)
         # The preflight stage has no browser identity and does not have to: the browser
         # stage that really rendered attests the axis.
-        self.assertEqual(paired.unrecorded_axes({conditions["rendered"]}), [])
+        self.assertEqual(unrecorded_axes({conditions["rendered"]}), [])
         # A browser stage that launched and reported nothing is NOT excused.
-        self.assertEqual(paired.unrecorded_axes({conditions["silent"]}),
+        self.assertEqual(unrecorded_axes({conditions["silent"]}),
                          ["browser version", "browser identity", "font set"])
         # A job with no browser stage records no marker, so nothing is attested -- the
         # caller decides that this is "not applicable" rather than "not recorded".
         self.assertNotIn("|browser=", conditions["nobrowser"])
-        self.assertEqual(paired.unrecorded_axes({conditions["nobrowser"]}),
+        self.assertEqual(unrecorded_axes({conditions["nobrowser"]}),
                          ["browser version", "browser identity", "font set"])
 
     def test_a_job_with_no_browser_stage_is_not_asked_for_the_axis(self) -> None:
@@ -1615,8 +1714,6 @@ class PairedSampleTests(unittest.TestCase):
 
     def test_a_partial_download_is_reported_per_artifact(self) -> None:
         """One artifact failing must be named, not hidden by the others succeeding."""
-        calls = []
-
         def fake_run(args, **kwargs):
             import subprocess as sp
             if "artifacts/2/zip" in args[-1]:
@@ -1651,6 +1748,123 @@ class PairedSampleTests(unittest.TestCase):
         self.assertTrue(paired._readable_stage_record(record))
         record.write_text("", encoding="utf-8")
         self.assertFalse(paired._readable_stage_record(record))
+
+
+class SuiteLayoutGuardTest(unittest.TestCase):
+    """Issues #241 and #242: what the collector runs and what it merely counts.
+
+    Both defects were invisible because CI collects with `-m unittest` while a
+    developer runs a file directly, and because a module with no assertions still
+    counts as one more passing module.
+    """
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        (self.root / "scripts").mkdir()
+        (self.root / "tests/showcase_contract").mkdir(parents=True)
+        (self.root / "scripts/check.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        (self.root / "scripts/check_cli.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    def write(self, name: str, text: str) -> Path:
+        path = self.root / name
+        path.write_text(textwrap.dedent(text), encoding="utf-8")
+        return path
+
+    def test_a_main_block_before_more_definitions_fails(self) -> None:
+        """The defect itself: everything after `unittest.main()` never runs directly."""
+        self.write("scripts/test_mid.py", """\
+            import unittest
+
+            class First(unittest.TestCase):
+                def test_a(self):
+                    pass
+
+            if __name__ == "__main__":
+                unittest.main()
+
+            class Second(unittest.TestCase):
+                def test_b(self):
+                    pass
+            """)
+        problems = suite.audit(self.root)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("Second", problems[0])
+
+    def test_a_module_with_no_test_cases_is_only_accepted_when_something_runs_it(self) -> None:
+        """`test_release_tools.py`'s shape must not come back as a passing module."""
+        self.write("scripts/test_empty.py", """\
+            #!/usr/bin/env python3
+            \"\"\"Release-tool tests are split by module.\"\"\"
+            """)
+        problems = suite.audit(self.root)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("declares no test cases", problems[0])
+        # A driver a stage names by hand is legitimate: that stage really runs it.
+        (self.root / "scripts/check_cli.sh").write_text(
+            "#!/bin/sh\npython scripts/test_empty.py\n", encoding="utf-8")
+        self.assertEqual(suite.audit(self.root), [])
+
+    def test_a_helper_another_test_imports_is_not_a_passing_suite(self) -> None:
+        """`test_search_semantics.py` is imported support code, not zero assertion."""
+        self.write("scripts/test_helper.py", """\
+            def helper():
+                return 1
+            """)
+        self.write("scripts/test_user.py", """\
+            import unittest
+            from test_helper import helper
+
+            class UsesHelper(unittest.TestCase):
+                def test_it(self):
+                    self.assertEqual(helper(), 1)
+            """)
+        self.assertEqual(suite.audit(self.root), [])
+
+    def test_a_skipped_optional_module_keeps_its_declared_tests(self) -> None:
+        """An unavailable toolchain skips a suite; it does not empty it."""
+        self.write("scripts/test_optional.py", """\
+            import unittest
+
+            class NeedsInput(unittest.TestCase):
+                def test_it(self):
+                    pass
+
+            def setUpModule():
+                raise unittest.SkipTest("no binary here")
+            """)
+        self.assertEqual(suite.audit(self.root), [])
+        self.assertEqual(suite.collectable_modules(self.root), ["scripts.test_optional"])
+
+    def test_the_collected_list_excludes_assertion_free_and_preflight_modules(self) -> None:
+        self.write("scripts/test_real.py", """\
+            import unittest
+
+            class Real(unittest.TestCase):
+                def test_it(self):
+                    pass
+            """)
+        self.write("scripts/test_empty.py", "\"\"\"Nothing here.\"\"\"\n")
+        self.write("scripts/test_install_cangjie_sdk.py", """\
+            import unittest
+
+            class Installer(unittest.TestCase):
+                def test_it(self):
+                    pass
+            """)
+        self.assertEqual(suite.collectable_modules(self.root), ["scripts.test_real"])
+
+    def test_the_repository_itself_passes_the_guard(self) -> None:
+        """The live tree is the real subject; a clean fixture proves nothing."""
+        self.assertEqual(suite.audit(), [], "the checked-in test layout is not collectable")
+        # Every collected module must declare cases, so the gate cannot report a
+        # module that asserts nothing as one more pass.
+        for name in suite.collectable_modules():
+            with self.subTest(module=name):
+                path = Path(__file__).resolve().parent / f"{name.split('.')[-1]}.py"
+                self.assertTrue(suite.declared_tests(
+                    ast.parse(path.read_text(encoding="utf-8"))), name)
 
 
 if __name__ == "__main__":

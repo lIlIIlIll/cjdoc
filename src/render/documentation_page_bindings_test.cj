@@ -73,6 +73,11 @@ private func verifyPageBindingTarget(values: Array<RenderArtifact>, root: String
     @Expect(guide.contains("](" + prefix + destination + "#" + anchor + ")"))
 }
 
+private func pageBindingTarget(document: DocumentationSet, id: String): SymbolDoc {
+    for (declaration in document.declarations where declaration.id == id) { return declaration }
+    throw IllegalArgumentException("missing page binding target ${id}")
+}
+
 @Test
 class DocumentationPageBindingsTest {
     @TestCase
@@ -82,7 +87,9 @@ class DocumentationPageBindingsTest {
         let values = renderDocumentationFormatsWithOptions(documentation, ["markdown"], locale: "en")
         let guide = pageBindingContent(values, "markdown/concepts/guides/deep/start.md")
         for (state in ["Linked", "Target not found", "Ambiguous target", "Not available in this audience", "Conflicting markers"]) { @Expect(guide.contains(state)) }
-        for (index in 0..3) { verifyPageBindingTarget(values, "markdown/", guide, "../../../", documentation.declarations[index]) }
+        for (id in [PAGE_BINDING_RUN, PAGE_BINDING_BOX, PAGE_BINDING_MEMBER]) {
+            verifyPageBindingTarget(values, "markdown/", guide, "../../../", pageBindingTarget(documentation, id))
+        }
         @Expect(!guide.contains("HiddenBindingSecret"))
         @Expect(!guide.contains("HiddenSelectorSecret"))
         @Expect(!pageBindingContent(values, "markdown/concepts/empty.md").contains("API associations"))
@@ -98,14 +105,16 @@ class DocumentationPageBindingsTest {
             let root = "markdown/" + language + "/"
             let guide = pageBindingContent(values, root + route)
             @Expect(guide.contains(state))
-            for (index in 0..3) { verifyPageBindingTarget(values, root, guide, prefix, documentation.declarations[index]) }
+            for (id in [PAGE_BINDING_RUN, PAGE_BINDING_BOX, PAGE_BINDING_MEMBER]) {
+                verifyPageBindingTarget(values, root, guide, prefix, pageBindingTarget(documentation, id))
+            }
         }
         let fallback = pageBindingDocumentation(fallbackOnly: true)
         let selected = renderDocumentationFormatsWithOptions(fallback, ["markdown"], locale: "en")
         let guide = pageBindingContent(selected, "markdown/concepts/zh.md")
         @Expect(guide.contains("Linked"))
         @Expect(guide.contains("Content language: zh-CN"))
-        verifyPageBindingTarget(selected, "markdown/", guide, "../", fallback.declarations[0])
+        verifyPageBindingTarget(selected, "markdown/", guide, "../", pageBindingTarget(fallback, PAGE_BINDING_RUN))
     }
 
     @TestCase

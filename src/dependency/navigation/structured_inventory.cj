@@ -149,7 +149,9 @@ internal func addDependencyExternalEntry(resolver: ExternalDocResolver, object: 
     if (!moduleId.isEmpty() && !documentSet.moduleId.isEmpty() && moduleId != documentSet.moduleId) {
         throw IllegalArgumentException("inventory symbol belongs to another producer module")
     }
-    let url = safeExternalHref(resolver.baseUrl, externalString(object, "href")).getOrThrow()
+    // Structured inventory admission stays atomic: logging the invalid href
+    // must not make an otherwise rejected index eligible for exact evidence.
+    let url = checkedExternalEntryHref(resolver, object, externalString(object, "href")).getOrThrow()
     let name = externalString(object, "qualifiedName")
     let fullName = if (name.startsWith(packageName + ".")) { name }
         else { packageName + "." + name }

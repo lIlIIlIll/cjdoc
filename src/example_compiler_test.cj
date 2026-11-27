@@ -97,13 +97,13 @@ private func createExampleProjectWithPathDependencies(): Path {
 
 private func exampleRequest(root: Path, checkExamples: Bool): GenerationRequest {
     GenerationRequest(root.toString(), lintProfile: "off", audience: "all",
-        checkExamples: checkExamples, astPreflightExecutable: Some("target/release/bin/main"))
+        checkExamples: checkExamples, astPreflightExecutable: Some(nativeTestBinary()))
 }
 
 private func cachedExampleRequest(root: Path, cache: String): GenerationRequest {
     GenerationRequest(root.toString(), lintProfile: "off", audience: "all",
         checkExamples: true, cacheDirectory: Some(cache),
-        astPreflightExecutable: Some("target/release/bin/main"))
+        astPreflightExecutable: Some(nativeTestBinary()))
 }
 
 private func hasExampleDiagnostic(documentation: public_model.DocumentationSet, code: String): Bool {
@@ -152,12 +152,11 @@ private func exampleDiagnosticSummary(documentation: public_model.DocumentationS
     summary.toArray()
 }
 
-// A `cjc` static link may be unavailable on a host, in which case a run-mode example
-// legitimately degrades to CJDOC3074. Run assertions therefore tolerate that single
-// code and nothing else; the pre-spawn assertions stay unconditional.
-private func runOutcomeAccepted(documentation: public_model.DocumentationSet,
-    expected: String): Bool {
-    hasExampleDiagnostic(documentation, expected) || hasExampleDiagnostic(documentation, "CJDOC3074")
+private func exampleRunAvailable(documentation: public_model.DocumentationSet,
+    requirement: String): Bool {
+    if (!hasExampleDiagnostic(documentation, "CJDOC3074")) { return true }
+    reportNativeDegraded(requirement, "CJDOC3074: example link or runtime limit unavailable")
+    false
 }
 
 private func noRunOutcome(documentation: public_model.DocumentationSet): Bool {
@@ -411,8 +410,12 @@ class ExampleCompilerTest {
         try {
             let pinned = DocumentationEngine().generate(exampleRequest(root, true))
             let unpinned = DocumentationEngine().generate(exampleRequest(withoutFlag, true))
-            @Expect(noRunOutcome(pinned) || hasExampleDiagnostic(pinned, "CJDOC3074"), true)
-            @Expect(runOutcomeAccepted(unpinned, "CJDOC3071"), true)
+            if (exampleRunAvailable(pinned, "acceptedCompilerOptionReachesCjc/wrapping")) {
+                @Expect(noRunOutcome(pinned), true)
+            }
+            if (exampleRunAvailable(unpinned, "acceptedCompilerOptionReachesCjc/default")) {
+                @Expect(hasExampleDiagnostic(unpinned, "CJDOC3071"), true)
+            }
         } finally {
             let _ = removeIfExists(root, recursive: true)
             let _ = removeIfExists(withoutFlag, recursive: true)
@@ -443,9 +446,13 @@ class ExampleCompilerTest {
             """))
         try {
             let pinned = DocumentationEngine().generate(exampleRequest(matching, true))
-            @Expect(noRunOutcome(pinned) || hasExampleDiagnostic(pinned, "CJDOC3074"), true)
+            if (exampleRunAvailable(pinned, "runExamplePinsItsStandardOutput/matching")) {
+                @Expect(noRunOutcome(pinned), true)
+            }
             let mismatched = DocumentationEngine().generate(exampleRequest(differing, true))
-            @Expect(runOutcomeAccepted(mismatched, "CJDOC3072"), true)
+            if (exampleRunAvailable(mismatched, "runExamplePinsItsStandardOutput/mismatch")) {
+                @Expect(hasExampleDiagnostic(mismatched, "CJDOC3072"), true)
+            }
         } finally {
             let _ = removeIfExists(matching, recursive: true)
             let _ = removeIfExists(differing, recursive: true)
@@ -475,6 +482,9 @@ class ExampleCompilerTest {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3030"))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3031"))
+            if (exampleRunAvailable(documentation, "existingMainKeywordIsReusedForRunExamples")) {
+                @Expect(noRunOutcome(documentation), true)
+            }
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -491,8 +501,9 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3071", "exit code 3") ||
-                hasExampleDiagnostic(documentation, "CJDOC3074"), true)
+            if (exampleRunAvailable(documentation, "runtimeFailureReportsCapturedEvidence")) {
+                @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3071", "exit code 3"), true)
+            }
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -545,6 +556,8 @@ class ExampleCompilerTest {
             if (compilerBuiltinCfgValue("os") == Some("macOS")) {
                 @Expect(hasExampleDiagnostic(documentation, "CJDOC3074"), true)
                 @Expect(exists(marker), false)
+                reportNativeDegraded("timedOutExampleTerminatesDescendantProcesses",
+                    "macOS refuses to execute examples without an address-space limit")
             } else {
                 @Expect(timedOut, true)
                 @Expect(exists(marker), true)
@@ -570,7 +583,9 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(runOutcomeAccepted(documentation, "CJDOC3071"), true)
+            if (exampleRunAvailable(documentation, "uncaughtPanicIsReportedAsARuntimeFailure")) {
+                @Expect(hasExampleDiagnostic(documentation, "CJDOC3071"), true)
+            }
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -657,7 +672,7 @@ class ExampleCompilerTest {
         let request = GenerationRequest(root.toString(), lintProfile: "off", audience: "all",
             checkExamples: true, includePathDependencies: true,
             cacheDirectory: Some(cache.toString()),
-            astPreflightExecutable: Some("target/release/bin/main"))
+            astPreflightExecutable: Some(nativeTestBinary()))
         try {
             let cold = DocumentationEngine().generate(request)
             @Expect(!hasExampleDiagnostic(cold, "CJDOC3030"))
@@ -829,7 +844,7 @@ class ExampleCompilerTest {
                 """.toArray())
             let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
                 lintProfile: "off", audience: "all", checkExamples: true, includePathDependencies: true,
-                astPreflightExecutable: Some("target/release/bin/main")))
+                astPreflightExecutable: Some(nativeTestBinary())))
             @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3030", "On profile"), false)
             @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3030", "Off profile"), false)
             @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3030", "Wrong profile"), true)
@@ -866,7 +881,7 @@ class ExampleReleaseEntryPointTest {
         try {
             let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
                 lintProfile: "off", checkExamples: true,
-                astPreflightExecutable: Some("target/release/bin/main")))
+                astPreflightExecutable: Some(nativeTestBinary())))
             @Expect(exampleDiagnosticSummary(documentation), [])
         } finally {
             let _ = removeIfExists(root, recursive: true)

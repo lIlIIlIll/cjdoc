@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import stat
 import sys
 import tempfile
 import unittest
@@ -18,6 +17,11 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+# The package import is the normal form; running the file directly puts `scripts/`
+# on the path without the repo root, so fall back to the sibling module. Otherwise
+# `python scripts/test_ci_candidate_source.py` cannot even import what it tests.
+if str(ROOT) not in sys.path:
+    sys.path.insert(1, str(ROOT))
 
 from scripts import ci_candidate_source as source  # noqa: E402
 
@@ -281,9 +285,6 @@ class MarkerBindingTests(unittest.TestCase):
                         self.root / "absent.tar", self.marker_dir)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 class OutputRecordTests(unittest.TestCase):
     """`$GITHUB_OUTPUT` needs one `name=value` record per line."""
 
@@ -318,3 +319,7 @@ class ExplicitFallbackTests(unittest.TestCase):
                                       log=lambda _: None)
         self.assertFalse(resolved["reuse"], resolved)
         self.assertEqual(resolved["candidateSource"], "local-build")
+
+
+if __name__ == "__main__":
+    unittest.main()

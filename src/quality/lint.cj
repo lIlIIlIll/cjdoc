@@ -4,12 +4,13 @@ import cjdoc.documentation.i18n.hasLocalizedDocumentation
 import cjdoc.binding.{DocumentationSet, SymbolDoc, ParameterDoc, isExternallyVisible, resolveDocumentationReferences}
 import cjdoc.source.Diagnostic
 import cjdoc.documentation.DocumentationQualityConfig
+import cjdoc.model.parameterMatchesSubject
 import std.collection.*
 import std.convert.Parsable
 
 private func findParameter(symbol: SymbolDoc, name: String): ?ParameterDoc {
     for (parameter in symbol.parameters) {
-        if (parameter.name == name) { return parameter }
+        if (parameterMatchesSubject(symbol.kind, parameter.name, name)) { return parameter }
     }
     None
 }

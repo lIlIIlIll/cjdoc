@@ -18,7 +18,7 @@ import unittest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from sts_compile_override import OPTION, UNIT_OPTION  # noqa: E402
+from sts_compile_override import OPTION  # noqa: E402
 
 SCRIPT = PROJECT_ROOT / "scripts/verify_build_invocations.py"
 LOGGER = PROJECT_ROOT / "scripts/log_invocation.py"

@@ -11,6 +11,7 @@ import cjdoc.model.*
 internal let EXTERNAL_DOC_INDEX_MAX_BYTES: Int64 = 8 * 1024 * 1024
 internal let EXTERNAL_DOC_CONFIG_MAX_BYTES: Int64 = 64 * 1024
 internal let EXTERNAL_DOC_TOTAL_MAX_BYTES: Int64 = 32 * 1024 * 1024
+internal let EXTERNAL_DOC_INVALID_HREF_EXAMPLES: Int64 = 8
 
 // One generation owns this budget, including catalogs and legacy inventories.
 // Reservations survive failed reads/parses: malformed inputs cannot reset it.
@@ -83,6 +84,8 @@ protected class ExternalDocResolver {
     let entryKeys = HashSet<String>()
     protected var priority: Int64 = 0
     protected let compatibilityMappings = HashMap<String, String>()
+    let invalidHrefRecords = ArrayList<String>()
+    var invalidHrefCount: Int64 = 0
 
     protected init(name: String, baseUrl: String, state!: String = "available", reason!: String = "",
         version!: ?String = None, indexPath!: String = "", fingerprint!: String = "", format!: String = "") {
@@ -153,13 +156,49 @@ private func jsonStringField(object: JsonObject, key: String): ?String {
     }
 }
 
+// Never publish the rejected URL or let a record name split a diagnostic line.
+private func externalRecordLabel(object: JsonObject): String {
+    for (field in ["qualifiedName", "name", "id"]) {
+        if (let Some(value) <- jsonStringField(object, field)) {
+            if (!value.isEmpty() && value.size <= 512 && !value.contains("/") &&
+                !value.contains("\\") && !hasExternalDiagnosticControl(value)) { return value }
+        }
+    }
+    "(unnamed record)"
+}
+
+private func hasExternalDiagnosticControl(value: String): Bool {
+    for (index in 0..value.size) {
+        if (value[index] < 0x20 || value[index] == 0x7f) { return true }
+    }
+    false
+}
+
+internal func checkedExternalEntryHref(resolver: ExternalDocResolver, object: JsonObject,
+    href: String): ?String {
+    let url = safeExternalHref(resolver.baseUrl, href)
+    if (url.isNone()) {
+        resolver.invalidHrefCount++
+        if (resolver.invalidHrefRecords.size < EXTERNAL_DOC_INVALID_HREF_EXAMPLES) {
+            resolver.invalidHrefRecords.add(externalRecordLabel(object))
+        }
+    }
+    url
+}
+
+internal func externalDiagnosticIndexLabel(resolver: ExternalDocResolver): String {
+    let path = resolver.indexPath
+    if (path.size <= 512 && safeLocalExternalPath(path)) { return path }
+    "configured index"
+}
+
 
 private func addExternalEntry(resolver: ExternalDocResolver, object: JsonObject): Unit {
     let href = match (jsonStringField(object, "href")) {
         case Some(value) => value
         case None => return
     }
-    let url = match (safeExternalHref(resolver.baseUrl, href)) {
+    let url = match (checkedExternalEntryHref(resolver, object, href)) {
         case Some(value) => value
         case None => return
     }

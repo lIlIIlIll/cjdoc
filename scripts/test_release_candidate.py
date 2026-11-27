@@ -504,9 +504,7 @@ class PublishAssetSetTest(unittest.TestCase):
         verifier = publish.split("Verify exact tag, every receipt and all package artifacts", 1)[1]
         # The receipts are downloaded with the packages, so the first verifier's
         # `expected` set must contain them or it rejects them as "unexpected".
-        for platform in ("linux-x64", "windows-x64", "macos-arm64"):
-            with self.subTest(platform=platform):
-                self.assertIn(f"cjdoc-release-candidate-{{platform}}.json", verifier)
+        self.assertIn("cjdoc-release-candidate-{platform}.json", verifier)
         self.assertIn('for platform in ("linux-x64", "windows-x64", "macos-arm64"):', verifier)
 
     def test_receipts_are_verified_but_never_uploaded(self) -> None:

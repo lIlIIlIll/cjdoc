@@ -4,10 +4,7 @@ import json
 import os
 import re
 from pathlib import Path, PurePosixPath
-import py_compile
-import shutil
 import subprocess
-import sys
 import tarfile
 import tempfile
 import unittest
@@ -16,24 +13,10 @@ from urllib.parse import urlsplit
 import zipfile
 
 from scripts import package_release
-from scripts import perf_gate
-from scripts import real_repository_smoke
-from scripts import safe_output_root
-from scripts import source_identity
-from scripts import strict_json
-from scripts import verify_release
 from scripts import verify_release_package
-from scripts import verify_remote_tag
-from scripts import verify_repository_inputs
-from scripts import worktree_identity
-from scripts.release_tools_test_support import (
-    MARKDOWN_COMMIT,
-    PROJECT_ROOT,
-    ReleaseToolsTestSupport,
-    SDK_SHA256,
-    YJSON_COMMIT,
-)
-from scripts.verify_repository_inputs import GOLDEN_NAMES, SCHEMA_NAMES
+from scripts.release_archive_reader import sha256_bytes
+from scripts.release_tools_test_support import ReleaseToolsTestSupport, SDK_SHA256
+from scripts.repository_inputs.contracts import SCHEMA_NAMES
 
 class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
     def test_release_archives_include_only_current_schema_ids(self) -> None:
@@ -172,7 +155,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     tampered = dict(members)
                     changed = b"not the tagged payload\n"
                     tampered[name] = verify_release_package.ArchiveMember(
-                        name, len(changed), verify_release_package.sha256_bytes(changed), members[name].mode,
+                        name, len(changed), sha256_bytes(changed), members[name].mode,
                     )
                     with self.assertRaisesRegex(ValueError, "does not match source commit: " + re.escape(name)):
                         verify_release_package.verify_repository_payload(tampered, repo, commit)

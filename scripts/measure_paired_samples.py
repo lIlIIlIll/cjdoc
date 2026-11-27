@@ -38,9 +38,9 @@ import urllib.parse
 import sys
 
 try:
-    from .paired_sample_report import BROWSER_FONT_AXES, report, unrecorded_axes
+    from .paired_sample_report import BROWSER_FONT_AXES, report
 except ImportError:  # Direct script execution.
-    from paired_sample_report import BROWSER_FONT_AXES, report, unrecorded_axes
+    from paired_sample_report import BROWSER_FONT_AXES, report
 
 GITHUB_TIME = "%Y-%m-%dT%H:%M:%SZ"
 

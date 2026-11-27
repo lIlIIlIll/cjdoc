@@ -2,6 +2,7 @@ protected package cjdoc.documentation.assets
 
 import cjdoc.model.*
 import std.collection.*
+import std.env.getVariable
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -165,8 +166,8 @@ class LocalAssetPipelineTest {
 
     @TestCase
     func rasterValidatorRejectsAnimationAndMetadataOnlyGif(): Unit {
-        let image = File.readFrom(
-            Path("tests/fixtures/projects/local_assets/src/images/pixel.gif"))
+        let root = Path(getVariable("CJDOC_TEST_ROOT").getOrDefault({ => "." }))
+        let image = File.readFrom(root.join("tests/fixtures/projects/local_assets/src/images/pixel.gif"))
         @Expect(validateRasterAsset("image/gif", image), 1)
 
         let animated = ArrayList<Byte>()

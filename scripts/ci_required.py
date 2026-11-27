@@ -20,6 +20,48 @@ sys.dont_write_bytecode = True
 PLANNED_JOBS = ("changes", "candidate-linux", "linux-acceptance", "candidate-other")
 
 
+def workflow_problems(document: object) -> list[str]:
+    """Compare `PLANNED_JOBS` with the aggregate gate's real `needs`.
+
+    The constant and `.github/workflows/ci.yml` describe the same thing twice, and
+    nothing used to bind them: a job added to the workflow's `required.needs` (or
+    removed from the workflow while the constant stayed) drifted silently. The
+    document is passed in already parsed so this module stays stdlib-only; the
+    contract test parses the workflow with a real YAML parser and asserts an empty
+    result.
+    """
+    if not isinstance(document, dict):
+        return ["workflow: not a mapping"]
+    jobs = document.get("jobs")
+    if not isinstance(jobs, dict):
+        return ["workflow: no `jobs` mapping"]
+    gate = jobs.get("required")
+    if not isinstance(gate, dict):
+        return ["workflow: no `required` job"]
+    needs = gate.get("needs")
+    if isinstance(needs, str):
+        names = [needs]
+    elif isinstance(needs, list) and all(isinstance(name, str) for name in needs):
+        names = list(needs)
+    else:
+        return ["workflow: `required` has no usable `needs` list"]
+    planned = set(PLANNED_JOBS)
+    problems: list[str] = []
+    # Removed or misspelled jobs first: a name the workflow waits for that no longer
+    # exists means the gate would never report at all, which is worse than a drift.
+    problems += [f"{name}: listed in required.needs but ci.yml defines no such job"
+                 for name in names if name not in jobs]
+    problems += [f"{name}: required gate waits for a job PLANNED_JOBS does not list"
+                 for name in sorted(set(names) - planned)]
+    problems += [f"{name}: PLANNED_JOBS lists a job the required gate does not wait for"
+                 for name in sorted(planned - set(names))]
+    problems += [f"{name}: PLANNED_JOBS names a job ci.yml does not define"
+                 for name in sorted(planned - set(jobs))]
+    if "required" in planned:
+        problems.append("required: the aggregate gate cannot gate itself")
+    return problems
+
+
 def needs_results(raw: str) -> dict[str, dict[str, object]]:
     try:
         value = json.loads(raw)
@@ -54,6 +96,12 @@ def planned_set(plan_raw: str) -> tuple[set[str], set[str], str]:
 def evaluate(outcomes: dict[str, dict[str, object]], planned: set[str],
              routable: set[str]) -> list[str]:
     problems: list[str] = []
+    # Fail closed on a dependency this module was never taught about: `needs` is the
+    # workflow's real list, so an unlisted name means the gate is judging a graph it
+    # does not know. Ignoring it is what let a new `required` dependency ship
+    # unenforced.
+    problems += [f"{job}: reported in the needs graph but PLANNED_JOBS does not list it"
+                 for job in sorted(set(outcomes) - set(PLANNED_JOBS))]
     for job in PLANNED_JOBS:
         outcome = outcomes.get(job)
         if outcome is None:

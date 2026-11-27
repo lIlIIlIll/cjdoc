@@ -10,7 +10,7 @@ import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
-private let SOURCE_PROVENANCE_FIXTURE = "tests/fixtures/projects/source_provenance"
+private let SOURCE_PROVENANCE_FIXTURE = nativeFixturePath("tests/fixtures/projects/source_provenance")
 private let SOURCE_PROVENANCE_FIXTURE_DIGEST =
     "sha256:83d4a986bde0be31775c0510a602ec849ea129338bf581f0000a3ee7388251f3"
 

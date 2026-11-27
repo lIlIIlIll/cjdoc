@@ -37,11 +37,15 @@ protected func renderSymbolAlias(symbol: SymbolDoc, locale: String, aliasFile: S
     w.close("head")
     w.open("body", attrs: [htmlAttr("data-cjdoc-route", "symbol-alias")])
     w.open("main")
+    // The redirect body is still a document: it carries exactly one page
+    // heading, which also keeps a reader without script oriented.
+    w.open("h1")
     w.element("a", [htmlFlag("data-cjdoc-alias-target"),
         htmlHref(SafeUrl.siteRoute(target))], { link =>
         link.text(label(locale, "Open API documentation", "打开 API 文档") + ": " +
             readerQualifiedName(symbol))
     })
+    w.close("h1")
     w.close("main")
     w.open("script", attrs: [htmlSrc(SafeUrl.siteRoute(prefix + "symbol-alias.js")),
         htmlFlag("defer")])

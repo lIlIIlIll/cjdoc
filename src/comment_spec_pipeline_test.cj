@@ -26,7 +26,7 @@ private func commentDeclaration(documentation: api_model.DocumentationSet,
 private func generateCommentProject(root: String, lintProfile!: String = "off"): api_model.DocumentationSet {
     DocumentationEngine().generate(GenerationRequest(root, lintProfile: lintProfile,
         audience: "all", jobs: 1,
-        astPreflightExecutable: Some("target/release/bin/main")))
+        astPreflightExecutable: Some(nativeTestBinary())))
 }
 
 private func commentDiagnosticCodes(documentation: api_model.DocumentationSet): ArrayList<String> {

@@ -132,14 +132,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check -r scripts/requirements-showcase.txt
+          python -m pip install --disable-pip-version-check \
+            -r scripts/requirements-python-tools.txt -r scripts/requirements-showcase.txt
           python -m playwright install --with-deps chromium
+          highlight="${RUNNER_TEMP}/cjdoc-native-highlight"
+          mkdir "${highlight}"
+          git archive HEAD tools/highlight | tar -x -C "${highlight}"
+          npm ci --ignore-scripts --prefix "${highlight}/tools/highlight"
+          echo "CJDOC_TEST_HIGHLIGHT_ADAPTER=${highlight}/tools/highlight/adapter.mjs" >> "${GITHUB_ENV}"
 
       - name: Run the remaining acceptance stages
         shell: bash
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
+          CJDOC_TEST_REQUIRE_VERIFIED: "1"
           # DONE-03 needs to know whether a sample ran warm or cold, and the cache
           # outcome was previously not recorded anywhere: the stage records showed an
           # empty cache map for every run. `actions/cache` reports its own result.
@@ -167,6 +174,9 @@ jobs:
           bash scripts/check.sh html-a11y --repo . --identity "${identity}" \
             --main-binary target/release/bin/main \
             --output-root "${RUNNER_TEMP}/cjdoc-stage-html-a11y"
+          bash scripts/check.sh browser --repo . --identity "${identity}" \
+            --main-binary target/release/bin/main \
+            --output-root "${RUNNER_TEMP}/cjdoc-stage-browser"
           bash scripts/check.sh smoke --repo . --identity "${identity}" \
             --main-binary target/release/bin/main \
             --output-root "${RUNNER_TEMP}/cjdoc-stage-smoke"
@@ -292,6 +302,9 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Install Python acceptance dependencies
+        run: python -m pip install --disable-pip-version-check -r scripts/requirements-python-tools.txt
 
       - name: Restore cjv toolchain cache
         id: cjv-cache

@@ -11,6 +11,10 @@ import std.unittest.testmacro.*
 private let SUBJECT_REFERENCE_MODULE = "cjdoc:module:v1:subject-reference"
 private let SUBJECT_REFERENCE_ID = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asubject-reference::fixture::function:api#g0()"
 private let SUBJECT_REFERENCE_FIELD = SUBJECT_REFERENCE_ID + ":doc:see:" + SUBJECT_REFERENCE_ID
+// Public anchor of the frozen subject-only reference, not a hash computed by
+// the implementation under test.
+private let SUBJECT_REFERENCE_ANCHOR =
+    "doc-field-cf4638b416bb977a37c0db9f00865f7cd3fc680a95e0a318f04ed128e4badbbd"
 
 private func subjectReferenceDocumentation(language: ?String, defaultLanguage: ?String,
     localized!: Bool = true): DocumentationSet {
@@ -37,7 +41,7 @@ private func subjectReferenceDocumentation(language: ?String, defaultLanguage: ?
 private func subjectReferenceHtmlPage(artifacts: Array<RenderArtifact>): RenderArtifact {
     for (artifact in artifacts where artifact.path.startsWith("html/") &&
         artifact.path.endsWith("/index.html") &&
-        artifact.content.contains("cj-see-also__title\">See also</h3>")) { return artifact }
+        artifact.content.contains("cj-see-also__title\">See also</h2>")) { return artifact }
     throw IllegalArgumentException("missing subject-only HTML reference")
 }
 
@@ -65,13 +69,13 @@ private func verifySubjectReferenceProvenance(documentation: DocumentationSet, s
     for (values in [site, HtmlDocumentationRenderer().render(selected)]) {
         let page = subjectReferenceHtmlPage(values)
         let pagePath = page.path.removePrefix("html/")
-        let row = page.content.split("cj-see-also__title\">See also</h3>", 2)[1].split("</ul>", 2)[0]
+        let row = page.content.split("cj-see-also__title\">See also</h2>", 2)[1].split("</ul>", 2)[0]
         @Expect(row.contains("href=\"" + pageRootPrefix(pagePath) + pagePath + "\""))
         @Expect(row.contains("<code>fixture.api</code>"))
         if (!state.isEmpty()) {
             @Expect(row.contains("data-translation-state=\"" + state + "\""))
             @Expect(row.contains(provenance))
-            @Expect(row.contains("id=\"doc-field-" + contractFingerprint(SUBJECT_REFERENCE_FIELD) + "\""))
+            @Expect(row.contains("id=\"" + SUBJECT_REFERENCE_ANCHOR + "\""))
         } else {
             @Expect(!row.contains("content-language"))
             @Expect(!row.contains("doc-field-"))

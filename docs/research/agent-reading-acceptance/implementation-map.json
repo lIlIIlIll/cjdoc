@@ -736,6 +736,7 @@
         "scripts/agent_evaluation_proof.py",
         "scripts/agent_evaluation_runtime.py",
         "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-protocol-v2.json",
         "tests/agent/evaluation-rubric.json",
         "tests/agent/evaluation-client-transport-v2.json"
       ],
@@ -757,6 +758,7 @@
         "scripts/agent_evaluation_proof.py",
         "scripts/agent_evaluation_runtime.py",
         "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-protocol-v2.json",
         "tests/agent/evaluation-rubric.json",
         "tests/agent/evaluation-client-transport-v2.json"
       ],
@@ -778,6 +780,7 @@
         "scripts/agent_evaluation_proof.py",
         "scripts/agent_evaluation_runtime.py",
         "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-protocol-v2.json",
         "tests/agent/evaluation-rubric.json",
         "tests/agent/evaluation-client-transport-v2.json"
       ],
@@ -799,6 +802,7 @@
         "scripts/agent_evaluation_proof.py",
         "scripts/agent_evaluation_runtime.py",
         "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-protocol-v2.json",
         "tests/agent/evaluation-rubric.json",
         "tests/agent/evaluation-client-transport-v2.json"
       ],
@@ -820,6 +824,7 @@
         "scripts/agent_evaluation_proof.py",
         "scripts/agent_evaluation_runtime.py",
         "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-protocol-v2.json",
         "tests/agent/evaluation-rubric.json",
         "tests/agent/evaluation-client-transport-v2.json"
       ],
@@ -841,6 +846,7 @@
         "scripts/agent_evaluation_proof.py",
         "scripts/agent_evaluation_runtime.py",
         "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-protocol-v2.json",
         "tests/agent/evaluation-rubric.json",
         "tests/agent/evaluation-client-transport-v2.json"
       ],
@@ -862,6 +868,7 @@
         "scripts/agent_evaluation_proof.py",
         "scripts/agent_evaluation_runtime.py",
         "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-protocol-v2.json",
         "tests/agent/evaluation-rubric.json",
         "tests/agent/evaluation-client-transport-v2.json"
       ],

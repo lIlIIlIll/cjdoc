@@ -542,11 +542,14 @@ private func appendSymbolOverview(w: HtmlWriter, symbol: SymbolDoc,
         w.open("div", attrs: [htmlAttr("id", "overview"),
             htmlClass("cj-introduction cj-prose")])
     }
-    appendDocumentationIntroductionHtml(w, symbol, rootPrefix, assetLookup, 4, locale)
+    // A type or extension page is a document with sections below its title, so
+    // its introduction and contracts are h2 regardless of the member area.
+    appendDocumentationIntroductionHtml(w, symbol, rootPrefix, assetLookup, 2, locale)
     if (hasIntroduction) { w.close("div") }
     match (symbol.documentation) {
         case Some(comment) =>
-            appendDocumentationContractsHtml(w, comment, locale, symbolAnchor(symbol))
+            appendDocumentationContractsHtml(w, comment, locale, symbolAnchor(symbol),
+                headingLevel: 2)
         case None => ()
     }
 }
@@ -704,9 +707,13 @@ private func appendSymbolPageBody(w: HtmlWriter, documentation: DocumentationSet
     projection: RenderProjection, index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
     hasMemberPage: Bool, assetLookup: HashMap<String, String>,
     typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
+    // Both heading streams start under the page's real parent heading: h2 on a
+    // standalone declaration page, h3 below the member area of a type page.
+    let headingBase: Int64 = if (hasMemberPage) { 3 } else { 2 }
     appendDocumentationHtml(w, index, symbol, rootPrefix, assetLookup,
-        typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !hasMemberPage,
-        includeIntroduction: !hasMemberPage, projection: projection)
+        typeLinkIndex, headingBase: headingBase, locale: locale, includeContracts: !hasMemberPage,
+        includeIntroduction: !hasMemberPage, projection: projection,
+        sectionHeadingLevel: headingBase)
     if (!hasMemberPage) {
         appendReaderRelationships(w, index, symbol, rootPrefix, typeLinkIndex, locale)
     }

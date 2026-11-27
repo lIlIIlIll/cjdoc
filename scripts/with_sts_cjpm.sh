@@ -90,12 +90,20 @@ restore_manifests() {
   fi
 }
 trap restore_manifests EXIT
+run_unit_tests=0
+unit_progress_flag=--no-progress
+unit_capture_flag=--no-capture-output
 if [[ "$1" == "test" ]]; then
+  run_unit_tests=1
+  export CJDOC_TEST_ROOT="${workspace}"
   for argument in "$@"; do
     case "${argument}" in
       --target-dir|--target-dir=*)
         echo "unit-test target is owned by the STS wrapper; omit --target-dir" >&2
         exit 2 ;;
+      --no-run|--dry-run) run_unit_tests=0 ;;
+      --no-progress) unit_progress_flag="" ;;
+      --no-capture-output) unit_capture_flag="" ;;
     esac
   done
   # A fresh target holds every -O1 unit artifact, separately from the product's
@@ -135,8 +143,30 @@ if [[ "${patch_fixture_entry}" == "1" ]]; then
 fi
 "${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${arguments[@]}"
 set +e
-"${CJDOC_REAL_CJPM}" "$@"
-status=$?
+if [[ "${run_unit_tests}" == "1" ]]; then
+  if [[ -n "${unit_progress_flag}" ]]; then set -- "$@" "${unit_progress_flag}"; fi
+  if [[ -n "${unit_capture_flag}" ]]; then set -- "$@" "${unit_capture_flag}"; fi
+  "${CJDOC_REAL_CJPM}" "$@" 2>&1 | tee "${backup_dir}/native-tests.log"
+  outcomes=("${PIPESTATUS[@]}")
+  status="${outcomes[0]}"
+  if [[ "${status}" == "0" && "${outcomes[1]}" != "0" ]]; then status="${outcomes[1]}"; fi
+  if [[ "${status}" == "0" ]]; then
+    degraded="$(grep -c '^CJDOC_TEST_DEGRADED ' "${backup_dir}/native-tests.log" || true)"
+    printf 'Native test requirements — degraded: %s\n' "${degraded}"
+    if [[ "${CJDOC_TEST_REQUIRE_VERIFIED:-0}" == "1" && "${degraded}" != "0" ]]; then
+      echo "native suite left required behavior unverified" >&2
+      status=1
+    fi
+  fi
+else
+  "${CJDOC_REAL_CJPM}" "$@"
+  status=$?
+  if [[ "${status}" == "0" && "$1" == "test" && "${CJDOC_TEST_PROVE_ENVIRONMENT:-0}" == "1" ]]; then
+    "${CJDOC_PYTHON:-python}" "${workspace}/scripts/check_native_environment.py" \
+      --repo "${workspace}" --unit-target "${unit_target}"
+    status=$?
+  fi
+fi
 set -e
 # Read the manifest actually consumed, including an unpatched auxiliary project.
 effective="$("${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/sts_compile_override.py" \

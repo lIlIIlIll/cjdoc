@@ -30,13 +30,15 @@ Stages:
   preflight     tracked repository inputs and SDK-installer/stdx unit tests
   build         compile cjdoc and the CHIR worker, then write a build manifest
   native        cjpm test for the Cangjie unit suites
-  python-tools  python -m unittest discover -s scripts (minus preflight modules)
+  python-tools  Pyflakes and the repository's Python unittest suites
   cli           CLI, schema, golden, HTML, output-safety and fixture contracts
   provider      provider-plugin fixture run
   smoke         real-repository smoke against a fresh two-run output tree
   html-a11y     real-browser package index responsive/semantic/accessibility matrix (issue #115);
                 requires Playwright + Chromium and a built binary, so it is not part
                 of the default chain: bash scripts/check.sh html-a11y --identity <manifest>
+  browser       Node Playwright regression suite over generated sites (separate Linux CI stage)
+  render-mutations  optional native renderer and decoder negative controls
 
 Common options:
   --repo DIR           repository root (default: this script's parent)
@@ -96,9 +98,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${stage_id}" in
-    ""|preflight|build|native|python-tools|cli|provider|smoke|html-a11y) ;;
+    ""|preflight|build|native|python-tools|cli|provider|smoke|html-a11y|browser) ;;
     *) echo "check.sh: unknown stage: ${stage_id}" >&2; usage >&2; exit 2 ;;
 esac
+
+"${python_cmd}" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else "check.sh requires Python 3.12 or newer")'
 
 run_stage() {
     local id="$1" kind="$2"
@@ -127,11 +131,11 @@ stage_kind() {
     case "$1" in
         preflight|python-tools) echo python ;;
         build) echo build ;;
-        native) echo native ;;
+        native|render-mutations) echo native ;;
         cli) echo cli ;;
         provider) echo provider ;;
         smoke) echo smoke ;;
-        html-a11y) echo browser ;;
+        html-a11y|browser) echo browser ;;
         *) echo "check.sh: unknown stage: $1" >&2; exit 2 ;;
     esac
 }
@@ -149,6 +153,8 @@ dispatch_stage() {
         provider) stage_provider ;;
         smoke) stage_smoke ;;
         html-a11y) stage_html_a11y ;;
+        browser) stage_browser ;;
+        render-mutations) "${python_cmd}" scripts/check_render_mutations.py --repo "${repo}" ;;
         *) echo "check.sh: unknown stage: $1" >&2; exit 2 ;;
     esac
 }
@@ -515,28 +521,17 @@ stage_native() {
 stage_python_tools() {
     cd "${repo}"
     require_identity
-    # Two suites must both run, and neither may be silently dropped:
-    #   * `scripts/test_*.py` — the repository tooling tests;
-    #   * `tests/showcase_contract/` — the showcase contract tests, which the
-    #     Pages refactor dropped from `pages.yml` and which nothing else ran.
-    # `unittest discover` has no exclusion switch, so the module list is built
-    # explicitly: every scripts/test_*.py except the two modules the preflight
-    # stage already ran. Discover used to add `scripts/` to sys.path for sibling
-    # imports such as `test_validate_html_site`, so PYTHONPATH keeps that.
+    "${python_cmd}" -m pyflakes scripts
+    "${python_cmd}" scripts/check_test_suite.py
+    "${python_cmd}" scripts/agent_evaluation_protocol.py
+    # CLI fixture drivers run in check_cli.sh; preflight owns the SDK tests.
+    # Only real unittest modules enter this collector.
     local modules
-    modules="$("${python_cmd}" - "${repo}" <<'PY'
-from pathlib import Path
-import sys
-
-repo = Path(sys.argv[1])
-excluded = {"test_install_cangjie_sdk.py", "test_with_stdx.py"}
-names = sorted(path.stem for path in (repo / "scripts").glob("test_*.py")
-               if path.name not in excluded)
-if not names:
-    raise SystemExit("no script test modules found")
-print(" ".join(f"scripts.{name}" for name in names))
-PY
-)"
+    modules="$("${python_cmd}" scripts/check_test_suite.py --print-modules)"
+    if [[ -z "${modules}" ]]; then
+        echo "no script unittest modules found" >&2
+        return 1
+    fi
     # Python on Windows writes CRLF to stdout, so strip any trailing CR before the
     # value is used as a module name.
     modules="${modules//$'\r'/}"
@@ -642,6 +637,14 @@ stage_html_a11y() {
         --output "${matrix_root}"
 }
 
+stage_browser() {
+    cd "${repo}"
+    main_binary="${main_binary:-${repo}/target/release/bin/main}"
+    require_identity
+    CJDOC_PYTHON="${python_cmd}" bash scripts/check_browser.sh \
+        "${main_binary}" "${output_root:-${repo}/target/browser-regression}"
+}
+
 cd "${repo}"
 
 # Inner invocation: this process is the timed child of ci_stage.py, so it runs
@@ -678,10 +681,8 @@ if [[ -z "${stage}" ]]; then
         done < <(existing_build_outputs all)
     }
     trap 'status=$?; cleanup_full_gate; exit "${status}"' EXIT
-    # `html-a11y` is deliberately NOT part of the default chain: it needs a real
-    # Chromium, which the cross-platform gate and a bare developer machine do not
-    # have. CI runs it as its own required stage on Linux (see ci.yml), and the
-    # command below reproduces it locally.
+    # Browser stages are separate: the default cross-platform gate does not
+    # install or require Chromium. Linux acceptance runs both explicitly.
     for stage in preflight build native python-tools cli provider; do
         run_stage "${stage}" "$(stage_kind "${stage}")"
     done

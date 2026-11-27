@@ -83,7 +83,7 @@ private func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
         case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
             locale: locale, pagePath: pagePath, symbolIndex: Some(symbolIndex),
             headingPrefix: heading + "#", headingBase: heading.size + 1,
-            headingAnchorPrefix: anchor)
+            headingAnchorPrefix: anchor, payloadKind: symbol.kind)
         case None => ()
     }
     appendCommentFieldsMarkdown(out, projection, symbol, locale)
@@ -282,7 +282,8 @@ private func appendMarkdownContainerArtifacts(artifacts: RenderArtifactStore,
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
                 locale: locale, pagePath: markdownSymbolPagePath(symbol),
-                symbolIndex: Some(projection.visibleIndex), headingAnchorPrefix: symbolAnchor(symbol))
+                symbolIndex: Some(projection.visibleIndex), headingAnchorPrefix: symbolAnchor(symbol),
+                payloadKind: symbol.kind)
             case None => ()
         }
         appendCommentFieldsMarkdown(out, projection, symbol, locale)

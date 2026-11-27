@@ -13,7 +13,7 @@ non-document client tool disabled.
 Nothing here scores a model. The runner records what actually happened: the
 client's own JSONL events, the last structured answer, and every JSON-RPC line
 that crossed each arm's transport (definitions, requests, results, sizes,
-timings). Budgets are fixed by `tests/agent/evaluation-protocol.json`, every
+timings). Budgets are fixed by `tests/agent/evaluation-protocol-v2.json`, every
 failure is retained, and no task is retried. Compilation and behavioral
 adjudication belong to the parent's real compiler run; this tool only marks
 where they are still outstanding.
@@ -37,18 +37,16 @@ from typing import Any
 sys.dont_write_bytecode = True
 if __package__:
     from .agent_evaluation_protocol import (
-        ARMS, BASELINE_VIEW_DIRECTORY as BASELINE_VIEW_DIRECTORY, DEFAULT_PROTOCOL,
-        DEFAULT_RUBRIC, PROTOCOL_LOADER_PATH, REPO, ProtocolError, RunOptions,
-        arm_site_arguments, digest_of, load_protocol, load_rubric, plan_runs as plan_runs,
-        prepare_baseline_view,
+        ARMS, DEFAULT_PROTOCOL, DEFAULT_RUBRIC, PROTOCOL_LOADER_PATH, REPO,
+        ProtocolError, RunOptions, arm_site_arguments, digest_of, load_protocol,
+        load_rubric, prepare_baseline_view,
     )
     from .strict_json import strict_dumps
 else:
     from agent_evaluation_protocol import (
-        ARMS, BASELINE_VIEW_DIRECTORY as BASELINE_VIEW_DIRECTORY, DEFAULT_PROTOCOL,
-        DEFAULT_RUBRIC, PROTOCOL_LOADER_PATH, REPO, ProtocolError, RunOptions,
-        arm_site_arguments, digest_of, load_protocol, load_rubric, plan_runs as plan_runs,
-        prepare_baseline_view,
+        ARMS, DEFAULT_PROTOCOL, DEFAULT_RUBRIC, PROTOCOL_LOADER_PATH, REPO,
+        ProtocolError, RunOptions, arm_site_arguments, digest_of, load_protocol,
+        load_rubric, prepare_baseline_view,
     )
     from strict_json import strict_dumps
 

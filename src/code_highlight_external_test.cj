@@ -120,8 +120,11 @@ class CodeHighlightExternalTest {
     @TestCase
     func realBinaryHighlightsPinnedAdapterWhenProvisioned(): Unit {
         let node = externalTestNode()
-        if (!exists("tools/highlight/adapter.mjs") || !exists("tools/highlight/node_modules/highlight.js") || node.isNone()) {
-            println("SKIPPED / UNVERIFIED: pinned external highlighting requires offline-provisioned tools/highlight/node_modules/highlight.js and Node")
+        let adapter = Path(getVariable("CJDOC_TEST_HIGHLIGHT_ADAPTER").getOrDefault(
+            { => nativeFixturePath("tools/highlight/adapter.mjs") }))
+        if (!exists(adapter) || !exists(adapter.parent.join("node_modules/highlight.js")) || node.isNone()) {
+            reportNativeDegraded("realBinaryHighlightsPinnedAdapterWhenProvisioned",
+                "pinned Highlight.js adapter or Node is unavailable")
             return
         }
         let root = Directory.createTemp(getTempDirectory())
@@ -135,9 +138,9 @@ class CodeHighlightExternalTest {
                 "[highlight]\nmode = \"static\"\nlanguages = [\"cangjie\", \"python\", \"json\"]\n".toArray())
             File.writeTo(root.join("src/lib.cj"), ("package external_test\n/**\n * Examples.\n *\n" +
                 " * ```python\n * True\n * ```\n *\n * ```json\n * true\n * ```\n */\npublic func example(): Unit {}\n").toArray())
-            let (exitCode, output, _) = executeWithBoundedOutput(canonicalize("target/release/bin/main").toString(),
+            let (exitCode, output, _) = executeWithBoundedOutput(nativeTestBinary(),
                 ["generate", "--project", root.toString(), "--format", "json", "--stdout", "--no-cache",
-                 "--highlight-adapter", canonicalize("tools/highlight/adapter.mjs").toString(),
+                 "--highlight-adapter", canonicalize(adapter).toString(),
                  "--highlight-node", node.getOrThrow()], outputLimit: 1024 * 1024)
             @Assert(exitCode, 0)
             let blocks = ArrayList<JsonObject>()

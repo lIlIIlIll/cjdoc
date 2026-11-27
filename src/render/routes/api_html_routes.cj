@@ -53,7 +53,13 @@ protected class ApiHtmlRoutes {
         }
         let allocator = ApiRouteAllocator(documentation, files, choices)
         let roots = ArrayList<SymbolDoc>()
-        for (symbol in symbols where symbol.ownerId.isNone()) { roots.add(symbol) }
+        let extensions = ArrayList<SymbolDoc>()
+        for (symbol in symbols where symbol.ownerId.isNone()) {
+            // An extension is a block of the type it augments, not a second
+            // declaration of that type's name. It is allocated after every
+            // ordinary route, so adding one never moves the type or its members.
+            if (symbol.kind == "extend") { extensions.add(symbol) } else { roots.add(symbol) }
+        }
         var level = roots
         while (!level.isEmpty()) {
             allocator.allocateLevel(level)
@@ -63,6 +69,7 @@ protected class ApiHtmlRoutes {
             }
             level = next
         }
+        allocator.allocateExtensions(extensions, members)
         if (files.size != symbols.size) {
             throw IllegalArgumentException("API routes require a visible declaration owner for every member")
         }
@@ -158,6 +165,24 @@ private func apiFamilyKey(symbol: SymbolDoc): String {
 
 private func canOverloadApiRoute(symbol: SymbolDoc): Bool {
     ["function", "constructor", "macro"].contains(symbol.kind)
+}
+
+// The resolved target is the type that owns the extension directory. Without
+// one, the source spelling's head (without type arguments) names the same type.
+private func extensionTargetId(symbol: SymbolDoc): ?String {
+    for (relationship in symbol.symbolRelationships) {
+        if (relationship.kind != "extensionTarget" || relationship.state != "resolved") { continue }
+        if (let Some(targetId) <- relationship.targetSymbolId) { return Some(targetId) }
+    }
+    None
+}
+
+private func extensionTargetKey(symbol: SymbolDoc): String {
+    if (let Some(targetId) <- extensionTargetId(symbol)) { return targetId }
+    let head = symbol.name.split("(", 2)[0].split("<", 2)[0].trimAscii()
+        .replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "")
+    routeIdentityPart(symbol.moduleId) + routeIdentityPart(symbol.packageName) +
+        routeIdentityPart(head)
 }
 
 // A directory's spelling is part of the route, even if it has no index.
@@ -399,6 +424,90 @@ private class ApiRouteAllocator {
         for (family in families) { allocateFamily(family) }
     }
 
+    /**
+     * Extensions live under the type they augment, as `<type>/extensions/<n>/`.
+     *
+     * Blocks of one target are ordered by declaration position, so adding a
+     * member to an existing block never moves a route and a new block only
+     * appends one. Only a real portable collision falls back to a hash.
+     */
+    func allocateExtensions(extensions: ArrayList<SymbolDoc>,
+        members: HashMap<String, ArrayList<SymbolDoc>>): Unit {
+        // Declaration order — source path, then block start — is stable when a
+        // member is added to an existing block, so an existing block keeps its
+        // directory and a new block only appends one.
+        sort(extensions, lessThan: { a, b =>
+            if (a.packageName != b.packageName) { return a.packageName < b.packageName }
+            let leftTarget = extensionTargetKey(a)
+            let rightTarget = extensionTargetKey(b)
+            if (leftTarget != rightTarget) { return leftTarget < rightTarget }
+            if (a.source.path != b.source.path) { return a.source.path < b.source.path }
+            if (a.source.start.byteOffset != b.source.start.byteOffset) {
+                return a.source.start.byteOffset < b.source.start.byteOffset
+            }
+            a.id < b.id
+        })
+        let ordinals = HashMap<String, Int64>()
+        for (symbol in extensions) {
+            let root = extensionRootDirectory(symbol)
+            if (root.isEmpty() || root.size + 40 > API_HTML_MAX_PATH) {
+                throw IllegalArgumentException("cannot allocate extension route for '${symbol.id}'")
+            }
+            let key = extensionTargetKey(symbol)
+            let ordinal = ordinals.get(key).getOrDefault({ => 0 }) + 1
+            ordinals[key] = ordinal
+            let directory = if (ordinal == 1) { root } else { root + "/" + ordinal.toString() }
+            if (directory.size + API_HTML_INDEX.size <= API_HTML_MAX_PATH &&
+                claim(directory)) {
+                files[symbol.id] = directory + API_HTML_INDEX
+                continue
+            }
+            // Only a real collision with another route (for example an authored
+            // page named `extensions`) reaches the opaque fallback.
+            let digest = contractFingerprint(symbol.id)
+            var allocated = false
+            for (length in API_HTML_DIGEST_START..=digest.size) {
+                let fallback = root + "~" + digest[..length]
+                if (fallback.size + API_HTML_INDEX.size > API_HTML_MAX_PATH) { break }
+                if (claim(fallback)) {
+                    files[symbol.id] = fallback + API_HTML_INDEX
+                    allocated = true
+                    break
+                }
+            }
+            if (!allocated) {
+                throw IllegalArgumentException("cannot allocate distinct extension route for '${symbol.id}'")
+            }
+        }
+        for (symbol in extensions) {
+            let next = ArrayList<SymbolDoc>()
+            if (let Some(children) <- members.get(symbol.id)) { next.add(all: children) }
+            if (!next.isEmpty()) { allocateLevel(next) }
+        }
+    }
+
+    // The type an extension augments owns its directory. Without a resolved
+    // extension target the source spelling's head still names that type.
+    private func extensionRootDirectory(symbol: SymbolDoc): String {
+        let parent = match (packages.get(symbol.packageName)) {
+            case Some(path) => path
+            case None =>
+                let path = apiPackageDirectory(symbol.packageName)
+                packages[symbol.packageName] = path
+                path
+        }
+        if (let Some(targetId) <- extensionTargetId(symbol)) {
+            if (let Some(path) <- files.get(targetId)) {
+                return path.removeSuffix(API_HTML_INDEX) + "/extensions"
+            }
+        }
+        let head = symbol.name.split("(", 2)[0].split("<", 2)[0].trimAscii()
+        let separator = head.lastIndexOf(".")
+        let tail = if (separator.isSome()) { head[separator.getOrThrow() + 1..] } else { head }
+        let escaped = apiEscapedName(tail.trimAscii())
+        if (escaped.isEmpty()) { "" } else { parent + escaped + "/extensions" }
+    }
+
     private func claim(directory: String): Bool { claims.claim(directory + API_HTML_INDEX) }
 
     private func claimModuleChoice(candidate: String, group: ArrayList<ApiRouteFamily>): Unit {
@@ -417,19 +526,13 @@ private class ApiRouteAllocator {
         let file = directory + API_HTML_INDEX
         if (file.size > API_HTML_MAX_PATH || !claims.free(file)) { return false }
         if (family.overloaded) {
-            if (file.size + API_HTML_DIGEST_START + 2 > API_HTML_MAX_PATH) { return false }
-            let assigned = ArrayList<String>()
-            let pending = HashSet<String>()
-            for (symbol in family.symbols) {
-                let digest = contractFingerprint(symbol.id)
-                let signature = overloadSignatureFile(directory, digest, pending)
-                if (signature.isEmpty()) { return false }
-                assigned.add(signature)
-            }
-            for (i in 0..assigned.size) {
-                claims.reserve(assigned[i])
-                files[family.symbols[i].id] = assigned[i]
-            }
+            sort(family.symbols, lessThan: { a, b =>
+                let left = overloadSignatureOrder(a)
+                let right = overloadSignatureOrder(b)
+                if (left != right) { return left < right }
+                a.id < b.id
+            })
+            if (!reserveSignatureDirectories(directory, family)) { return false }
             choices.add(ApiHtmlChoice("overloads:" + family.key, directory, family.symbols.toArray(), true))
         } else { files[family.symbols[0].id] = file }
         claims.reserve(file)
@@ -437,11 +540,52 @@ private class ApiRouteAllocator {
         true
     }
 
-    private func overloadSignatureFile(directory: String, digest: String, pending: HashSet<String>): String {
+    /**
+     * One readable directory per distinct signature: `signature-1`, `signature-2`, ...
+     *
+     * Numbering follows declaration position, so it does not depend on input
+     * order and adding an overload only appends a directory. A spelling that is
+     * not free is a real portable file-system collision, and only then keeps
+     * the deterministic hash suffix.
+     */
+    private func reserveSignatureDirectories(directory: String, family: ApiRouteFamily): Bool {
+        let assigned = ArrayList<String>()
+        for (index in 0..family.symbols.size) {
+            let symbol = family.symbols[index]
+            let readable = directory + "/signature-" + (index + 1).toString()
+            if (readable.size + API_HTML_INDEX.size <= API_HTML_MAX_PATH &&
+                claims.free(readable + API_HTML_INDEX)) {
+                assigned.add(readable)
+                continue
+            }
+            let digest = contractFingerprint(symbol.id)
+            let fallback = overloadSignatureFile(directory, digest, HashSet<String>(),
+                assigned)
+            if (fallback.isEmpty()) { return false }
+            assigned.add(fallback.removeSuffix(API_HTML_INDEX))
+        }
+        for (index in 0..assigned.size) {
+            claims.reserve(assigned[index] + API_HTML_INDEX)
+            files[family.symbols[index].id] = assigned[index] + API_HTML_INDEX
+        }
+        true
+    }
+
+    // Numbering follows declaration position, so adding an overload appends a
+    // directory instead of renumbering the signatures already published.
+    private func overloadSignatureOrder(symbol: SymbolDoc): String {
+        symbol.source.path + "|" + symbol.source.start.byteOffset.toString() + "|" + symbol.id
+    }
+
+    private func overloadSignatureFile(base: String, digest: String,
+        pending: HashSet<String>, assigned: ArrayList<String>): String {
         for (length in API_HTML_DIGEST_START..=digest.size) {
-            let file = directory + "/~" + digest[..length] + API_HTML_INDEX
+            let candidate = base + "/~" + digest[..length]
+            let file = candidate + API_HTML_INDEX
             if (file.size > API_HTML_MAX_PATH) { break }
-            if (claims.free(file) && pending.add(file)) { return file }
+            if (claims.free(file) && pending.add(file) && !assigned.contains(candidate)) {
+                return file
+            }
         }
         ""
     }

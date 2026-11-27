@@ -225,9 +225,9 @@ def verify_route_site(site: Path, root: Path, *, prefix: str, expect_sources: bo
         raise Failure(f"target page was not published at its authored route: {guide}")
     html = other.read_text(encoding="utf-8")
     expected = [
-        f'href="../concepts/my%20guide.html">Read route guide</a>',
-        f'href="../concepts/my%20guide.html#standalone--doc-topic">Read section</a>',
-        f'href="../concepts/%E6%8C%87%E5%8D%97%20%28zh%29.html">Read unicode</a>',
+        'href="../concepts/my%20guide.html">Read route guide</a>',
+        'href="../concepts/my%20guide.html#standalone--doc-topic">Read section</a>',
+        'href="../concepts/%E6%8C%87%E5%8D%97%20%28zh%29.html">Read unicode</a>',
     ]
     for fragment in expected:
         if fragment not in html:

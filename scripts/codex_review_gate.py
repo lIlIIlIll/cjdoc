@@ -32,6 +32,10 @@ else:
     )
     from codex_review_github import GitHubAPI, STATUS_CONTEXT
 
+# The tests share the exact official-comment identity used by the classifier.
+__all__ = ["CODEX_BOT_ID", "CODEX_BOT_LOGIN", "SUMMARY_PREFIX", "GitHubAPI",
+           "STATUS_CONTEXT", "classify_codex_review", "main"]
+
 
 def _merge_scope_is_unique(
     number: int, head_sha: str, base_sha: str, merge_sha: str, open_prs: list[dict]

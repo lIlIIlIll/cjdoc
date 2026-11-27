@@ -532,11 +532,6 @@ class BuildIntegrationTests(unittest.TestCase):
         self.assertEqual(component[left:right], '<section id="coverage"><div>value</div></section>')
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-
 class CoordinatorSignalCleanupTests(unittest.TestCase):
     """A cancelled coordinator must not leave an isolated group running.
 
@@ -663,3 +658,7 @@ class CoordinatorSignalCleanupTests(unittest.TestCase):
                 coordinator.kill()
                 coordinator.wait(timeout=10)
             subprocess.run(["pkill", "-f", marker], check=False)
+
+
+if __name__ == "__main__":
+    unittest.main()

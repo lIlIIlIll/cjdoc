@@ -719,6 +719,13 @@ test.describe('generated HTML reference', () => {
     const stateUrl = new URL(stateHref, packageUrl).href;
     await gotoFile(page, stateUrl);
     await expect(page.locator('.cj-external')).toHaveCount(0);
+    const docIR = JSON.parse(await readFile(path.resolve(fixtureRoot, '..', 'docs.json'), 'utf8'));
+    const invalidHref = docIR.diagnostics.filter(item => item.code === 'CJDOC2313');
+    expect(invalidHref).toHaveLength(1);
+    expect(invalidHref[0]).toMatchObject({
+      severity: 'warning',
+      message: "external documentation index 'docs/std-symbol-index.json': invalid href for record 'html_reference_core.ReferenceState'",
+    });
     await gotoFile(page, classUrl);
     await expect(page.locator('.cj-tree__link[aria-current="page"]')).toContainText('ReferenceBox');
     await expect(page.locator('.cj-toc .cj-toc__link').filter({hasText:'normalize'})).toHaveCount(1);
@@ -894,6 +901,14 @@ test.describe('generated HTML reference', () => {
     await expect(localTypeLink).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.locator('.cj-page-header h1')).toHaveText('Token');
+    const tokenPage = page.locator('main');
+    await expect(tokenPage.locator('strong').filter({ hasText: /^bold$/ })).toBeVisible();
+    await expect(tokenPage.locator('code').filter({ hasText: /^inline code$/ })).toBeVisible();
+    await expect(tokenPage.getByRole('link', { name: 'safe link', exact: true }))
+      .toHaveAttribute('href', 'https://example.test/reference');
+    await expect(tokenPage.getByRole('heading', { name: 'Details', exact: true })).toBeVisible();
+    await expect(tokenPage.getByText('A documented item.', { exact: true })).toBeVisible();
+    await expect(tokenPage.locator('pre code')).toContainText('let answer = 42');
     await page.goBack();
     await expect(page).toHaveURL(beforeTypeNavigation);
     await expect(useDetail).not.toHaveAttribute('open', '');
@@ -920,7 +935,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-tree-item="type"] > .cj-tree__row > .cj-tree__link--ancestor')).toContainText('ReferenceBox');
     await expect(page.locator('.cj-breadcrumbs')).toContainText('ReferenceBox');
     await expect(page.locator('main h1')).toContainText('normalize');
-    await expect(page.locator('.cj-contracts h3')).toHaveText('Behavioral constraints');
+    await expect(page.locator('.cj-contracts h2')).toHaveText('Behavioral constraints');
     await expect(page.locator('.cj-contracts')).toContainText('precondition');
     await expect(page.locator('.cj-contracts')).toContainText('performance');
     const hiddenTarget = page.locator('dt').filter({ hasText: 'HiddenGuideTarget' });

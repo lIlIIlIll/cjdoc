@@ -57,20 +57,6 @@ def file_identity(digest: "hashlib._Hash", root: Path, relative: str) -> None:
     digest.update(b"\0")
 
 
-def dirty_digest(top: Path) -> str:
-    digest = hashlib.sha256()
-    diff = run_git(top, "diff", "--binary", "--no-ext-diff", "HEAD", "--", text=False)
-    assert isinstance(diff, bytes)
-    digest.update(b"diff\0")
-    digest.update(diff)
-    untracked = run_git(top, "ls-files", "--others", "--exclude-standard", "-z", text=False)
-    assert isinstance(untracked, bytes)
-    for raw in sorted(value for value in untracked.split(b"\0") if value):
-        relative = raw.decode("utf-8", "strict")
-        file_identity(digest, top, relative)
-    return digest.hexdigest()
-
-
 def unversioned_digest(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):

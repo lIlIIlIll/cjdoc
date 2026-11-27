@@ -19,6 +19,11 @@ cjdoc check --project .
 | `CJDOC3036` | 在摘要之后补详细说明 |
 | `CJDOC3037` | 为非 `Unit` 返回值补 `@return` |
 | `CJDOC3038` | 给公开声明补 `@example` |
+| `CJDOC3047` | 摘要整句只重复声明名；改写摘要说明它做什么，或在 `[lint]` 把 `trivial-summary` 设为 `off` |
+| `CJDOC3048` | `@param` 说明整句只重复参数名；补充参数含义或取值范围 |
+| `CJDOC3049` | `@return` 说明整句只重复返回类型；说明返回值表示什么 |
+
+`CJDOC3047`–`CJDOC3049` 是模板式说明的保守提示，与其它规则一样跟随 `[lint]`：`severity = "off"` 会一并关闭，也可以按规则名单独设为 `off`、`warning` 或 `error`。完整规则表见[配置参考](../reference/configuration.md)。
 
 启用多语言的项目还要处理缺译；见[发布中英文](../tutorials/publish-languages.md)。要编译或运行示例，另加 `--check-examples`。
 

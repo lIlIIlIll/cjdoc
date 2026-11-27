@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+import hashlib
+from io import StringIO
 import json
 import os
 import sys
@@ -99,33 +102,37 @@ class WithStdxTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             sidecar = self.make_sidecar(root, ("stdx.chir.cjo", "libstdx.chir.a"))
-            environment: dict[str, str] = {}
-            with patch.dict(with_stdx.os.environ, {"CANGJIE_STDX_PATH": str(sidecar)}, clear=True):
-                digest, _ = with_stdx.authenticate_stdx(
-                    sidecar.resolve(), with_stdx.REQUIRED_STATIC_ARTIFACTS)
-                fingerprint = with_stdx.hashlib.sha256(
-                    f"1.2.0\0x86_64-unknown-linux-gnu\0{digest}\0".encode("utf-8")).hexdigest()
-                environment = {
-                    "CANGJIE_STDX_PATH": str(sidecar.resolve()),
-                    "CJDOC_STDX_PATH": str(sidecar.resolve()),
-                    "CJDOC_STDX_VARIANT": "static",
-                    "CJDOC_STDX_DIGEST": digest,
-                    "CJDOC_STDX_LINK_OPTIONS": f"-L{sidecar.resolve()}",
-                    "CJDOC_STDX_DEPENDENCY_DIGEST": "",
-                    "CJDOC_TOOLCHAIN_VERSION": "1.2.0",
-                    "CJDOC_TOOLCHAIN_TARGET": "x86_64-unknown-linux-gnu",
-                    "CJDOC_TOOLCHAIN_FINGERPRINT": fingerprint,
-                }
-            self.assertEqual(len(environment), 9)
-            self.assertEqual(environment["CJDOC_STDX_DIGEST"],
-                             with_stdx.authenticate_stdx(
-                                 sidecar.resolve(), with_stdx.REQUIRED_STATIC_ARTIFACTS)[0])
-            # The digest must actually track the sidecar bytes.
-            (sidecar / "libstdx.chir.a").write_bytes(b"changed")
-            with patch.dict(with_stdx.os.environ, {"CANGJIE_STDX_PATH": str(sidecar)}, clear=True):
-                changed, _ = with_stdx.authenticate_stdx(
-                    sidecar.resolve(), with_stdx.REQUIRED_STATIC_ARTIFACTS)
-            self.assertNotEqual(changed, environment["CJDOC_STDX_DIGEST"])
+            version = "1.2.0 (cjnative)"
+            target = "x86_64-unknown-linux-gnu"
+            digest, _ = with_stdx.authenticate_stdx(
+                sidecar.resolve(), with_stdx.REQUIRED_STATIC_ARTIFACTS)
+            fingerprint = hashlib.sha256(
+                f"{version}\0{target}\0{digest}\0".encode("utf-8")).hexdigest()
+            expected = {
+                "CANGJIE_STDX_PATH": str(sidecar.resolve()),
+                "CJDOC_STDX_PATH": str(sidecar.resolve()),
+                "CJDOC_STDX_VARIANT": "static",
+                "CJDOC_STDX_DIGEST": digest,
+                "CJDOC_STDX_LINK_OPTIONS": f"-L{sidecar.resolve()}",
+                "CJDOC_STDX_DEPENDENCY_DIGEST": "",
+                "CJDOC_TOOLCHAIN_VERSION": version,
+                "CJDOC_TOOLCHAIN_TARGET": target,
+                "CJDOC_TOOLCHAIN_FINGERPRINT": fingerprint,
+            }
+            stdout = StringIO()
+            # Isolate SDK discovery; authentication and the CLI output branch
+            # both run against the actual files in the configured sidecar.
+            with (patch.dict(os.environ, {"CANGJIE_STDX_PATH": str(sidecar)}, clear=True),
+                  patch.object(with_stdx, "compiler_candidates", return_value=[root / "cjc"]),
+                  patch.object(with_stdx, "compiler_info", return_value=(version, target)),
+                  redirect_stdout(stdout)):
+                self.assertEqual(with_stdx.main(["--variant", "static", "--print-env", "--"]), 0)
+            rows = [line.split("=", 1) for line in stdout.getvalue().splitlines()]
+            keys = [row[0] for row in rows]
+            self.assertFalse(expected.keys() - set(keys),
+                             f"missing --print-env keys: {sorted(expected.keys() - set(keys))}")
+            self.assertEqual(keys, list(expected))
+            self.assertEqual(dict(rows), expected)
 
     def test_a_corrupt_configured_sidecar_never_falls_back_silently(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -25,9 +25,10 @@ sys.path.insert(0, str(SCRIPTS))
 
 import agent_baseline_mcp as baseline  # noqa: E402
 import agent_evaluation as evaluation  # noqa: E402
+import agent_evaluation_protocol as protocol_module  # noqa: E402
 
 REPO = SCRIPTS.parent
-PROTOCOL = REPO / "tests/agent/evaluation-protocol.json"
+PROTOCOL = protocol_module.FACT_PROTOCOL
 RUBRIC = REPO / "tests/agent/evaluation-rubric.json"
 
 
@@ -573,7 +574,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_arm_order_alternates_by_task_ordinal(self):
         protocol = evaluation.load_protocol(PROTOCOL)
-        runs = evaluation.plan_runs(protocol)
+        runs = protocol_module.plan_runs(protocol)
         self.assertEqual(len(runs), 24)
         for run in runs:
             expected = evaluation.ARMS if run["ordinal"] % 2 else tuple(
@@ -619,6 +620,89 @@ class ProtocolTests(unittest.TestCase):
                     write(path, json.dumps(changed))
                     with self.assertRaises(evaluation.ProtocolError):
                         evaluation.load_protocol(path)
+
+
+class SourceSliceTests(unittest.TestCase):
+    """The frozen source range must still reach the declaration it describes."""
+
+    def load(self, path: Path) -> dict:
+        return protocol_module.load_protocol(path)
+
+    def ag01_slice(self, protocol: dict) -> str:
+        task = next(task for task in protocol["tasks"] if task["id"] == "AG-01")
+        return "\n".join(protocol_module.source_text(item)
+                         for item in protocol_module.source_slices(task["source"], REPO))
+
+    def test_corrected_protocol_slice_contains_the_integer_overload(self):
+        protocol = self.load(protocol_module.FACT_PROTOCOL)
+        text = self.ag01_slice(protocol)
+        self.assertIn("public func add(value: Int64, radix!: Int64 = 10): Unit {", text)
+        self.assertIn("values.add(value.toString())", text)
+        for fact in ("value: Int64", "radix!: Int64 = 10", "if (radix != 10)",
+                     'IllegalArgumentException("only decimal radix is supported")'):
+            with self.subTest(fact=fact):
+                self.assertIn(fact, text)
+        protocol_module.verify_source_slices(protocol, REPO)
+
+    def test_historical_protocol_is_preserved_with_its_known_defect(self):
+        self.assertEqual(evaluation.digest_of(protocol_module.HISTORICAL_PROTOCOL),
+                         "ce8122221fe03bc3d26e5a73efb1f43d64a5361aebcd22c759079dcabd09c059")
+        original = self.load(protocol_module.HISTORICAL_PROTOCOL)
+        corrected = self.load(protocol_module.FACT_PROTOCOL)
+        self.assertEqual(
+            [{**task, **({"source": fixed["source"]} if fixed["id"] == "AG-01" else {})}
+             for task, fixed in zip(original["tasks"], corrected["tasks"])],
+            corrected["tasks"])
+        with self.assertRaises(evaluation.ProtocolError) as raised:
+            protocol_module.verify_source_slices(original, REPO)
+        self.assertIn("AG-01", str(raised.exception))
+
+    def test_line_drift_in_the_pinned_range_fails(self):
+        protocol = self.load(protocol_module.FACT_PROTOCOL)
+        drifted = {"tasks": [dict(task) for task in protocol["tasks"]]}
+        for task in drifted["tasks"]:
+            if task["id"] == "AG-01":
+                task["source"] = "examples/pocketkit/demo-v2/src/catalog.cj:102-104"
+        with self.assertRaises(evaluation.ProtocolError) as raised:
+            protocol_module.verify_source_slices(drifted, REPO)
+        self.assertIn("no longer contains 'value: Int64'", str(raised.exception))
+
+    def test_rejection_precedes_the_append_in_the_pinned_slice(self):
+        protocol = self.load(protocol_module.FACT_PROTOCOL)
+        text = self.ag01_slice(protocol)
+        self.assertLess(text.index("if (radix != 10)"),
+                        text.index("values.add(value.toString())"))
+
+    def test_appending_before_the_radix_guard_fails_the_ordering_fact(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        source = root / "examples/pocketkit/demo-v2/src/catalog.cj"
+        write(source, "public func add(value: Int64, radix!: Int64 = 10): Unit {\n"
+                      "    values.add(value.toString())\n"
+                      "    if (radix != 10) { "
+                      'throw IllegalArgumentException("only decimal radix is supported") }\n'
+                      "}\n")
+        protocol = {"tasks": [{"id": "AG-01", "source": str(source)}]}
+        with self.assertRaises(evaluation.ProtocolError) as raised:
+            protocol_module.verify_source_slices(protocol, root)
+        self.assertIn("no longer precedes", str(raised.exception))
+
+    def test_protocol_cli_fails_with_the_missing_fact_name(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        protocol = json.loads(protocol_module.FACT_PROTOCOL.read_text(encoding="utf-8"))
+        next(task for task in protocol["tasks"]
+             if task["id"] == "AG-01")["source"] = \
+            "examples/pocketkit/demo-v2/src/catalog.cj:5-8"
+        path = write_json(Path(temporary.name) / "protocol.json", protocol)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "agent_evaluation_protocol.py"),
+             "--protocol", str(path), "--project-root", str(REPO)],
+            capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("AG-01: source slice no longer contains", result.stderr)
+        self.assertIn("value: Int64", result.stderr)
 
 
 CONTACT = {"transportAvailable": True, "initialized": True, "toolsListed": True,
@@ -1046,7 +1130,7 @@ class RunnerIntegrationTests(unittest.TestCase):
         write_json(self.capture / "site/en/api-surface/api-surface.json", {})
         write(self.capture / "site/en/coverage.json", "{}\n")
         self.assertEqual(self.runner("--task", "AG-01").returncode, 0)
-        view = self.root / "run" / evaluation.BASELINE_VIEW_DIRECTORY
+        view = self.root / "run" / protocol_module.BASELINE_VIEW_DIRECTORY
         names = {path.name for path in view.rglob("*") if path.is_file()}
         self.assertIn("llms.txt", names)
         self.assertIn("navigation-index.json", names)
@@ -1058,7 +1142,7 @@ class RunnerIntegrationTests(unittest.TestCase):
         self.assertTrue((self.capture / "site/en/docs.json").is_file())
         record = self.record("AG-01", "baseline-html-index")
         server = " ".join(record["session"]["server"])
-        self.assertIn(evaluation.BASELINE_VIEW_DIRECTORY, server)
+        self.assertIn(protocol_module.BASELINE_VIEW_DIRECTORY, server)
         self.assertNotIn(str(self.capture), server)
 
     def test_private_roots_are_replaced_in_public_records(self):

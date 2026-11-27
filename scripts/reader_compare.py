@@ -237,12 +237,12 @@ def check_native_ir(baseline: Path, after: Path, old: dict, new: dict, profile: 
     if old["nativeResult"]["docIrSha256"] == new["nativeResult"]["docIrSha256"]:
         return
     require(profile is not None, "native Doc IR changed; author input was not preserved")
-    for label, document in zip(("baseline", "after"), documents):
-        require(document["generator"]["version"] == profile["generatorVersions"][label],
+    for label, snapshot in zip(("baseline", "after"), documents):
+        require(snapshot["generator"]["version"] == profile["generatorVersions"][label],
                 "unregistered generator version")
         # Only this provenance field may differ; every native declaration,
         # contract, signature, diagnostic and source range still compares exactly.
-        document["generator"]["version"] = "<registered-generator-version>"
+        snapshot["generator"]["version"] = "<registered-generator-version>"
     require(documents[0] == documents[1], "native Doc IR changed beyond registered generator provenance")
 
 

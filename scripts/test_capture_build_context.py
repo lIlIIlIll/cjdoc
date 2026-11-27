@@ -175,7 +175,6 @@ class BuildContextManifestPathTests(unittest.TestCase):
             argv = ["capture_build_context.py", "--project", str(root),
                     "--output", str(destination), "--target", "example-target"]
             old_manifest = tomllib.loads(old)
-            new_manifest = tomllib.loads(new)
             loads = capture.tomllib.loads
             parsed = []
 

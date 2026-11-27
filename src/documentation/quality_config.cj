@@ -128,7 +128,8 @@ private func isQualityRule(key: String): Bool {
         key == "unresolved-type-link" || key == "invalid-since-version" ||
         key == "deprecated-without-message" || key == "duplicate-param" ||
         key == "duplicate-return" || key == "duplicate-throws" ||
-        key == "example-not-compiling"
+        key == "example-not-compiling" || key == "trivial-summary" ||
+        key == "trivial-param-description" || key == "trivial-return-description"
 }
 
 private func qualitySectionName(line: String): String {

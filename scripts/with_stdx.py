@@ -10,7 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Iterable
+from typing import Iterable, NoReturn
 
 
 REQUIRED_STATIC_ARTIFACTS = (
@@ -21,7 +21,7 @@ VERSION_RE = re.compile(r"Cangjie Compiler:\s*([^\n]+)")
 TARGET_RE = re.compile(r"Target:\s*([^\n]+)")
 
 
-def fail(message: str) -> "NoReturn":
+def fail(message: str) -> NoReturn:
     raise SystemExit(f"with_stdx.py: {message}")
 
 

@@ -182,13 +182,33 @@ class DocIrMetadataCodecTest {
         highOrderGroups.get(0).getOrThrow().asObject().put("order", JsonNode.int64(1000000))
         @ExpectThrows[IllegalArgumentException](decodeDocIr(highOrder.toJson()))
 
-        let excessive = metadataJsonObject(metadataCodecFixture())
-        let metadata = excessive.get("metadata").getOrThrow().asObject()
-        let sourceGroup = metadata.get("groups").getOrThrow().asArray().get(0).getOrThrow()
-        let tooManyGroups = JsonNode.array()
-        for (_ in 0..2049) { tooManyGroups.add(sourceGroup) }
-        metadata.put("groups", tooManyGroups)
-        @ExpectThrows[IllegalArgumentException](decodeDocIr(excessive.toJson()))
+    }
+
+    @TestCase
+    func rejectsOneGroupBeyondTheWireLimit(): Unit {
+        let input = metadataJsonObject(metadataCodecFixture())
+        let metadata = input.get("metadata").getOrThrow().asObject()
+        let groups = JsonNode.array()
+        metadata.put("groups", groups)
+        for (index in 0..2049) {
+            let group = JsonNode.object()
+            group.put("moduleId", JsonNode.string(DOC_IR_METADATA_TEST_MODULE))
+            group.put("packageName", JsonNode.string("fixture"))
+            group.put("ownerId", JsonNode.nullValue)
+            group.put("id", JsonNode.string("group-${index}"))
+            group.put("title", JsonNode.string("Group ${index}"))
+            group.put("titles", JsonNode.array())
+            group.put("order", JsonNode.nullValue)
+            groups.add(group)
+            if (index == 2047) { @Expect(decodeDocIr(input.toJson()).metadata.groups.size, 2048) }
+        }
+        let rejected = try {
+            let _ = decodeDocIr(input.toJson())
+            ""
+        } catch (error: IllegalArgumentException) {
+            error.message
+        }
+        @Expect(rejected, "invalid Doc IR at $.metadata.groups: metadata definition limit exceeded")
     }
 
     @TestCase

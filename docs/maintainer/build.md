@@ -105,7 +105,13 @@ cjpm -v
 
 ## 本地验收门禁 `scripts/check.sh`
 
-要求：已准备 SDK 与 sidecar、Bash、Python 标准库（`CJDOC_PYTHON` 可覆盖解释器）。SDK 1.2.0 上调用前先 source `scripts/with_sts_cjpm.sh`（见上）。门禁会拒绝覆盖已存在的构建输出：`tests/fixtures/**/target` 或 `tools/chir-worker/target` 已存在时先报错退出，需要自己清理。`preflight`/`build` 还要求仓库输入都已提交且可跟踪；干净 checkout 上运行最省事。
+要求：已准备 SDK 与 sidecar、Bash、Python 3.12 或更新版本（`CJDOC_PYTHON` 可覆盖解释器）。全量门禁和 `python-tools` 阶段还需要 Python 验收依赖：
+
+```bash
+python3 -m pip install -r scripts/requirements-python-tools.txt
+```
+
+SDK 1.2.0 上调用前先 source `scripts/with_sts_cjpm.sh`（见上）。门禁会拒绝覆盖已存在的构建输出：`tests/fixtures/**/target` 或 `tools/chir-worker/target` 已存在时先报错，需要先处理那份旧输出。`preflight`/`build` 还要求仓库输入已提交且可跟踪；请从干净 checkout 运行。
 
 维护 query/离线读取 fixture 时，输入路径及祖先仍禁止符号链接。测试创建自己的临时目录后，应先用 `Path(...).resolve()` 得到 canonical 路径再写入并传递 snapshot，避免平台临时目录别名触发正常的输入拒绝；不能为测试放松产品的路径安全检查。CLI 失败断言同时保留 stdout 的结构化错误与 stderr；只有对应正例已生成响应后才执行该响应的非法输入变体，避免级联的未绑定变量错误。
 
@@ -123,14 +129,20 @@ bash scripts/check.sh
 |---|---|
 | `preflight` | 已跟踪仓库输入、SDK 安装器与 `with_stdx` 单测 |
 | `build` | 构建主程序与 CHIR worker，写 build manifest |
-| `native` | `cjpm test` 仓颉单测（显式 `-O1`、隔离 target、超时与进程快照保护） |
-| `python-tools` | `scripts/test_*.py` 与 `tests/showcase_contract/` |
+| `native` | `cjpm test` 仓颉单测（显式 `-O1`、隔离 target、超时与降级计数） |
+| `python-tools` | Pyflakes、`scripts/test_*.py` 与 `tests/showcase_contract/` |
 | `cli` | CLI、schema、golden、HTML、输出安全与 fixture 契约 |
 | `provider` | provider-plugin fixture |
 | `smoke` | 真实仓库双次生成 smoke |
 | `html-a11y` | 真实 Chromium 包索引响应式/语义/可访问性矩阵；需要 Playwright + Chromium，不在默认链路里 |
+| `browser` | 真实生成站点上的六个 Node Playwright spec；独立于默认链路，在 Linux CI 中是必需步骤 |
+| `render-mutations` | 可选；在独立源码副本中分别引入四个回归，要求对应断言失败 |
 
 `scripts/check.sh` 负责阶段分发和证据记录；`scripts/check_cli.sh` 负责 `cli` 阶段内的检查。
+
+`cjpm test` 通过 STS wrapper 输出 `degraded: N`，并逐条说明哪些行为没验证及其原因。Linux CI 准备 CHIR worker、Node 与锁定的 Highlight.js adapter，并用 `CJDOC_TEST_REQUIRE_VERIFIED=1` 拒绝任何降级。macOS 仍验证无法建立地址空间限制时拒绝执行示例，不把这项拒绝当成已核对输出。
+
+在同样准备好的 Linux 环境运行 `python3 scripts/check_native_environment.py --repo .`，先确认未指定 CHIR worker 时可见降级，再从仓库外的目录执行同一批测试二进制。wrapper 注入 `CJDOC_TEST_ROOT`，fixture 和已构建主程序不会随测试进程的工作目录变化。
 
 CI 中的阶段调用方式可直接照搬（二进制换成你刚构建的）：
 
@@ -219,74 +231,18 @@ Linux 锁回收先核对同一次 kernel boot、PID namespace 和一致的 procf
 
 ## 浏览器回归
 
-完整 Playwright 套件需要真实生成的参考页、双语分组/标签页、版本组合和 PocketKit 阅读站点。
-先完成上述工具链和产品构建准备，使用[主 CI](../../.github/workflows/ci.yml)固定的 Node 26.11.1 与 `tests/browser/package-lock.json`。独立的 [Reader scale 工作流](../../.github/workflows/reader-scale.yml)使用 Node 26.12.0，不是本节的回归运行时。
-在仓库根目录执行；`OUT` 必须是本次新建的绝对输出目录，不能复用旧产物。
-fixture 仓库 URL 只用于验证捕获后的源码链接，不表示该示例仓库或 revision 可以远程访问。
+先按本文构建主程序与同目录的 CHIR worker，使用[主 CI](../../.github/workflows/ci.yml)固定的 Node 26.11.1，并安装 Chromium 所需的系统库。用与 Linux CI 相同的入口：
 
 ```bash
-npm ci --prefix tests/browser
-node tests/browser/node_modules/@playwright/test/cli.js install chromium
-BIN="$PWD/target/release/bin/main"
-OUT="$PWD/target/browser-regression"
-REV="$(git rev-parse HEAD)"
-repository=(
-  --repository-url https://github.com/example/reference
-  --repository-revision "$REV"
-  --repository-root "$PWD"
-)
-
-for locale in en zh-CN; do
-  "$BIN" generate --project tests/fixtures/projects/html_reference \
-    --format html --locale "$locale" "${repository[@]}" \
-    --output "$OUT/reference-$locale" --no-cache
-done
-"$BIN" generate --project tests/fixtures/projects/declaration-groups \
-  --format html --all-languages --output "$OUT/groups" --no-cache
-"$BIN" generate --project tests/fixtures/projects/declaration-tags \
-  --format html --all-languages "${repository[@]}" --output "$OUT/tags" --no-cache
-for version in 1.2.0 1.3.0; do
-  "$BIN" generate --project tests/fixtures/projects/basic \
-    --format html --locale en --doc-version "$version" \
-    --output "$OUT/version-$version" --no-cache
-done
-"$BIN" versions compose \
-  --version "1.2.0=$OUT/version-1.2.0/html" \
-  --version "1.3.0=$OUT/version-1.3.0/html" \
-  --latest 1.3.0 --output "$OUT/versions"
-python3 examples/pocketkit/reproduce.py \
-  --cjdoc "$BIN" --output "$OUT/pocketkit" --locale both
-
-export CJDOC_HTML_FIXTURE="$OUT/reference-en/html"
-export CJDOC_HTML_FIXTURE_ZH="$OUT/reference-zh-CN/html"
-export CJDOC_DECLARATION_GROUPS_FIXTURE="$OUT/groups/html"
-export CJDOC_DECLARATION_TAGS_FIXTURE="$OUT/tags/html"
-export CJDOC_VERSION_FIXTURE="$OUT/versions"
-export CJDOC_READING_FIXTURE="$OUT/pocketkit/native/demo-v2/html"
-node tests/browser/node_modules/@playwright/test/cli.js test \
-  --config tests/browser/playwright.config.mjs --retries=0
+bash scripts/check.sh browser --repo . \
+  --identity target/ci-build/build-manifest.json \
+  --main-binary target/release/bin/main \
+  --output-root "$RUNNER_TEMP/cjdoc-stage-browser"
 ```
 
-分组和标签变量指向含 `en/index.html` 与 `zh-CN/index.html` 的父目录；缺失会使收集失败。
-参考页必须传完整 repository 参数，否则源码操作不会出现。完整验收应报告实际通过、失败和跳过数量，
-不把缺少阅读/版本 fixture 后的跳过结果写成完整通过。
-侧栏 current-page 按 URL 的 origin/pathname 核对；搜索筛选 query 与 fragment 是同一文档上的客户端状态，不构成另一页面。当前侧栏链接本身仍不得含 fragment；tag、moduleId、snapshotId 等查询状态由导航用例分别断言保留。
+输出目录必须是新的。此阶段复制浏览器套件，在副本中按 `tests/browser/package-lock.json` 安装依赖与匹配的 Chromium。它生成参考页、双语分组和标签页、多个版本、PocketKit 阅读页、概览、高亮及告警站点，再运行全部六个 spec。缺失 fixture 或跳过用例都会使门禁失败；报告、截图与追踪保留在该输出目录。源码链接使用示例仓库地址，只检验链接结构。
 
-阅读 fixture 的 `site-manifest.json` 位于 HTML 根的上一层；不要只复制 `html/` 后丢弃这份章节身份库存。
-独立的双语浏览器门禁还需要同次生成的 multi 和 composed 两根。可复用 CLI 阶段留下的
-`i18n_gate.py` 产物；没有既有产物时，在新的独占目录运行：
-
-```bash
-python3 scripts/i18n_gate.py --binary "$BIN" --repo . --workdir "$OUT/i18n"
-export CJDOC_I18N_SITE="$OUT/i18n/multi"
-export CJDOC_I18N_COMPOSED_SITE="$OUT/i18n/composed"
-export CJDOC_I18N_SCREENSHOTS="$OUT/i18n-screenshots"
-node tests/browser/node_modules/@playwright/test/cli.js test \
-  --config tests/browser/i18n.config.mjs --retries=0
-```
-
-守卫源码副本不得放入 `node_modules`；需要保持输入冻结时，将受跟踪的 canonical browser harness
-复制到任务外置 runtime、核对复制前后摘要，再在那里安装锁定依赖并运行同一配置。产物和日志仍放在任务目录。
+`html-a11y` 仍是独立的 Python Playwright 阶段，验证包索引的响应式布局、语义和可访问性。Pages 的 Python 浏览器验收不变；[Reader scale 工作流](../../.github/workflows/reader-scale.yml)也继续使用独立的 Node 版本与测量入口。
 
 ## 验证层级
 

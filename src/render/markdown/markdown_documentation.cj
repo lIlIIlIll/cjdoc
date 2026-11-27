@@ -144,7 +144,8 @@ protected func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCo
     assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = "",
     symbolIndex!: ?HashMap<String, SymbolDoc> = None, canonicalHtml!: ?ApiHtmlRoutes = None,
     sections!: ?Array<String> = None, headingPrefix!: String = "####",
-    headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown"): Unit {
+    headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown",
+    payloadKind!: String = ""): Unit {
     if (markdownSectionSelected(sections, "description") && markdownHasDescription(comment)) {
         if (sections.isSome()) {
             out.append("${headingPrefix} ${label(locale, "Description", "说明")}\n\n")
@@ -214,7 +215,9 @@ protected func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCo
             for (tagIndex in 0..comment.tags.size) {
                 let tag = comment.tags[tagIndex]
                 if (tag.name == "param") {
-                    out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
+                    out.append("- ")
+                    appendMarkdownCodeSpan(out, parameterSubjectDisplay(payloadKind, tag.subject))
+                    out.append(" — ")
                     appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
                         canonicalHtml: canonicalHtml, headingBase: headingBase,
                         headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)

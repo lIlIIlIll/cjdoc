@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 from .browser_journeys import JOURNEYS as API_JOURNEYS
 from .browser_reports import JOURNEYS as REPORT_JOURNEYS
 from .browser_metrics import check_layout, layout, screenshot_name, screenshots, validate_metrics
-from .browser_support import Journey, declaration_url, same_declaration_url
+from .browser_support import Journey, declaration_url
 from .contract import validate_manifest
 from .evidence import _expected_cases, validate_evidence
 from .offline import ARCHIVE, extract_archive
@@ -425,8 +425,6 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None,
 
 
 def main(argv=None) -> int:
-    from . import browser_sharding
-
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] in (["plan"], ["run"], ["merge"]):
         return shard_main(argv)

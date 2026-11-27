@@ -65,6 +65,16 @@ private func compilerTargetArch(): String { "aarch64" }
 @When[arch == "arm"]
 private func compilerTargetArch(): String { "arm" }
 
+// Documented values the compiler target accepts for a built-in selector. Only
+// used to make an omitted `--cfg` self-explanatory; documentation generation
+// still never substitutes a host value for an absent user selection.
+protected func compilerBuiltinCfgChoices(name: String): ?Array<String> {
+    if (name == "os") { return Some(["Linux", "Windows", "macOS", "iOS"]) }
+    if (name == "arch") { return Some(["x86_64", "aarch64", "arm"]) }
+    if (name == "debug") { return Some(["true", "false"]) }
+    None
+}
+
 protected func compilerBuiltinCfgAssignment(name: String): ?String {
     if (name == "os") { return Some(compilerTargetOs()) }
     if (name == "arch") { return Some(compilerTargetArch()) }

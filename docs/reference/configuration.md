@@ -102,6 +102,7 @@ cache-dir = "target/cjdoc-cache"
 
 - `cache-dir` 与 `no-cache = true` 互斥，同时出现是配置错误 `[analysis] cache-dir and no-cache are mutually exclusive`；命令行里 `--cache-dir`、`--no-cache`、`--cache` 按最后出现的那个生效，所以配置关闭缓存后仍可用 `--cache` 在单次命令中重新打开。
 - `cfg` 与 `dependency-sources` 按名称合并：CLI 给出同名项时使用 CLI 的值，其余配置项继续生效。`dependency-sources` 的路径同样按项目根解析，同名项在配置内重复是错误。
+- `cfg` 只影响文档的条件选择，不会自动补上 `os`、`arch`、`debug` 的宿主值；内建选择器写非宿主值时文档照常生成，但同一次 `--check-examples` 会因与真实编译目标不一致而失败。见[选择输入与依赖](../how-to/select-inputs.md)。
 - `dependency-sources` 是对依赖源码的显式选取；`include-path-dependencies` 只控制其余 manifest 路径依赖的自动收集。`--no-include-path-dependencies` 不移除已显式选取的依赖，需要替换路径时用同名 `--dependency-source`。
 - `cjpm-cache` 只在 `include-cached-dependencies` 打开时才被采用；关闭缓存依赖读取后这个缓存根没有用途，配置里写了也不会报错，只是不生效。`--cjpm-cache` 仍要求同一命令里打开缓存依赖，否则报 `--cjpm-cache requires --include-cached-dependencies`。
 - `cache-dir` 不能落在输出目录内，否则冲突检查直接失败。
@@ -333,7 +334,7 @@ missing-translation = "warn"
 | `severity` | `off`、`warning`、`error` | `warning` |
 | 任一下列规则名 | `off`、`warning`、`error` | 跟随 `severity`，`example-not-compiling` 例外默认为 `error` |
 
-未知键报 `unknown [lint] setting '<键>'`，非法严重级别报 `lint severity must be off, warning, or error`，同名规则重复报 `duplicate quality configuration setting 'lint:<键>'`。
+未知键报 `unknown [lint] setting '<键>'`，非法严重级别报 `lint severity must be off, warning, or error`，同名规则重复报 `duplicate quality configuration setting 'lint:<键>'`。三条模板规则（`trivial-*`）与其它规则同源控制：`severity = "off"` 时一并关闭，也可按规则名单独设为 `off`、`warning` 或 `error`。
 
 | 规则 | 检查内容 |
 |---|---|
@@ -353,6 +354,9 @@ missing-translation = "warn"
 | `duplicate-return` | 有多个 `@return` |
 | `duplicate-throws` | 同一异常有多个 `@throws` |
 | `example-not-compiling` | 示例编译失败 |
+| `trivial-summary` | 摘要整句只重复声明名（`CJDOC3047`） |
+| `trivial-param-description` | `@param` 说明整句只重复参数名（`CJDOC3048`） |
+| `trivial-return-description` | `@return` 说明整句只重复返回类型（`CJDOC3049`） |
 
 ```toml
 [lint]

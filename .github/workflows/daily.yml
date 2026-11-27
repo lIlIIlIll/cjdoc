@@ -41,6 +41,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Python acceptance dependencies
+        run: python -m pip install --disable-pip-version-check -r scripts/requirements-python-tools.txt
+
       - name: Restore cjv toolchain cache
         id: cjv-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4

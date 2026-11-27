@@ -15,6 +15,7 @@ import cjdoc.render.foundation.{
     RenderArtifactCollector, validateRenderArtifactBudgetForTest, escapeHtmlWithRenderLimitForTest}
 import cjdoc.model.*
 import std.collection.*
+import std.env.getVariable
 import std.fs.*
 import markdown.{MarkdownEngine, MarkdownProfile}
 import std.unittest.*
@@ -398,7 +399,7 @@ class RendererSafetyTest {
         @Expect(markdown.contains("<script>alert(1)</script>"), true)
         @Expect(!markdown.contains("<script>alert(2)</script>"), true)
         @Expect(markdown.contains("&lt;img src\\=x&gt;"), true)
-        @Expect(html.contains("<h3>Examples</h3>"), true)
+        @Expect(html.contains("<h2>Examples</h2>"), true)
         @Expect(html.contains("class=\"cj-examples\""), true)
         @Expect(html.contains("class=\"cj-example\""), true)
         @Expect(html.contains("class=\"cj-example__title\""), true)
@@ -1030,11 +1031,12 @@ class RendererSafetyTest {
 
     @TestCase
     func frozenSourceOnlyOldParseRendersItsAnnotationReason(): Unit {
-        // The published v18 fixture is a real source-only declaration: its
+        // The published v20 fixture is a real source-only declaration: its
         // source annotation carries the message and the comment has no
         // @deprecated prose.
+        let root = Path(getVariable("CJDOC_TEST_ROOT").getOrDefault({ => "." }))
         let document = decodeDocIr(String.fromUtf8(
-            File.readFrom("tests/fixtures/golden-v20/basic.docs.json")))
+            File.readFrom(root.join("tests/fixtures/golden-v20/basic.docs.json"))))
         var checked = false
         for (symbol in document.declarations where symbol.name == "oldParse") {
             checked = true

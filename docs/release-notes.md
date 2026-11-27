@@ -9,11 +9,17 @@
 - **阅读签名：** 参数默认值用 ` = ` 分隔。宽屏将参数和异常的说明与声明对齐，窄屏将说明放到声明下方。
 - **浏览完整 API：** 从首页「API 参考」展开包和类型；左栏可以显示当前分支的全部条目，包页的「本页目录」可跳到声明行。关闭 JavaScript 后仍可打开各声明的详情。
 - **分享 API：** 包、类型和成员有可读目录地址，例如 `packages/pocketkit/authoring/` 和 `pocketkit/TextCatalog/join/`。默认语言的声明地址不加语言前缀；包页保留当前语言目录。离线链接保留 `index.html`，旧包链接及其片段和旧 `symbols/` 链接仍可打开。详见[生成与发布](how-to/generate-and-publish.md)。
+- **定位扩展与重载：** 新增扩展不会改变类型和原有成员的地址。扩展块使用类型下的 `extensions/`，进入某个重载签名时使用 `signature-1/` 这样的可读路径。
 - **迁移弃用 API：** 包表、成员、侧栏和搜索标明已弃用声明；详情显示作者说明或可读取的源码注解消息。能确认的 [`@replacement`](reference/doc-comments.md#弃用与迁移) 另有「改用」链接，原名称仍打开原声明。
 - **读取机器文档：** 新 HTML 文档包使用 `cjdoc.machine-manifest/3` 和 `cjdoc.read/3`。
 - **学写注释：** PocketKit demo-v2 新增[双语注释指南](../examples/pocketkit/demo-v2/docs/doc-comments.md)，可对照源码与生成的 API 页面。
 - **约束并检索 API 注释：** 在模块的 `cjdoc.toml` 配置[标签别名、必填规则和字段](reference/configuration.md#comments项目注释规范)。已捕获字段显示在 API 页，可在网页、CLI 或 MCP 中按完整值筛选；CLI/MCP 还可请求候选值和命中数。
-- **升级快照与查询调用方：** 从源码重新生成 Doc IR v19 及站点；`render` 不读取 v18。客户端按 `query-request/4`、`query-result/5`、`search-index/12` 和 `search-contract/3` 更新，见[查询协议](reference/query-protocol.md)。独立 `declaration/3` 和 `page/2` 不变。
+- **配置注释质量：** `[lint]` 可分别禁用或调整 `trivial-summary`、`trivial-param-description` 和 `trivial-return-description`。全局 `severity = "off"` 也关闭这三条规则，除非单独覆盖。
+- **选择条件声明：** 缺少 `os`、`arch` 或 `debug` 的值时，诊断提示如何用 `--cfg` 指定它。仍不会默认补入宿主值；用非宿主 `os` 生成文档时不能同时检查示例。
+- **记录枚举载荷：** 用 `@param #0`、`@param #1` 按位置写说明。页面、Markdown 和查询使用同样的序号。
+- **修复外部文档链接：** 外部符号索引的无效地址仍被拒绝，现在会指出哪份索引、哪条记录需要修正。
+- **升级快照与查询调用方：** 从源码重新生成 Doc IR v20 及站点；`render` 不读取 v19 及更早版本。客户端按 `query-request/4`、`query-result/5`、`search-index/12` 和 `search-contract/3` 更新，见[查询协议](reference/query-protocol.md)。独立 `declaration/3` 和 `page/2` 不变。
+- **排查大项目生成：** 遇到 `Out of memory`，按[故障排查](how-to/troubleshoot.md#生成时出现-out-of-memory)设置仓颉运行时堆，不需要修改 Doc IR 大小限制。
 
 ## 0.7.9
 

@@ -31,6 +31,22 @@ cjpm -v
 
 **恢复后**：`command -v cjdoc` 输出安装目录中的绝对路径，`cjdoc --version` 输出当前版本号，`cjc -v` 与 `cjpm -v` 报告同一套 SDK 的 `1.2.0`。
 
+## 生成时出现 Out of memory
+
+**现象**：生成大项目的文档时，终端报告 `Out of memory`，命令退出，未生成新文档。
+
+**处理**：机器内存允许时，先用 `cjHeapSize` 提高仓颉运行时的堆上限，再把相同的生成命令重跑到一个新的输出目录。例如在 Bash 中：
+
+```bash
+cjHeapSize=2GB cjdoc generate --project . --format html --output target/doc-retry
+```
+
+提高 `--max-doc-ir-mib` 不能解决堆耗尽。它限制的是编码后的 Doc IR 大小，不是进程运行时使用的内存。
+
+**恢复后**：命令以 `0` 退出，新输出的 `html/index.html` 可以打开。所需内存取决于项目内容与输出选项，参见[运行时堆](../reference/states-and-limits.md#运行时堆)。
+
+在一次 cjdoc 自举中，522 个仓颉源文件、约 11.3 万行，生成 JSON、HTML 和完整 Agent 产物时，以 256 MiB 的堆失败，设为 `cjHeapSize=2GB` 后完成了生成。这是一次实测，不是项目规模阈值。
+
 ## 生成报项目根错误
 
 **现象**：生成时打印 `error[CJDOC1010]: project must contain cjpm.toml`，随后仍打印 `generated <目录>`，但退出码为 `1`。
@@ -166,7 +182,7 @@ python3 -c "import json;d=json.load(open('target/doc-ir-capture/docs.json'));pri
 
 | 诊断来源 | 处理 |
 |---|---|
-| `@When` 条件 | 确认应用需要的条件值后显式传入，例如 `--cfg feature=enabled` |
+| `@When` 条件 | 按 `CJDOC1019` 消息里的提示补条件值；消息会区分“未提供内建条件值”（列出 `os`、`arch`、`debug` 的可用值）和“引用了未定义条件名”，例如 `--cfg feature=enabled` |
 | workspace 成员（如 `CJDOC1010`） | 确认成员目录存在且含 `cjpm.toml`，再从 workspace 根重新生成 |
 | 依赖源码 | cjdoc 不代你下载依赖；先准备好依赖，再按[选择输入与依赖](select-inputs.md)引入 |
 | CHIR 语义补充 | 按 `CJDOC2101`–`CJDOC2106` 检查 worker 与编译器，见[CHIR 指南](chir.md) |
@@ -203,6 +219,8 @@ cjdoc check --project . --check-examples
 | `CJDOC3075` | stdout 或 stderr 超过 64 KiB |
 
 示例代码只能是函数体内的片段，需要的 `import` 写在所属源码文件中。每个示例最多运行 10 秒，stdout 和 stderr 各 64 KiB，内存上限 2048 MiB，单次检查最多 256 个示例。完整步骤见[检查示例](check-examples.md)。
+
+**想给别的平台出文档时**：`--cfg os=Windows` 一类改写只影响文档的条件选择，示例仍按真实编译目标编译。同一台 Linux 机器上带 `--check-examples` 传 `--cfg os=Windows` 会得到 `CJDOC3031`（`cfg 'os=Windows' does not match compiler target 'os=Linux'`），退出码 `1`。需要检查示例时，把这次生成拆成两步：一次按目标平台生成文档，一次不带内建条件改写地检查示例；参见[选择输入与依赖](select-inputs.md)里内建条件一节。
 
 **恢复后**：`cjdoc check --project . --check-examples` 退出 `0`；带 `run` 的示例实际运行完成，有 `output` 围栏时其内容与实际输出一致。
 
@@ -293,6 +311,7 @@ cjdoc generate --help
 | `error: --format is not valid for check` （或 `--output`、`--stdout`） | `check` 不写站点或 JSON 产物 |
 | `error: --force-owned is not valid for check` | `check` 不接受所有权选项 |
 | `error: --jobs must be in 1..64` | 并行度越界 |
+| `error: --jobs must be an integer` （`--max-doc-ir-mib`、`--min-symbol-coverage`、`--min-parameter-coverage` 同理） | 数字选项收到非十进制整数，例如 `abc`、`1.5`、`0x10` 或空值；消息首行带选项名 |
 | `error: [highlight].mode must be static or off` | 高亮模式拼错 |
 | `unknown [coverage] setting '…'` | 覆盖率键名拼错 |
 

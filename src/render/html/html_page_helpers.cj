@@ -121,12 +121,13 @@ private func appendEmptyDescriptionNoticeHtml(w: HtmlWriter, locale: String): Un
         attrs: [htmlClass("cj-note"), htmlAttr("data-documentation-state", "empty")])
 }
 
-private func appendParameterDescriptionHtml(w: HtmlWriter, parameter: ParameterDoc,
-    comment: ?DocComment, locale: String, assets: HashMap<String, String>,
-    rootPrefix: String, markdownContext: ?HtmlMarkdownContext): Unit {
+private func appendParameterDescriptionHtml(w: HtmlWriter, symbol: SymbolDoc,
+    parameter: ParameterDoc, comment: ?DocComment, locale: String,
+    assets: HashMap<String, String>, rootPrefix: String,
+    markdownContext: ?HtmlMarkdownContext): Unit {
     var tag: ?DocTag = None
     match (comment) {
-        case Some(value) => tag = findTag(value, "param", subject: Some(parameter.name))
+        case Some(value) => tag = findParameterTag(symbol.kind, value.tags, parameter.name)
         case None => ()
     }
     let attrs = ArrayList<HtmlAttr>([htmlClass("cj-params__description")])
@@ -139,8 +140,25 @@ private func appendParameterDescriptionHtml(w: HtmlWriter, parameter: ParameterD
             if (value.translationState.isEmpty() && !tagHasDescriptionContent(value, assets)) {
                 appendEmptyDescriptionNoticeHtml(w, locale)
             } else {
-                appendDocumentationTagHtml(w, value, locale, assets,
-                    rootPrefix, markdownContext.getOrThrow())
+                // The tag body is the author's text; only its selector spelling
+                // is projected, so `#0` and the stored `_0` read the same.
+                let description = parameterSubjectDisplay(symbol.kind, value.subject)
+                if (description == value.subject) {
+                    appendDocumentationTagHtml(w, value, locale, assets,
+                        rootPrefix, markdownContext.getOrThrow())
+                } else {
+                    appendDocumentationTagHtml(w,
+                        DocTag(value.name, description, value.description,
+                            referenceState: value.referenceState,
+                            targetSymbolId: value.targetSymbolId, directives: value.directives,
+                            exampleMarkdown: value.exampleMarkdown,
+                            contentLanguage: value.contentLanguage,
+                            translationState: value.translationState, fieldId: value.fieldId,
+                            descriptionMarkdown: value.descriptionMarkdown,
+                            navigation: value.navigation, entryId: value.entryId,
+                            source: value.source),
+                        locale, assets, rootPrefix, markdownContext.getOrThrow())
+                }
             }
         case None =>
             match (parameter.documentation) {
@@ -172,7 +190,8 @@ private func appendParameterDocumentationHtml(w: HtmlWriter, symbol: SymbolDoc,
         w.open("div", attrs: [htmlClass("cj-params__row")])
         w.open("dt", attrs: [htmlClass("cj-params__term")])
         w.open("code", attrs: [htmlClass("cj-params__declaration")])
-        w.textElement("span", parameter.name, attrs: [htmlClass("cj-params__name")])
+        w.textElement("span", parameterDisplayName(symbol.kind, parameter.name),
+            attrs: [htmlClass("cj-params__name")])
         w.textElement("span", ":", attrs: [htmlClass("cj-params__colon")])
         w.text(" ")
         w.open("span", attrs: [htmlClass("cj-params__type")])
@@ -187,7 +206,7 @@ private func appendParameterDocumentationHtml(w: HtmlWriter, symbol: SymbolDoc,
         }
         w.close("code")
         w.close("dt")
-        appendParameterDescriptionHtml(w, parameter, comment, locale, assets, rootPrefix,
+        appendParameterDescriptionHtml(w, symbol, parameter, comment, locale, assets, rootPrefix,
             markdownContext)
         w.close("div")
         w.newline()

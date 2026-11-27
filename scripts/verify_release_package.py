@@ -16,26 +16,12 @@ import zipfile
 try:
     from . import release_archive_reader as _archive_reader
     from .install_cangjie_sdk import validate_combined_sdk_root
-    from .release_archive_reader import (
-        ArchiveMember,
-        checked_size,
-        is_manifest_candidate,
-        read_member_stream,
-        safe_member_name,
-        sha256_bytes,
-        sha256_file,
-    )
+    from .release_archive_reader import ArchiveMember, sha256_file
     from .release_package_contracts import (
-        COMMIT,
         MAX_ARCHIVE_SIZE,
-        MAX_MANIFEST_SIZE,
         MAX_MEMBERS,
         MAX_MEMBER_SIZE,
         MAX_TOTAL_SIZE,
-        REPOSITORY_PAYLOAD,
-        SEMVER,
-        SHA256,
-        WORKER_PROTOCOL,
         WORKER_VERSION_PREFIX,
         release_core,
     )
@@ -50,26 +36,12 @@ try:
 except ImportError:  # Direct script execution.
     import release_archive_reader as _archive_reader
     from install_cangjie_sdk import validate_combined_sdk_root
-    from release_archive_reader import (
-        ArchiveMember,
-        checked_size,
-        is_manifest_candidate,
-        read_member_stream,
-        safe_member_name,
-        sha256_bytes,
-        sha256_file,
-    )
+    from release_archive_reader import ArchiveMember, sha256_file
     from release_package_contracts import (
-        COMMIT,
         MAX_ARCHIVE_SIZE,
-        MAX_MANIFEST_SIZE,
         MAX_MEMBERS,
         MAX_MEMBER_SIZE,
         MAX_TOTAL_SIZE,
-        REPOSITORY_PAYLOAD,
-        SEMVER,
-        SHA256,
-        WORKER_PROTOCOL,
         WORKER_VERSION_PREFIX,
         release_core,
     )
@@ -83,10 +55,10 @@ except ImportError:  # Direct script execution.
     from strict_json import strict_loads
 
 def _sync_archive_limits() -> None:
-    for name in (
-        "MAX_MEMBERS", "MAX_ARCHIVE_SIZE", "MAX_MEMBER_SIZE", "MAX_TOTAL_SIZE",
-    ):
-        setattr(_archive_reader, name, globals()[name])
+    _archive_reader.MAX_MEMBERS = MAX_MEMBERS
+    _archive_reader.MAX_ARCHIVE_SIZE = MAX_ARCHIVE_SIZE
+    _archive_reader.MAX_MEMBER_SIZE = MAX_MEMBER_SIZE
+    _archive_reader.MAX_TOTAL_SIZE = MAX_TOTAL_SIZE
 
 
 def read_archive(path: Path, *, expected_format: str | None = None) -> dict[str, ArchiveMember]:

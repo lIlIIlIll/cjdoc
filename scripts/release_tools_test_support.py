@@ -1,33 +1,15 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-import py_compile
 import shutil
 import subprocess
-import sys
-import tarfile
-import tempfile
-import unittest
-from unittest import mock
-import zipfile
 
-from scripts import package_release
-from scripts import perf_gate
-from scripts import real_repository_smoke
-from scripts import safe_output_root
-from scripts import source_identity
-from scripts import strict_json
-from scripts import verify_release
 from scripts import verify_release_package
-from scripts import verify_remote_tag
-from scripts import verify_repository_inputs
-from scripts import worktree_identity
 from scripts.release_package_contracts import API_COMMENT_SKILL_FILES
 from scripts.showcase_inputs import source_inputs
 from scripts.sts_compile_override import PRODUCT_OPTIONS
-from scripts.verify_repository_inputs import (
+from scripts.repository_inputs.contracts import (
     CURRENT_GOLDEN_VERSION,
     GOLDEN_NAMES,
     SCHEMA_NAMES,

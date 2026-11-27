@@ -37,12 +37,12 @@ try:
     from .sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTIONS, UNIT_REASON
     from .compiler_failure_evidence import compiler_failure_evidence
     from .native_compiler_capture import NativeCompilerCapture
-    from .ci_wallclock import classify_wallclock, non_overlapping_chain
+    from .ci_wallclock import classify_wallclock
 except ImportError:
     from sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTIONS, UNIT_REASON
     from compiler_failure_evidence import compiler_failure_evidence
     from native_compiler_capture import NativeCompilerCapture
-    from ci_wallclock import classify_wallclock, non_overlapping_chain
+    from ci_wallclock import classify_wallclock
 STAGE_SCHEMA = "cjdoc.ci-stage/1"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
 STAGE_KINDS = frozenset({
@@ -83,9 +83,23 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def git_value(repo: Path, *args: str) -> str:
-    completed = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
-    return completed.stdout.strip() if completed.returncode == 0 else ""
+def git_value(repo: Path, *args: str) -> str | None:
+    """The value `git` prints, or `None` when it could not answer at all.
+
+    An empty string used to mean both "git says this value is empty" and "git never
+    ran", and callers read it as "no information, skip the comparison" -- so a
+    non-repository `--repo` printed `ci build identity verified` without ever
+    comparing the manifest to a worktree. `None` keeps the two apart.
+    """
+    try:
+        completed = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    except OSError:
+        # A missing `git` executable is the same condition, not a crash.
+        return None
+    if completed.returncode != 0:
+        return None
+    value = completed.stdout.strip()
+    return value or None
 
 
 def runtime_platform() -> tuple[str, str]:
@@ -173,8 +187,8 @@ def stage_environment(repo: Path | None = None, *, kind: str | None = None) -> d
         compile_options = ["--jobs 1", *UNIT_OPTIONS]
         compile_reason = UNIT_REASON
     return {
-        "checkoutCommit": os.environ.get("GITHUB_SHA") or git_value(repo, "rev-parse", "HEAD"),
-        "checkoutTree": git_value(repo, "rev-parse", "HEAD^{tree}"),
+        "checkoutCommit": os.environ.get("GITHUB_SHA") or git_value(repo, "rev-parse", "HEAD") or "",
+        "checkoutTree": git_value(repo, "rev-parse", "HEAD^{tree}") or "",
         "platform": platform_id,
         "os": os_name,
         "architecture": machine.machine(),
@@ -610,7 +624,8 @@ def wallclock(run_id: str, attempt: int, repository: str) -> dict[str, object]:
 
 
 def verify_identity(manifest_path: Path, main_binary: Path | None, worker_binary: Path | None,
-                    repo: Path | None, require_runnable: bool = True) -> int:
+                    repo: Path | None, require_runnable: bool = True,
+                    require_worktree: bool = True) -> int:
     """Re-read real artifacts and fail on the first identity difference.
 
     Digest and size checks always apply. The recorded `--version` output is only
@@ -618,16 +633,29 @@ def verify_identity(manifest_path: Path, main_binary: Path | None, worker_binary
     dynamically linked, so a job without the toolchain runtime (for example the
     Pages site assembly job, which only needs the bytes) cannot execute it. Set
     `require_runnable=False` there; the digest still binds the artifact.
+
+    The worktree comparison is the manifest's promise that the bytes were built from
+    this checkout. It used to be skipped whenever `git` could not answer, which
+    turned an unreadable `--repo` into a reported success; `--repo` given but
+    unreadable is now a problem, and a caller that genuinely has no worktree passes
+    an explicit `--no-worktree-identity` (`require_worktree=False`) instead.
     """
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     if manifest.get("schemaVersion") != BUILD_MANIFEST_SCHEMA:
         raise SystemExit(f"ci_stage.py: unexpected build manifest schema: {manifest.get('schemaVersion')}")
     problems: list[str] = []
     if repo is not None:
-        for key, args in (("checkoutCommit", ("rev-parse", "HEAD")), ("checkoutTree", ("rev-parse", "HEAD^{tree}"))):
-            actual = git_value(Path(repo), *args)
-            if actual and actual != manifest.get(key):
-                problems.append(f"{key}: manifest {manifest.get(key)} != worktree {actual}")
+        if not require_worktree:
+            print("identity note: worktree identity is not compared for this job; "
+                  "the digest and size still bind the artifact")
+        else:
+            for key, args in (("checkoutCommit", ("rev-parse", "HEAD")),
+                              ("checkoutTree", ("rev-parse", "HEAD^{tree}"))):
+                actual = git_value(Path(repo), *args)
+                if actual is None:
+                    problems.append(f"{key}: cannot read worktree identity from {repo}")
+                elif actual != manifest.get(key):
+                    problems.append(f"{key}: manifest {manifest.get(key)} != worktree {actual}")
     for key, path in (("mainBinary", main_binary), ("workerBinary", worker_binary)):
         if path is None:
             continue
@@ -706,6 +734,10 @@ def main(argv: list[str] | None = None) -> int:
     identity_parser.add_argument(
         "--skip-version-check", action="store_true",
         help="the binary cannot run here; digest and size still bind the artifact")
+    identity_parser.add_argument(
+        "--no-worktree-identity", action="store_true",
+        help="this job has no worktree to compare; say so instead of reading an "
+             "unreadable `--repo` as a match")
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -727,7 +759,8 @@ def main(argv: list[str] | None = None) -> int:
                                encoding="utf-8", newline="\n")
         return 0
     return verify_identity(args.manifest, args.main_binary, args.worker_binary, args.repo,
-                          require_runnable=not args.skip_version_check)
+                          require_runnable=not args.skip_version_check,
+                          require_worktree=not args.no_worktree_identity)
 
 
 if __name__ == "__main__":

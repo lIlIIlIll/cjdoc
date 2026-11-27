@@ -66,10 +66,21 @@ private class CfgExpressionParser {
     let profile: CfgProfile
     var offset: Int64 = 0
     var valid = true
+    let missing = ArrayList<String>()
 
     init(expression: String, profile: CfgProfile) {
         this.bytes = expression.toArray()
         this.profile = profile
+    }
+
+    // A profile lookup that found nothing means the condition name is undefined
+    // for the chosen selection; malformed syntax is reported separately.
+    func malformed(): Bool { !valid }
+
+    func missingConditions(): ArrayList<String> { missing }
+
+    func noteMissing(name: String): Unit {
+        if (!missing.contains(name)) { missing.add(name) }
     }
 
     func skipSpaces(): Unit {
@@ -161,7 +172,9 @@ private class CfgExpressionParser {
                 } else {
                     None
                 }
-                case None => None
+                case None =>
+                    noteMissing(name)
+                    None
             }
         }
         let expected = expectedValue()
@@ -173,7 +186,9 @@ private class CfgExpressionParser {
             case Some(actual) => Some(if (equals) { actual == expected.getOrThrow() } else {
                 actual != expected.getOrThrow()
             })
-            case None => None
+            case None =>
+                noteMissing(name)
+                None
         }
     }
 
@@ -203,7 +218,10 @@ private class CfgExpressionParser {
     }
 
     func parse(): ?Bool {
-        if (bytes.isEmpty()) { return None }
+        if (bytes.isEmpty()) {
+            valid = false
+            return None
+        }
         let value = parseOr()
         skipSpaces()
         if (!valid || offset != bytes.size) { return None }
@@ -216,6 +234,40 @@ private class CfgExpressionParser {
 private func evaluateWhenExpression(expression: String, profile: CfgProfile): ?Bool {
     CfgExpressionParser(expression, profile).parse()
 }
+
+protected class CfgSelectionDiagnosis {
+    protected let selected: ?Bool
+    protected let reason: String
+
+    protected init(selected: ?Bool, reason: String) {
+        this.selected = selected
+        this.reason = reason
+    }
+}
+
+// Distinguishes the three unresolved causes so a missing built-in value can name
+// the values the compiler target accepts, without inventing a default selection.
+private func unresolvedCfgReason(parser: CfgExpressionParser): String {
+    if (parser.malformed()) {
+        return "its @When expression is unsupported or malformed"
+    }
+    for (name in parser.missingConditions()) {
+        match (compilerBuiltinCfgChoices(name)) {
+            case Some(choices) =>
+                var joined = ""
+                for (choice in choices) {
+                    if (!joined.isEmpty()) { joined += ", " }
+                    joined += choice
+                }
+                return "no ${name} condition value was provided; available values: " +
+                    "${joined}; pass --cfg ${name}=<value>"
+            case None =>
+                return "it references undefined condition '${name}'; pass --cfg ${name}=<value>"
+        }
+    }
+    "its @When expression is unsupported or unresolved"
+}
+
 // Evaluate a raw @When annotation for compiler-side source rewriting. Unlike
 // provider-neutral documentation filtering, executable example generation must
 // know the native os/arch and default release debug selector when not supplied.
@@ -229,12 +281,21 @@ protected func compilerWhenSelection(annotation: String, profile: CfgProfile): ?
     }
 }
 
-protected func cfgSelection(annotations: ArrayList<String>, profile: CfgProfile): ?Bool {
+// One annotation can still be false while another is unresolved: `cfgAnd` keeps
+// a proven false, so only a genuinely unresolved selection reports a reason.
+protected func diagnoseCfgSelection(annotations: ArrayList<String>,
+    profile: CfgProfile): CfgSelectionDiagnosis {
     var selected: ?Bool = Some(true)
+    var reason = ""
     for (annotation in annotations) {
         if (let Some(expression) <- whenExpression(annotation)) {
-            selected = cfgAnd(selected, evaluateWhenExpression(expression, profile))
+            let parser = CfgExpressionParser(expression, profile)
+            let value = parser.parse()
+            selected = cfgAnd(selected, value)
+            if (value.isNone() && reason.isEmpty()) {
+                reason = unresolvedCfgReason(parser)
+            }
         }
     }
-    selected
+    CfgSelectionDiagnosis(selected, if (selected.isSome()) { "" } else { reason })
 }

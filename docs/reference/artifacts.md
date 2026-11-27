@@ -258,7 +258,7 @@ versions/
 
 ### current-only 的适用范围
 
-`cjdoc.doc-ir/20` 是当前 Doc IR wire：`render`、query 加载器与解码器都不迁移 `/18` 或更早版本，旧 JSON 必须从原始源码重新生成。这条规则只针对 Doc IR；其他协议各自有版本号，`navigation-index-v1` 就是明确保留的冻结 schema。
+`cjdoc.doc-ir/20` 是当前 Doc IR wire：`render`、query 加载器与解码器都不接受 `/19` 及更早版本，旧 JSON 必须从原始源码重新生成。这条规则只针对 Doc IR；其他协议各自有版本号，`navigation-index-v1` 就是明确保留的冻结 schema。
 
 ## 其他命令写出的文件
 

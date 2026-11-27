@@ -11,7 +11,7 @@ import std.unittest.testmacro.*
 import yjson.*
 
 private func inventoryBudgetGenerate(root: Path, sources!: Array<String> = []): api_model.DocumentationSet {
-    let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => "target/release/bin/main" })
+    let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => nativeTestBinary() })
     let pins = ArrayList<DocumentInventoryPin>()
     let modern = root.join("modern.json")
     if (exists(modern) && FileInfo(modern).size <= 8 * 1024 * 1024) {
@@ -117,7 +117,7 @@ private func inventoryBudgetLanguageNavigation(root: Path, documents: String, pi
     fallback!: Bool = true): api_model.TypeNavigation {
     File.writeTo(root.join("catalog.json"),
         ("{\"schemaVersion\":\"cjdoc.doc-sources/1\",\"documents\":[" + documents + "]}").toArray())
-    let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => "target/release/bin/main" })
+    let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => nativeTestBinary() })
     inventoryBudgetNavigation(DocumentationEngine().generate(GenerationRequest(root.toString(), lintProfile: "off",
         documentSources: ["catalog.json"], documentInventoryPins: pins, linkLanguage: "zh-CN",
         linkLanguageFallback: fallback, astPreflightExecutable: Some(binary))))
@@ -544,7 +544,7 @@ class SharedExternalInventoryBudgetTest {
         let temporary = Directory.createTemp(getTempDirectory())
         try {
             let root = inventoryBudgetProject(temporary)
-            let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => "target/release/bin/main" })
+            let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => nativeTestBinary() })
             let path = root.join("modern.json")
             let original = readTextBounded(path, 8 * 1024 * 1024)
             let pin = DocumentInventoryPin(path.toString(), api_model.contractFingerprint(original))

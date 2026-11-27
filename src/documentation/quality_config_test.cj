@@ -70,4 +70,24 @@ class QualityConfigTest {
             let _ = removeIfExists(root, recursive: true)
         }
     }
+
+    @TestCase
+    func trivialRulesAreConfigurableAndUnknownKeysStillFail(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            File.writeTo(root.join("cjdoc.toml"),
+                ("[lint]\ntrivial-summary = \"off\"\n" +
+                 "trivial-param-description = \"error\"\n" +
+                 "trivial-return-description = \"warning\"\n").toArray())
+            let config = loadDocumentationQualityConfig(root.toString())
+            @Expect(config.severity("trivial-summary"), "off")
+            @Expect(config.severity("trivial-param-description"), "error")
+            @Expect(config.severity("trivial-return-description"), "warning")
+            @Expect(config.severity("missing-example"), "warning")
+            File.writeTo(root.join("cjdoc.toml"), "[lint]\ntrivial-summaries = \"off\"\n".toArray())
+            @ExpectThrows[IllegalArgumentException](loadDocumentationQualityConfig(root.toString()))
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
 }

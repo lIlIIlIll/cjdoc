@@ -530,7 +530,7 @@ protected func appendMarkdownTypeDetails(out: RenderTextBuffer, symbol: SymbolDo
     if (!linked) { return }
     for (parameter in symbol.parameters) {
         out.append("- " + label(locale, "Parameter", "参数") + " ")
-        appendMarkdownCodeSpan(out, parameter.name); out.append(": ")
+        appendMarkdownCodeSpan(out, parameterDisplayName(symbol.kind, parameter.name)); out.append(": ")
         appendTypeRefMarkdown(out, parameter.typeRef, pagePath, symbolIndex); out.append("\n")
     }
     if (let Some(value) <- symbol.returnType) {

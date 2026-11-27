@@ -49,6 +49,10 @@ stage_cli() {
         --output "${check_dir}/png-idat"
     "${python_cmd}" scripts/check_cli_option_contract.py --binary "${binary}" \
         --output "${check_dir}/cli-option-contract"
+    "${python_cmd}" scripts/accept_cli_diagnostics.py --binary "${binary}" \
+        --repo "${repo}" --workdir "${check_dir}/cli-diagnostics"
+    "${python_cmd}" scripts/accept_api_routes.py --binary "${binary}" \
+        --repo "${repo}" --workdir "${check_dir}/api-routes"
     "${python_cmd}" scripts/test_conceptual_contract.py --binary "${binary}" \
         --output "${check_dir}/conceptual-contract"
     check_cli_output_ownership "${binary}" "${check_dir}"
