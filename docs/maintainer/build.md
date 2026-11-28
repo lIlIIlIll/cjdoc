@@ -168,6 +168,8 @@ bash scripts/check.sh smoke --repo . --identity target/ci-build/build-manifest.j
   --output-root "$RUNNER_TEMP/cjdoc-stage-smoke"
 ```
 
+`smoke` 还会从[排障指南](../how-to/troubleshoot.md#生成时出现-out-of-memory)读取 OOM 建议命令，在独立 fixture 上执行，核对可打开的 HTML、两种限制的区别和 #229 的历史观测。真实仓库的当前运行不复现旧版的 256 MiB 失败。
+
 `build` 阶段可以一次产出主程序、worker 与身份清单：
 
 ```bash

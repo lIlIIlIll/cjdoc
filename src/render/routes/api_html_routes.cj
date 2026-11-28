@@ -138,6 +138,13 @@ private func apiEscapedName(name: String): String {
     "~" + contractFingerprint(name)
 }
 
+private func compactApiStem(name: String): String {
+    var end = if (name.size > 24) { 24 } else { name.size }
+    while (end < name.size && (name[end] & 0xC0) == 0x80) { end-- }
+    let prefix = name[..end]
+    if (portableApiName(prefix)) { prefix } else { "api" }
+}
+
 private func apiPackageDirectory(name: String): String {
     if (name.isEmpty()) { return "" }
     let out = StringBuilder()
@@ -541,7 +548,13 @@ private class ApiRouteAllocator {
         if (file.size > API_HTML_MAX_PATH || !claims.free(file)) { return false }
         if (family.overloaded) {
             sort(family.symbols, lessThan: { a, b => declaredBefore(a, b) })
-            if (!reserveSignatureDirectories(directory, family)) { return false }
+            if (!reserveSignatureDirectories(directory, family)) {
+                // A fitting choice page keeps its address even if its children do not fit.
+                let compact = compactOverloadDirectory(family.symbols[0].name)
+                if (!reserveSignatureDirectories(compact, family)) {
+                    throw IllegalArgumentException("cannot allocate compact signatures for '${family.symbols[0].id}'")
+                }
+            }
             choices.add(ApiHtmlChoice("overloads:" + family.key, directory, family.symbols.toArray(), true))
         } else { files[family.symbols[0].id] = file }
         claims.reserve(file)
@@ -558,37 +571,43 @@ private class ApiRouteAllocator {
     private func reserveSignatureDirectories(directory: String, family: ApiRouteFamily): Bool {
         let assigned = ArrayList<String>()
         for (index in 0..family.symbols.size) {
-            let symbol = family.symbols[index]
-            let readable = directory + "/signature-" + (index + 1).toString()
-            if (readable.size + API_HTML_INDEX.size <= API_HTML_MAX_PATH &&
-                claims.free(readable + API_HTML_INDEX)) {
+            let readable = directory + "/signature-" + (index + 1).toString() + API_HTML_INDEX
+            if (readable.size > API_HTML_MAX_PATH) { return false }
+            if (claims.free(readable)) {
                 assigned.add(readable)
                 continue
             }
-            let digest = contractFingerprint(symbol.id)
-            let fallback = overloadSignatureFile(directory, digest, HashSet<String>(),
-                assigned)
+            let digest = contractFingerprint(family.symbols[index].id)
+            let fallback = overloadSignatureFile(directory, digest, assigned)
             if (fallback.isEmpty()) { return false }
-            assigned.add(fallback.removeSuffix(API_HTML_INDEX))
+            assigned.add(fallback)
         }
         for (index in 0..assigned.size) {
-            claims.reserve(assigned[index] + API_HTML_INDEX)
-            files[family.symbols[index].id] = assigned[index] + API_HTML_INDEX
+            claims.reserve(assigned[index])
+            files[family.symbols[index].id] = assigned[index]
         }
         true
     }
 
-    private func overloadSignatureFile(base: String, digest: String,
-        pending: HashSet<String>, assigned: ArrayList<String>): String {
+    private func overloadSignatureFile(base: String, digest: String, assigned: ArrayList<String>): String {
         for (length in API_HTML_DIGEST_START..=digest.size) {
-            let candidate = base + "/~" + digest[..length]
-            let file = candidate + API_HTML_INDEX
+            let file = base + "/~" + digest[..length] + API_HTML_INDEX
             if (file.size > API_HTML_MAX_PATH) { break }
-            if (claims.free(file) && pending.add(file) && !assigned.contains(candidate)) {
-                return file
-            }
+            if (claims.free(file) && !assigned.contains(file)) { return file }
         }
         ""
+    }
+
+    private func compactOverloadDirectory(name: String): String {
+        let base = "${fallbackRoot}/overloads/" + compactApiStem(name)
+        var directory = base
+        var ordinal = 1
+        // Each family owns the whole subtree, even if only its signatures live here.
+        while (!claims.free(directory)) {
+            ordinal++
+            directory = "${base}-${ordinal}"
+        }
+        directory
     }
 
     private func claimSuffixed(prefix: String, digest: String, family: ApiRouteFamily): Bool {
@@ -603,13 +622,14 @@ private class ApiRouteAllocator {
     private func allocateFamily(family: ApiRouteFamily): Unit {
         if (!family.directory.isEmpty()) { return }
         let symbol = family.symbols[0]
+        if (family.overloaded && (family.candidate.isEmpty() ||
+            family.candidate.size + API_HTML_INDEX.size > API_HTML_MAX_PATH)) {
+            if (claimFamily(compactOverloadDirectory(symbol.name), family)) { return }
+            throw IllegalArgumentException("cannot allocate compact overload route for '${symbol.id}'")
+        }
         let digest = contractFingerprint(if (family.overloaded) { family.key } else { symbol.id })
         if (!family.candidate.isEmpty() && claimSuffixed(family.candidate + "~", digest, family)) { return }
-        var end = if (symbol.name.size > 24) { 24 } else { symbol.name.size }
-        while (end < symbol.name.size && (symbol.name[end] & 0xC0) == 0x80) { end-- }
-        let prefix = symbol.name[..end]
-        let name = if (portableApiName(prefix)) { prefix } else { "api" }
-        if (!claimSuffixed("${fallbackRoot}/${name}~", digest, family)) {
+        if (!claimSuffixed("${fallbackRoot}/${compactApiStem(symbol.name)}~", digest, family)) {
             throw IllegalArgumentException("cannot allocate distinct portable API route for '${symbol.id}'")
         }
     }

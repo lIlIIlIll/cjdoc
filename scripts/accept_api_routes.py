@@ -11,6 +11,8 @@ adding an earlier block and another member. The check proves:
 * types near the path limit retain their addresses and still publish extensions;
 * readable `signature-<n>/` URLs still resolve to the same declarations when
   inserting an extension moves only one source offset across a decimal digit boundary;
+* an overload choice that fits alone stays in place; even when its whole family
+  needs compact paths, both real signature links stay readable and stable;
 * an opaque `~<hex>` segment appears only for a genuine portable collision;
 * every generated page has exactly one h1 and never skips a heading level.
 
@@ -26,10 +28,14 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 ROUTES = "route_check"
 NESTED_EXTENSION_TYPE = "Medium" + "T" * 54
 COMPACT_EXTENSION_TYPE = "Large" + "T" * 86
+# route_check/<name>/index.html fits exactly for Bounded, but not for Oversize.
+LONG_OVERLOADS = (("Bounded" + "X" * 86, "Bounded", True),
+                  ("Oversize" + "X" * 109, "Oversize", False))
 BASE_SOURCE = """package route_check
 
 /** A counter. */
@@ -108,6 +114,11 @@ LIMIT_EXTENSIONS = ""
 for name in (NESTED_EXTENSION_TYPE, COMPACT_EXTENSION_TYPE):
     BASE_SOURCE += f"\npublic class {name} {{ public func v(): Int64 {{ 0 }} }}\n"
     LIMIT_EXTENSIONS += f"\nextend {name} {{ public func w(): Int64 {{ 1 }} }}\n"
+for name, label, _ in LONG_OVERLOADS:
+    BASE_SOURCE += (f"\n/** {label} numeric overload. */\n"
+                    f"public func {name}(value: Int64): Int64 {{ value }}\n"
+                    f"/** {label} text overload. */\n"
+                    f"public func {name}(value: String): String {{ value }}\n")
 
 # Place the second overload just below byte 1000. Only the second overload
 # crosses 1000 when the first extension is inserted before the type.
@@ -164,6 +175,7 @@ H1 = re.compile(r"<h1(?=[ >])")
 CANONICAL = re.compile(r'<link rel="canonical" href="([^"]+)"')
 MAIN_CONTENT = re.compile(r'<main\b[^>]*\bid="cjdoc-main"[^>]*>(.*?)</main>', re.DOTALL)
 SYMBOL_PAGE = re.compile(r'<body\b[^>]*\bdata-cjdoc-symbol-id="([^"]+)"')
+API_LINK = re.compile(r'<a\b[^>]*\bhref="([^"]+)"[^>]*\bdata-cjdoc-api-link(?=[ >])')
 
 
 def check_headings(page: str, text: str, failures: list[str]) -> None:
@@ -202,6 +214,33 @@ def main_content(page: str) -> str:
 def require(condition: bool, message: str, failures: list[str]) -> None:
     if not condition:
         failures.append(message)
+
+
+def check_long_overloads(base: dict[str, str], extended: dict[str, str],
+                         failures: list[str]) -> None:
+    for name, label, fits in LONG_OVERLOADS:
+        choices = [path for path, page in base.items()
+                   if 'data-cjdoc-route="api-choice"' in page and name in main_content(page)]
+        if len(choices) != 1:
+            failures.append(f"{label} overload must have one choice page: {choices}")
+            continue
+        choice = choices[0]
+        if fits:
+            require(choice == f"{ROUTES}/{name}/index.html",
+                    f"length alone moved the fitting choice page: {choice}", failures)
+        links = API_LINK.findall(main_content(base[choice]))
+        after_links = API_LINK.findall(main_content(extended.get(choice, "")))
+        require(len(links) == 2 and links == after_links,
+                f"{label} overload destinations changed after adding extensions: {links} → {after_links}",
+                failures)
+        for ordinal, (href, kind) in enumerate(zip(links, ("numeric", "text")), 1):
+            target = urljoin(f"/{choice}", href).lstrip("/")
+            before, after = (site.get(target, "") for site in (base, extended))
+            ids = SYMBOL_PAGE.findall(before)
+            require(target.endswith(f"/signature-{ordinal}/index.html") and
+                    len(ids) == 1 and ids == SYMBOL_PAGE.findall(after) and
+                    all(f"{label} {kind} overload." in main_content(page) for page in (before, after)),
+                    f"{href} does not point to a stable readable {label} {kind} signature", failures)
 
 
 def accept(binary: Path, repo: Path, workdir: Path) -> int:
@@ -299,6 +338,7 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
         require(len(identifiers[0]) == 1 and identifiers[0] == identifiers[1] and
                 all(summary in main_content(page) for page in (before, after)),
                 f"{route} no longer resolves to its original declaration: {summary}", failures)
+    check_long_overloads(base_pages, extend_pages, failures)
 
     # A portable fallback is a `~<hex>` segment, whether it replaces a whole
     # name or is appended after a readable stem (`Sketch~<hex>`).

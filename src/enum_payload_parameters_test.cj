@@ -114,10 +114,13 @@ private func enumPayloadHtml(documentation: api_model.DocumentationSet,
 }
 
 private func queryEnumCaseParameters(documentation: api_model.DocumentationSet,
-    symbolId: String): JsonArray {
+    symbolId: String, language!: String = ""): JsonArray {
     let session = DocumentationQuerySession(documentation)
+    let languageField = if (language.isEmpty()) { "" } else {
+        ",\"language\":${JsonNode.string(language).toJson()}"
+    }
     let request = "{\"operation\":\"get_symbol\",\"symbolId\":${JsonNode.string(symbolId).toJson()}," +
-        "\"sections\":[\"parameters\"]}"
+        "\"sections\":[\"parameters\"]${languageField}}"
     let response = JsonNode.parse(session.execute(request)).asObject()
     @Expect(response.get("status").getOrThrow().asString(), "ok")
     let item = response.get("result").getOrThrow().asObject().get("items")
@@ -131,6 +134,36 @@ private func queryEnumCaseParameters(documentation: api_model.DocumentationSet,
         }
     }
     throw IllegalArgumentException("missing parameters section")
+}
+
+private func expectLocalizedPayloadReading(documentation: api_model.DocumentationSet,
+    symbolId: String, language: String, descriptions: Array<String>): Unit {
+    let snapshot = api_render.DocumentationReadSnapshot(documentation, locale: Some(language))
+    let lines = snapshot.renderDeclarationMarkdown(symbolId).getOrThrow().split("\n")
+    let parameters = queryEnumCaseParameters(documentation, symbolId, language: language)
+    @Assert(parameters.size(), descriptions.size)
+    for (index in 0..descriptions.size) {
+        let label = "#${index}"
+        let param = parameters[index].asObject()
+        @Expect(param.get("name").getOrThrow().asString(), label)
+        @Expect(param.get("documentation").getOrThrow().asString(), descriptions[index])
+        var matches = 0
+        var inItem = false
+        var hasDescription = false
+        for (line in lines) {
+            if (line.startsWith("- `${label}`: ")) {
+                matches++
+                inItem = true
+                if (line.endsWith(" — ${descriptions[index]}")) { hasDescription = true }
+            } else if (inItem && !line.isEmpty()) {
+                // Localized prose can follow a language label on an indented line.
+                inItem = line.startsWith("    ")
+                if (inItem && line.trimAscii() == descriptions[index]) { hasDescription = true }
+            }
+        }
+        @Expect(matches, 1)
+        @Expect(hasDescription, true)
+    }
 }
 
 @Test
@@ -232,6 +265,8 @@ class EnumPayloadParameterTest {
             @Expect(localizedPages["Rect"].contains("宽"))
             @Expect(localizedPages["Rect"].contains("高"))
             @Expect(!localizedPages["Rect"].contains("width in English"))
+            expectLocalizedPayloadReading(documentation, rect.id, "en", ["width in English", "height in English"])
+            expectLocalizedPayloadReading(documentation, rect.id, "zh-CN", ["宽", "高"])
 
             // A named parameter keeps its own identity in both languages: the
             // ordinal rule is scoped to enum payloads, so `_0` on a function is

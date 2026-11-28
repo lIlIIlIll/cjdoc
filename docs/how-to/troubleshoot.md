@@ -41,11 +41,18 @@ cjpm -v
 cjHeapSize=2GB cjdoc generate --project . --format html --output target/doc-retry
 ```
 
-提高 `--max-doc-ir-mib` 不能解决堆耗尽。它限制的是编码后的 Doc IR 大小，不是进程运行时使用的内存。
+| 设置 | 限制对象 | 能否修复运行时堆耗尽 |
+|---|---|---|
+| `cjHeapSize` | 运行时堆 | 是 |
+| `--max-doc-ir-mib` | 编码后的 Doc IR 大小 | 否 |
 
 **恢复后**：命令以 `0` 退出，新输出的 `html/index.html` 可以打开。所需内存取决于项目内容与输出选项，参见[运行时堆](../reference/states-and-limits.md#运行时堆)。
 
-在一次 cjdoc 自举中，522 个仓颉源文件、约 11.3 万行，生成 JSON、HTML 和完整 Agent 产物时，以 256 MiB 的堆失败，设为 `cjHeapSize=2GB` 后完成了生成。这是一次实测，不是项目规模阈值。
+用 cjdoc 为自身生成 JSON、HTML 和完整 Agent 文档时，记录到以下结果（[实测记录](https://github.com/lIlIIlIll/cjdoc/issues/229)）：
+
+| 记录性质 | 仓颉源文件 | 源码行数 | 256 MiB 堆 | 2 GB 堆 |
+|---|---:|---:|---|---|
+| 单次观测（非项目规模阈值） | 522 | 113,212 | `Out of memory` | 完成生成 |
 
 ## 生成报项目根错误
 

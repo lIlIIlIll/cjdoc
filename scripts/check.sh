@@ -603,16 +603,15 @@ PY
     # subprocesses in the unit-test stage derive their memory bound from the ambient
     # heap and misbehave at a larger value.
     local smoke_heap="${CJDOC_SMOKE_HEAP:-2GB}"
-    if [[ -n "${CJDOC_STDX_DIGEST:-}" && -n "${CJDOC_STDX_PATH:-}" ]]; then
-        cjHeapSize="${smoke_heap}" "${python_cmd}" scripts/real_repository_smoke.py \
-            --project "${repo}" --binary "${main_binary:-${repo}/target/release/bin/main}" \
-            --evidence "${smoke_evidence}"
-    else
-        cjHeapSize="${smoke_heap}" "${python_cmd}" scripts/with_stdx.py --variant static -- \
-            "${python_cmd}" scripts/real_repository_smoke.py \
-            --project "${repo}" --binary "${main_binary:-${repo}/target/release/bin/main}" \
-            --evidence "${smoke_evidence}"
+    local binary="${main_binary:-${repo}/target/release/bin/main}"
+    local -a smoke_python=("${python_cmd}")
+    if [[ -z "${CJDOC_STDX_DIGEST:-}" || -z "${CJDOC_STDX_PATH:-}" ]]; then
+        smoke_python=("${python_cmd}" scripts/with_stdx.py --variant static -- "${python_cmd}")
     fi
+    "${smoke_python[@]}" scripts/check_heap_guide.py --binary "${binary}" \
+        --workdir "${smoke_evidence%/*}" || return "$?"
+    cjHeapSize="${smoke_heap}" "${smoke_python[@]}" scripts/real_repository_smoke.py \
+        --project "${repo}" --binary "${binary}" --evidence "${smoke_evidence}"
 }
 
 
