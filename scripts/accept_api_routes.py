@@ -110,23 +110,39 @@ extend Counter {
 
 BASE_SOURCE += "\npublic class Occupied { public func extensions(): Int64 { 0 } }\n"
 COLLIDING_EXTENSION = "\nextend Occupied {{ public func keep(): Int64 {{ 1 }}{extra} }}\n"
+SHARED_OVERLOAD_PREFIX = "commonVeryLongOverloadPrefix" + "X" * 70
+PRIOR_OVERLOAD = (SHARED_OVERLOAD_PREFIX + "Old", "Existing extension", False)
+
+
+def overload_source(name: str, label: str) -> str:
+    return (f"\n/** {label} numeric overload. */\n"
+            f"public func {name}(value: Int64): Int64 {{ value }}\n"
+            f"/** {label} text overload. */\n"
+            f"public func {name}(value: String): String {{ value }}\n")
+
+
+def overload_extension(name: str, label: str) -> str:
+    return "\nextend Counter {\n" + overload_source(name, label) + "}\n"
+
+
+EXISTING_OVERLOAD_EXTENSION = overload_extension(*PRIOR_OVERLOAD[:2])
+EARLIER_OVERLOAD_EXTENSION = overload_extension(SHARED_OVERLOAD_PREFIX + "New", "New extension")
 LIMIT_EXTENSIONS = ""
 for name in (NESTED_EXTENSION_TYPE, COMPACT_EXTENSION_TYPE):
     BASE_SOURCE += f"\npublic class {name} {{ public func v(): Int64 {{ 0 }} }}\n"
     LIMIT_EXTENSIONS += f"\nextend {name} {{ public func w(): Int64 {{ 1 }} }}\n"
 for name, label, _ in LONG_OVERLOADS:
-    BASE_SOURCE += (f"\n/** {label} numeric overload. */\n"
-                    f"public func {name}(value: Int64): Int64 {{ value }}\n"
-                    f"/** {label} text overload. */\n"
-                    f"public func {name}(value: String): String {{ value }}\n")
+    BASE_SOURCE += overload_source(name, label)
 
 # Place the second overload just below byte 1000. Only the second overload
 # crosses 1000 when the first extension is inserted before the type.
 PACKAGE_LINE, BODY = BASE_SOURCE.split("\n", 1)
 PADDING = "//" + " " * (980 - BASE_SOURCE.index("public func set(text: String)") - 3) + "\n"
 BASE_SOURCE = PACKAGE_LINE + "\n" + PADDING + BODY
-EXISTING_SOURCE = BASE_SOURCE + EXISTING_EXTENSIONS + COLLIDING_EXTENSION.format(extra="")
+EXISTING_SOURCE = (BASE_SOURCE + EXISTING_EXTENSIONS + EXISTING_OVERLOAD_EXTENSION
+                   + COLLIDING_EXTENSION.format(extra=""))
 EXTEND_SOURCE = (PACKAGE_LINE + "\n" + EXTENSION_PREFIX + PADDING + BODY + EXISTING_EXTENSIONS
+                 + EARLIER_OVERLOAD_EXTENSION + EXISTING_OVERLOAD_EXTENSION
                  + COLLIDING_EXTENSION.format(extra="\n    public func added(): Int64 { 2 }\n")
                  + LIMIT_EXTENSIONS)
 
@@ -217,8 +233,9 @@ def require(condition: bool, message: str, failures: list[str]) -> None:
 
 
 def check_long_overloads(base: dict[str, str], extended: dict[str, str],
-                         failures: list[str]) -> None:
-    for name, label, fits in LONG_OVERLOADS:
+                         failures: list[str],
+                         families: tuple[tuple[str, str, bool], ...] = LONG_OVERLOADS) -> None:
+    for name, label, fits in families:
         choices = [path for path, page in base.items()
                    if 'data-cjdoc-route="api-choice"' in page and name in main_content(page)]
         if len(choices) != 1:
@@ -228,6 +245,8 @@ def check_long_overloads(base: dict[str, str], extended: dict[str, str],
         if fits:
             require(choice == f"{ROUTES}/{name}/index.html",
                     f"length alone moved the fitting choice page: {choice}", failures)
+        require(name in main_content(extended.get(choice, "")),
+                f"{label} lost its choice page after adding an extension: {choice}", failures)
         links = API_LINK.findall(main_content(base[choice]))
         after_links = API_LINK.findall(main_content(extended.get(choice, "")))
         require(len(links) == 2 and links == after_links,
@@ -312,7 +331,8 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
             "missing compact extension when its nested address exceeds the path limit", failures)
     for member in ("get", "increment", "decrement"):
         require(f"{ROUTES}/Counter/{member}" in extended, f"missing readable member route for {member}", failures)
-    existing = directories(page_paths(existing_html))
+    existing_pages = page_paths(existing_html)
+    existing = directories(existing_pages)
     survivor = f"{ROUTES}/Counter/decrement"
     require(all("Subtract one." in main_content(site.get(survivor, ""))
                 for site in (existing, extended)),
@@ -339,11 +359,12 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
                 all(summary in main_content(page) for page in (before, after)),
                 f"{route} no longer resolves to its original declaration: {summary}", failures)
     check_long_overloads(base_pages, extend_pages, failures)
+    check_long_overloads(existing_pages, extend_pages, failures, (PRIOR_OVERLOAD,))
 
     # A portable fallback is a `~<hex>` segment, whether it replaces a whole
     # name or is appended after a readable stem (`Sketch~<hex>`).
     opaque = sorted(route for route in extend_routes
-                    if re.search(r"(^|/)~[0-9a-f]{12,}(/|$)|~[0-9a-f]{12,}$", route))
+                    if re.search(r"~[0-9a-f]{12,}(?:/|$)", route))
     require(all(route.startswith((f"{ROUTES}/Sketch~", f"{ROUTES}/sketch~", collision_stem))
                 for route in opaque),
             f"opaque route segment outside a real portable collision: {opaque}", failures)

@@ -138,11 +138,23 @@ private func apiEscapedName(name: String): String {
     "~" + contractFingerprint(name)
 }
 
-private func compactApiStem(name: String): String {
-    var end = if (name.size > 24) { 24 } else { name.size }
+private func compactApiStem(name: String, bytes!: Int64 = 24): String {
+    var end = if (name.size > bytes) { bytes } else { name.size }
     while (end < name.size && (name[end] & 0xC0) == 0x80) { end-- }
     let prefix = name[..end]
     if (portableApiName(prefix)) { prefix } else { "api" }
+}
+
+private func compactOverloadStem(name: String, bytes: Int64): String {
+    if (name.size <= bytes && portableApiName(name)) { return name }
+    // Long names often share a prefix. Retain the ending so unrelated
+    // overload families don't draw addresses from the same ordinal sequence.
+    let head = compactApiStem(name, bytes: bytes / 2)
+    let tailBytes = bytes - head.size - 1
+    var start = if (name.size > tailBytes) { name.size - tailBytes } else { 0 }
+    while (start < name.size && (name[start] & 0xC0) == 0x80) { start++ }
+    let tail = name[start..]
+    if (portableApiName(tail)) { "${head}-${tail}" } else { head }
 }
 
 private func apiPackageDirectory(name: String): String {
@@ -550,7 +562,7 @@ private class ApiRouteAllocator {
             sort(family.symbols, lessThan: { a, b => declaredBefore(a, b) })
             if (!reserveSignatureDirectories(directory, family)) {
                 // A fitting choice page keeps its address even if its children do not fit.
-                let compact = compactOverloadDirectory(family.symbols[0].name)
+                let compact = compactOverloadDirectory(family)
                 if (!reserveSignatureDirectories(compact, family)) {
                     throw IllegalArgumentException("cannot allocate compact signatures for '${family.symbols[0].id}'")
                 }
@@ -598,16 +610,25 @@ private class ApiRouteAllocator {
         ""
     }
 
-    private func compactOverloadDirectory(name: String): String {
-        let base = "${fallbackRoot}/overloads/" + compactApiStem(name)
-        var directory = base
-        var ordinal = 1
-        // Each family owns the whole subtree, even if only its signatures live here.
-        while (!claims.free(directory)) {
-            ordinal++
-            directory = "${base}-${ordinal}"
+    private func compactOverloadDirectory(family: ApiRouteFamily): String {
+        let root = "${fallbackRoot}/overloads/"
+        // Reserve room for even a 19-digit ordinal; adding a signature must
+        // not change the spelling of the directory that holds existing ones.
+        let available = API_HTML_MAX_PATH - root.size - "/signature-".size - 19 - API_HTML_INDEX.size
+        let name = family.symbols[0].name
+        let bytes = if (available < 49) { available } else { 49 }
+        let readable = root + compactOverloadStem(name, bytes)
+        if (claims.free(readable)) { return readable }
+        // A suffix is justified only when the compact directory is actually
+        // occupied. Use the family identity, not its position in a traversal.
+        let digest = contractFingerprint(family.key)
+        for (length in API_HTML_DIGEST_START..=digest.size) {
+            let room = available - length - 1
+            if (room < 8) { break }
+            let directory = root + compactOverloadStem(name, room) + "~" + digest[..length]
+            if (claims.free(directory)) { return directory }
         }
-        directory
+        throw IllegalArgumentException("cannot allocate distinct compact overload route for '${family.symbols[0].id}'")
     }
 
     private func claimSuffixed(prefix: String, digest: String, family: ApiRouteFamily): Bool {
@@ -624,7 +645,7 @@ private class ApiRouteAllocator {
         let symbol = family.symbols[0]
         if (family.overloaded && (family.candidate.isEmpty() ||
             family.candidate.size + API_HTML_INDEX.size > API_HTML_MAX_PATH)) {
-            if (claimFamily(compactOverloadDirectory(symbol.name), family)) { return }
+            if (claimFamily(compactOverloadDirectory(family), family)) { return }
             throw IllegalArgumentException("cannot allocate compact overload route for '${symbol.id}'")
         }
         let digest = contractFingerprint(if (family.overloaded) { family.key } else { symbol.id })
