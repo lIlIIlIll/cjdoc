@@ -524,24 +524,10 @@ stage_python_tools() {
     "${python_cmd}" -m pyflakes scripts
     "${python_cmd}" scripts/check_test_suite.py
     "${python_cmd}" scripts/agent_evaluation_protocol.py
-    # CLI fixture drivers run in check_cli.sh; preflight owns the SDK tests.
-    # Only real unittest modules enter this collector.
-    local modules
-    modules="$("${python_cmd}" scripts/check_test_suite.py --print-modules)"
-    if [[ -z "${modules}" ]]; then
-        echo "no script unittest modules found" >&2
-        return 1
-    fi
-    # Python on Windows writes CRLF to stdout, so strip any trailing CR before the
-    # value is used as a module name.
-    modules="${modules//$'\r'/}"
-    # shellcheck disable=SC2086 - the module list is deliberately word-split.
-    PYTHONPATH="${repo}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
-        "${python_cmd}" -m unittest ${modules}
-    # The showcase suite lives outside `scripts/` and adds its own directory to
-    # `sys.path`, so it needs discovery by path rather than by module name.
-    PYTHONPATH="${repo}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
-        "${python_cmd}" -m unittest discover -s tests/showcase_contract -p 'test_*.py'
+    # This runner checks each module as unittest loads it; aggregate success
+    # cannot hide a file that contributes zero collected cases.
+    "${python_cmd}" scripts/check_test_suite.py --run-registered scripts
+    "${python_cmd}" scripts/check_test_suite.py --run-registered showcase
 }
 
 stage_provider() (

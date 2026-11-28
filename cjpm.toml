@@ -37,3 +37,7 @@ link-option = "${CJDOC_STDX_LINK_OPTIONS}"
 "yjson" = { git = "https://github.com/lIlIIlIll/yjson.git", commitId = "54b4965dee0f0b96710cbc678ec5ec9a126b055c", output-type = "static" }
 "yjson_algorithms" = { path = "vendor/yjson_algorithms", output-type = "static" }
 "cjdoc_chir_protocol" = { path = "tools/chir-protocol", output-type = "static" }
+
+[profile.test]
+# A passing fallback still needs to show why the requested behavior was not tested.
+no-capture-output = true

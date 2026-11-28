@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import re
 import subprocess
@@ -43,12 +44,38 @@ output-type = "static"
 QUALITY_SOURCE = '''package cli_diagnostics
 
 /**
+ * A marker with no state.
+ *
+ * Use it when an API needs to carry only the presence of a value.
+ *
+ * @example Create a marker.
+ * ```cangjie
+ * let _ = Marker()
+ * println("created")
+ * ```
+ * ```output
+ * created
+ * ```
+ */
+public struct Marker {}
+
+/**
  * API: echo.
  *
+ * Preserves the marker supplied by the caller.
+ *
  * @param value parameter value.
- * @return return Int64.
+ * @return return Marker.
+ * @example Pass through a marker.
+ * ```cangjie
+ * let _ = echo(Marker())
+ * println("echoed")
+ * ```
+ * ```output
+ * echoed
+ * ```
  */
-public func echo(value: Int64): Int64 { value }
+public func echo(value: Marker): Marker { value }
 '''
 
 CFG_SOURCE = '''package cli_diagnostics
@@ -124,9 +151,11 @@ class Runner:
             (root / "cjdoc.toml").unlink()
         return root
 
-    def check(self, project: Path, *extra: str, expected: int = 0):
-        return self.run("check", "--project", str(project), "--semantic", "source",
-                        "--no-cache", *extra, expected=expected)
+    def check(self, project: Path, *extra: str, expected: int = 0, semantic: str = "source"):
+        worker = os.environ.get("CJDOC_CHIR_WORKER") if semantic == "chir" else None
+        backend_options = ("--chir-worker", worker) if worker else ()
+        return self.run("check", "--project", str(project), "--semantic", semantic,
+                        "--no-cache", *backend_options, *extra, expected=expected)
 
     def generate(self, project: Path, *extra: str) -> dict:
         result = self.run("generate", "--project", str(project), "--semantic", "source",
@@ -176,6 +205,24 @@ def lint_matrix(runner: Runner) -> None:
     per_rule_off = runner.check(project, "--lint-profile", "standard", expected=0)
     codes = [code for _, code, _ in diagnostics(per_rule_off)]
     assert "CJDOC3048" not in codes and "CJDOC3047" in codes and "CJDOC3049" in codes, codes
+
+    # Enable all the usual warnings except the three named rules. This
+    # project must pass even if the caller does not turn off the lint profile.
+    config = '[lint]\n' + ''.join(f'{rule} = "off"\n' for rule in TRIVIAL_RULES)
+    original = runner.project("lint-deny-warnings", QUALITY_SOURCE)
+    only_trivial = runner.check(original, "--lint-profile", "standard", "--deny-warnings",
+                                expected=1, semantic="chir")
+    assert {code for _, code, _ in diagnostics(only_trivial)} == set(TRIVIAL_RULES.values()), (
+        only_trivial.stderr)
+    (original / "cjdoc.toml").write_text(config, encoding="utf-8")
+    allowed = runner.check(original, "--lint-profile", "standard", "--deny-warnings", semantic="chir")
+    assert not diagnostics(allowed), allowed.stderr
+
+    incomplete = QUALITY_SOURCE.replace(" * Preserves the marker supplied by the caller.\n *\n", "")
+    other_warning = runner.project("lint-deny-other", incomplete, config)
+    denied = runner.check(other_warning, "--lint-profile", "standard", "--deny-warnings",
+                          expected=1, semantic="chir")
+    assert {code for _, code, _ in diagnostics(denied)} == {"CJDOC3036"}, denied.stderr
 
     (project / "cjdoc.toml").write_text('[lint]\ntrivial-summaries = "off"\n',
                                         encoding="utf-8")

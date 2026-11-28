@@ -140,11 +140,13 @@ bash scripts/check.sh
 
 `scripts/check.sh` 负责阶段分发和证据记录；`scripts/check_cli.sh` 负责 `cli` 阶段内的检查。
 
-`cjpm test` 通过 STS wrapper 输出 `degraded: N`，并逐条说明哪些行为没验证及其原因。计数按标记本身统计，不依赖日志行首或行前缀，因此被测试框架重新打印的用例输出同样计入。Linux、Windows 与 macOS 的 CI 都准备 CHIR worker、Node 与锁定的 Highlight.js adapter，并用 `CJDOC_TEST_REQUIRE_VERIFIED=1` 拒绝任何降级；`CJDOC_TEST_PROVE_MISSING_WORKER=1` 再要求一次反向对照：在未设 `CJDOC_CHIR_WORKER` 的情况下用同一个 wrapper 重跑一个已选回退用例，它的降级总数必须非 0 且严格模式必须失败，否则“不会触发的计数”同样被判失败。
+`cjpm.toml` 的 `[profile.test]` 默认显示通过用例的输出。直接运行 `cjpm test` 时，测试逐条说明哪些行为未验证及原因；根包的每个测试进程结束时输出 `CJDOC_TEST_DEGRADED_TOTAL <n>`，多进程运行可将这些数字相加。STS wrapper 另外汇总整次运行的 `degraded: N`。Linux、Windows 与 macOS 的 CI 都准备 CHIR worker、Node 与锁定的 Highlight.js adapter，并通过 `CJDOC_TEST_REQUIRE_VERIFIED=1` 拒绝任何降级。
+
+降级计数只说明“没有记录未验证”，本身不证明某条行为真的跑过。输出祖先中的链接拒绝因此另有一条正向证据：`OutputSymlinkAncestorTest.symbolicLinkAncestorIsRejectedEvenWhenForceOwnedIsEnabled` 在 POSIX 上创建真实符号链接，在 Windows 上经 `cmd.exe mklink /J` 创建不需要 `SeCreateSymbolicLinkPrivilege` 或开发者模式的目录联接（它同样带 `FILE_ATTRIBUTE_REPARSE_POINT`，因此 `FileInfo.isSymbolicLink()` 为真）；两种 fixture 都用 `linked/cjdoc-output` 与 `missing/../linked/cjdoc-output` 两个路径断言产品以 `must not contain symbolic-link ancestor` 拒绝、链接目标未被写入、且没有留下锁或事务状态。用例通过后打印 `CJDOC_TEST_LINK_ANCESTOR`：出现该行才证明该平台的原生日志里这条真实链接 fixture 跑过并通过；平台无法创建链接时用例失败，不登记降级、不视为已验证。
 
 示例运行只有两种可接受结果：本机真正执行，或 macOS 文档化的 fail-closed 拒绝。macOS 拒绝必须同时带有限制器给出的原因（`address-space memory limit is unavailable on this platform`），这类记录单独计为 `CJDOC_TEST_PLATFORM_REFUSAL`，不计入降级；其他主机出现该拒绝、或出现编译/链接失败形式的 `CJDOC3074`，都不算已验证。CI 用 `CJDOC_TEST_PLATFORM_REFUSALS=required`（macOS）与 `forbidden`（Linux、Windows）区分这两种要求。
 
-测试不再从环境变量拿仓库根：fixture 路径由编译进二进制的源码位置（异常栈中的绝对路径）或测试二进制自身路径向上找到声明本模块的清单得到，进程工作目录不参与，因此从任意目录、以及不带任何项目环境的裸 `unittest_bin` 执行都不改变结果。在准备好的环境运行 `python3 scripts/check_native_environment.py --repo .`：它先经同一个 wrapper 在未设 CHIR worker 时确认降级计数与严格失败（正负对照），再在仓库外的目录、且移除 `CJDOC_TEST_ROOT` 的环境里逐个执行测试二进制。
+测试不再从环境变量拿仓库根：fixture 路径由编译后的源码位置或测试二进制自身路径向上找到模块清单，进程工作目录不参与。准备好 SDK 和 worker 后，运行 `python3 scripts/check_native_environment.py --repo .` 检查三条路径：未设 worker 时直接用 SDK 的 `cjpm test` 复用已编译产物，两个回退用例通过并报告两条降级；STS wrapper 在相同条件下报告降级，严格模式则退出失败；所有测试二进制从仓库外运行且不设 `CJDOC_TEST_ROOT`，仍应通过且没有降级。
 
 `browser` 阶段使用 Node.js 26.11.1，并安装锁定的 Playwright 和 Chromium。Linux 上 `TMPDIR` 应使用路径较短的私有目录，以免 Chromium 原生缩放测试的 Unix socket 路径超长；生成站点和测试报告仍写入 `--output-root`。
 
@@ -168,7 +170,7 @@ bash scripts/check.sh smoke --repo . --identity target/ci-build/build-manifest.j
   --output-root "$RUNNER_TEMP/cjdoc-stage-smoke"
 ```
 
-`smoke` 还会从[排障指南](../how-to/troubleshoot.md#生成时出现-out-of-memory)读取 OOM 建议命令，在独立 fixture 上执行，核对可打开的 HTML、两种限制的区别和 #229 的历史观测。真实仓库的当前运行不复现旧版的 256 MiB 失败。
+`smoke` 还会从[排障指南](../how-to/troubleshoot.md#生成时出现-out-of-memory)读取 OOM 建议命令，在独立 fixture 上执行，核对可打开的 HTML、两种限制的区别和 #229 的历史观测。真实仓库的当前运行不复现旧版的 256 MiB 失败。因此该页不是纯读者文档：`check_heap_guide.py` 用 `DOC_INPUTS` 声明它读取的页面，`ci_changes.py` 从这里读取声明，改动该页会要求 Linux 原生验收运行；其余 `docs/` 文档仍只走文档门禁。
 
 `build` 阶段可以一次产出主程序、worker 与身份清单：
 

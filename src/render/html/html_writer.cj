@@ -5,6 +5,7 @@ import cjdoc.render.foundation.{
     RenderTextBuffer, RENDER_ARTIFACT_LIMIT, safeLinkDestination, safeRelativeLinkDestination,
     appendHtmlEscapedValue}
 import std.collection.*
+import std.math.countOnes
 
 /**
  * A link destination that passed one of the renderer's URL safety checks.
@@ -196,7 +197,7 @@ protected class HtmlWriter {
     // captured fragments do not, and are normalized when they are spliced into
     // a page that does.
     private var trackHeadings = false
-    private var previousHeadingLevel: Int64 = 0
+    private var headingRanks: UInt8 = 0
     // Set when this writer emits a heading tag, so a captured fragment knows
     // whether splicing it needs the heading pass at all.
     private var emittedHeadings = false
@@ -325,23 +326,20 @@ protected class HtmlWriter {
         Int64(digit - b'0')
     }
 
-    // A page owns exactly one h1 and may descend one heading level at a time.
-    // Headings are clamped, never renamed, so their text and anchors survive.
-    private func clampedHeadingLevel(level: Int64): Int64 {
-        if (level == 0) { return 0 }
-        if (previousHeadingLevel == 0) {
-            return if (level == 1) { 1 } else { 2 }
+    // Each bit represents an active requested rank, including the page title.
+    // Replacing the current rank and its descendants keeps repeated ranks peers.
+    private func advanceHeading(requested: Int64): Int64 {
+        if (headingRanks == 0 && requested == 1) {
+            headingRanks = 1
+            return 1
         }
-        if (level == 1 || level > previousHeadingLevel + 1) {
-            return min(6, previousHeadingLevel + 1)
-        }
-        level
+        let rankBit = UInt8(1) << (max(2, requested) - 1)
+        headingRanks = (headingRanks & (rankBit - 1)) | rankBit | 1
+        countOnes(headingRanks)
     }
 
     private func normalizeHeading(level: Int64): String {
-        let normalized = clampedHeadingLevel(level)
-        previousHeadingLevel = normalized
-        HEADING_TAGS[normalized - 1]
+        HEADING_TAGS[advanceHeading(level) - 1]
     }
 
     // A captured fragment is escaped and balanced by this writer already.
@@ -358,12 +356,12 @@ protected class HtmlWriter {
             }
             if (isFragmentHeadingStart(value, index)) {
                 let original = Int64(value[index + 2] - b'0')
-                previousHeadingLevel = clampedHeadingLevel(original)
-                levels.add(previousHeadingLevel)
-                if (original != previousHeadingLevel) {
+                let rank = advanceHeading(original)
+                levels.add(rank)
+                if (original != rank) {
                     out.append(value[pendingStart..index])
                     out.append("<")
-                    out.append(HEADING_TAGS[previousHeadingLevel - 1])
+                    out.append(HEADING_TAGS[rank - 1])
                     pendingStart = index + 3
                 }
                 index += 3

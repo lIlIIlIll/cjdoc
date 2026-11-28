@@ -9,7 +9,7 @@
 - **阅读签名：** 参数默认值用 ` = ` 分隔。宽屏将参数和异常的说明与声明对齐，窄屏将说明放到声明下方。
 - **浏览完整 API：** 从首页「API 参考」展开包和类型；左栏可以显示当前分支的全部条目，包页的「本页目录」可跳到声明行。关闭 JavaScript 后仍可打开各声明的详情。
 - **分享 API：** 包、类型和成员有可读目录地址，例如 `packages/pocketkit/authoring/` 和 `pocketkit/TextCatalog/join/`。默认语言的声明地址不加语言前缀；包页保留当前语言目录。离线链接保留 `index.html`，旧包链接及其片段和旧 `symbols/` 链接仍可打开。详见[生成与发布](how-to/generate-and-publish.md)。
-- **定位扩展与重载：** 新增扩展不会改变类型和原有成员的地址。扩展块使用类型下的 `extensions/`，进入某个重载签名时使用 `signature-1/` 这样的可读路径。
+- **定位扩展与重载：** 新增扩展不会改变类型和原有成员的地址。扩展块通常在类型的 `extensions/` 下；重载详情用 `signature-1/` 或 `signature-Int64/` 这样的可读路径。
 - **迁移弃用 API：** 包表、成员、侧栏和搜索标明已弃用声明；详情显示作者说明或可读取的源码注解消息。能确认的 [`@replacement`](reference/doc-comments.md#弃用与迁移) 另有「改用」链接，原名称仍打开原声明。
 - **读取机器文档：** 新 HTML 文档包使用 `cjdoc.machine-manifest/3` 和 `cjdoc.read/3`。
 - **学写注释：** PocketKit demo-v2 新增[双语注释指南](../examples/pocketkit/demo-v2/docs/doc-comments.md)，可对照源码与生成的 API 页面。

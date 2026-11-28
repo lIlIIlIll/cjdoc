@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """Prove the native runner's degradation reporting, then run it outside the checkout.
 
-Two controls, and the pair is what makes the tally meaningful:
-
-* **Positive** -- the full unit suite with every prerequisite provisioned must
-  report no degradation, from a working directory unrelated to the checkout and
-  without any project path in the environment. Test fixtures resolve the checkout
-  from the compiled binary, so the working directory cannot make a case pass.
-* **Negative** -- the same wrapper invocation with the CHIR worker unset must report
-  the selected fallback case as unverified. This runs the real `cjpm test` through
-  `scripts/with_sts_cjpm.sh` and reads the wrapper's own tally, so a tally that can
-  never fire is caught instead of a message this script prints about itself.
+* The installed `cjpm test` with no worker and no wrapper must print the
+  test process's own count, attributed to the two selected fallback cases.
+* The strict wrapper must reject a real degradation. The same selected case
+  is allowed to finish in reporting mode so both paths can be compared.
+* The provisioned unit suite must run from an unrelated directory without a
+  project-root environment variable or any degradation.
 
 Usage: check_native_environment.py --repo REPO [--unit-target DIR]
 """
@@ -25,10 +21,13 @@ import sys
 import tempfile
 
 DEGRADED = "CJDOC_TEST_DEGRADED "
+# Keep the independently emitted count separate from individual records.
+SUITE_TOTAL = re.compile(r"^CJDOC_TEST_DEGRADED_TOTAL (\d+)$", re.MULTILINE)
 REFUSAL = "CJDOC_TEST_PLATFORM_REFUSAL "
 SUMMARY = re.compile(r"PASSED: (\d+), SKIPPED: (\d+), ERROR: (\d+)")
 TALLY = re.compile(r"Native test requirements — degraded: (\d+)")
 WORKER_CASE = "extensionTargetsKeepPackageIdentityWhenNamesCollide"
+RAW_WORKER_CASES = (WORKER_CASE, "chirSemanticFixtureUsesStructuredPackageRecords")
 # Set by the wrapper for the run that consumes an already-built unit target.
 REUSE_TARGET = "CJDOC_TEST_WRAPPER_UNIT_TARGET"
 
@@ -69,7 +68,12 @@ def run_tests(binary: Path, cwd: Path, env: dict[str, str], *flags: str):
         raise ValueError(f"standalone native tests failed: {binary.name}")
     degradations = [line for line in result.stdout.splitlines() if line.startswith(DEGRADED)]
     refusals = [line for line in result.stdout.splitlines() if line.startswith(REFUSAL)]
-    return int(matches[-1][0]), degradations, refusals
+    # The suite's own count, not a count of these lines. Every process of a package
+    # that owns the recorder prints its total, zero included; a package without the
+    # recorder prints none, so absence is allowed here and the totals are checked
+    # against the records once every binary has run.
+    totals = [int(value) for value in SUITE_TOTAL.findall(result.stdout)]
+    return int(matches[-1][0]), degradations, refusals, totals
 
 
 def degrade_free_environment() -> dict[str, str]:
@@ -91,19 +95,32 @@ def qualify_direct(repo: Path, target: Path, elsewhere: Path) -> None:
     passed = 0
     degradations = []
     refusals = []
+    reported = 0
+    recorded_by_suite = 0
     for test in test_binaries(target):
-        total, records, refused = run_tests(test, elsewhere, environment)
+        total, records, refused, totals = run_tests(test, elsewhere, environment)
         passed += total
         degradations.extend(records)
         refusals.extend(refused)
+        reported += sum(totals)
+        # Only the package that owns the recorder prints a total, so one binary per
+        # run must report one and that count must cover every record in the run.
+        if totals:
+            recorded_by_suite += 1
     for record in degradations:
         print(record, file=sys.stderr)
     for record in refusals:
         print(record, file=sys.stderr)
     print(f"unrelated cwd: {passed} passed; degraded: {len(degradations)}; "
+          f"suite reported: {reported} from {recorded_by_suite} binary(ies); "
           f"platform refusals: {len(refusals)}")
     if passed <= 1:
         raise ValueError("the unrelated-cwd run did not exercise the native suite")
+    if recorded_by_suite < 1:
+        raise ValueError("no native suite reported its own degradation count")
+    if reported != len(degradations):
+        raise ValueError(f"the suites reported {reported} degradation(s) "
+                         f"but printed {len(degradations)} record(s)")
     if degradations:
         raise ValueError("the unrelated-cwd run left required behavior unverified")
 
@@ -133,13 +150,38 @@ def run_wrapper_control(repo: Path, target: Path, elsewhere: Path,
         cwd=repo, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
 
+def qualify_raw_cjpm(repo: Path, target: Path) -> None:
+    """Run the SDK directly: the project test profile must expose passing output."""
+    environment = degrade_free_environment()
+    environment.pop("CJDOC_CHIR_WORKER", None)
+    cjpm = environment.get("CJDOC_REAL_CJPM")
+    if not cjpm:
+        raise ValueError("CJDOC_REAL_CJPM must identify the installed SDK package manager")
+    pattern = ",".join(f"*.{case}" for case in RAW_WORKER_CASES)
+    result = subprocess.run(
+        ["bash", "-c", 'exec "$CJDOC_REAL_CJPM" "$@"', "cjpm", "test",
+         "--skip-build", "--target-dir", str(target), "--jobs", "1",
+         "--parallel", "1", "--no-progress", "--no-color", f"--filter={pattern}"],
+        cwd=repo, env=environment, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True)
+    totals = SUITE_TOTAL.findall(result.stdout)
+    summary = SUMMARY.findall(result.stdout)
+    reported = sum(map(int, totals))
+    records = [line for line in result.stdout.splitlines() if line.startswith(DEGRADED)]
+    expected = [f"{DEGRADED}{case}: missing CJDOC_CHIR_WORKER" for case in RAW_WORKER_CASES]
+    if (result.returncode != 0 or not summary or int(summary[-1][0]) != len(expected)
+            or reported != len(expected) or sorted(records) != sorted(expected)):
+        print(result.stdout, end="", file=sys.stderr)
+        raise ValueError("unwrapped cjpm test did not report the selected degradations")
+    print(f"missing worker: unwrapped cjpm test — degraded: {reported}")
+
+
 def qualify_wrapper(repo: Path, target: Path, elsewhere: Path) -> None:
     """The negative control, through the wrapper whose tally CI reads.
 
-    The worker is removed, so the selected case takes its documented fallback. The
-    wrapper must first report a non-zero degraded total attributed to that case, and
-    then -- with strict verification on -- refuse the same run. A tally that cannot
-    fire, or a strict gate that cannot fail, is caught here rather than in CI.
+    Removing the worker makes the selected case take its documented fallback.
+    The wrapper must report a non-zero count for the selected fallback case
+    and refuse the same run when strict verification is enabled.
     """
     reporting = run_wrapper_control(repo, target, elsewhere, "CJDOC_TEST_REQUIRE_VERIFIED=0")
     tally = TALLY.search(reporting.stdout)
@@ -148,11 +190,15 @@ def qualify_wrapper(repo: Path, target: Path, elsewhere: Path) -> None:
         raise ValueError("the wrapper did not report a degradation tally for the missing worker")
     total = int(tally.group(1))
     attributed = reporting.stdout.count(f"{DEGRADED}{WORKER_CASE}: ")
+    suite_total = sum(map(int, SUITE_TOTAL.findall(reporting.stdout)))
     print(f"missing worker: wrapper tally {total}; selected case records {attributed}")
     if total < 1 or attributed < 1:
         print(reporting.stdout, end="", file=sys.stderr)
         raise ValueError(f"the missing-worker control reported {total} degradation(s), "
                          f"{attributed} for {WORKER_CASE}")
+    if suite_total != total:
+        print(reporting.stdout, end="", file=sys.stderr)
+        raise ValueError(f"the suite counted {suite_total} degradation(s) but the log held {total}")
     strict = run_wrapper_control(repo, target, elsewhere, "CJDOC_TEST_REQUIRE_VERIFIED=1")
     strict_tally = TALLY.search(strict.stdout)
     if (strict.returncode != 1 or strict_tally is None or int(strict_tally.group(1)) != total
@@ -169,6 +215,7 @@ def qualify_tests(repo: Path, target: Path) -> None:
         raise ValueError("RUNNER_TEMP is required for the out-of-checkout run")
     with tempfile.TemporaryDirectory(prefix="cjdoc-test-cwd-", dir=environment["RUNNER_TEMP"]) as temporary:
         elsewhere = Path(temporary).resolve()
+        qualify_raw_cjpm(repo, target)
         qualify_wrapper(repo, target, elsewhere)
         qualify_direct(repo, target, elsewhere)
 

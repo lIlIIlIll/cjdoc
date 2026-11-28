@@ -43,6 +43,37 @@ class CfgSelectionDiagnosisTest {
     }
 
     @TestCase
+    func bareStringSelectorsDoNotRecommendSupplyingAValue(): Unit {
+        for ((name, value) in [("os", "Linux"), ("arch", "x86_64")]) {
+            for (profile in [profileOf([]), profileOf([(name, value)])]) {
+                let result = diagnoseCfgSelection(ArrayList<String>(["@When[${name}]"]), profile)
+                @Expect(result.selected, None<Bool>)
+                @Expect(result.reason, "its @When expression is unsupported or malformed")
+            }
+        }
+        let debug = diagnosis(["@When[debug]"], values: [("debug", "true")])
+        @Expect(debug.selected, Some(true))
+        @Expect(debug.reason, "")
+    }
+
+    @TestCase
+    func allUnresolvedConditionsRetainTheirRemedies(): Unit {
+        let result = diagnosis(["@When[feature == \"extra\" && os == \"Linux\"]",
+            "@When[unknown == ]", "@When[arch == \"x86_64\"]"])
+        @Expect(result.selected, None<Bool>)
+        @Expect(result.reason.contains("unsupported or malformed"), true)
+        @Expect(result.reason.contains("undefined condition 'feature'"), true)
+        @Expect(result.reason.contains("no os condition value was provided; available values: Linux"), true)
+        @Expect(result.reason.contains("no arch condition value was provided; available values: x86_64"), true)
+        @Expect(result.reason.contains("undefined condition 'unknown'"), false)
+
+        let skipped = diagnosis(["@When[hide && os == \"Linux\"]",
+            "@When[unknown == ]"], values: [("hide", "false")])
+        @Expect(skipped.selected, Some(false))
+        @Expect(skipped.reason, "")
+    }
+
+    @TestCase
     func providedValuesProveSelectionAndFalseDominatesUnknown(): Unit {
         let selected = diagnosis(["@When[os == \"Linux\"]"], values: [("os", "Linux")])
         @Expect(selected.selected, Some(true))

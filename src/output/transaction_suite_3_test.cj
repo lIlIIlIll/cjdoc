@@ -8,7 +8,10 @@ import std.env.{getProcessId}
 import std.fs.*
 @When[os != "Windows"]
 import std.posix.symlink
-@When[os == "Linux"]
+// The link fixture launches cmd.exe on Windows and a shell child on Linux, so
+// the process API is needed wherever those fixtures compile. macOS uses neither
+// and keeps the import out to avoid an unused warning.
+@When[os == "Linux" || os == "Windows"]
 import std.process.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -406,22 +409,128 @@ class OutputStaleLockAbsenceProofTest {
     }
 }
 
+// A Windows junction needs no symlink privilege and exercises the same
+// FileInfo reparse-point guard as a POSIX symbolic link.
+@When[os == "Windows"]
+private let linkAncestorFixtureKind: String = "directory-junction"
+
 @When[os != "Windows"]
+private let linkAncestorFixtureKind: String = "symbolic-link"
+
+private func linkFixtureTargetEntries(real: Path): Array<String> {
+    let names = ArrayList<String>()
+    for (entry in Directory.readFrom(real)) { names.add(entry.name) }
+    names.toArray()
+}
+
+// Reject only the documented refusal. A generic failure (fixture missing,
+// platform refuses links, IO error) must surface as a failing case instead of
+// being counted as evidence that the guard fired.
+private func expectLinkAncestorRefused(output: String): Unit {
+    let error = try {
+        writeOwnedArtifacts(output, [outputArtifact("docs.json", "blocked")], forceOwned: true)
+        ""
+    } catch (caught: IllegalArgumentException) { caught.message } catch (failure: Exception) {
+        throw IllegalStateException(
+            "link ancestor fixture produced a non-guard failure for '${output}': ${failure.message}")
+    }
+    if (error.isEmpty()) {
+        throw IllegalStateException("write through linked ancestor '${output}' was not rejected")
+    }
+    if (!error.contains("must not contain symbolic-link ancestor")) {
+        throw IllegalStateException(
+            "linked ancestor '${output}' was rejected for another reason: ${error}")
+    }
+}
+
+@When[os != "Windows"]
+private func createLinkAncestorFixture(parent: Path, real: Path): Path {
+    let link = parent.join("linked")
+    if (symlink(real.toString(), link.toString()) != 0) {
+        throw IllegalStateException("unable to create the symbolic-link ancestor fixture")
+    }
+    link
+}
+
+// cmd.exe writes its own OEM code page, so a decoded fixture message is only a
+// hint. Keep an undecodable message from replacing the real fixture failure.
+@When[os == "Windows"]
+private func linkFixtureDiagnostic(output: Array<Byte>, error: Array<Byte>): String {
+    let text = try { String.fromUtf8(output) + String.fromUtf8(error) } catch (_: Exception) {
+        "(undecodable cmd.exe output: ${output.size} stdout bytes, ${error.size} stderr bytes)"
+    }
+    text.trimAscii()
+}
+
+@When[os == "Windows"]
+private func createLinkAncestorFixture(parent: Path, _: Path): Path {
+    let link = parent.join("linked")
+    // Use fixed arguments so cmd never parses metacharacters in a temp path.
+    let (exitCode, out, err) = executeWithOutput("cmd.exe",
+        ["/d", "/s", "/c", "mklink", "/J", "linked", "real"],
+        workingDirectory: Some(parent), stdIn: ProcessRedirect.Discard)
+    if (exitCode != 0) {
+        throw IllegalStateException("unable to create a directory junction for the link " +
+            "ancestor fixture (exit ${exitCode}): ${linkFixtureDiagnostic(out, err)}")
+    }
+    if (!exists(link) || !FileInfo(link).isSymbolicLink()) {
+        throw IllegalStateException(
+            "directory junction for the link ancestor fixture is not a reparse point")
+    }
+    link
+}
+
 @Test
 class OutputSymlinkAncestorTest {
     @TestCase
     func symbolicLinkAncestorIsRejectedEvenWhenForceOwnedIsEnabled(): Unit {
         let parent = createOutputTestTempDirectory()
+        let real = parent.join("real")
+        let link = parent.join("linked")
+        // A sentinel inside the target proves the link really resolves there, so a
+        // later look at the target cannot be mistaken for a link that never
+        // pointed anywhere.
         try {
-            let real = parent.join("real")
             Directory.create(real)
-            let link = parent.join("linked")
-            @Assert(symlink(real.toString(), link.toString()), 0)
-            @ExpectThrows(writeOwnedArtifacts(link.join("cjdoc-output").toString(),
-                [outputArtifact("docs.json", "blocked")], forceOwned: true))
-            @ExpectThrows(writeOwnedArtifacts(parent.join("missing/../linked/cjdoc-output").toString(),
-                [outputArtifact("docs.json", "blocked")], forceOwned: true))
-            @Expect(Directory.isEmpty(real))
-        } finally { let _ = removeIfExists(parent, recursive: true) }
+            File.writeTo(real.join("keep.txt"), "sentinel".toArray())
+            let _ = createLinkAncestorFixture(parent, real)
+            // The fixture is real: `linked` is a symbolic link / reparse point, and
+            // reading through it reaches the sentinel in the target directory.
+            @Assert(FileInfo(link).isSymbolicLink())
+            @Assert(String.fromUtf8(File.readFrom(link.join("keep.txt"))), "sentinel")
+
+            expectLinkAncestorRefused(link.join("cjdoc-output").toString())
+            // The second form keeps the `missing/../linked` invariant: the path does
+            // not exist as spelled, so the refusal must come from the normalized
+            // ancestor (`linked`), not from the missing prefix.
+            expectLinkAncestorRefused(
+                parent.join("missing/../linked/cjdoc-output").toString())
+            @Assert(!exists(parent.join("missing")))
+
+            // Nothing was published through the link, and no lock or transaction
+            // state appeared next to it: the refusal happened before any output
+            // preparation, not after a partial write.
+            let targetEntries = linkFixtureTargetEntries(real)
+            @Assert(targetEntries, ["keep.txt"])
+            @Assert(!exists(parent.join(OUTPUT_LOCK_NAME)))
+            @Assert(!exists(fixedPreparingDirectory(parent)))
+            @Assert(!exists(fixedTransactionDirectory(parent)))
+        } finally {
+            // Unlink before recursively removing the fixture root so cleanup
+            // does not follow a directory reparse point into the target.
+            if (exists(link)) {
+                let _ = removeIfExists(link, recursive: false)
+                if (exists(link)) {
+                    throw IllegalStateException(
+                        "unable to unlink the link ancestor fixture '${link}' before cleanup")
+                }
+                @Assert(exists(real.join("keep.txt")))
+                @Assert(String.fromUtf8(File.readFrom(real.join("keep.txt"))), "sentinel")
+            }
+            let _ = removeIfExists(parent, recursive: true)
+        }
+        // Hosted logs must prove the fixture ran, not just show zero degradations.
+        eprintln("CJDOC_TEST_LINK_ANCESTOR fixture=${linkAncestorFixtureKind} " +
+            "targetIntact=true refused=linked-output,missing-normalized form=force-owned")
     }
 }

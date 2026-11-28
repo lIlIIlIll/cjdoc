@@ -543,14 +543,6 @@ class GateAndTimingGuardTest(unittest.TestCase):
     def check(self) -> str:
         return (PROJECT_ROOT / "scripts/check.sh").read_text(encoding="utf-8")
 
-    def test_the_gate_runs_the_showcase_contract_suite(self) -> None:
-        gate = self.check()
-        # The Pages refactor dropped this suite from pages.yml; the staged gate
-        # must keep running it or those tests run nowhere.
-        self.assertIn("discover -s tests/showcase_contract", gate)
-        python_tools = gate.split("stage_python_tools()", 1)[1].split("\nstage_", 1)[0]
-        self.assertIn("discover -s tests/showcase_contract", python_tools)
-
     def test_the_full_gate_protects_pre_existing_build_trees(self) -> None:
         gate = self.check()
         full_gate = gate.split('stage="${stage_id}"', 1)[1]

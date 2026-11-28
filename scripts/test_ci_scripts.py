@@ -87,6 +87,47 @@ class ChangesRoutingTest(unittest.TestCase):
             self.assertIn(path, ci_changes.tool_inputs(),
                           f"{path} is asserted against source truth but not routed to it")
 
+    def test_the_page_a_stage_executes_is_not_documentation_only(self) -> None:
+        """`smoke` parses the OOM page and runs the command it finds there.
+
+        The page reads like ordinary prose, so the directory rule classified it as
+        documentation-only and skipped `linux-acceptance` -- the only job that runs
+        `smoke`, and therefore the only job that could notice the remedy stopped
+        working. The ordinary how-to beside it stays documentation.
+        """
+        planned = ci_changes.classify_paths(["docs/how-to/troubleshoot.md"])
+        self.assertTrue(planned["native"],
+                        "the executed page is a gate input, not reader-only prose")
+        for job in ci_changes.ALL_JOBS:
+            with self.subTest(job=job):
+                self.assertTrue(planned["jobSet"][job],
+                                f"{job} must run for a change to the executed remedy")
+        ordinary = ci_changes.classify_paths(["docs/how-to/generate-and-publish.md"])
+        self.assertFalse(ordinary["native"])
+        self.assertEqual({name for name, needed in ordinary["jobSet"].items() if needed}, set())
+
+    def test_the_heap_guide_declares_the_page_it_reads(self) -> None:
+        """The input is declared at the tool, so a new page cannot be forgotten here."""
+        self.assertIn("docs/how-to/troubleshoot.md", ci_changes.declared_tool_inputs())
+        self.assertLessEqual(ci_changes.declared_tool_inputs(), ci_changes.tool_inputs())
+        # A declaration read from the source, not a copy kept in this file.
+        source = (Path(ci_changes.__file__).resolve().parent / "check_heap_guide.py").read_text(
+            encoding="utf-8")
+        declared = next(node.value for node in ast.parse(source).body
+                        if isinstance(node, ast.Assign)
+                        and any(isinstance(target, ast.Name) and target.id == "DOC_INPUTS"
+                                for target in node.targets))
+        self.assertEqual(tuple(ast.literal_eval(declared)), ("docs/how-to/troubleshoot.md",))
+
+    def test_a_tool_that_stops_declaring_its_input_is_loud(self) -> None:
+        """The classifier refuses to silently fall back to a docs-only route."""
+        with tempfile.TemporaryDirectory() as temporary:
+            scripts = Path(temporary)
+            (scripts / "check_heap_guide.py").write_text("GUIDE = 'docs/how-to/x.md'\n",
+                                                        encoding="utf-8")
+            with self.assertRaises(LookupError):
+                ci_changes.declared_tool_inputs(scripts)
+
     def test_an_unclassified_path_is_an_error_not_a_silent_skip(self) -> None:
         with self.assertRaises(LookupError):
             ci_changes.classify_paths(["brand-new-top-level.txt"])
@@ -1854,6 +1895,157 @@ class SuiteLayoutGuardTest(unittest.TestCase):
                     pass
             """)
         self.assertEqual(suite.collectable_modules(self.root), ["scripts.test_real"])
+
+    def test_a_case_nested_outside_module_scope_is_not_a_suite(self) -> None:
+        """`-m unittest` loads module attributes; a nested class is never one.
+
+        Each of these modules was counted by a whole-tree walk, so the collector
+        reported it as a passing suite while an actual collection ran nothing. The
+        assertion compares the guard with `unittest`'s own loader instead of with a
+        second opinion about the same source, so it cannot drift from the tool the
+        gate runs.
+        """
+        shapes = {
+            "test_uncalled_then_cases": """\
+                import unittest
+
+                class Cases(unittest.TestCase):
+                    def test_it(self):
+                        pass
+                """,
+            "test_case_in_function": """\
+                import unittest
+
+                def helper():
+                    class Nested(unittest.TestCase):
+                        def test_it(self):
+                            pass
+                """,
+            "test_case_in_main_guard": """\
+                import unittest
+
+                if __name__ == "__main__":
+                    class Guarded(unittest.TestCase):
+                        def test_it(self):
+                            pass
+                """,
+            "test_method_in_guard": """\
+                import unittest
+
+                class Cases(unittest.TestCase):
+                    if __name__ == "__main__":
+                        def test_it(self):
+                            pass
+                """,
+            "test_method_in_function": """\
+                import unittest
+
+                class Cases(unittest.TestCase):
+                    def factory(self):
+                        def test_it(self):
+                            pass
+                """,
+            "test_body_only_docstring": '''\
+                """The split-out placeholder the collector counted as a pass."""
+                ''',
+        }
+        for name, text in shapes.items():
+            self.write(f"scripts/{name}.py", text)
+        # Only the module-scope suite is collectable; every other shape is named as a
+        # problem rather than silently dropped from the list.
+        self.assertEqual(suite.collectable_modules(self.root), ["scripts.test_uncalled_then_cases"])
+        self.assertEqual(suite.audit(self.root), [
+            f"scripts/{name}.py: declares no test cases and no stage runs it; "
+            "collecting it reports zero assertions as a pass"
+            for name in ("test_body_only_docstring", "test_case_in_function",
+                         "test_case_in_main_guard", "test_method_in_function",
+                         "test_method_in_guard")
+        ])
+        loader = unittest.TestLoader()
+        for name in suite.collectable_modules(self.root):
+            self.assertGreater(self.load_count(loader, name), 0, name)
+
+    def test_the_gate_rejects_a_module_that_imports_with_no_cases(self) -> None:
+        self.write("scripts/test_active.py", """\
+            import unittest
+
+            class Active(unittest.TestCase):
+                def test_answer(self):
+                    self.assertEqual(sum([1, 2]), 3)
+            """)
+        for directory, group in (("scripts", "scripts"), ("tests/showcase_contract", "showcase")):
+            with self.subTest(collector=directory):
+                inactive = self.write(f"{directory}/test_inactive.py", """\
+                    import unittest
+
+                    if False:
+                        class Inactive(unittest.TestCase):
+                            def test_unreachable(self):
+                                self.fail("unreachable")
+                    """)
+                result = subprocess.run(
+                    [sys.executable, str(Path(suite.__file__).resolve()), "--repo", str(self.root),
+                     "--run-registered", group], cwd=self.root, capture_output=True, text=True,
+                    timeout=20,
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("test_inactive: unittest collected no tests", result.stderr)
+                inactive.unlink()
+
+    def load_count(self, loader: unittest.TestLoader, module: str) -> int:
+        """Cases `unittest` itself counts for a fixture module, imported by path."""
+        import importlib.util
+        path = self.root / "scripts" / f"{module.split('.')[-1]}.py"
+        specification = importlib.util.spec_from_file_location(f"fixture_{module}", path)
+        assert specification and specification.loader
+        loaded = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(loaded)
+        return loader.loadTestsFromModule(loaded).countTestCases()
+
+    def test_the_guard_agrees_with_the_unittest_loader_on_a_local_fixture(self) -> None:
+        """A module counts as a suite only when `unittest` really collects cases.
+
+        The guard decides collectability, not the exact case count: a base class
+        written in the module runs once by itself and again through each subclass,
+        so the loader reports more cases than the source declares. Truthiness is
+        the fact the gate acts on, and it must match the loader.
+        """
+        self.write("scripts/test_real.py", """\
+            import unittest
+
+            class Real(unittest.TestCase):
+                def test_it(self):
+                    pass
+            """)
+        self.write("scripts/test_helper.py", """\
+            import unittest
+
+            class Base(unittest.TestCase):
+                def test_shared(self):
+                    pass
+
+            class Derived(Base):
+                def test_own(self):
+                    pass
+            """)
+        self.write("scripts/test_nested_only.py", """\
+            import unittest
+
+            def build():
+                class Nested(unittest.TestCase):
+                    def test_it(self):
+                        pass
+            """)
+        loader = unittest.TestLoader()
+        for name in ("test_real", "test_helper"):
+            with self.subTest(module=name):
+                tree = ast.parse((self.root / f"scripts/{name}.py").read_text(encoding="utf-8"))
+                self.assertTrue(suite.declared_tests(tree))
+                self.assertGreater(self.load_count(loader, f"scripts.{name}"), 0)
+        with self.subTest(module="test_nested_only"):
+            tree = ast.parse((self.root / "scripts/test_nested_only.py").read_text(encoding="utf-8"))
+            self.assertEqual(suite.declared_tests(tree), 0)
+            self.assertEqual(self.load_count(loader, "scripts.test_nested_only"), 0)
 
     def test_the_repository_itself_passes_the_guard(self) -> None:
         """The live tree is the real subject; a clean fixture proves nothing."""

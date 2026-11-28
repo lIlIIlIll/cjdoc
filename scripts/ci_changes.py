@@ -18,6 +18,7 @@ skips the aggregate `CI required` gate.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 from pathlib import Path
 import subprocess
@@ -49,6 +50,35 @@ FILES_ONLY_NATIVE = ("cjpm.toml", "cjpm.lock", "AGENTS.md")
 # the decoder's accepted versions, so a stale edit there fails the stage that reads
 # it -- which only runs when the change is classified as native work.
 MAINTAINED_DOC_INPUTS = ("docs/release-notes.md", "docs/reference/artifacts.md")
+# Tools that declare the documentation they read, at the tool source. `smoke` runs
+# `check_heap_guide.read_remedy()` on `docs/how-to/troubleshoot.md` and executes the
+# command it finds there, so that page is native work even though it reads like
+# ordinary prose. Reading the declaration here keeps the page out of a second list
+# inside this file: it lives next to the parser that consumes it.
+DECLARING_TOOLS = ("check_heap_guide",)
+
+
+def declared_tool_inputs(scripts: Path | None = None) -> frozenset[str]:
+    """Paths the checked-in tools declare as inputs, read from their own sources.
+
+    Each declaring module exposes `DOC_INPUTS` as repository-relative POSIX paths.
+    They are parsed with `ast` rather than imported: this classifier runs in the
+    five-minute `changes` job before any dependency is installed, and an import
+    would execute tool code (and its imports) just to read a constant.
+    """
+    declared: set[str] = set()
+    for module in DECLARING_TOOLS:
+        path = (scripts or Path(__file__).resolve().parent) / f"{module}.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.name)
+        values = [node.value for node in tree.body
+                  if isinstance(node, (ast.Assign, ast.AnnAssign))
+                  and any(isinstance(target, ast.Name) and target.id == "DOC_INPUTS"
+                          for target in ([node.target] if isinstance(node, ast.AnnAssign)
+                                         else node.targets))]
+        if not values:
+            raise LookupError(f"{module}.py declares no DOC_INPUTS")
+        declared.update(ast.literal_eval(values[0]))
+    return frozenset(declared)
 
 
 def tool_inputs() -> frozenset[str]:
@@ -59,8 +89,9 @@ def tool_inputs() -> frozenset[str]:
     skipped the only job that runs `python-tools`, so a stale skill reference or a
     stale release note stayed green. The inventory is therefore not a second list to
     maintain: it is read from the synchronizers that consume those files
-    (`sync_api_comment_skill.SOURCES`, `showcase_inputs.source_inputs()`), so a new
-    entry there is routed to native work without anyone editing this table.
+    (`sync_api_comment_skill.SOURCES`, `showcase_inputs.source_inputs()`) and from
+    the tools that declare their own `DOC_INPUTS`, so a new entry there is routed to
+    native work without anyone editing this table.
     """
     try:
         from scripts.showcase_inputs import source_inputs
@@ -68,7 +99,8 @@ def tool_inputs() -> frozenset[str]:
     except ImportError:  # Direct script execution: `scripts/` is already on sys.path.
         from showcase_inputs import source_inputs
         from sync_api_comment_skill import SOURCES as api_comment_sources
-    return frozenset((*api_comment_sources, *source_inputs(), *MAINTAINED_DOC_INPUTS))
+    return frozenset((*api_comment_sources, *source_inputs(), *MAINTAINED_DOC_INPUTS,
+                      *declared_tool_inputs()))
 
 
 def classify_paths(paths: list[str]) -> dict[str, bool]:

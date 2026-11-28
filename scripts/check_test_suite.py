@@ -12,11 +12,14 @@ Two defects this refuses, both of which stayed invisible because CI collects wit
   `TestCase` counted as one more green module while contributing zero checks, so
   "modules collected" stopped meaning anything. A module is collectable only if it
   declares real test methods; anything else must be a driver that a stage script
-  actually runs by name -- otherwise nothing runs it at all.
+  actually runs by name -- otherwise nothing runs it at all. Declarations are read
+  where `unittest` looks for them, module scope: a `TestCase` written inside a
+  function, inside another class, or inside the `__main__` guard binds nothing
+  a collector can see, so it is not a test case.
 
-`--print-modules` emits exactly the modules a stage should pass to
-`python -m unittest`, which is what makes the second rule enforceable instead of
-advisory: the shell gate globs `test_*.py`, so the list it needs is derived here.
+`--print-modules` lists the static candidates. The gate uses `--run-registered`,
+which loads and runs those modules and the showcase discovery suite, rejecting
+any selected module that contributes no tests after import.
 """
 
 from __future__ import annotations
@@ -25,6 +28,8 @@ import argparse
 import ast
 from pathlib import Path
 import sys
+from types import ModuleType
+import unittest
 
 sys.dont_write_bytecode = True
 
@@ -65,8 +70,54 @@ def trailing_definitions(tree: ast.Module) -> list[str]:
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))]
 
 
+def _is_main_or_typing(test: ast.expr) -> bool:
+    """True for `__name__ == "__main__"` and `TYPE_CHECKING` guards."""
+    if isinstance(test, ast.Name):
+        return test.id == "TYPE_CHECKING"
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+        return False
+    left, comparator = test.left, test.comparators[0]
+    if not (isinstance(left, ast.Name) and left.id == "__name__"):
+        return False
+    if isinstance(test.ops[0], ast.Eq):
+        return isinstance(comparator, ast.Constant) and comparator.value == "__main__"
+    if isinstance(test.ops[0], ast.In) and isinstance(comparator, (ast.Tuple, ast.List, ast.Set)):
+        return any(isinstance(element, ast.Constant) and element.value == "__main__"
+                   for element in comparator.elts)
+    return False
+
+
+def module_scope(body: list[ast.stmt]) -> list[ast.ClassDef]:
+    """Classes that can bind at module import, excluding main and typing guards.
+
+    Do not attempt to predict which platform-dependent branch executes. The
+    acceptance runner separately checks the real unittest collection.
+    """
+    classes: list[ast.ClassDef] = []
+    for node in body:
+        if isinstance(node, ast.If):
+            guarded = _is_main_or_typing(node.test)
+            classes += module_scope(node.orelse if guarded else node.body)
+            if not guarded:
+                classes += module_scope(node.orelse)
+        elif isinstance(node, (ast.Try, ast.TryStar)):
+            blocks = [node.body, node.orelse, node.finalbody]
+            blocks += [handler.body for handler in node.handlers]
+            for block in blocks:
+                classes += module_scope(block)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            classes += module_scope(node.body)
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+            # A class created in a module-level loop is bound just like a literal one.
+            classes += module_scope(node.body)
+            classes += module_scope(node.orelse)
+        elif isinstance(node, ast.ClassDef):
+            classes.append(node)
+    return classes
+
+
 def declared_tests(tree: ast.Module) -> int:
-    """Test methods a collector would really run.
+    """Count declared test candidates, independently of environment-dependent code.
 
     Only `TestCase` subclasses count, and only their `test*` methods: a module-level
     helper named `test_something` is not a test, and a fixture base class such as
@@ -74,15 +125,28 @@ def declared_tests(tree: ast.Module) -> int:
     A module whose own `setUpModule` skips keeps its declared tests -- an optional
     suite that is skipped without its input is not an empty one, and forcing it to
     run would only make the gate depend on an unavailable toolchain.
+
+    A subclass is recognised through the bases that are resolvable in the same
+    module, so `class Cases(CaptureTestCase)` counts while a class nested inside a
+    function -- which the loader never reaches -- does not.
     """
+    classes = {node.name: node for node in module_scope(tree.body)}
+
+    def is_case(node: ast.ClassDef, seen: frozenset[str]) -> bool:
+        for base in node.bases:
+            name = ast.unparse(base)
+            if name.split(".")[-1] == "TestCase":
+                return True
+            local = classes.get(name)
+            if local is not None and name not in seen and is_case(local, seen | {name}):
+                return True
+        return False
+
     return sum(
-        1
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
-        and any("TestCase" in ast.unparse(base) for base in node.bases)
-        for item in node.body
-        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and item.name.startswith("test")
+        sum(1 for item in node.body
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name.startswith("test"))
+        for name, node in classes.items()
+        if is_case(node, frozenset({name}))
     )
 
 
@@ -159,12 +223,42 @@ def collectable_modules(root: Path = ROOT) -> list[str]:
     return names
 
 
+class NonEmptyTestLoader(unittest.TestLoader):
+    def loadTestsFromModule(self, module: ModuleType, *, pattern: str | None = None) -> unittest.TestSuite:
+        tests = super().loadTestsFromModule(module, pattern=pattern)
+        path = getattr(module, "__file__", None)
+        if path and Path(path).match("test_*.py") and tests.countTestCases() == 0:
+            raise SystemExit(f"{module.__name__}: unittest collected no tests")
+        return tests
+
+
+def run_registered(root: Path, group: str) -> int:
+    """Load and run a suite once, refusing an empty contributing module."""
+    root = root.resolve()
+    sys.path[:0] = [str(root), str(root / "scripts")]
+    loader = NonEmptyTestLoader()
+    if group == "scripts":
+        names = collectable_modules(root)
+        if not names:
+            raise SystemExit("no script unittest modules found")
+        tests = loader.loadTestsFromNames(names)
+    else:
+        tests = loader.discover(str(root / "tests/showcase_contract"), pattern="test_*.py")
+        if tests.countTestCases() == 0:
+            raise SystemExit("no showcase unittest tests found")
+    return 0 if unittest.TextTestRunner().run(tests).wasSuccessful() else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--print-modules", action="store_true",
                         help="print the `scripts.test_*` modules a stage should collect")
+    parser.add_argument("--run-registered", choices=("scripts", "showcase"),
+                        help="run the actual script and showcase suites, refusing empty modules")
     parser.add_argument("--repo", type=Path, default=ROOT)
     args = parser.parse_args(argv)
+    if args.run_registered:
+        return run_registered(args.repo, args.run_registered)
     if args.print_modules:
         print(" ".join(collectable_modules(args.repo)))
         return 0

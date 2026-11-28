@@ -15,7 +15,11 @@ import tempfile
 from real_repository_smoke import resolve_binary
 
 REPO = Path(__file__).resolve().parent.parent
-GUIDE = REPO / "docs/how-to/troubleshoot.md"
+# Documentation this tool reads, declared here so `ci_changes.py` can route the page
+# to native work without holding a copy of the path. `smoke` parses this page and
+# executes the command in it, so an edit there is a change to a gate input.
+DOC_INPUTS = ("docs/how-to/troubleshoot.md",)
+GUIDE = REPO / DOC_INPUTS[0]
 
 
 def read_table(section: str, columns: tuple[str, ...]) -> list[tuple[str, ...]]:

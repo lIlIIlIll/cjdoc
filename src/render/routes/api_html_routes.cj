@@ -10,6 +10,9 @@ import std.unicode.*
 private let API_HTML_MAX_PATH = 116
 private let API_HTML_INDEX = "/index.html"
 private let API_HTML_DIGEST_START = 12
+private let API_HTML_COMPACT_TARGET_BYTES = 24
+private let API_HTML_SIGNATURE_PREFIX = "/signature-"
+private let API_HTML_TYPED_SIGNATURE_BYTES = 24
 private let API_HTML_RESERVED_ROOTS = ["en", "zh-cn", "assets", "packages", "symbols", "agent",
     "schemas", "search", "api-surface", "coverage", "markdown", "html", "versions", "latest"]
 
@@ -157,6 +160,44 @@ private func compactOverloadStem(name: String, bytes: Int64): String {
     if (portableApiName(tail)) { "${head}-${tail}" } else { head }
 }
 
+private func boundedOverloadStem(name: String, bytes: Int64): String {
+    if (name.size <= bytes && portableApiName(name)) { return name }
+    // Keep the readable ends but encode the omitted bytes too. Otherwise two
+    // distinct long names can exchange URLs just by changing allocation order.
+    let key = contractFingerprint(name)
+    let stem = compactOverloadStem(name, bytes - API_HTML_DIGEST_START - 1)
+    "${stem}-${key[..API_HTML_DIGEST_START]}"
+}
+
+private func extensionSignatureStem(symbol: SymbolDoc): String {
+    if (symbol.parameters.isEmpty()) { return "no-args" }
+    let names = StringBuilder()
+    for (parameter in symbol.parameters) {
+        if (names.size > 0) { names.append("_") }
+        names.append(parameter.typeRef.spelling)
+    }
+    boundedOverloadStem(names.toString(), API_HTML_TYPED_SIGNATURE_BYTES)
+}
+
+private func compactTargetStem(path: String): String {
+    if (path.size <= API_HTML_COMPACT_TARGET_BYTES) {
+        var portable = true
+        for (part in path.split("/")) {
+            if (!portableApiName(part)) {
+                portable = false
+                break
+            }
+        }
+        if (portable) { return path }
+    }
+    // Keep the actual type label readable; include its full package/type
+    // path in the compaction so a different owner cannot take the old space.
+    let start = path.lastIndexOf("/").getOrDefault({ => -1 }) + 1
+    let title = compactOverloadStem(path[start..], API_HTML_COMPACT_TARGET_BYTES - API_HTML_DIGEST_START - 1)
+    let key = contractFingerprint(path)
+    "${title}-${key[..API_HTML_DIGEST_START]}"
+}
+
 private func apiPackageDirectory(name: String): String {
     if (name.isEmpty()) { return "" }
     let out = StringBuilder()
@@ -176,9 +217,9 @@ private func apiPackageDirectory(name: String): String {
 
 private func routeIdentityPart(value: String): String { "${value.size}:${value}" }
 
-private func apiFamilyKey(symbol: SymbolDoc): String {
+private func apiFamilyKey(symbol: SymbolDoc, owner: String): String {
     routeIdentityPart(symbol.moduleId) + routeIdentityPart(symbol.packageName) +
-        routeIdentityPart(symbol.ownerId.getOrDefault({ => "" })) +
+        routeIdentityPart(owner) +
         routeIdentityPart(symbol.kind) + routeIdentityPart(symbol.name)
 }
 
@@ -204,10 +245,14 @@ private func extensionTargetId(symbol: SymbolDoc): ?String {
     None
 }
 
+private func extensionTargetHead(symbol: SymbolDoc): String {
+    symbol.name.split("(", 2)[0].split("<", 2)[0].trimAscii()
+        .replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "")
+}
+
 private func extensionTargetKey(symbol: SymbolDoc): String {
     if (let Some(targetId) <- extensionTargetId(symbol)) { return targetId }
-    let head = symbol.name.split("(", 2)[0].split("<", 2)[0].trimAscii()
-        .replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "")
+    let head = extensionTargetHead(symbol)
     routeIdentityPart(symbol.moduleId) + routeIdentityPart(symbol.packageName) +
         routeIdentityPart(head)
 }
@@ -361,14 +406,32 @@ private class ApiRouteFamily {
     let key: String
     let symbols = ArrayList<SymbolDoc>()
     let candidate: String
+    let typedSignatures: Bool
     var directory: String = ""
 
-    init(key: String, candidate: String) {
+    init(key: String, candidate: String, typedSignatures: Bool) {
         this.key = key
         this.candidate = candidate
+        this.typedSignatures = typedSignatures
     }
 
     prop overloaded: Bool { get() { symbols.size > 1 } }
+    prop hasSignaturePages: Bool { get() { typedSignatures || overloaded } }
+    prop signatureBudget: Int64 {
+        get() { if (typedSignatures) { API_HTML_TYPED_SIGNATURE_BYTES } else { 19 } }
+    }
+}
+
+private struct ApiExtensionScope {
+    let memberParent: String
+    let target: String
+    let targetKey: String
+
+    init(memberParent: String, target: String, targetKey: String) {
+        this.memberParent = memberParent
+        this.target = target
+        this.targetKey = targetKey
+    }
 }
 
 private class ApiRouteAllocator {
@@ -376,7 +439,7 @@ private class ApiRouteAllocator {
     private let choices: ArrayList<ApiHtmlChoice>
     private let claims = ApiRouteClaims()
     private let packages = HashMap<String, String>()
-    private let extensionMemberParents = HashMap<String, String>()
+    private let extensionsById = HashMap<String, ApiExtensionScope>()
     private let fallbackRoot: String
 
     init(documentation: DocumentationSet, files: HashMap<String, String>,
@@ -404,9 +467,11 @@ private class ApiRouteAllocator {
     private func candidateOf(symbol: SymbolDoc): String {
         let parent: String
         if (let Some(owner) <- symbol.ownerId) {
-            parent = match (extensionMemberParents.get(owner)) {
-                case Some(path) => path
-                case None => files[owner].removeSuffix("index.html")
+            parent = match (extensionsById.get(owner)) {
+                case Some(scope) =>
+                    if (scope.memberParent.isEmpty()) { return "" }
+                    scope.memberParent
+                case _ => files[owner].removeSuffix("index.html")
             }
         } else {
             parent = match (packages.get(symbol.packageName)) {
@@ -422,18 +487,28 @@ private class ApiRouteAllocator {
         parent + apiEscapedName(symbol.name)
     }
 
+    private func extensionScope(symbol: SymbolDoc): ?ApiExtensionScope {
+        symbol.ownerId.flatMap({ id => extensionsById.get(id) })
+    }
+
     func allocateLevel(level: ArrayList<SymbolDoc>): Unit {
         sort(level, lessThan: { a, b => a.id < b.id })
         let byFamily = HashMap<String, ApiRouteFamily>()
         let byCandidate = HashMap<String, ArrayList<ApiRouteFamily>>()
         let families = ArrayList<ApiRouteFamily>()
         for (symbol in level) {
-            let key = if (canOverloadApiRoute(symbol)) { apiFamilyKey(symbol) } else { symbol.id }
+            let overloadable = canOverloadApiRoute(symbol)
+            let scope = if (overloadable) { extensionScope(symbol) } else { None<ApiExtensionScope> }
+            let key = if (overloadable) {
+                let owner = scope.map({ item => "extend:" + item.targetKey })
+                    .getOrDefault({ => symbol.ownerId.getOrDefault({ => "" }) })
+                apiFamilyKey(symbol, owner)
+            } else { symbol.id }
             if (let Some(family) <- byFamily.get(key)) {
                 family.symbols.add(symbol)
                 continue
             }
-            let family = ApiRouteFamily(key, candidateOf(symbol))
+            let family = ApiRouteFamily(key, candidateOf(symbol), scope.isSome())
             family.symbols.add(symbol)
             byFamily[key] = family
             families.add(family)
@@ -467,46 +542,45 @@ private class ApiRouteAllocator {
         // The counter is per target; the sort only needs declaration order.
         sort(extensions, lessThan: { a, b => declaredBefore(a, b) })
         let ordinals = HashMap<String, Int64>()
-        var compactOrdinal = 0
+        // Compact paths also use this per-target ordinal, never a global counter.
         for (symbol in extensions) {
             let targetDirectory = extensionTargetDirectory(symbol)
-            if (!targetDirectory.isEmpty()) {
-                extensionMemberParents[symbol.id] = targetDirectory + "/"
-            }
             let root = targetDirectory + "/extensions"
             let key = extensionTargetKey(symbol)
             let ordinal = ordinals.get(key).getOrDefault({ => 0 }) + 1
             ordinals[key] = ordinal
+            let memberParent = if (targetDirectory.isEmpty()) { "" } else { targetDirectory + "/" }
+            let target = if (targetDirectory.isEmpty()) {
+                apiPackageDirectory(symbol.packageName) + extensionTargetHead(symbol)
+            } else { targetDirectory }
+            let identity = routeIdentityPart(symbol.moduleId) + routeIdentityPart(symbol.packageName) +
+                routeIdentityPart(key) + ordinal.toString()
+            extensionsById[symbol.id] = ApiExtensionScope(memberParent, target, key)
             let directory = if (ordinal == 1) { root } else { root + "/" + ordinal.toString() }
-            if (!targetDirectory.isEmpty() && allocateExtensionDirectory(symbol, directory, key, ordinal)) {
+            if (!targetDirectory.isEmpty() && allocateExtensionDirectory(symbol, directory, identity)) {
                 continue
             }
-            // The type's route may fit even when an extension's suffix cannot.
-            // The allocator owns this compact subtree: don't move the type or
-            // pretend a path-length limit is a portable name collision.
-            compactOrdinal++
-            let compact = "${fallbackRoot}/extensions/extension-${compactOrdinal}"
-            if (!claim(compact)) {
+            let compact = "${fallbackRoot}/extensions/${compactTargetStem(target)}/extension-${ordinal}"
+            if (!allocateExtensionDirectory(symbol, compact, identity)) {
                 throw IllegalArgumentException("cannot allocate distinct extension route for '${symbol.id}'")
             }
-            files[symbol.id] = compact + API_HTML_INDEX
         }
+        // Distinct blocks can add overloads to the same method on the target.
+        // Treat them as one family, with member URLs independent of block order.
+        let next = ArrayList<SymbolDoc>()
         for (symbol in extensions) {
-            let next = ArrayList<SymbolDoc>()
             if (let Some(children) <- members.get(symbol.id)) { next.add(all: children) }
-            if (!next.isEmpty()) { allocateLevel(next) }
         }
+        if (!next.isEmpty()) { allocateLevel(next) }
     }
 
-    private func allocateExtensionDirectory(symbol: SymbolDoc, directory: String, target: String,
-        ordinal: Int64): Bool {
+    private func allocateExtensionDirectory(symbol: SymbolDoc, directory: String, identity: String): Bool {
         if (directory.size + API_HTML_INDEX.size > API_HTML_MAX_PATH) { return false }
         if (claim(directory)) {
             files[symbol.id] = directory + API_HTML_INDEX
             return true
         }
-        let digest = contractFingerprint(routeIdentityPart(symbol.moduleId) +
-            routeIdentityPart(symbol.packageName) + routeIdentityPart(target) + ordinal.toString())
+        let digest = contractFingerprint(identity)
         for (length in API_HTML_DIGEST_START..=digest.size) {
             let fallback = directory + "~" + digest[..length]
             if (fallback.size + API_HTML_INDEX.size > API_HTML_MAX_PATH) { break }
@@ -534,7 +608,7 @@ private class ApiRouteAllocator {
             }
         }
         if (parent.isEmpty() && !symbol.packageName.isEmpty()) { return "" }
-        let head = symbol.name.split("(", 2)[0].split("<", 2)[0].trimAscii()
+        let head = extensionTargetHead(symbol)
         let separator = head.lastIndexOf(".")
         let tail = if (separator.isSome()) { head[separator.getOrThrow() + 1..] } else { head }
         let escaped = apiEscapedName(tail.trimAscii())
@@ -558,7 +632,7 @@ private class ApiRouteAllocator {
     private func claimFamily(directory: String, family: ApiRouteFamily): Bool {
         let file = directory + API_HTML_INDEX
         if (file.size > API_HTML_MAX_PATH || !claims.free(file)) { return false }
-        if (family.overloaded) {
+        if (family.hasSignaturePages) {
             sort(family.symbols, lessThan: { a, b => declaredBefore(a, b) })
             if (!reserveSignatureDirectories(directory, family)) {
                 // A fitting choice page keeps its address even if its children do not fit.
@@ -567,25 +641,34 @@ private class ApiRouteAllocator {
                     throw IllegalArgumentException("cannot allocate compact signatures for '${family.symbols[0].id}'")
                 }
             }
-            choices.add(ApiHtmlChoice("overloads:" + family.key, directory, family.symbols.toArray(), true))
+            if (family.overloaded) {
+                choices.add(ApiHtmlChoice("overloads:" + family.key, directory, family.symbols.toArray(), true))
+            }
         } else { files[family.symbols[0].id] = file }
         claims.reserve(file)
         family.directory = directory
         true
     }
 
-    /**
-     * One readable directory per distinct signature: `signature-1`, `signature-2`, ...
-     *
-     * Numbering follows declaration position, not input order or the number of
-     * digits in a source offset. An occupied readable path can use a hash suffix.
-     */
+    // Extension signatures use type labels even before they have an overload,
+    // so another block cannot replace the singleton's address. Other overload
+    // families retain the readable declaration-order numbering.
     private func reserveSignatureDirectories(directory: String, family: ApiRouteFamily): Bool {
+        if (family.typedSignatures &&
+            directory.size + API_HTML_SIGNATURE_PREFIX.size + family.signatureBudget + API_HTML_INDEX.size >
+                API_HTML_MAX_PATH) { return false }
+        let typedNames = if (family.typedSignatures) { Some(HashSet<String>()) } else { None<HashSet<String>> }
         let assigned = ArrayList<String>()
         for (index in 0..family.symbols.size) {
-            let readable = directory + "/signature-" + (index + 1).toString() + API_HTML_INDEX
+            let label = if (family.typedSignatures) { extensionSignatureStem(family.symbols[index]) }
+                else { (index + 1).toString() }
+            let readable = directory + API_HTML_SIGNATURE_PREFIX + label + API_HTML_INDEX
             if (readable.size > API_HTML_MAX_PATH) { return false }
-            if (claims.free(readable)) {
+            let available = match (typedNames) {
+                case Some(names) => names.add(portableFileNameKey(label))
+                case None => true
+            }
+            if (available && claims.free(readable)) {
                 assigned.add(readable)
                 continue
             }
@@ -611,13 +694,17 @@ private class ApiRouteAllocator {
     }
 
     private func compactOverloadDirectory(family: ApiRouteFamily): String {
-        let root = "${fallbackRoot}/overloads/"
-        // Reserve room for even a 19-digit ordinal; adding a signature must
-        // not change the spelling of the directory that holds existing ones.
-        let available = API_HTML_MAX_PATH - root.size - "/signature-".size - 19 - API_HTML_INDEX.size
-        let name = family.symbols[0].name
+        let symbol = family.symbols[0]
+        var root = "${fallbackRoot}/overloads/"
+        if (let Some(scope) <- extensionScope(symbol)) {
+            root += compactTargetStem(scope.target) + "/"
+        }
+        // A family must fit future signatures too without changing addresses.
+        let available = API_HTML_MAX_PATH - root.size - API_HTML_SIGNATURE_PREFIX.size -
+            family.signatureBudget - API_HTML_INDEX.size
+        let name = symbol.name
         let bytes = if (available < 49) { available } else { 49 }
-        let readable = root + compactOverloadStem(name, bytes)
+        let readable = root + boundedOverloadStem(name, bytes)
         if (claims.free(readable)) { return readable }
         // A suffix is justified only when the compact directory is actually
         // occupied. Use the family identity, not its position in a traversal.
@@ -643,12 +730,12 @@ private class ApiRouteAllocator {
     private func allocateFamily(family: ApiRouteFamily): Unit {
         if (!family.directory.isEmpty()) { return }
         let symbol = family.symbols[0]
-        if (family.overloaded && (family.candidate.isEmpty() ||
+        if (family.hasSignaturePages && (family.candidate.isEmpty() ||
             family.candidate.size + API_HTML_INDEX.size > API_HTML_MAX_PATH)) {
             if (claimFamily(compactOverloadDirectory(family), family)) { return }
             throw IllegalArgumentException("cannot allocate compact overload route for '${symbol.id}'")
         }
-        let digest = contractFingerprint(if (family.overloaded) { family.key } else { symbol.id })
+        let digest = contractFingerprint(if (family.hasSignaturePages) { family.key } else { symbol.id })
         if (!family.candidate.isEmpty() && claimSuffixed(family.candidate + "~", digest, family)) { return }
         if (!claimSuffixed("${fallbackRoot}/${compactApiStem(symbol.name)}~", digest, family)) {
             throw IllegalArgumentException("cannot allocate distinct portable API route for '${symbol.id}'")

@@ -4,7 +4,7 @@ import cjdoc.documentation.i18n.hasLocalizedDocumentation
 import cjdoc.binding.{DocumentationSet, SymbolDoc, ParameterDoc, isExternallyVisible, resolveDocumentationReferences}
 import cjdoc.source.Diagnostic
 import cjdoc.documentation.DocumentationQualityConfig
-import cjdoc.model.parameterMatchesSubject
+import cjdoc.model.{parameterMatchesSubject, parameterSubjectDisplay}
 import std.collection.*
 import std.convert.Parsable
 
@@ -165,18 +165,17 @@ private func lintQualityRules(documentation: DocumentationSet,
         }
         if (symbol.documentation.isSome()) {
             let doc = symbol.documentation.getOrThrow()
-            var index: Int64 = 0
-            while (index < doc.params.size) {
-                var previous: Int64 = 0
-                while (previous < index) {
-                    if (doc.params[previous].subject == doc.params[index].subject) {
+            if (doc.params.size > 1) {
+                // The positional spellings `#0` and `_0` select the same slot;
+                // ordinary named parameters still use their exact spelling.
+                let seen = HashSet<String>()
+                for (tag in doc.params) {
+                    let selector = parameterSubjectDisplay(symbol.kind, tag.subject)
+                    if (!seen.add(selector)) {
                         addQualityDiagnostic(documentation, symbol, config, "duplicate-param", "CJDOC1002",
-                            "duplicate @param '${doc.params[index].subject}'")
-                        break
+                            "duplicate @param '${selector}'")
                     }
-                    previous++
                 }
-                index++
             }
             if (doc.returnTagCount > 1) {
                 addQualityDiagnostic(documentation, symbol, config, "duplicate-return", "CJDOC1003",
@@ -205,15 +204,16 @@ protected func lintDocumentation(documentation: DocumentationSet, missingParamet
     resolveDocumentationReferences(documentation)
     for (symbol in documentation.symbols) {
         if (let Some(doc) <- symbol.documentation) {
-            var index: Int64 = 0
-            while (index < doc.params.size) {
-                let tag = doc.params[index]
+            for (tag in doc.params) {
                 match (findParameter(symbol, tag.subject)) {
-                    case Some(parameter) => parameter.documentation = tag.description
+                    // The renderer also selects the first tag; retain even an
+                    // empty first description instead of using a duplicate.
+                    case Some(parameter) where parameter.documentation.isNone() =>
+                        parameter.documentation = Some(tag.description)
+                    case Some(_) => ()
                     case None => documentation.diagnostics.add(Diagnostic("warning", "CJDOC1001",
                         "unknown @param '${tag.subject}'", source: symbol.source, symbolId: symbol.id))
                 }
-                index++
             }
             if (doc.returnTagCount > 0 && (symbol.returnType.isNone() ||
                 symbol.returnType.getOrThrow().display.trimAscii() == "Unit")) {

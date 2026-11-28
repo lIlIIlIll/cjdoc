@@ -173,6 +173,12 @@ private class CfgExpressionParser {
             false
         }
         if (!hasComparison) {
+            // These compiler selectors are strings; supplying a value cannot
+            // make one a Boolean condition. `debug` remains a Boolean flag.
+            if (name == "os" || name == "arch") {
+                valid = false
+                return None
+            }
             return match (profile.value(name)) {
                 case Some(value) => if (value == "true") { Some(true) } else if (value == "false") {
                     Some(false)
@@ -257,27 +263,19 @@ protected class CfgSelectionDiagnosis {
     }
 }
 
-// Distinguishes the three unresolved causes so a missing built-in value can name
-// the values the compiler target accepts, without inventing a default selection.
-private func unresolvedCfgReason(parser: CfgExpressionParser): String {
-    if (parser.malformed()) {
-        return "its @When expression is unsupported or malformed"
+private func missingCfgReason(name: String): String {
+    match (compilerBuiltinCfgChoices(name)) {
+        case Some(choices) =>
+            var joined = ""
+            for (choice in choices) {
+                if (!joined.isEmpty()) { joined += ", " }
+                joined += choice
+            }
+            "no ${name} condition value was provided; available values: " +
+                "${joined}; pass --cfg ${name}=<value>"
+        case None =>
+            "it references undefined condition '${name}'; pass --cfg ${name}=<value>"
     }
-    for (name in parser.missingConditions()) {
-        match (compilerBuiltinCfgChoices(name)) {
-            case Some(choices) =>
-                var joined = ""
-                for (choice in choices) {
-                    if (!joined.isEmpty()) { joined += ", " }
-                    joined += choice
-                }
-                return "no ${name} condition value was provided; available values: " +
-                    "${joined}; pass --cfg ${name}=<value>"
-            case None =>
-                return "it references undefined condition '${name}'; pass --cfg ${name}=<value>"
-        }
-    }
-    "its @When expression is unsupported or unresolved"
 }
 
 // Evaluate a raw @When annotation for compiler-side source rewriting. Unlike
@@ -298,16 +296,41 @@ protected func compilerWhenSelection(annotation: String, profile: CfgProfile): ?
 protected func diagnoseCfgSelection(annotations: ArrayList<String>,
     profile: CfgProfile): CfgSelectionDiagnosis {
     var selected: ?Bool = Some(true)
-    var reason = ""
+    var malformed = false
+    var unsupported = false
+    var missing: ?ArrayList<String> = None
     for (annotation in annotations) {
         if (let Some(expression) <- whenExpression(annotation)) {
             let parser = CfgExpressionParser(expression, profile)
             let value = parser.parse()
             selected = cfgAnd(selected, value)
-            if (value.isNone() && reason.isEmpty()) {
-                reason = unresolvedCfgReason(parser)
+            if (value.isSome()) { continue }
+            if (parser.malformed()) {
+                malformed = true
+                continue
             }
+            let conditions = parser.missingConditions()
+            if (conditions.isEmpty()) {
+                unsupported = true
+                continue
+            }
+            let names = missing.getOrDefault({ => ArrayList<String>() })
+            for (name in conditions where !names.contains(name)) { names.add(name) }
+            missing = Some(names)
         }
     }
-    CfgSelectionDiagnosis(selected, if (selected.isSome()) { "" } else { reason })
+    if (selected.isSome()) { return CfgSelectionDiagnosis(selected, "") }
+    let reason = StringBuilder()
+    if (malformed) {
+        reason.append("its @When expression is unsupported or malformed")
+    } else if (unsupported) {
+        reason.append("its @When expression is unsupported or unresolved")
+    }
+    if (let Some(names) <- missing) {
+        for (name in names) {
+            if (reason.size > 0) { reason.append("; ") }
+            reason.append(missingCfgReason(name))
+        }
+    }
+    CfgSelectionDiagnosis(selected, reason.toString())
 }

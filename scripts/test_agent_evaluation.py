@@ -702,6 +702,88 @@ class SourceSliceTests(unittest.TestCase):
                 self.assertIn(f"{identifier}:", str(raised.exception))
                 self.assertIn(message, str(raised.exception))
 
+    def test_sparse_line_lists_cannot_splice_a_complete_body_or_example(self):
+        # The previous guard joined every selected line, so listing single lines
+        # that each carried one witness "proved" a declaration body and fenced
+        # example the citation never includes. The archived catalog.cj is read
+        # as-is through the pinned baseline; no file or protocol is modified.
+        source = "examples/pocketkit/demo-v2/src/catalog.cj"
+        pinned = self.load(protocol_module.FACT_PROTOCOL)["sourceCitationBaseline"]
+        archived = (REPO / source).read_text(encoding="utf-8")
+        self.assertEqual(hashlib.sha256(archived.encode("utf-8")).hexdigest(),
+                         pinned["utf8TextSha256"][source])
+        lines = archived.splitlines()
+
+        sparse = {
+            "AG-03": "278,286-287,347-348,355-356",
+            "AG-11": "87,101,278,286-287,347-348,355-356",
+        }
+        # Exactly the witnesses the previous concatenating guard required: it
+        # found each one in the joined line list, so these sparse citations passed.
+        legacy_window = (
+            "public func window(start!: Int64 = 0, limit!: Int64 = 20): Array<?String> {",
+            "start < 0 || start > values.size || limit < 0",
+            "start == size` returns an empty window",
+            "let page = catalog.window(start: 1, limit: 2)\n     * for (entry in page) {",
+            "output.toArray()\n    }",
+        )
+        legacy = {
+            "AG-03": legacy_window,
+            "AG-11": ("public func add(value: String): Unit",
+                      "public func add(value: Int64, radix!: Int64 = 10): Unit {",
+                      *legacy_window),
+        }
+        expected_detail = {
+            "AG-03": "complete window declaration body",
+            "AG-11": "complete String overload example with its expected output",
+        }
+        for identifier, citation in sparse.items():
+            with self.subTest(identifier=identifier):
+                selected = []
+                for span in citation.split(","):
+                    bounds = [int(value) for value in span.split("-")]
+                    selected.extend(lines[bounds[0] - 1:bounds[-1]])
+                spliced = "\n".join(selected)
+                for witness in legacy[identifier]:
+                    self.assertIn(witness, spliced)
+                protocol = json.loads(protocol_module.FACT_PROTOCOL.read_text(encoding="utf-8"))
+                next(task for task in protocol["tasks"]
+                     if task["id"] == identifier)["source"] = f"{source}:{citation}"
+                with self.assertRaises(evaluation.ProtocolError) as raised:
+                    protocol_module.verify_source_slices(protocol, REPO, (identifier,))
+                message = str(raised.exception)
+                self.assertIn(f"{identifier}: source slice no longer contains", message)
+                self.assertIn(expected_detail[identifier], message)
+
+    def test_window_and_continuation_citations_prove_complete_examples(self):
+        protocol = self.load(protocol_module.FACT_PROTOCOL)
+        protocol_module.verify_source_slices(protocol, REPO, ("AG-03", "AG-11"))
+        for identifier in ("AG-03", "AG-11"):
+            task = next(task for task in protocol["tasks"] if task["id"] == identifier)
+            text = "\n".join(protocol_module.source_text(item)
+                             for item in protocol_module.source_slices(task["source"], REPO))
+            with self.subTest(identifier=identifier):
+                self.assertIn(protocol_module.WINDOW_BODY, text)
+                self.assertIn(protocol_module.WINDOW_EXAMPLE, text)
+
+    def test_truncated_example_window_fails_for_both_active_citations(self):
+        # A cited window that stops one line short of the closing output fence
+        # still holds the declaration body and every inner line of the example,
+        # but the example is not whole and must not count as cited.
+        source = "examples/pocketkit/demo-v2/src/catalog.cj"
+        for identifier, citation in (
+                ("AG-03", "281-296,347-356"),
+                ("AG-11", "72-104,281-296,347-356")):
+            with self.subTest(identifier=identifier):
+                protocol = json.loads(protocol_module.FACT_PROTOCOL.read_text(encoding="utf-8"))
+                next(task for task in protocol["tasks"]
+                     if task["id"] == identifier)["source"] = f"{source}:{citation}"
+                with self.assertRaises(evaluation.ProtocolError) as raised:
+                    protocol_module.verify_source_slices(protocol, REPO, (identifier,))
+                message = str(raised.exception)
+                self.assertIn("source slice no longer contains", message)
+                self.assertIn("complete start/limit example with its expected output", message)
+
     def test_rejection_precedes_the_append_in_the_pinned_slice(self):
         protocol = self.load(protocol_module.FACT_PROTOCOL)
         text = self.ag01_slice(protocol)

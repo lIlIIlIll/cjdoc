@@ -173,7 +173,12 @@ private func exampleRunAvailability(documentation: public_model.DocumentationSet
     requirement: String): ExampleRunAvailability {
     let failures = ArrayList<String>()
     var exactRefusal = true
-    for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC3074") {
+    for (diagnostic in documentation.diagnostics) {
+        if (["CJDOC3030", "CJDOC3031", "CJDOC3070", "CJDOC3075"].contains(diagnostic.code)) {
+            reportNativeDegraded(requirement, "example run outcome could not be verified: ${diagnostic.code}")
+            return ExampleRunAvailability.Unavailable
+        }
+        if (diagnostic.code != "CJDOC3074") { continue }
         failures.add(diagnostic.message)
         if (!diagnostic.message.contains(EXAMPLE_REFUSAL_PREFIX) ||
             !diagnostic.message.contains(EXAMPLE_LIMIT_REFUSAL)) {

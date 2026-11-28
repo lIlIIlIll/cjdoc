@@ -33,6 +33,7 @@ from urllib.parse import urljoin
 ROUTES = "route_check"
 NESTED_EXTENSION_TYPE = "Medium" + "T" * 54
 COMPACT_EXTENSION_TYPE = "Large" + "T" * 86
+EARLIER_COMPACT_TYPE = "Large" + "T" * 81 + "First"
 # route_check/<name>/index.html fits exactly for Bounded, but not for Oversize.
 LONG_OVERLOADS = (("Bounded" + "X" * 86, "Bounded", True),
                   ("Oversize" + "X" * 109, "Oversize", False))
@@ -81,7 +82,15 @@ public class sketch {}
  *
  * ## Details
  *
- * The authored heading must stay below a real parent section.
+ * Primary details.
+ *
+ * ### Usage
+ *
+ * A subsection of Details.
+ *
+ * ## Notes
+ *
+ * A peer of Details, not a subsection.
  *
  * @return the input
  * @see route_check.greet(Int64)
@@ -96,7 +105,13 @@ public func greet(value: Int64, loud!: Bool): Int64 {
 }
 """
 
-EXTENSION_PREFIX = "extend Counter { public func increment(): Unit { value += 1 } }\n"
+EXTENSION_PREFIX = """
+extend Counter {
+    public func increment(): Unit { value += 1 }
+    /** Calibrate from text. */
+    public func calibrate(value: String): String { value }
+}
+"""
 EXISTING_EXTENSIONS = """
 
 /** Existing extension block. */
@@ -105,13 +120,19 @@ extend Counter {
     public func decrement(): Unit {
         value -= 1
     }
+
+    /** Calibrate from a number. */
+    public func calibrate(value: Int64): Int64 { value }
 }
 """
 
 BASE_SOURCE += "\npublic class Occupied { public func extensions(): Int64 { 0 } }\n"
+BASE_SOURCE += "\npublic class Neighbor {}\n"
 COLLIDING_EXTENSION = "\nextend Occupied {{ public func keep(): Int64 {{ 1 }}{extra} }}\n"
 SHARED_OVERLOAD_PREFIX = "commonVeryLongOverloadPrefix" + "X" * 70
 PRIOR_OVERLOAD = (SHARED_OVERLOAD_PREFIX + "Old", "Existing extension", False)
+SHARED_ENDS = "overlap" + "L" * 56, "R" * 53 + "end"
+PRIOR_MIDDLE = (f"{SHARED_ENDS[0]}Before{SHARED_ENDS[1]}", "Established middle", False)
 
 
 def overload_source(name: str, label: str) -> str:
@@ -121,16 +142,24 @@ def overload_source(name: str, label: str) -> str:
             f"public func {name}(value: String): String {{ value }}\n")
 
 
-def overload_extension(name: str, label: str) -> str:
-    return "\nextend Counter {\n" + overload_source(name, label) + "}\n"
+def overload_extension(name: str, label: str, target: str = "Counter") -> str:
+    return f"\nextend {target} {{\n" + overload_source(name, label) + "}\n"
 
 
-EXISTING_OVERLOAD_EXTENSION = overload_extension(*PRIOR_OVERLOAD[:2])
-EARLIER_OVERLOAD_EXTENSION = overload_extension(SHARED_OVERLOAD_PREFIX + "New", "New extension")
-LIMIT_EXTENSIONS = ""
-for name in (NESTED_EXTENSION_TYPE, COMPACT_EXTENSION_TYPE):
+EXISTING_OVERLOAD_EXTENSION = (overload_extension(*PRIOR_OVERLOAD[:2])
+                               + overload_extension(*PRIOR_MIDDLE[:2]))
+EARLIER_OVERLOAD_EXTENSIONS = (
+    overload_extension(SHARED_OVERLOAD_PREFIX + "New", "New extension")
+    + overload_extension(PRIOR_OVERLOAD[0], "Unrelated extension", target="Neighbor")
+    + overload_extension(f"{SHARED_ENDS[0]}After{SHARED_ENDS[1]}", "Different middle")
+)
+for name in (NESTED_EXTENSION_TYPE, COMPACT_EXTENSION_TYPE, EARLIER_COMPACT_TYPE):
     BASE_SOURCE += f"\npublic class {name} {{ public func v(): Int64 {{ 0 }} }}\n"
-    LIMIT_EXTENSIONS += f"\nextend {name} {{ public func w(): Int64 {{ 1 }} }}\n"
+NESTED_EXTENSION = f"\nextend {NESTED_EXTENSION_TYPE} {{ public func w(): Int64 {{ 1 }} }}\n"
+EXISTING_COMPACT_EXTENSION = (f"\n/** Established compact extension. */\nextend {COMPACT_EXTENSION_TYPE}"
+                             " { public func w(): Int64 { 1 } }\n")
+EARLIER_COMPACT_EXTENSION = (f"\n/** Earlier compact extension. */\nextend {EARLIER_COMPACT_TYPE}"
+                            " { public func w(): Int64 { 1 } }\n")
 for name, label, _ in LONG_OVERLOADS:
     BASE_SOURCE += overload_source(name, label)
 
@@ -140,11 +169,11 @@ PACKAGE_LINE, BODY = BASE_SOURCE.split("\n", 1)
 PADDING = "//" + " " * (980 - BASE_SOURCE.index("public func set(text: String)") - 3) + "\n"
 BASE_SOURCE = PACKAGE_LINE + "\n" + PADDING + BODY
 EXISTING_SOURCE = (BASE_SOURCE + EXISTING_EXTENSIONS + EXISTING_OVERLOAD_EXTENSION
-                   + COLLIDING_EXTENSION.format(extra=""))
+                   + COLLIDING_EXTENSION.format(extra="") + EXISTING_COMPACT_EXTENSION)
 EXTEND_SOURCE = (PACKAGE_LINE + "\n" + EXTENSION_PREFIX + PADDING + BODY + EXISTING_EXTENSIONS
-                 + EARLIER_OVERLOAD_EXTENSION + EXISTING_OVERLOAD_EXTENSION
+                 + EARLIER_OVERLOAD_EXTENSIONS + EXISTING_OVERLOAD_EXTENSION
                  + COLLIDING_EXTENSION.format(extra="\n    public func added(): Int64 { 2 }\n")
-                 + LIMIT_EXTENSIONS)
+                 + NESTED_EXTENSION + EARLIER_COMPACT_EXTENSION + EXISTING_COMPACT_EXTENSION)
 
 PACKAGE_MANIFEST = """[package]
   cjc-version = "1.2.0"
@@ -234,7 +263,8 @@ def require(condition: bool, message: str, failures: list[str]) -> None:
 
 def check_long_overloads(base: dict[str, str], extended: dict[str, str],
                          failures: list[str],
-                         families: tuple[tuple[str, str, bool], ...] = LONG_OVERLOADS) -> None:
+                         families: tuple[tuple[str, str, bool], ...] = LONG_OVERLOADS,
+                         *, typed_signatures: bool = False) -> None:
     for name, label, fits in families:
         choices = [path for path, page in base.items()
                    if 'data-cjdoc-route="api-choice"' in page and name in main_content(page)]
@@ -256,7 +286,8 @@ def check_long_overloads(base: dict[str, str], extended: dict[str, str],
             target = urljoin(f"/{choice}", href).lstrip("/")
             before, after = (site.get(target, "") for site in (base, extended))
             ids = SYMBOL_PAGE.findall(before)
-            require(target.endswith(f"/signature-{ordinal}/index.html") and
+            suffix = ("Int64", "String")[ordinal - 1] if typed_signatures else str(ordinal)
+            require(target.endswith(f"/signature-{suffix}/index.html") and
                     len(ids) == 1 and ids == SYMBOL_PAGE.findall(after) and
                     all(f"{label} {kind} overload." in main_content(page) for page in (before, after)),
                     f"{href} does not point to a stable readable {label} {kind} signature", failures)
@@ -324,25 +355,51 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
         require(f"{name}/v" in canonical and f"{name}/v" in extended,
                 f"adding an extension moved an existing member near the path limit: {name}",
                 failures)
-        require(f"{name}/w" in extended and 'data-member-name="w"' in extended.get(name, ""),
-                f"type page or independent route lost the added extension member: {name}", failures)
+        page_path = f"{name}/index.html"
+        page = main_content(extend_pages.get(page_path, ""))
+        member_links = (urljoin(f"/{page_path}", href).lstrip("/")
+                        for href in re.findall(r'href="([^"]+)"', page))
+        require('data-member-name="w"' in page and any(
+            target.endswith("/w/signature-no-args/index.html") and target in extend_pages
+            and SYMBOL_PAGE.search(extend_pages[target]) for target in member_links),
+            f"the type page does not open the added extension member: {name}", failures)
     require(f"{nested}/extensions" in extended, "missing readable long-type extension", failures)
-    require("~api/extensions/extension-1" in extended,
-            "missing compact extension when its nested address exceeds the path limit", failures)
-    for member in ("get", "increment", "decrement"):
-        require(f"{ROUTES}/Counter/{member}" in extended, f"missing readable member route for {member}", failures)
+    for path in ("get", "increment/signature-no-args", "decrement/signature-no-args"):
+        require(f"{ROUTES}/Counter/{path}" in extended, f"missing readable member route for {path}", failures)
     existing_pages = page_paths(existing_html)
     existing = directories(existing_pages)
-    survivor = f"{ROUTES}/Counter/decrement"
+    compact_paths = [route for route, page in existing.items() if route.startswith("~api/extensions/")
+                     and "Established compact extension." in main_content(page)]
+    require(len(compact_paths) == 1, f"expected a compact extension route: {compact_paths}", failures)
+    for route in compact_paths:
+        before, after = existing[route], extended.get(route, "")
+        ids = SYMBOL_PAGE.findall(before)
+        require(len(ids) == 1 and ids == SYMBOL_PAGE.findall(after)
+                and "Established compact extension." in main_content(after),
+                f"an unrelated earlier extension reassigned {route}", failures)
+    require(any(route.startswith("~api/extensions/") and
+                "Earlier compact extension." in main_content(page) for route, page in extended.items()),
+            "the earlier compact extension was not published", failures)
+    survivor = f"{ROUTES}/Counter/decrement/signature-no-args"
     require(all("Subtract one." in main_content(site.get(survivor, ""))
                 for site in (existing, extended)),
             "inserting an earlier extension moved an existing member", failures)
+    new_choice = f"{ROUTES}/Counter/calibrate"
+    numeric = f"{new_choice}/signature-Int64"
+    choice_links = API_LINK.findall(main_content(extended.get(new_choice, "")))
+    candidates = {urljoin(f"/{new_choice}/index.html", link).lstrip("/") for link in choice_links}
+    require(candidates == {f"{numeric}/index.html", f"{new_choice}/signature-String/index.html"}
+            and all(path in extend_pages for path in candidates)
+            and all("Calibrate from a number." in main_content(site.get(numeric, ""))
+                    for site in (existing, extended)),
+            "adding a same-target overload replaced the existing signature or lost a choice", failures)
     collision_stem = f"{ROUTES}/Occupied/extensions~"
     collision_before = [route for route in existing if route.startswith(collision_stem)]
     collision_after = [route for route in extended if route.startswith(collision_stem)]
     require(len(collision_before) == 1 and collision_before == collision_after,
             "adding a member changed its block's real collision fallback", failures)
-    require(f"{ROUTES}/Occupied/extensions" in extended and f"{ROUTES}/Occupied/added" in extended,
+    require(f"{ROUTES}/Occupied/extensions" in extended
+            and f"{ROUTES}/Occupied/added/signature-no-args" in extended,
             "the colliding block must keep the ordinary member and publish the added extension member",
             failures)
 
@@ -359,7 +416,8 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
                 all(summary in main_content(page) for page in (before, after)),
                 f"{route} no longer resolves to its original declaration: {summary}", failures)
     check_long_overloads(base_pages, extend_pages, failures)
-    check_long_overloads(existing_pages, extend_pages, failures, (PRIOR_OVERLOAD,))
+    check_long_overloads(existing_pages, extend_pages, failures, (PRIOR_OVERLOAD, PRIOR_MIDDLE),
+                         typed_signatures=True)
 
     # A portable fallback is a `~<hex>` segment, whether it replaces a whole
     # name or is appended after a readable stem (`Sketch~<hex>`).
@@ -377,11 +435,13 @@ def accept(binary: Path, repo: Path, workdir: Path) -> int:
     for path, text in extend_pages.items():
         check_headings(path, text, failures)
     greet_route = next((path for path in extend_pages
-                        if path.startswith(f"{ROUTES}/greet/signature-")), "")
+                        if path.startswith(f"{ROUTES}/greet/signature-")
+                        and ">Details</h2>" in extend_pages[path]), "")
+    require(bool(greet_route), "missing the standalone authored section", failures)
     if greet_route:
         greet = extend_pages[greet_route]
-        require(">Details</h2>" in greet,
-                "authored '## Details' did not render as a section heading", failures)
+        require(">Notes</h2>" in greet and ">Usage</h3>" in greet,
+                "standalone authored siblings and child did not retain their headings", failures)
 
     if failures:
         for failure in failures[:40]:

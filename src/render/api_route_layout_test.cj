@@ -156,7 +156,7 @@ class ApiRouteLayoutTest {
         // Members of an extension belong to the target type, so renumbering an
         // extension block never moves a member page.
         let increment = documentation.declarations[4]
-        @Expect(paths[increment.id], "fixture/Counter/increment/index.html")
+        @Expect(paths[increment.id], "fixture/Counter/increment/signature-no-args/index.html")
     }
 
     @TestCase

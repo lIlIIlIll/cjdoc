@@ -34,12 +34,12 @@ public enum Shape {
 public func named(_0: Int64): Int64 { _0 }
 """
 
-private func enumPayloadProject(): Path {
+private func enumPayloadProject(source!: String = ENUM_PAYLOAD_SOURCE): Path {
     let root = Directory.createTemp(getTempDirectory())
     Directory.create(root.join("src"))
     File.writeTo(root.join("cjpm.toml"),
         "[package]\nname = \"enum_payload_fixture\"\nversion = \"0.1.0\"\noutput-type = \"static\"\n".toArray())
-    File.writeTo(root.join("src/api.cj"), ENUM_PAYLOAD_SOURCE.toArray())
+    File.writeTo(root.join("src/api.cj"), source.toArray())
     root
 }
 
@@ -234,6 +234,35 @@ class EnumPayloadParameterTest {
             @Expect(rect.parameters[0].documentation, Some("width of the rectangle"))
             @Expect(rect.parameters[1].documentation, Some("height of the rectangle"))
         } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func duplicatePositionAliasesKeepTheFirstDescriptionInEveryReadingSurface(): Unit {
+        for ((first, second, description) in [("#0", "_0", "first width"),
+            ("_0", "#0", "first width"), ("#0", "_0", "")]) {
+            let primary = if (description.isEmpty()) { "@param ${first}" } else { "@param ${first} ${description}" }
+            let source = ENUM_PAYLOAD_SOURCE.replace("@param #0 width of the rectangle",
+                "${primary}\n     * @param ${second} conflicting width")
+            let root = enumPayloadProject(source: source)
+            try {
+                let documentation = enumPayloadGenerate(root, "standard")
+                let rect = enumCaseDeclaration(documentation, "Rect")
+                var duplicates = 0
+                for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC3002") {
+                    @Expect(diagnostic.message, "duplicate @param '#0'")
+                    duplicates++
+                }
+                @Expect(duplicates, 1)
+                @Expect(rect.parameters[0].documentation, Some(description))
+                let html = enumPayloadHtml(documentation)["Rect"]
+                @Expect(!html.contains("conflicting width"))
+                if (!description.isEmpty()) {
+                    @Expect(html.contains(description))
+                    expectLocalizedPayloadReading(documentation, rect.id, "en",
+                        [description, "height of the rectangle"])
+                }
+            } finally { let _ = removeIfExists(root, recursive: true) }
+        }
     }
 
     @TestCase

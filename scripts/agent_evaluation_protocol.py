@@ -29,18 +29,161 @@ ARMS = ("baseline-html-index", "shared-query-mcp")
 # The rubric also contains answer/evidence requirements (e.g. keep the same
 # snapshot during continuation) that are not literals in a Cangjie source file.
 # Use exact source excerpts to bind each citation to the API it actually names.
+# Every witness must occur inside one contiguous cited span: separate ranges or
+# files cannot be spliced into a body or an example the source never shows.
+
+
+def _lines(*lines: str) -> str:
+    """Join archived source lines verbatim; the guard never reflows them."""
+    return "\n".join(lines)
+
+
 INTEGER_ADD = "public func add(value: Int64, radix!: Int64 = 10): Unit {"
 RADIX_GUARD = 'if (radix != 10) { throw IllegalArgumentException("only decimal radix is supported") }'
 INTEGER_APPEND = "values.add(value.toString())"
-WINDOW_WITNESSES = (
-    "public func window(start!: Int64 = 0, limit!: Int64 = 20): Array<?String> {",
-    "start < 0 || start > values.size || limit < 0",
-    "start == size` returns an empty window",
-    "let page = catalog.window(start: 1, limit: 2)\n     * for (entry in page) {",
-    "output.toArray()\n    }",
+# Complete declarations and examples: a partial fenced block, an unterminated
+# loop or a missing expected-output fence cannot satisfy a full-body citation.
+INTEGER_BODY = _lines(
+    INTEGER_ADD,
+    "        " + RADIX_GUARD,
+    "        " + INTEGER_APPEND,
+    "    }",
 )
+STRING_ADD = "public func add(value: String): Unit { values.add(value) }"
+STRING_ADD_EXAMPLE = _lines(
+    "     * @example[lang=en] Keep an empty entry {run}",
+    "     * ```cangjie",
+    "     * let catalog = TextCatalog()",
+    '     * catalog.add("")',
+    '     * println("count: ${catalog.size}")',
+    '     * println("bytes: ${catalog.at(0).size}")',
+    "     * ```",
+    "     *",
+    "     * **Expected output**",
+    "     *",
+    "     * ```output",
+    "     * count: 1",
+    "     * bytes: 0",
+    "     * ```",
+)
+WINDOW_BODY = _lines(
+    "public func window(start!: Int64 = 0, limit!: Int64 = 20): Array<?String> {",
+    '        if (start < 0 || start > values.size || limit < 0) { throw IllegalArgumentException("invalid window") }',
+    "        let output = ArrayList<?String>()",
+    "        var index = start",
+    "        while (index < values.size && output.size < limit) {",
+    "            output.add(Some(values[index]))",
+    "            index++",
+    "        }",
+    "        output.toArray()",
+    "    }",
+)
+WINDOW_EXAMPLE = _lines(
+    # The start/limit example with its setup, loop body, terminator and output.
+    "     * @example 按位置与上限取窗口 {run}",
+    "     * ```cangjie",
+    '     * let catalog = TextCatalog(["a", "b", "c", "d"])',
+    "     * ```",
+    "     * ```cangjie",
+    "     * let page = catalog.window(start: 1, limit: 2)",
+    "     * for (entry in page) {",
+    "     *     println(entry.getOrThrow())",
+    "     * }",
+    "     * ```",
+    "     *",
+    "     * **预期输出 / Expected output**",
+    "     *",
+    "     * ```output",
+    "     * b",
+    "     * c",
+    "     * ```",
+)
+WINDOW_EXAMPLE_DEFAULTS = _lines(
+    "     * @example 默认参数与末尾短窗口 {run}",
+    "     * ```cangjie",
+    '     * let catalog = TextCatalog(["a", "b", "c"])',
+    '     * println("default length: ${catalog.window().size}")',
+    '     * println("tail length: ${catalog.window(start: 2).size}")',
+    "     * ```",
+    "     *",
+    "     * **预期输出 / Expected output**",
+    "     *",
+    "     * ```output",
+    "     * default length: 3",
+    "     * tail length: 1",
+    "     * ```",
+)
+WINDOW_EXAMPLE_EMPTY = _lines(
+    "     * @example 三种空窗口 {run}",
+    "     * ```cangjie",
+    '     * let catalog = TextCatalog(["a", "b", "c"])',
+    '     * println("at end: ${catalog.window(start: catalog.size).size}")',
+    '     * println("zero limit: ${catalog.window(limit: 0).size}")',
+    '     * println("empty catalogue: ${TextCatalog().window().size}")',
+    "     * ```",
+    "     *",
+    "     * **预期输出 / Expected output**",
+    "     *",
+    "     * ```output",
+    "     * at end: 0",
+    "     * zero limit: 0",
+    "     * empty catalogue: 0",
+    "     * ```",
+)
+WINDOW_EXAMPLE_INVALID = _lines(
+    "     * @example 越界参数抛出异常 {run}",
+    "     * ```cangjie",
+    '     * let catalog = TextCatalog(["a"])',
+    "     * for ((start, limit) in [(-1, 1), (catalog.size + 1, 1), (0, -1)]) {",
+    "     *     try {",
+    "     *         catalog.window(start: start, limit: limit)",
+    '     *         throw IllegalStateException("expected an invalid window")',
+    "     *     } catch (_: IllegalArgumentException) {",
+    '     *         println("start=${start}, limit=${limit}: IllegalArgumentException")',
+    "     *     }",
+    "     * }",
+    "     * ```",
+    "     *",
+    "     * **预期输出 / Expected output**",
+    "     *",
+    "     * ```output",
+    "     * start=-1, limit=1: IllegalArgumentException",
+    "     * start=2, limit=1: IllegalArgumentException",
+    "     * start=0, limit=-1: IllegalArgumentException",
+    "     * ```",
+)
+# The window contract names the empty-start boundary directly; its examples are
+# only evidence when each fenced block and its expected output is whole.
+WINDOW_WITNESSES = (
+    WINDOW_BODY,
+    WINDOW_EXAMPLE,
+    WINDOW_EXAMPLE_DEFAULTS,
+    WINDOW_EXAMPLE_EMPTY,
+    WINDOW_EXAMPLE_INVALID,
+    "start == size` returns an empty window",
+)
+# AG-11's continuation question resolves to the String overload (with the code
+# block it must not truncate) and the window retry path, not the full contract.
+RETRY_WITNESSES = (
+    STRING_ADD,
+    STRING_ADD_EXAMPLE,
+    INTEGER_BODY,
+    WINDOW_BODY,
+    WINDOW_EXAMPLE,
+)
+BLOCK_WITNESSES = {
+    STRING_ADD: "complete String overload declaration",
+    STRING_ADD_EXAMPLE: "complete String overload example with its expected output",
+    INTEGER_BODY: "complete integer overload body",
+    WINDOW_BODY: "complete window declaration body",
+    WINDOW_EXAMPLE: "complete start/limit example with its expected output",
+    WINDOW_EXAMPLE_DEFAULTS: "complete default-parameter example with its expected output",
+    WINDOW_EXAMPLE_EMPTY: "complete empty-window example with its expected output",
+    WINDOW_EXAMPLE_INVALID: "complete invalid-argument example with its expected output",
+}
 SOURCE_WITNESSES = {
-    "AG-01": ("value: Int64", "radix!: Int64 = 10", INTEGER_ADD, RADIX_GUARD, INTEGER_APPEND),
+    "AG-01": ("value: Int64", "radix!: Int64 = 10", INTEGER_BODY,
+              RADIX_GUARD, INTEGER_APPEND),
     "AG-02": ('version = "0.1.0"', "public func add(value: Int64): Unit { values.add(value.toString()) }"),
     "AG-03": WINDOW_WITNESSES,
     "AG-04": ("At EOF, `read()` returns `None` and the session stays open.",
@@ -57,7 +200,7 @@ SOURCE_WITNESSES = {
               "public import acme::reexport_dep.make as orgCreate", "public import reexport_dep.conflict.*"),
     "AG-09": ('default-language = "zh-CN"', "原样追加一组条目", "public func addAll(entries: Array<String>): Unit"),
     "AG-10": ("macro package unsupported_fixture", "public macro Echo(input: Tokens)"),
-    "AG-11": ("public func add(value: String): Unit", INTEGER_ADD, *WINDOW_WITNESSES),
+    "AG-11": RETRY_WITNESSES,
     "AG-12": ("@see pocket_support.SourceLabel.text", "本地标签 / Local stamp",
               "package pocket_support", "public struct SourceLabel {\n    /** 原样保存的标签文本。 */\n    public let text",
               "外部 Stamp。与 pocketkit.Stamp 同名，但身份和文档集不同。"),
@@ -204,22 +347,32 @@ def _read_source(path: Path) -> str:
         return ""
 
 
-def source_text(item: dict, text: str | None = None) -> str:
-    """The selected lines of a file, or the whole file if no range is given."""
+def source_spans(item: dict, text: str | None = None) -> list[str]:
+    """Each cited range as its own contiguous text; ranges are never joined."""
     lines = (_read_source(item["path"]) if text is None else text).splitlines()
     if item["range"] is None:
-        return "\n".join(lines)
-    selected: list[str] = []
+        return ["\n".join(lines)]
+    spans: list[str] = []
     for start, end in item["range"]:
         if end > len(lines):
-            return ""
-        selected.extend(lines[start - 1:end])
-    return "\n".join(selected)
+            return []
+        spans.append("\n".join(lines[start - 1:end]))
+    return spans
+
+
+def source_text(item: dict, text: str | None = None) -> str:
+    """The selected lines of a file, or the whole file if no range is given."""
+    return "\n".join(source_spans(item, text))
 
 
 def verify_source_slices(protocol: dict, project_root: Path,
                          task_ids: tuple[str, ...] = tuple(SOURCE_WITNESSES)) -> None:
-    """Resolve each active citation and fail when it misses its source evidence."""
+    """Resolve each active citation and fail when it misses its source evidence.
+
+    Evidence is accepted only inside one contiguous cited span. Listing the
+    separate lines that happen to hold the expected fragments cannot prove a
+    declaration body or an example block the source never cites whole.
+    """
     tasks = {task.get("id"): task for task in protocol.get("tasks") or []}
     baseline = protocol.get("sourceCitationBaseline")
     pinned = None
@@ -236,7 +389,7 @@ def verify_source_slices(protocol: dict, project_root: Path,
         _require(task is not None, f"protocol does not freeze task {identifier}")
         parts = source_slices(str(task.get("source") or ""), project_root)
         _require(bool(parts), f"{identifier}: no frozen source citation")
-        snippets = []
+        spans: list[str] = []
         for item in parts:
             name = item["reference"]
             if name not in observed:
@@ -247,21 +400,25 @@ def verify_source_slices(protocol: dict, project_root: Path,
                     _require(pinned.get(name) == digest,
                              f"{identifier}: {name!r} differs from the frozen source citation baseline")
                 observed[name] = text
-            snippet = source_text(item, observed[name])
-            _require(bool(snippet), f"{identifier}: cannot read cited source slice {name!r}")
-            snippets.append(snippet)
-        text = "\n".join(snippets)
+            selected = source_spans(item, observed[name])
+            _require(bool(selected) and all(selected),
+                     f"{identifier}: cannot read cited source slice {name!r}")
+            spans.extend(selected)
         fragments = SOURCE_WITNESSES[identifier]
         if identifier == "AG-01":
+            # Report a swapped radix guard before the body-completeness witness.
+            for span in spans:
+                if INTEGER_ADD in span and RADIX_GUARD in span and INTEGER_APPEND in span:
+                    _require(span.index(RADIX_GUARD) < span.index(INTEGER_APPEND),
+                             f"{identifier}: invalid radix check no longer precedes append")
+                    break
             fragments += tuple(task["requiredFacts"])
         for fragment in fragments:
-            _require(fragment in text,
-                     f"{identifier}: source slice no longer contains {fragment!r}")
-        if identifier == "AG-01":
-            _require(text.index(RADIX_GUARD) < text.index(INTEGER_APPEND),
-                     f"{identifier}: invalid radix check no longer precedes append")
-            _require(f"{INTEGER_APPEND}\n    }}" in text,
-                     f"{identifier}: source slice no longer contains the complete integer overload body")
+            first_line = fragment.splitlines()[0]
+            description = BLOCK_WITNESSES.get(fragment)
+            detail = f" ({description})" if description else ""
+            _require(any(fragment in span for span in spans),
+                     f"{identifier}: source slice no longer contains {first_line!r}{detail}")
 
 
 def verify_sources(protocol_path: Path = DEFAULT_PROTOCOL,

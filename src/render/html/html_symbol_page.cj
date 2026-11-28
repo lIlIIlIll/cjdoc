@@ -710,8 +710,8 @@ private func appendSymbolPageBody(w: HtmlWriter, documentation: DocumentationSet
     // A declaration's own sections sit directly below its h1 on every page
     // shape. The member area of a type page is not their parent: its kind
     // headings are h2 and a member body is h3, so a class-level "Examples"
-    // emitted at h3 would read as a child of "Methods". Author Markdown uses
-    // the same base, so `## Details` stays h2 here and on a member page.
+    // emitted at h3 would read as a child of "Methods". The same body base
+    // applies to standalone member and ownerless declaration pages.
     appendDocumentationHtml(w, index, symbol, rootPrefix, assetLookup,
         typeLinkIndex, headingBase: 2, locale: locale, includeContracts: !hasMemberPage,
         includeIntroduction: !hasMemberPage, projection: projection,
