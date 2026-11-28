@@ -10,11 +10,20 @@ if [[ $# -eq 0 ]]; then
     script="${BASH_SOURCE[0]}"
     assets="${RUNNER_TEMP}/nightly-assets"
     [[ ! -e "$assets" && ! -L "$assets" ]]
+    # The retry loop launches each attempt as a native child, so the interpreter is
+    # resolved through the platform PATH rather than the step's shell. On Windows
+    # that resolution produced the WSL launcher ("Windows Subsystem for Linux has no
+    # installed distributions"), failing all four attempts in under a second.
+    # Launch the interpreter this script already runs under, in native form.
+    host_bash="${BASH:-bash}"
+    if command -v cygpath >/dev/null 2>&1; then
+        host_bash="$(cygpath -w "${host_bash}")"
+    fi
     status=1
     for attempt in 1 2 3 4; do
         attempt_root="$(mktemp -d "${RUNNER_TEMP}/n.XXXXXXXX")"
         printf '::group::%s candidate attempt %d/4\n' "$NIGHTLY_PLATFORM" "$attempt"
-        if python scripts/run_with_timeout.py 4800 -- bash "$script" --attempt "$attempt_root"; then
+        if python scripts/run_with_timeout.py 4800 -- "${host_bash}" "$script" --attempt "$attempt_root"; then
             # Promote only after the timed process reports success.
             mv -- "${attempt_root}/upload" "$assets"
             status=0
