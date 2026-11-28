@@ -146,7 +146,25 @@ bash scripts/check.sh
 
 示例运行只有两种可接受结果：本机真正执行，或 macOS 文档化的 fail-closed 拒绝。macOS 拒绝必须同时带有限制器给出的原因（`address-space memory limit is unavailable on this platform`），这类记录单独计为 `CJDOC_TEST_PLATFORM_REFUSAL`，不计入降级；其他主机出现该拒绝、或出现编译/链接失败形式的 `CJDOC3074`，都不算已验证。CI 用 `CJDOC_TEST_PLATFORM_REFUSALS=required`（macOS）与 `forbidden`（Linux、Windows）区分这两种要求。
 
-测试不再从环境变量拿仓库根：fixture 路径由编译后的源码位置或测试二进制自身路径向上找到模块清单，进程工作目录不参与。准备好 SDK 和 worker 后，运行 `python3 scripts/check_native_environment.py --repo .` 检查三条路径：未设 worker 时直接用 SDK 的 `cjpm test` 复用已编译产物，两个回退用例通过并报告两条降级；STS wrapper 在相同条件下报告降级，严格模式则退出失败；所有测试二进制从仓库外运行且不设 `CJDOC_TEST_ROOT`，仍应通过且没有降级。
+测试不再从环境变量拿仓库根：fixture 路径由编译后的源码位置或测试二进制自身路径向上找到模块清单，进程工作目录不参与。要单独验证，从仓库根按前文设置 `GITHUB_WORKSPACE`、`RUNNER_TEMP` 并加载 STS wrapper，使用已认证的 SDK 和 stdx 完成 `build`（包含主程序和 CHIR worker）。将 Node.js 26.11.1 加入 `PATH`，或用 `CJDOC_HIGHLIGHT_NODE` 指定其原生绝对路径。
+
+在 checkout 外安装锁定的 Highlight.js 依赖，再运行对照：
+
+```bash
+highlight="$RUNNER_TEMP/cjdoc-native-highlight"
+mkdir "$highlight"
+git archive HEAD tools/highlight | tar -x -C "$highlight"
+adapter_dir="$highlight/tools/highlight"
+if command -v cygpath >/dev/null 2>&1; then
+  adapter_dir="$(cygpath -m "$adapter_dir")"
+fi
+npm ci --ignore-scripts --prefix "$adapter_dir"
+export CJDOC_TEST_HIGHLIGHT_ADAPTER="$adapter_dir/adapter.mjs"
+python3 scripts/with_stdx.py --variant static -- \
+  python3 scripts/check_native_environment.py --repo .
+```
+
+通过时，未设 worker 的原生 `cjpm test` 显示两条降级，STS wrapper 的严格模式拒绝降级；依赖齐备后，所有测试二进制从仓库外执行，且不设 `CJDOC_TEST_ROOT` 时仍通过并报告零降级。
 
 `browser` 阶段使用 Node.js 26.11.1，并安装锁定的 Playwright 和 Chromium。Linux 上 `TMPDIR` 应使用路径较短的私有目录，以免 Chromium 原生缩放测试的 Unix socket 路径超长；生成站点和测试报告仍写入 `--output-root`。
 

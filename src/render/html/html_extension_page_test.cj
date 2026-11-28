@@ -125,11 +125,12 @@ class HtmlExtensionPageTest {
         let links = HtmlTypeLinkIndex(documentation, projection)
         let extension = documentation.declarations[1]
         let member = documentation.declarations[4]
-        // The member URL is under the type, but its semantic owner stays the extension.
+        // A stable signature page lives under the type; its breadcrumb still links
+        // back to the declaring extension rather than a type-owned member group.
         @Expect(projection.symbolFileHref(extension.id), "fixture/Entry/extensions/index.html")
-        @Expect(projection.symbolFileHref(member.id), "fixture/Entry/byteLength/index.html")
+        @Expect(projection.symbolFileHref(member.id), "fixture/Entry/byteLength/signature-no-args/index.html")
         let ownerCrumb = "<li class=\"cj-breadcrumbs__item\"><a " +
-            "href=\"../../../fixture/Entry/extensions/index.html\"><code>"
+            "href=\"../../../../fixture/Entry/extensions/index.html\"><code>"
         for (locale in ["en", "zh-CN"]) {
             let title = if (locale == "zh-CN") {
                 "扩展 Entry&lt;String&gt;"
